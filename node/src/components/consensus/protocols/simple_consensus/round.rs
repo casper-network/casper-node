@@ -211,7 +211,8 @@ impl<C: Context> Round<C> {
         }
     }
 
-    /// Removes all `false` votes: This round was finalized and can never be skipped.
+    /// Removes all `false` votes and all echoes that don't belong to the quorum: This round was
+    /// finalized and can never be skipped.
     pub(super) fn prune_finalized(&mut self) {
         for maybe_vote in self.votes.get_mut(&false).unwrap().iter_mut() {
             *maybe_vote = None;

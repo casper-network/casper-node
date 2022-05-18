@@ -1023,8 +1023,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     fn add_content(&mut self, signed_msg: SignedMessage<C>) {
         if self.active[signed_msg.validator_idx].is_none() {
             self.active[signed_msg.validator_idx] = Some(signed_msg.clone());
-            // If a validator is seen for the first time a proposal in any round that doesn't
-            // consider them inactive could become accepted now.
+            // We considered this validator inactive until now, and didn't accept proposals that
+            // didn't have them in the `inactive` field. Mark all relevant rounds as dirty so that
+            // the next `update` call checks all proposals again.
             self.mark_dirty(self.first_non_finalized_round_id);
         }
         if signed_msg.round_id < self.first_non_finalized_round_id {
@@ -1362,7 +1363,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
-    /// Makes a new proposal if we are the curretn round leader.
+    /// Makes a new proposal if we are the current round leader.
     fn propose_if_leader(
         &mut self,
         maybe_parent_round_id: Option<RoundId>,
