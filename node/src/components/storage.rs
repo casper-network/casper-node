@@ -518,28 +518,13 @@ impl StorageInner {
                     {
                         let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                         {
-                            println!(
-                                "Deleting block at height {} with body_hash {}",
-                                block_header.height(),
-                                block_header.body_hash()
-                            );
                             let body_v1_of_deleted_block: Option<BlockBody> =
                                 body_txn.get_value(block_body_v1_db, block_header.body_hash())?;
                             if let Some(body_v1_of_deleted_block) = body_v1_of_deleted_block {
-                                println!("\tWe have body for this header with the following deploys and transfers:");
-                                for x in body_v1_of_deleted_block.deploy_hashes() {
-                                    println!("\t\t{}", x);
-                                }
-                                for x in body_v1_of_deleted_block.transfer_hashes() {
-                                    println!("\t\t{}", x);
-                                }
-
                                 deleted_deploy_hashes
                                     .extend(body_v1_of_deleted_block.deploy_hashes());
                                 deleted_deploy_hashes
                                     .extend(body_v1_of_deleted_block.transfer_hashes());
-                            } else {
-                                println!("\tWe don't have body for this header");
                             }
                         }
                     }
@@ -548,7 +533,7 @@ impl StorageInner {
                     let body_v2_of_deleted_block: Option<BlockBody> =
                         body_txn.get_value(block_body_v2_db, block_header.body_hash())?;
                     if let Some(body_v2_of_deleted_block) = body_v2_of_deleted_block {
-                        panic!("not covered");
+                        // TODO[RC]: This branch is not covered by tests!
                         deleted_deploy_hashes.extend(body_v2_of_deleted_block.deploy_hashes());
                     }
 
@@ -621,25 +606,9 @@ impl StorageInner {
                 .collect(),
         )?;
 
-        {
-            println!("--------------------------------------------------------");
-            let mut txn = env.begin_ro_txn()?;
-            println!("Have the following DeplyHashes in deploy_metadata_db:");
-            let mut cursor = txn.open_ro_cursor(deploy_metadata_db)?;
-            for (raw_key, raw_val) in cursor.iter() {
-                let dh = DeployHash::new(
-                    Digest::try_from(raw_key).expect("malformed deploy hash in DB"),
-                );
-                println!("\t{:?}", dh);
-            }
-            println!("--------------------------------------------------------\n");
-        }
-
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
-        initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_block_hashes)?;
-        initialize_deploy_metadata_db_2(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
-
-        println!("\n\n------------------\n\n");
+        initialize_deploy_metadata_db_legacy(&env, &deploy_metadata_db, &deleted_block_hashes)?;
+        initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
         Ok(Self {
             root,
@@ -2643,24 +2612,18 @@ fn initialize_block_metadata_db(
 }
 
 /// Purges stale entries from the deploy metadata database.
-fn initialize_deploy_metadata_db(
+fn initialize_deploy_metadata_db_legacy(
     env: &Environment,
     deploy_metadata_db: &Database,
     deleted_block_hashes: &HashSet<BlockHash>,
 ) -> Result<(), LmdbExtError> {
     info!("initializing deploy metadata database");
 
-    println!("-------------------------------------------------------- LEGACY INIT");
-
     if !deleted_block_hashes.is_empty() {
         let mut txn = env.begin_rw_txn()?;
         let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
 
         for (raw_key, raw_val) in cursor.iter() {
-            let x =
-                DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"));
-            println!("\tIterating over deploy hash: {}", x);
-
             let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
             let len_before = deploy_metadata.execution_results.len();
 
@@ -2678,23 +2641,16 @@ fn initialize_deploy_metadata_db(
                         Digest::try_from(raw_key).expect("malformed deploy hash in DB")
                     )
                 );
+
                 cursor.del(WriteFlags::empty())?;
             } else if len_before != deploy_metadata.execution_results.len() {
                 let buffer = lmdb_ext::serialize(&deploy_metadata)?;
-                println!(
-                    "\t\tWould remove some execution results from DeployHash: {}",
-                    DeployHash::new(
-                        Digest::try_from(raw_key).expect("malformed deploy hash in DB")
-                    )
-                );
                 cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
             }
         }
 
         drop(cursor);
-        //txn.commit()?;
         txn.abort();
-        println!("-------------------------------------------------------- LEGACY INIT END\n");
     }
 
     info!("deploy metadata database initialized");
@@ -2702,30 +2658,27 @@ fn initialize_deploy_metadata_db(
 }
 
 /// Purges stale entries from the deploy metadata database.
-fn initialize_deploy_metadata_db_2(
+fn initialize_deploy_metadata_db(
     env: &Environment,
     deploy_metadata_db: &Database,
     deleted_deploy_hashes: &HashSet<DeployHash>,
 ) -> Result<(), LmdbExtError> {
     info!("initializing deploy metadata database");
 
-    println!("-------------------------------------------------------- NEW INIT");
-
     let mut txn = env.begin_rw_txn()?;
     for deleted_deploy_hash in deleted_deploy_hashes {
-        let raw_val = txn.get(*deploy_metadata_db, deleted_deploy_hash);
-        match raw_val {
-            Ok(raw) => {
-                let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw)?;
+        match txn.get(*deploy_metadata_db, deleted_deploy_hash) {
+            // TODO[RC]: No need to `get` after the debug print is deleted
+            Ok(_) => {
                 println!("Deleting v2: {}", deleted_deploy_hash);
-                txn.del(*deploy_metadata_db, deleted_deploy_hash, None);
+                txn.del(*deploy_metadata_db, deleted_deploy_hash, None)?;
             }
-            Err(_) => println!("Not found in metadata db: {}", deleted_deploy_hash),
-        }
+            Err(_) => {
+                debug!(%deleted_deploy_hash, "not purging deploy hash because not found in deploy metadata db")
+            }
+        };
     }
     txn.commit()?;
-
-    println!("-------------------------------------------------------- NEW INIT END");
 
     info!("deploy metadata database initialized");
     Ok(())
