@@ -524,6 +524,12 @@ impl StorageInner {
         for (_, raw_val) in cursor.iter() {
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
+            let (maybe_block_body, is_v1) = get_body_for_block_header(
+                &mut body_txn,
+                &block_header,
+                &databases,
+                verifiable_chunked_hash_activation,
+            );
             if let Some(invalid_era) = hard_reset_to_start_of_era {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
@@ -533,13 +539,6 @@ impl StorageInner {
                 {
                     let _ = deleted_block_hashes
                         .insert(block_header.hash(verifiable_chunked_hash_activation));
-
-                    let (maybe_block_body, is_v1) = get_body_for_block_header(
-                        &mut body_txn,
-                        &block_header,
-                        &databases,
-                        verifiable_chunked_hash_activation,
-                    );
 
                     if let Some(block_body) = maybe_block_body? {
                         deleted_deploy_hashes.extend(block_body.deploy_hashes());
@@ -561,18 +560,7 @@ impl StorageInner {
                 verifiable_chunked_hash_activation,
             )?;
 
-            let maybe_block_body = match block_header
-                .hashing_algorithm_version(verifiable_chunked_hash_activation)
-            {
-                HashingAlgorithmVersion::V1 => {
-                    body_txn.get_value(block_body_v1_db, block_header.body_hash())?
-                }
-                HashingAlgorithmVersion::V2 => {
-                    get_single_block_body_v2(&mut body_txn, block_header.body_hash(), &databases)?
-                }
-            };
-
-            if let Some(block_body) = maybe_block_body {
+            if let Some(block_body) = maybe_block_body? {
                 insert_to_deploy_index(
                     &mut indices.deploy_hash_index,
                     block_header.hash(verifiable_chunked_hash_activation),
