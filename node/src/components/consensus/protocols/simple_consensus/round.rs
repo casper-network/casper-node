@@ -5,6 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
     components::consensus::{
@@ -217,6 +218,11 @@ impl<C: Context> Round<C> {
         }
         if self.outcome.quorum_votes == Some(false) {
             self.outcome.quorum_votes = None;
+        }
+        if let Some(quorum_hash) = self.quorum_echoes() {
+            self.echoes.retain(|hash, _| *hash == quorum_hash);
+        } else {
+            error!("prune_finalized called on a round without accepted proposal");
         }
     }
 }
