@@ -10,11 +10,11 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Maximum number of fetch-deploy tasks per peer to run in parallel during chain synchronization.
-max_parallel_deploy_fetches_per_peer = 10
+# Maximum number of fetch-deploy tasks to run in parallel during chain synchronization.
+max_parallel_deploy_fetches = 5000
 
-# Maximum number of fetch-trie tasks per peer to run in parallel during chain synchronization.
-max_parallel_trie_fetches_per_peer = 10
+# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+max_parallel_trie_fetches = 5000
 
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'

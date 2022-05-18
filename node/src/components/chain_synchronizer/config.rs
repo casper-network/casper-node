@@ -17,12 +17,10 @@ pub(super) struct Config {
     chainspec: Arc<Chainspec>,
     /// Hash used as a trust anchor when joining, if any.
     trusted_hash: Option<BlockHash>,
-    /// Maximum number of fetch-deploy tasks per peer to run in parallel during chain
-    /// synchronization.
-    max_parallel_deploy_fetches_per_peer: u32,
-    /// Maximum number of fetch-trie tasks per peer to run in parallel during chain
-    /// synchronization.
-    max_parallel_trie_fetches_per_peer: u32,
+    /// Maximum number of deploys to fetch in parallel.
+    max_parallel_deploy_fetches: u32,
+    /// Maximum number of trie nodes to fetch in parallel.
+    max_parallel_trie_fetches: u32,
     /// The duration for which to pause between retry attempts while synchronising.
     retry_interval: Duration,
     /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
@@ -47,8 +45,8 @@ impl Config {
         Config {
             chainspec: Arc::clone(&chainspec),
             trusted_hash: node_config.trusted_hash,
-            max_parallel_deploy_fetches_per_peer: node_config.max_parallel_deploy_fetches_per_peer,
-            max_parallel_trie_fetches_per_peer: node_config.max_parallel_trie_fetches_per_peer,
+            max_parallel_deploy_fetches: node_config.max_parallel_deploy_fetches,
+            max_parallel_trie_fetches: node_config.max_parallel_trie_fetches,
             retry_interval: Duration::from_millis(node_config.retry_interval.millis()),
             sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
@@ -117,12 +115,12 @@ impl Config {
         self.trusted_hash
     }
 
-    pub(super) fn max_parallel_deploy_fetches_per_peer(&self) -> usize {
-        self.max_parallel_deploy_fetches_per_peer as usize
+    pub(super) fn max_parallel_deploy_fetches(&self) -> usize {
+        self.max_parallel_deploy_fetches as usize
     }
 
-    pub(super) fn max_parallel_trie_fetches_per_peer(&self) -> usize {
-        self.max_parallel_trie_fetches_per_peer as usize
+    pub(super) fn max_parallel_trie_fetches(&self) -> usize {
+        self.max_parallel_trie_fetches as usize
     }
 
     pub(super) fn retry_interval(&self) -> Duration {
