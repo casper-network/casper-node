@@ -2717,7 +2717,6 @@ fn initialize_deploy_metadata_db_2(
         match raw_val {
             Ok(raw) => {
                 let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw)?;
-                println!("found metadata: {:?}", deploy_metadata);
                 println!("Deleting v2: {}", deleted_deploy_hash);
                 txn.del(*deploy_metadata_db, deleted_deploy_hash, None);
             }
