@@ -151,6 +151,15 @@ pub struct Storage {
     sync_task_limiter: Arc<Semaphore>,
 }
 
+/// Groups databases used by storage.
+struct Databases {
+    block_body_v1_db: Database,
+    block_body_v2_db: Database,
+    deploy_hashes_db: Database,
+    transfer_hashes_db: Database,
+    proposer_db: Database,
+}
+
 /// The inner storage component.
 #[derive(DataSize, Debug)]
 pub struct StorageInner {
@@ -501,6 +510,15 @@ impl StorageInner {
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
         let mut deleted_deploy_hashes = HashSet::<DeployHash>::new();
+
+        let databases = Databases {
+            block_body_v1_db,
+            block_body_v2_db,
+            deploy_hashes_db,
+            transfer_hashes_db,
+            proposer_db,
+        };
+
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (_, raw_val) in cursor.iter() {
@@ -519,11 +537,7 @@ impl StorageInner {
                     let (maybe_block_body, is_v1) = get_body_for_block_header(
                         &mut body_txn,
                         &block_header,
-                        block_body_v1_db,
-                        block_body_v2_db,
-                        deploy_hashes_db,
-                        transfer_hashes_db,
-                        proposer_db,
+                        &databases,
                         verifiable_chunked_hash_activation,
                     );
 
@@ -547,20 +561,16 @@ impl StorageInner {
                 verifiable_chunked_hash_activation,
             )?;
 
-            let maybe_block_body =
-                match block_header.hashing_algorithm_version(verifiable_chunked_hash_activation) {
-                    HashingAlgorithmVersion::V1 => {
-                        body_txn.get_value(block_body_v1_db, block_header.body_hash())?
-                    }
-                    HashingAlgorithmVersion::V2 => get_single_block_body_v2(
-                        &mut body_txn,
-                        block_header.body_hash(),
-                        block_body_v2_db,
-                        deploy_hashes_db,
-                        transfer_hashes_db,
-                        proposer_db,
-                    )?,
-                };
+            let maybe_block_body = match block_header
+                .hashing_algorithm_version(verifiable_chunked_hash_activation)
+            {
+                HashingAlgorithmVersion::V1 => {
+                    body_txn.get_value(block_body_v1_db, block_header.body_hash())?
+                }
+                HashingAlgorithmVersion::V2 => {
+                    get_single_block_body_v2(&mut body_txn, block_header.body_hash(), &databases)?
+                }
+            };
 
             if let Some(block_body) = maybe_block_body {
                 insert_to_deploy_index(
@@ -1599,11 +1609,13 @@ impl StorageInner {
         let (maybe_block_body, _) = get_body_for_block_header(
             tx,
             &block_header,
-            self.block_body_v1_db,
-            self.block_body_v2_db,
-            self.deploy_hashes_db,
-            self.transfer_hashes_db,
-            self.proposer_db,
+            &Databases {
+                block_body_v1_db: self.block_body_v1_db,
+                block_body_v2_db: self.block_body_v2_db,
+                deploy_hashes_db: self.deploy_hashes_db,
+                transfer_hashes_db: self.transfer_hashes_db,
+                proposer_db: self.proposer_db,
+            },
             self.verifiable_chunked_hash_activation,
         );
         let block_body = match maybe_block_body? {
@@ -1709,11 +1721,13 @@ impl StorageInner {
         let (maybe_block_body, _) = get_body_for_block_header(
             tx,
             &block_header,
-            self.block_body_v1_db,
-            self.block_body_v2_db,
-            self.deploy_hashes_db,
-            self.transfer_hashes_db,
-            self.proposer_db,
+            &Databases {
+                block_body_v1_db: self.block_body_v1_db,
+                block_body_v2_db: self.block_body_v2_db,
+                deploy_hashes_db: self.deploy_hashes_db,
+                transfer_hashes_db: self.transfer_hashes_db,
+                proposer_db: self.proposer_db,
+            },
             self.verifiable_chunked_hash_activation,
         );
         if let Some(block_body) = maybe_block_body? {
@@ -2435,34 +2449,22 @@ where
     Ok(Some(MerkleLinkedListNode::new(value, merkle_proof_of_rest)))
 }
 
-#[allow(clippy::too_many_arguments)]
 /// Retrieves the block body for the given block header.
 /// Returns the block body (if existing) along with the information on whether the block uses the v1
 /// or v2 hashing scheme.
 fn get_body_for_block_header<Tx: Transaction>(
     tx: &mut Tx,
     block_header: &BlockHeader,
-    block_body_v1_db: Database,
-    block_body_v2_db: Database,
-    deploy_hashes_db: Database,
-    transfer_hashes_db: Database,
-    proposer_db: Database,
+    databases: &Databases,
     verifiable_chunked_hash_activation: EraId,
 ) -> (Result<Option<BlockBody>, LmdbExtError>, bool) {
     match block_header.hashing_algorithm_version(verifiable_chunked_hash_activation) {
         HashingAlgorithmVersion::V1 => (
-            get_single_block_body_v1(tx, block_header.body_hash(), block_body_v1_db),
+            get_single_block_body_v1(tx, block_header.body_hash(), databases.block_body_v1_db),
             true,
         ),
         HashingAlgorithmVersion::V2 => (
-            get_single_block_body_v2(
-                tx,
-                block_header.body_hash(),
-                block_body_v2_db,
-                deploy_hashes_db,
-                transfer_hashes_db,
-                proposer_db,
-            ),
+            get_single_block_body_v2(tx, block_header.body_hash(), databases),
             false,
         ),
     }
@@ -2480,22 +2482,29 @@ fn get_single_block_body_v1<Tx: Transaction>(
 fn get_single_block_body_v2<Tx: Transaction>(
     tx: &mut Tx,
     block_body_hash: &Digest,
-    block_body_v2_db: Database,
-    deploy_hashes_db: Database,
-    transfer_hashes_db: Database,
-    proposer_db: Database,
+    Databases {
+        block_body_v1_db: _,
+        block_body_v2_db,
+        deploy_hashes_db,
+        transfer_hashes_db,
+        proposer_db,
+    }: &Databases,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
     let deploy_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
-        match get_merkle_linked_list_node(tx, block_body_v2_db, deploy_hashes_db, block_body_hash)?
-        {
+        match get_merkle_linked_list_node(
+            tx,
+            *block_body_v2_db,
+            *deploy_hashes_db,
+            block_body_hash,
+        )? {
             Some(deploy_hashes_with_proof) => deploy_hashes_with_proof,
             None => return Ok(None),
         };
     let transfer_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
         match get_merkle_linked_list_node(
             tx,
-            block_body_v2_db,
-            transfer_hashes_db,
+            *block_body_v2_db,
+            *transfer_hashes_db,
             deploy_hashes_with_proof.merkle_proof_of_rest(),
         )? {
             Some(transfer_hashes_with_proof) => transfer_hashes_with_proof,
@@ -2503,8 +2512,8 @@ fn get_single_block_body_v2<Tx: Transaction>(
         };
     let proposer_with_proof: MerkleLinkedListNode<PublicKey> = match get_merkle_linked_list_node(
         tx,
-        block_body_v2_db,
-        proposer_db,
+        *block_body_v2_db,
+        *proposer_db,
         transfer_hashes_with_proof.merkle_proof_of_rest(),
     )? {
         Some(proposer_with_proof) => {
