@@ -5,10 +5,10 @@ use crate::types::BlockHash;
 
 use casper_types::TimeDiff;
 
-/// Maximum number of deploys to fetch in parallel, by default.
-const DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES: u32 = 20;
-/// Maximum number of tries to fetch in parallel, by default.
-const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 20;
+/// Maximum number of fetch-deploy tasks to run in parallel during chain synchronization.
+const DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES: u32 = 5000;
+/// Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
 const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
 
