@@ -16,7 +16,7 @@ pub enum Response {
     /// A successful RPC execution.
     Success {
         /// The JSON-RPC version field.
-        #[serde(deserialize_with = "deserialize_jsonrpc_field")]
+        #[serde(deserialize_with = "set_jsonrpc_field")]
         jsonrpc: Cow<'static, str>,
         /// The same ID as was passed in the corresponding request.
         id: Value,
@@ -26,7 +26,7 @@ pub enum Response {
     /// An RPC execution which failed.
     Failure {
         /// The JSON-RPC version field.
-        #[serde(deserialize_with = "deserialize_jsonrpc_field")]
+        #[serde(deserialize_with = "set_jsonrpc_field")]
         jsonrpc: Cow<'static, str>,
         /// The same ID as was passed in the corresponding request.
         id: Value,
@@ -101,7 +101,7 @@ impl Response {
     }
 }
 
-fn deserialize_jsonrpc_field<'de, D: Deserializer<'de>>(
+fn set_jsonrpc_field<'de, D: Deserializer<'de>>(
     _deserializer: D,
 ) -> Result<Cow<'static, str>, D::Error> {
     Ok(Cow::Borrowed(JSON_RPC_VERSION))

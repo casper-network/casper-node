@@ -62,6 +62,18 @@ async fn main() {
 }
 ```
 
+If this receives a request such as
+
+```
+curl -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"id","method":"get"}' http://127.0.0.1:3030/rpc
+```
+
+then the server will respond with
+
+```json
+{"jsonrpc":"2.0","id":"id","result":"got it"}
+```
+
 # Errors
 
 To return a JSON-RPC response indicating an error, use

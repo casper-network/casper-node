@@ -2,7 +2,7 @@ use http::StatusCode;
 use warp::{filters::BoxedFilter, reply, test::RequestBuilder, Filter, Reply};
 
 use super::ResponseBodyOnRejection;
-use crate::filters::{base_filter, handle_rejection};
+use crate::filters::{base_filter, handle_rejection, CONTENT_TYPE_VALUE};
 
 const PATH: &str = "rpc";
 const MAX_BODY_BYTES: u32 = 10;
@@ -18,7 +18,7 @@ fn base_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
 fn valid_base_filter_request_builder() -> RequestBuilder {
     warp::test::request()
         .path(&format!("/{}", PATH))
-        .header("content-type", "application/json")
+        .header("content-type", CONTENT_TYPE_VALUE)
         .method("POST")
         .body([0_u8; MAX_BODY_BYTES as usize])
 }

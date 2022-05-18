@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 /// Default rate limit in qps.
 const DEFAULT_QPS_LIMIT: u64 = 100;
-/// Default max body bytes.
+/// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
+/// JSON-RPC request, which would be an "account_put_deploy".
 const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
 
 /// JSON-RPC HTTP server configuration.
