@@ -497,6 +497,9 @@ impl FinalizedBlock {
     }
 
     #[cfg(test)]
+    /// Generates a random instance using a `TestRng`, but using the specified values.
+    /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
+    /// will be used.
     pub fn random_with_specifics(
         rng: &mut TestRng,
         era_id: EraId,
@@ -1668,8 +1671,6 @@ impl Block {
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
-    /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
-    /// will be used.
     #[cfg(test)]
     pub fn random_with_specifics(
         rng: &mut TestRng,

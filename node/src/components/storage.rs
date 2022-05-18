@@ -513,52 +513,27 @@ impl StorageInner {
                 if block_header.era_id() >= invalid_era
                     && block_header.protocol_version() < protocol_version
                 {
-                    if block_header.hashing_algorithm_version(verifiable_chunked_hash_activation)
-                        == HashingAlgorithmVersion::V1
-                    {
-                        // ----------
-                        let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
-                        {
-                            // Refactor to "get_block_body()"
-                            let body_v1_of_deleted_block: Option<BlockBody> =
-                                body_txn.get_value(block_body_v1_db, block_header.body_hash())?;
-                            if let Some(body_v1_of_deleted_block) = body_v1_of_deleted_block {
-                                deleted_deploy_hashes
-                                    .extend(body_v1_of_deleted_block.deploy_hashes());
-                                deleted_deploy_hashes
-                                    .extend(body_v1_of_deleted_block.transfer_hashes());
-                            }
-                        }
-                        //------------
-                    }
                     let _ = deleted_block_hashes
                         .insert(block_header.hash(verifiable_chunked_hash_activation));
 
-                    {
-                        // --------------
-                        // Refactor to "get_block_body()"
-                        let maybe_block_body = match block_header
-                            .hashing_algorithm_version(verifiable_chunked_hash_activation)
-                        {
-                            HashingAlgorithmVersion::V1 => {
-                                body_txn.get_value(block_body_v1_db, block_header.body_hash())?
-                            }
-                            HashingAlgorithmVersion::V2 => get_single_block_body_v2(
-                                &mut body_txn,
-                                block_body_v2_db,
-                                deploy_hashes_db,
-                                transfer_hashes_db,
-                                proposer_db,
-                                block_header.body_hash(),
-                            )?,
-                        };
-                        // -----------
+                    let (maybe_block_body, is_v1) = get_body_for_block_header(
+                        &mut body_txn,
+                        &block_header,
+                        block_body_v1_db,
+                        block_body_v2_db,
+                        deploy_hashes_db,
+                        transfer_hashes_db,
+                        proposer_db,
+                        verifiable_chunked_hash_activation,
+                    );
 
-                        if let Some(body_v2_of_deleted_block) = maybe_block_body {
-                            deleted_deploy_hashes.extend(body_v2_of_deleted_block.deploy_hashes());
-                            deleted_deploy_hashes
-                                .extend(body_v2_of_deleted_block.transfer_hashes());
-                        }
+                    if let Some(block_body) = maybe_block_body? {
+                        deleted_deploy_hashes.extend(block_body.deploy_hashes());
+                        deleted_deploy_hashes.extend(block_body.transfer_hashes());
+                    }
+
+                    if is_v1 {
+                        let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                     }
 
                     cursor.del(WriteFlags::empty())?;
@@ -579,11 +554,11 @@ impl StorageInner {
                     }
                     HashingAlgorithmVersion::V2 => get_single_block_body_v2(
                         &mut body_txn,
+                        block_header.body_hash(),
                         block_body_v2_db,
                         deploy_hashes_db,
                         transfer_hashes_db,
                         proposer_db,
-                        block_header.body_hash(),
                     )?,
                 };
 
@@ -631,7 +606,6 @@ impl StorageInner {
         )?;
 
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
-        initialize_deploy_metadata_db_legacy(&env, &deploy_metadata_db, &deleted_block_hashes)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
         Ok(Self {
@@ -1534,22 +1508,6 @@ impl StorageInner {
         indices.block_height_index.contains_key(&block_height)
     }
 
-    /// Retrieves a single Merklized block body in a separate transaction from storage.
-    fn get_single_block_body_v2<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        block_body_hash: &Digest,
-    ) -> Result<Option<BlockBody>, LmdbExtError> {
-        get_single_block_body_v2(
-            tx,
-            self.block_body_v2_db,
-            self.deploy_hashes_db,
-            self.transfer_hashes_db,
-            self.proposer_db,
-            block_body_hash,
-        )
-    }
-
     /// Writes a single block body in a separate transaction to storage.
     fn put_single_block_body_v1(
         &self,
@@ -1638,8 +1596,17 @@ impl StorageInner {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let maybe_block_body = self.get_body_for_block_header(tx, &block_header)?;
-        let block_body = match maybe_block_body {
+        let (maybe_block_body, _) = get_body_for_block_header(
+            tx,
+            &block_header,
+            self.block_body_v1_db,
+            self.block_body_v2_db,
+            self.deploy_hashes_db,
+            self.transfer_hashes_db,
+            self.proposer_db,
+            self.verifiable_chunked_hash_activation,
+        );
+        let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
                 info!(
@@ -1655,29 +1622,6 @@ impl StorageInner {
             self.verifiable_chunked_hash_activation,
         )?;
         Ok(Some(block))
-    }
-
-    fn get_body_for_block_header<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        block_header: &BlockHeader,
-    ) -> Result<Option<BlockBody>, LmdbExtError> {
-        match block_header.hashing_algorithm_version(self.verifiable_chunked_hash_activation) {
-            HashingAlgorithmVersion::V1 => {
-                self.get_single_block_body_v1(tx, block_header.body_hash())
-            }
-            HashingAlgorithmVersion::V2 => {
-                self.get_single_block_body_v2(tx, block_header.body_hash())
-            }
-        }
-    }
-
-    fn get_single_block_body_v1<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        block_body_hash: &Digest,
-    ) -> Result<Option<BlockBody>, LmdbExtError> {
-        tx.get_value(self.block_body_v1_db, block_body_hash)
     }
 
     /// Retrieves a set of deploys from storage, along with their potential finalized approvals.
@@ -1762,7 +1706,17 @@ impl StorageInner {
             None => return Ok(None),
             Some(block_header_with_metadata) => block_header_with_metadata,
         };
-        if let Some(block_body) = self.get_body_for_block_header(tx, &block_header)? {
+        let (maybe_block_body, _) = get_body_for_block_header(
+            tx,
+            &block_header,
+            self.block_body_v1_db,
+            self.block_body_v2_db,
+            self.deploy_hashes_db,
+            self.transfer_hashes_db,
+            self.proposer_db,
+            self.verifiable_chunked_hash_activation,
+        );
+        if let Some(block_body) = maybe_block_body? {
             Ok(Some(BlockWithMetadata {
                 block: Block::new_from_header_and_body(
                     block_header,
@@ -2481,14 +2435,55 @@ where
     Ok(Some(MerkleLinkedListNode::new(value, merkle_proof_of_rest)))
 }
 
-/// Retrieves a single Merklized block body in a separate transaction from storage.
-fn get_single_block_body_v2<Tx: Transaction>(
+#[allow(clippy::too_many_arguments)]
+/// Retrieves the block body for the given block header.
+/// Returns the block body (if existing) along with the information on whether the block uses the v1
+/// or v2 hashing scheme.
+fn get_body_for_block_header<Tx: Transaction>(
     tx: &mut Tx,
+    block_header: &BlockHeader,
+    block_body_v1_db: Database,
     block_body_v2_db: Database,
     deploy_hashes_db: Database,
     transfer_hashes_db: Database,
     proposer_db: Database,
+    verifiable_chunked_hash_activation: EraId,
+) -> (Result<Option<BlockBody>, LmdbExtError>, bool) {
+    match block_header.hashing_algorithm_version(verifiable_chunked_hash_activation) {
+        HashingAlgorithmVersion::V1 => (
+            get_single_block_body_v1(tx, block_header.body_hash(), block_body_v1_db),
+            true,
+        ),
+        HashingAlgorithmVersion::V2 => (
+            get_single_block_body_v2(
+                tx,
+                block_header.body_hash(),
+                block_body_v2_db,
+                deploy_hashes_db,
+                transfer_hashes_db,
+                proposer_db,
+            ),
+            false,
+        ),
+    }
+}
+
+fn get_single_block_body_v1<Tx: Transaction>(
+    tx: &mut Tx,
     block_body_hash: &Digest,
+    block_body_v1_db: Database,
+) -> Result<Option<BlockBody>, LmdbExtError> {
+    tx.get_value(block_body_v1_db, block_body_hash)
+}
+
+/// Retrieves a single Merklized block body in a separate transaction from storage.
+fn get_single_block_body_v2<Tx: Transaction>(
+    tx: &mut Tx,
+    block_body_hash: &Digest,
+    block_body_v2_db: Database,
+    deploy_hashes_db: Database,
+    transfer_hashes_db: Database,
+    proposer_db: Database,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
     let deploy_hashes_with_proof: MerkleLinkedListNode<Vec<DeployHash>> =
         match get_merkle_linked_list_node(tx, block_body_v2_db, deploy_hashes_db, block_body_hash)?
@@ -2636,52 +2631,6 @@ fn initialize_block_metadata_db(
 }
 
 /// Purges stale entries from the deploy metadata database.
-fn initialize_deploy_metadata_db_legacy(
-    env: &Environment,
-    deploy_metadata_db: &Database,
-    deleted_block_hashes: &HashSet<BlockHash>,
-) -> Result<(), LmdbExtError> {
-    info!("initializing deploy metadata database");
-
-    if !deleted_block_hashes.is_empty() {
-        let mut txn = env.begin_rw_txn()?;
-        let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
-
-        for (raw_key, raw_val) in cursor.iter() {
-            let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
-            let len_before = deploy_metadata.execution_results.len();
-
-            deploy_metadata.execution_results = deploy_metadata
-                .execution_results
-                .drain()
-                .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
-                .collect();
-
-            // If the deploy's execution results are now empty, we just remove them entirely.
-            if deploy_metadata.execution_results.is_empty() {
-                println!(
-                    "\t\tWould delete DeployHash: {}",
-                    DeployHash::new(
-                        Digest::try_from(raw_key).expect("malformed deploy hash in DB")
-                    )
-                );
-
-                cursor.del(WriteFlags::empty())?;
-            } else if len_before != deploy_metadata.execution_results.len() {
-                let buffer = lmdb_ext::serialize(&deploy_metadata)?;
-                cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
-            }
-        }
-
-        drop(cursor);
-        txn.abort();
-    }
-
-    info!("deploy metadata database initialized");
-    Ok(())
-}
-
-/// Purges stale entries from the deploy metadata database.
 fn initialize_deploy_metadata_db(
     env: &Environment,
     deploy_metadata_db: &Database,
@@ -2690,18 +2639,11 @@ fn initialize_deploy_metadata_db(
     info!("initializing deploy metadata database");
 
     let mut txn = env.begin_rw_txn()?;
-    for deleted_deploy_hash in deleted_deploy_hashes {
-        match txn.get(*deploy_metadata_db, deleted_deploy_hash) {
-            // TODO[RC]: No need to `get` after the debug print is deleted
-            Ok(_) => {
-                println!("Deleting v2: {}", deleted_deploy_hash);
-                txn.del(*deploy_metadata_db, deleted_deploy_hash, None)?;
-            }
-            Err(_) => {
-                debug!(%deleted_deploy_hash, "not purging deploy hash because not found in deploy metadata db")
-            }
-        };
-    }
+    deleted_deploy_hashes.iter().for_each(|deleted_deploy_hash| {
+        if txn.del(*deploy_metadata_db, deleted_deploy_hash, None).is_err() {
+            debug!(%deleted_deploy_hash, "not purging from 'deploy_metadata_db' because not existing");
+        }
+    });
     txn.commit()?;
 
     info!("deploy metadata database initialized");
