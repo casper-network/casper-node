@@ -5,6 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
     components::consensus::{
@@ -23,6 +24,8 @@ pub(crate) struct Round<C>
 where
     C: Context,
 {
+    /// The leader, who is allowed to create a proposal in this round.
+    leader_idx: ValidatorIndex,
     /// The unique proposal signed by the leader, or the unique proposal with a quorum of echoes.
     proposal: Option<Proposal<C>>,
     /// The echoes we've received for each proposal so far.
@@ -37,11 +40,12 @@ where
 impl<C: Context> Round<C> {
     /// Creates a new [`Round`] with no proposals, echoes, votes, and empty
     /// round outcome.
-    pub(super) fn new(validator_count: usize) -> Round<C> {
+    pub(super) fn new(validator_count: usize, leader_idx: ValidatorIndex) -> Round<C> {
         let mut votes = BTreeMap::new();
         votes.insert(false, vec![None; validator_count].into());
         votes.insert(true, vec![None; validator_count].into());
         Round {
+            leader_idx,
             proposal: None,
             echoes: HashMap::new(),
             votes,
@@ -61,29 +65,19 @@ impl<C: Context> Round<C> {
 
     /// Returns whether this proposal is justified by an echo signature from the round leader or by
     /// a quorum of echoes.
-    pub(super) fn has_echoes_for_proposal(
-        &self,
-        hash: &C::Hash,
-        leader_idx: ValidatorIndex,
-    ) -> bool {
+    pub(super) fn has_echoes_for_proposal(&self, hash: &C::Hash) -> bool {
         match (self.quorum_echoes(), self.echoes.get(hash)) {
             (Some(quorum_hash), _) => quorum_hash == *hash,
-            (None, Some(echo_map)) => echo_map.contains_key(&leader_idx),
+            (None, Some(echo_map)) => echo_map.contains_key(&self.leader_idx),
             (None, None) => false,
         }
     }
 
     /// Inserts a `Proposal` and returns `false` if we already had it or it cannot be added due to
     /// missing echoes.
-    pub(super) fn insert_proposal(
-        &mut self,
-        proposal: Proposal<C>,
-        leader_idx: ValidatorIndex,
-    ) -> bool {
+    pub(super) fn insert_proposal(&mut self, proposal: Proposal<C>) -> bool {
         let hash = proposal.hash();
-        if self.has_echoes_for_proposal(&hash, leader_idx)
-            && self.proposal.as_ref() != Some(&proposal)
-        {
+        if self.has_echoes_for_proposal(&hash) && self.proposal.as_ref() != Some(&proposal) {
             self.proposal = Some(proposal);
             true
         } else {
@@ -204,10 +198,38 @@ impl<C: Context> Round<C> {
             Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
         }
     }
+
+    /// Removes all echoes, `true` votes and the proposal: This round was skipped and will never
+    /// become finalized.
+    pub(super) fn prune_skipped(&mut self) {
+        self.proposal = None;
+        self.outcome.quorum_echoes = None;
+        self.outcome.accepted_proposal_height = None;
+        self.echoes.clear();
+        for maybe_vote in self.votes.get_mut(&true).unwrap().iter_mut() {
+            *maybe_vote = None;
+        }
+    }
+
+    /// Removes all `false` votes and all echoes that don't belong to the quorum: This round was
+    /// finalized and can never be skipped.
+    pub(super) fn prune_finalized(&mut self) {
+        for maybe_vote in self.votes.get_mut(&false).unwrap().iter_mut() {
+            *maybe_vote = None;
+        }
+        if self.outcome.quorum_votes == Some(false) {
+            self.outcome.quorum_votes = None;
+        }
+        if let Some(quorum_hash) = self.quorum_echoes() {
+            self.echoes.retain(|hash, _| *hash == quorum_hash);
+        } else {
+            error!("prune_finalized called on a round without accepted proposal");
+        }
+    }
 }
 
 /// Indicates the outcome of a given round.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
