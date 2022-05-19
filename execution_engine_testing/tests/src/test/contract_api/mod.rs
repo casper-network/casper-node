@@ -1,5 +1,4 @@
 mod account;
-mod blake2b;
 mod create_purse;
 mod dictionary;
 mod get_arg;
@@ -14,6 +13,7 @@ mod mint_purse;
 mod multisig_authorization;
 mod named_dictionaries;
 mod revert;
+mod runtime;
 mod subcall;
 mod transfer;
 mod transfer_cached;

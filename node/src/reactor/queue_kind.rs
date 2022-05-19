@@ -22,6 +22,8 @@ pub enum QueueKind {
     NetworkIncoming,
     /// Network events that are low priority.
     NetworkLowPriority,
+    /// Network events demand a resource directly.
+    NetworkDemand,
     /// Network events that were initiated by the local node, such as outgoing messages.
     Network,
     /// Events of unspecified priority.
@@ -41,6 +43,7 @@ impl Display for QueueKind {
             QueueKind::Control => "Control",
             QueueKind::NetworkIncoming => "NetworkIncoming",
             QueueKind::NetworkLowPriority => "NetworkLowPriority",
+            QueueKind::NetworkDemand => "NetworkDemand",
             QueueKind::Network => "Network",
             QueueKind::Regular => "Regular",
             QueueKind::Api => "Api",
@@ -66,6 +69,7 @@ impl QueueKind {
             QueueKind::Control => 32,
             QueueKind::NetworkIncoming => 4,
             QueueKind::NetworkLowPriority => 1,
+            QueueKind::NetworkDemand => 2,
             QueueKind::Network => 4,
             QueueKind::Regular => 8,
             QueueKind::Api => 16,
@@ -84,6 +88,7 @@ impl QueueKind {
         match self {
             QueueKind::Control => "control",
             QueueKind::NetworkIncoming => "network_incoming",
+            QueueKind::NetworkDemand => "network_demands",
             QueueKind::NetworkLowPriority => "network_low_priority",
             QueueKind::Network => "network",
             QueueKind::Regular => "regular",

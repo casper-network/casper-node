@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
-* Add `max_parallel_deploy_fetches_per_peer` and `max_parallel_trie_fetches_per_peer` config options to the `[node]` section to control how many requests are made in parallel while syncing.
+* Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
 * Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
 * Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
 * Add metrics `accumulated_outgoing_limiter_delay` and `accumulated_incoming_limiter_delay` to report how much time was spent throttling other peers.
+* Add a configuration option `max_in_flight_demands` that controls the maximum number of in-flight requests for data.
 * Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
 * Extend `GlobalStateIdentifier` to include `BlockHeight`.
 * Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
@@ -52,6 +53,7 @@ All notable changes to this project will be documented in this file.  The format
 * Make consensus settings non-optional. A value 0 disables them.
 * Move `finality_threshold_fraction` from the `highway` to the `core` section in the chainspec.
 * Move `max_execution_delay` from the `highway` to the `consensus` section in the `config.toml`.
+* The node flushes outgoing messages immediately, trading bandwidth for latecy. This change is made to optimize feedback loops of various components in the system.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.

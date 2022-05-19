@@ -38,6 +38,9 @@ pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
 
+/// Number of bytes returned from the `random_bytes` function.
+pub const RANDOM_BYTES_COUNT: usize = 32;
+
 /// Validates an entry point access with a special validator callback.
 ///
 /// If the passed `access` object is a `Groups` variant, then this function will return a
@@ -420,6 +423,11 @@ where
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         Ok(self.address_generator.borrow_mut().new_hash_address())
+    }
+
+    /// Returns 32 pseudo random bytes.
+    pub fn random_bytes(&mut self) -> Result<[u8; RANDOM_BYTES_COUNT], Error> {
+        Ok(self.address_generator.borrow_mut().create_address())
     }
 
     /// Creates new [`URef`] instance.
