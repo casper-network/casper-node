@@ -15,8 +15,8 @@ use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool, Indices};
 use crate::{
     components::consensus::error::FinalitySignatureError,
     types::{
-        error::BlockValidationError, BlockBody, BlockHash, BlockHeader, DeployHash,
-        HashingAlgorithmVersion,
+        error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
+        DeployHash, HashingAlgorithmVersion,
     },
 };
 
@@ -55,9 +55,9 @@ pub enum FatalStorageError {
         /// Deploy hash at which duplicate was found.
         deploy_hash: DeployHash,
         /// First block hash encountered at `deploy_hash`.
-        first: BlockHash,
+        first: BlockHashAndHeight,
         /// Second block hash encountered at `deploy_hash`.
-        second: BlockHash,
+        second: BlockHashAndHeight,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
