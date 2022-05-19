@@ -287,6 +287,7 @@ impl ComponentDefinition {
         let component_type = self.component_type();
         let module_ident = component_type.module_ident();
         let ty = component_type.ty();
+
         quote!(crate::components::#module_ident::#ty)
     }
 
@@ -407,7 +408,12 @@ impl RequestDefinition {
     pub(crate) fn full_request_type(&self) -> TokenStream {
         let request_type = self.request_type();
         let ty = request_type.ty();
-        quote!(crate::effect::requests::#ty)
+
+        if request_type.ident().to_string().ends_with("Demand") {
+            quote!(crate::effect::incoming::#ty)
+        } else {
+            quote!(crate::effect::requests::#ty)
+        }
     }
 }
 

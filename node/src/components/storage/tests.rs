@@ -1981,7 +1981,14 @@ fn should_restrict_returned_blocks() {
 
     // Create the following disjoint sequences: 1-2 4-5
     [1, 2, 4, 5].iter().for_each(|height| {
-        let (block, _) = random_block_at_height(&mut harness.rng, *height, Block::random_v1);
+        let block = Block::random_with_specifics(
+            &mut harness.rng,
+            EraId::from(1),
+            *height,
+            ProtocolVersion::from_parts(1, 5, 0),
+            false,
+            verifiable_chunked_hash_activation,
+        );
         storage.storage.write_block(&block).unwrap();
     });
     // The available range is 4-5.

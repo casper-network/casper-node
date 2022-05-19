@@ -44,7 +44,7 @@ use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
-        incoming::{TrieRequest, TrieRequestIncoming},
+        incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -159,6 +159,9 @@ pub(crate) enum Event {
 
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
+
+    #[from]
+    TrieDemand(TrieDemand),
 }
 
 impl Display for Event {
@@ -168,6 +171,7 @@ impl Display for Event {
                 write!(f, "contract runtime request: {}", req)
             }
             Event::TrieRequestIncoming(req) => write!(f, "trie request incoming: {}", req),
+            Event::TrieDemand(demand) => write!(f, "trie demand: {}", demand),
         }
     }
 }
@@ -217,6 +221,7 @@ where
             Event::TrieRequestIncoming(request) => {
                 self.handle_trie_request(effect_builder, request)
             }
+            Event::TrieDemand(demand) => self.handle_trie_demand(demand),
         }
     }
 }
@@ -247,6 +252,34 @@ impl ContractRuntime {
             Err(error) => {
                 error!("failed to create get-response: {}", error);
                 Effects::new()
+            }
+        }
+    }
+
+    /// Handles an incoming demand for a trie.
+    fn handle_trie_demand(
+        &self,
+        TrieDemand {
+            request_msg: TrieRequest(ref serialized_id),
+            responder,
+            ..
+        }: TrieDemand,
+    ) -> Effects<Event> {
+        let fetched_or_not_found = match self.get_trie(serialized_id) {
+            Ok(fetched_or_not_found) => fetched_or_not_found,
+            Err(error) => {
+                // Something is wrong in our trie store, but be courteous and still send a reply.
+                debug!("failed to get trie: {}", error);
+                return responder.respond(None).ignore();
+            }
+        };
+
+        match Message::new_get_response(&fetched_or_not_found) {
+            Ok(message) => responder.respond(Some(message)).ignore(),
+            Err(error) => {
+                // This should never happen, but if it does, we let the peer know we cannot help.
+                error!("failed to create get-response: {}", error);
+                responder.respond(None).ignore()
             }
         }
     }

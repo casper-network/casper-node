@@ -10,11 +10,11 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Maximum number of fetch-deploy tasks per peer to run in parallel during chain synchronization.
-max_parallel_deploy_fetches_per_peer = 10
+# Maximum number of fetch-deploy tasks to run in parallel during chain synchronization.
+max_parallel_deploy_fetches = 5000
 
-# Maximum number of fetch-trie tasks per peer to run in parallel during chain synchronization.
-max_parallel_trie_fetches_per_peer = 10
+# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+max_parallel_trie_fetches = 5000
 
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'
@@ -190,6 +190,10 @@ max_outgoing_byte_rate_non_validators = 0
 # A value of `0` means unlimited.
 max_incoming_message_rate_non_validators = 0
 
+# Maximum number of requests for data from a single peer that are allowed be buffered. A value of
+# `0` means unlimited.
+max_in_flight_demands = 50
+
 # Reject incompatible node versions
 #
 # Causes the node to immediately disconnect from versions on a different protocol version than
@@ -220,6 +224,9 @@ tarpit_duration = '10min'
 # set to `1/n` or higher, with `n` being the number of known nodes expected in the configuration of
 # legacy nodes running this software.
 tarpit_chance = 0.2
+
+# How long peers remain blocked after they get blacklisted.
+blocklist_retain_duration = '1min'
 
 # Weights for impact estimation of incoming messages, used in combination with
 # `max_incoming_message_rate_non_validators`.

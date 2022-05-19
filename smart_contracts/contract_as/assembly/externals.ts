@@ -226,3 +226,9 @@ export declare function load_authorization_keys(
     total_keys_ptr: usize,
     result_size_ptr: usize,
 ): i32;
+/** @hidden */
+@external("env", "casper_random_bytes")
+export declare function casper_random_bytes(
+    out_ptr: usize,
+    out_size: usize,
+): i32;

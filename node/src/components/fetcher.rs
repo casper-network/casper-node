@@ -151,18 +151,17 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
         id: T::Id,
         peer: NodeId,
     ) -> Effects<Event<T>> {
+        let peer_timeout = self.peer_timeout();
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
-                let mut effects = effect_builder.send_message(peer, message).ignore();
+                self.metrics().fetch_total.inc();
+                async move {
+                    effect_builder.send_message(peer, message).await;
 
-                effects.extend(
-                    effect_builder
-                        .set_timeout(self.peer_timeout())
-                        .event(move |_| Event::TimeoutPeer { id, peer }),
-                );
-
-                effects
+                    effect_builder.set_timeout(peer_timeout).await
+                }
             }
+            .event(move |_| Event::TimeoutPeer { id, peer }),
             Err(error) => {
                 error!(
                     "failed to construct get request for peer {}: {}",
@@ -199,16 +198,38 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
         let mut all_responders = self.responders().remove(&id).unwrap_or_default();
-        for responder in all_responders.remove(&peer).into_iter().flatten() {
-            effects.extend(responder.respond(result.clone()).ignore());
-            if let Err(FetcherError::TimedOut { .. }) = result {
-                // Only if there's still a responder waiting for the item we increment the
-                // metric. Otherwise we will count every request as timed out, even if the item
-                // had been fetched. We increment the metric for every responder as that's how
-                // many requests were made in the first place – since requests are duplicated we
-                // will request the same item multiple times.
-                info!(TAG=%T::TAG, %id, %peer, "request timed out");
-                self.metrics().timeouts.inc();
+        match result {
+            Ok(item) => {
+                // Since this is a success, we can safely respond to all awaiting processes.
+                for responder in all_responders.remove(&peer).into_iter().flatten() {
+                    effects.extend(responder.respond(Ok(item.clone())).ignore());
+                }
+            }
+            Err(FetcherError::TimedOut { .. }) => {
+                let mut responders = all_responders.remove(&peer).into_iter().flatten();
+                // We take just one responder as only one request had timed out. We want to avoid
+                // prematurely failing too many waiting processes since other requests may still
+                // succeed before timing out.
+                if let Some(responder) = responders.next() {
+                    effects.extend(responder.respond(result.clone()).ignore());
+                    // Only if there's still a responder waiting for the item we increment the
+                    // metric. Otherwise we will count every request as timed out, even if the item
+                    // had been fetched.
+                    info!(TAG=%T::TAG, %id, %peer, "request timed out");
+                    self.metrics().timeouts.inc();
+                }
+
+                let responders: Vec<_> = responders.collect();
+                if !responders.is_empty() {
+                    all_responders.insert(peer, responders);
+                }
+            }
+            Err(FetcherError::Absent { .. } | FetcherError::CouldNotConstructGetRequest { .. }) => {
+                // For all other error variants we can safely respond with failure as there's no
+                // chance for the request to succeed.
+                for responder in all_responders.remove(&peer).into_iter().flatten() {
+                    effects.extend(responder.respond(result.clone()).ignore());
+                }
             }
         }
         if !all_responders.is_empty() {
@@ -227,12 +248,10 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
                     "Got from storage when fetching {:?} from peer",
                     T::TAG,
                 );
-                self.metrics().found_in_storage.inc();
                 // It is always safe to respond to all when we retrieved from storage.
                 self.respond_to_all(id, fetched_data_from_storage)
             }
             Ok(fetched_data_from_peer @ FetchedData::FromPeer { .. }) => {
-                self.metrics().found_on_peer.inc();
                 if Self::SAFE_TO_RESPOND_TO_ALL {
                     self.respond_to_all(id, fetched_data_from_peer)
                 } else {
@@ -562,7 +581,7 @@ where
                 maybe_item,
             } => match *maybe_item {
                 Some(item) => {
-                    self.metrics.found_in_storage.inc();
+                    self.metrics().found_in_storage.inc();
                     self.signal(
                         id,
                         Ok(FetchedData::FromStorage {
@@ -580,7 +599,7 @@ where
             } => {
                 match source {
                     Source::Peer(peer) => {
-                        self.metrics.found_on_peer.inc();
+                        self.metrics().found_on_peer.inc();
                         if let Err(err) = item.validate(self.verifiable_chunked_hash_activation()) {
                             warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
                             effect_builder.announce_disconnect_from_peer(peer).ignore()
