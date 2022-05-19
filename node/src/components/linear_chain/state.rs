@@ -12,7 +12,10 @@ use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
 use crate::{
-    components::{chain_synchronizer::KeyBlockInfo, consensus},
+    components::{
+        chain_synchronizer::KeyBlockInfo,
+        consensus::{self, error::FinalitySignatureError},
+    },
     types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
 
@@ -303,12 +306,14 @@ impl LinearChain {
             }
             Some(era_kb_info) => era_kb_info,
         };
-        consensus::check_sufficient_finality_signatures(
-            era_kb_info.validator_weights(),
-            self.finality_threshold_fraction,
-            signatures,
+        matches!(
+            consensus::check_sufficient_finality_signatures(
+                era_kb_info.validator_weights(),
+                self.finality_threshold_fraction,
+                signatures,
+            ),
+            Ok(()) | Err(FinalitySignatureError::TooManySignatures { .. })
         )
-        .is_ok()
     }
 
     pub(super) fn handle_finality_signature(
