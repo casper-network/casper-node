@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
 * Extend `GlobalStateIdentifier` to include `BlockHeight`.
 * Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
+* Add new `block_hash` and `block_height` optional fields to JSON-RPC deploy query. They will be present in the response
+when the queried deploy has no associated execution results in storage, but has an associated block.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
