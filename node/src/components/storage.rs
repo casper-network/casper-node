@@ -1163,7 +1163,7 @@ impl StorageInner {
                 let mut txn = self.env.begin_rw_txn()?;
                 if !txn.put_value(
                     self.block_header_db,
-                    &block_header.hash(self.verifiable_chunked_hash_activation()),
+                    &block_header.hash(self.verifiable_chunked_hash_activation),
                     &block_header,
                     false,
                 )? {
@@ -1180,7 +1180,7 @@ impl StorageInner {
                     insert_to_block_header_indices(
                         &mut indices,
                         &block_header,
-                        self.verifiable_chunked_hash_activation(),
+                        self.verifiable_chunked_hash_activation,
                     )?;
                 }
 
@@ -1222,7 +1222,7 @@ impl StorageInner {
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
-        block.verify(self.verifiable_chunked_hash_activation())?;
+        block.verify(self.verifiable_chunked_hash_activation)?;
         let mut txn = self.env.begin_rw_txn()?;
         // Write the block body
         {
@@ -1230,7 +1230,7 @@ impl StorageInner {
             let block_body = block.body();
             let success = match block
                 .header()
-                .hashing_algorithm_version(self.verifiable_chunked_hash_activation())
+                .hashing_algorithm_version(self.verifiable_chunked_hash_activation)
             {
                 HashingAlgorithmVersion::V1 => {
                     self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
@@ -1257,13 +1257,11 @@ impl StorageInner {
             insert_to_block_header_indices(
                 &mut indices,
                 block.header(),
-                self.verifiable_chunked_hash_activation(),
+                self.verifiable_chunked_hash_activation,
             )?;
             insert_to_deploy_index(
                 &mut indices.deploy_hash_index,
-                block
-                    .header()
-                    .hash(self.verifiable_chunked_hash_activation()),
+                block.header().hash(self.verifiable_chunked_hash_activation),
                 block.body(),
             )?;
         }
@@ -1490,7 +1488,7 @@ impl StorageInner {
         block_header: &BlockHeader,
         block_hash: &BlockHash,
     ) -> Result<(), FatalStorageError> {
-        let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation());
+        let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash_bytes: block_hash.as_ref().to_vec(),
@@ -1606,7 +1604,7 @@ impl StorageInner {
                 transfer_hashes_db: self.transfer_hashes_db,
                 proposer_db: self.proposer_db,
             },
-            self.verifiable_chunked_hash_activation(),
+            self.verifiable_chunked_hash_activation,
         );
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
@@ -1621,7 +1619,7 @@ impl StorageInner {
         let block = Block::new_from_header_and_body(
             block_header,
             block_body,
-            self.verifiable_chunked_hash_activation(),
+            self.verifiable_chunked_hash_activation,
         )?;
         Ok(Some(block))
     }
@@ -1718,14 +1716,14 @@ impl StorageInner {
                 transfer_hashes_db: self.transfer_hashes_db,
                 proposer_db: self.proposer_db,
             },
-            self.verifiable_chunked_hash_activation(),
+            self.verifiable_chunked_hash_activation,
         );
         if let Some(block_body) = maybe_block_body? {
             Ok(Some(BlockWithMetadata {
                 block: Block::new_from_header_and_body(
                     block_header,
                     block_body,
-                    self.verifiable_chunked_hash_activation(),
+                    self.verifiable_chunked_hash_activation,
                 )?,
                 finality_signatures: block_signatures,
             }))
@@ -1819,7 +1817,7 @@ impl StorageInner {
         }
         let block_signatures = match self.get_finality_signatures(
             tx,
-            &block_header.hash(self.verifiable_chunked_hash_activation()),
+            &block_header.hash(self.verifiable_chunked_hash_activation),
         )? {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
@@ -1984,10 +1982,6 @@ impl StorageInner {
         }
 
         Ok(())
-    }
-
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
     }
 }
 
