@@ -99,7 +99,7 @@ pub(crate) mod tests {
             stream::iter(chunk_iter.map(Result::<_, Error>::Ok))
         });
 
-        let sample_data = Bytes::from(&b"abcdef"[..]);
+        let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
         chunked_sink.send(sample_data).await.expect("send failed");
 
@@ -112,7 +112,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             chunks,
-            vec![b"\x06\x00\x00abcde".to_vec(), b"\x02\x00\xfff".to_vec()]
+            vec![b"\x06\x00\x00QRSTU".to_vec(), b"\x02\x00\xffV".to_vec()]
         )
     }
 }
