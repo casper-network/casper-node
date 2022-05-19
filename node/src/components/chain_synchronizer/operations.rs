@@ -1125,7 +1125,6 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
             .chain_sync_block_height_synced
             .set(walkback_block_height as i64);
         info!(%walkback_block_height, "syncing block height");
-        // sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
         sync_trie_store(*walkback_block.header().state_root_hash(), ctx).await?;
         ctx.effect_builder
             .update_lowest_available_block_height_in_storage(walkback_block.height())

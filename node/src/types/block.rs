@@ -1864,20 +1864,33 @@ impl Item for BlockAndDeploys {
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<(), Self::ValidationError> {
         let _ = self.block.verify(verifiable_chunked_hash_activation)?;
-        // Validate that we've got all of the deploys we should have gotten.
-        if !self
+        // Validate that we've got all of the deploys we should have gotten, and that their hashes
+        // are valid.
+        for deploy_hash in self
             .block
             .deploy_hashes()
             .iter()
             .chain(self.block.transfer_hashes().iter())
-            .all(|deploy_hash| {
-                self.deploys
-                    .iter()
-                    .any(|deploy| (*deploy).id() == deploy_hash)
-            })
         {
-            // todo: error
-            panic!("return proper error here")
+            match self
+                .deploys
+                .iter()
+                .find(|&deploy| deploy.id() == deploy_hash)
+            {
+                Some(deploy) => deploy.has_valid_hash().map_err(|error| {
+                    BlockValidationError::UnexpectedDeployHash {
+                        block: Box::new(self.block.clone()),
+                        invalid_deploy: Box::new(deploy.clone()),
+                        deploy_configuration_failure: error,
+                    }
+                })?,
+                None => {
+                    return Err(BlockValidationError::MissingDeploy {
+                        block: Box::new(self.block.clone()),
+                        missing_deploy: *deploy_hash,
+                    })
+                }
+            }
         }
 
         Ok(())
