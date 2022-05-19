@@ -1833,18 +1833,26 @@ impl StorageInner {
             None => return Ok(None),
             Some(switch_block_header) => switch_block_header,
         };
-        let finality_check_result = match switch_block_header.next_era_validator_weights() {
+
+        let validator_weights = match switch_block_header.next_era_validator_weights() {
             None => {
                 return Err(FatalStorageError::InvalidSwitchBlock(Box::new(
                     switch_block_header,
                 )))
             }
-            Some(validator_weights) => consensus::check_sufficient_finality_signatures(
-                validator_weights,
-                self.finality_threshold_fraction,
-                &block_signatures,
-            ),
+            Some(validator_weights) => validator_weights,
         };
+        let block_signatures = consensus::get_minimal_set_of_signatures(
+            validator_weights,
+            self.finality_threshold_fraction,
+            block_signatures,
+        );
+
+        let finality_check_result = consensus::check_sufficient_finality_signatures(
+            validator_weights,
+            self.finality_threshold_fraction,
+            &block_signatures,
+        );
         match finality_check_result {
             Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
                 info!(

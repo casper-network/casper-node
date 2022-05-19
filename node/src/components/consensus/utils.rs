@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use casper_types::{PublicKey, U512};
 use num::rational::Ratio;
@@ -74,4 +74,48 @@ pub(crate) fn check_sufficient_finality_signatures(
     }
 
     Ok(())
+}
+
+pub(crate) fn get_minimal_set_of_signatures(
+    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+    mut block_signatures: BlockSignatures,
+) -> BlockSignatures {
+    // Calculate the values for comparison.
+    let total_weight: U512 = trusted_validator_weights
+        .iter()
+        .map(|(_, weight)| *weight)
+        .sum();
+
+    let lower_bound = (finality_threshold_fraction + 1) / 2;
+
+    let mut sig_weights: Vec<_> = block_signatures
+        .proofs
+        .keys()
+        .filter_map(|pub_key| {
+            trusted_validator_weights
+                .get(pub_key)
+                .map(|weight| (pub_key.clone(), *weight))
+        })
+        .collect();
+    // Sort descending by weight.
+    sig_weights.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+    let mut accumulated_weight = U512::zero();
+    let keys_to_retain: HashSet<_> = sig_weights
+        .into_iter()
+        .take_while(|(_, weight)| {
+            let to_take = accumulated_weight * U512::from(*lower_bound.denom())
+                <= total_weight * U512::from(*lower_bound.numer());
+            accumulated_weight += *weight;
+            to_take
+        })
+        .map(|(pub_key, _)| pub_key)
+        .collect();
+
+    block_signatures
+        .proofs
+        .retain(|pub_key, _| keys_to_retain.contains(pub_key));
+
+    block_signatures
 }
