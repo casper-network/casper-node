@@ -5,6 +5,7 @@ use casper_types::{
 };
 use num::{CheckedAdd, CheckedMul, CheckedSub, One};
 use num_rational::Ratio;
+use tracing::error;
 
 use crate::core::engine_state::engine_config::RefundHandling;
 
@@ -45,7 +46,7 @@ pub(crate) fn get_refund_purse<R: RuntimeProvider>(
 }
 
 /// Returns tuple where 1st element is user part, and 2nd element is the fee part.
-fn calculate_refund_amounts(
+fn calculate_amounts(
     amount_gas_spent: U512,
     payment_purse_balance: U512,
     refund_handling: &RefundHandling,
@@ -92,6 +93,8 @@ fn calculate_refund_amounts(
 
     // Give the dust amount to the user to reward him for depositing a larger than needed collateral
     // to execute the code.
+
+    // note: move dust to proposer/accumulate
     let user_part = refund_amount_trunc
         .checked_add(&dust_amount)
         .ok_or(Error::ArithmeticOverflow)?;
@@ -118,7 +121,7 @@ fn calculate_refund_amounts(
 /// deploy and that the refund purse is unset at the beginning and end of each deploy.
 pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
     provider: &mut P,
-    amount_spent: U512,
+    gas_spent: U512,
     account: AccountHash,
     target: URef,
 ) -> Result<(), Error> {
@@ -128,19 +131,19 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
     }
 
     let payment_purse = get_payment_purse(provider)?;
-    let total = match provider.balance(payment_purse)? {
+    let payment_amount = match provider.balance(payment_purse)? {
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
 
-    if total < amount_spent {
+    if payment_amount < gas_spent {
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
     let (refund_amount, validator_reward) =
-        calculate_refund_amounts(amount_spent, total, provider.refund_handling())?;
+        calculate_amounts(gas_spent, payment_amount, provider.refund_handling())?;
 
-    debug_assert_eq!(validator_reward + refund_amount, total);
+    debug_assert_eq!(validator_reward + refund_amount, payment_amount);
 
     let refund_purse = get_refund_purse(provider)?;
 
@@ -154,29 +157,37 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
 
     provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
 
-    // validator_reward purse is already resolved based on fee elimination config which is either a
-    // proposer or rewards purse
-    provider
-        .transfer_purse_to_purse(payment_purse, target, validator_reward)
-        .map_err(|_| Error::FailedTransferToRewardsPurse)?;
+    // give refund
 
-    if refund_amount.is_zero() {
-        return Ok(());
+    if !refund_amount.is_zero() {
+        match refund_purse {
+            Some(refund_purse) => {
+                // in case of failure to transfer to refund purse we fall back on the account's main
+                // purse
+                match provider.transfer_purse_to_purse(payment_purse, refund_purse, refund_amount) {
+                    Ok(()) => {}
+                    Err(error) => {
+                        error!(%error, %refund_amount, %account, "unable to transfer refund to a refund purse; refunding to account");
+                        refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+                    }
+                }
+            }
+            None => {
+                refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+            }
+        }
     }
 
-    // give refund
-    let refund_purse = match refund_purse {
-        Some(uref) => uref,
-        None => return refund_to_account::<P>(provider, payment_purse, account, refund_amount),
-    };
+    // pay the reward to the target
 
-    // in case of failure to transfer to refund purse we fall back on the account's main
-    // purse
-    if provider
-        .transfer_purse_to_purse(payment_purse, refund_purse, refund_amount)
-        .is_err()
-    {
-        return refund_to_account::<P>(provider, payment_purse, account, refund_amount);
+    // validator_reward purse is already resolved based on fee elimination config which is either a
+    // proposer or rewards purse
+    match provider.transfer_purse_to_purse(payment_purse, target, validator_reward) {
+        Ok(()) => {}
+        Err(error) => {
+            error!(%error, %validator_reward, %target, "unable to transfer reward");
+            return Err(Error::FailedTransferToRewardsPurse);
+        }
     }
 
     Ok(())
@@ -190,7 +201,10 @@ pub(crate) fn refund_to_account<M: MintProvider>(
 ) -> Result<(), Error> {
     match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
         Ok(_) => Ok(()),
-        Err(_error) => Err(Error::FailedTransferToAccountPurse),
+        Err(error) => {
+            error!(%error, %amount, %account, "unable to process refund from payment purse to account");
+            Err(Error::FailedTransferToAccountPurse)
+        }
     }
 }
 
@@ -206,7 +220,7 @@ mod tests {
             let refund_ratio = Ratio::new_raw(percentage, 100);
             let refund = RefundHandling::Refund { refund_ratio };
 
-            let (a, b) = calculate_refund_amounts(gas, purse_bal, &refund).unwrap();
+            let (a, b) = calculate_amounts(gas, purse_bal, &refund).unwrap();
 
             let a = Ratio::from(a);
             let b = Ratio::from(b);

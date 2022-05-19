@@ -697,6 +697,7 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
     );
 }
 
+#[should_panic(expected = "GasLimit")] // Depends on a bug filled
 #[ignore]
 #[test]
 fn should_allow_custom_payment_by_paying_to_system_account() {
@@ -761,7 +762,7 @@ fn should_allow_transfer_to_system_in_a_session_code() {
         let deploy = DeployItemBuilder::new()
             .with_address(sender)
             .with_session_code("transfer_to_account_u512.wasm", session_args)
-            .with_payment_code("non_standard_payment.wasm", payment_args)
+            .with_payment_bytes(Vec::new(), payment_args)
             .with_authorization_keys(&[sender])
             .with_deploy_hash(deploy_hash)
             .build();

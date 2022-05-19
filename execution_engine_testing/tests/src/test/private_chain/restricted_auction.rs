@@ -21,7 +21,6 @@ fn should_not_distribute_rewards_but_compute_next_set() {
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..3 {
-        // builder.run_auction(timestamp_millis, Vec::new());
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
@@ -29,7 +28,7 @@ fn should_not_distribute_rewards_but_compute_next_set() {
             .with_era_end_timestamp_millis(timestamp_millis)
             .with_run_auction(true)
             .build();
-        builder.step(step_request).unwrap();
+        builder.step(step_request).expect("should execute step");
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -47,7 +46,7 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         .with_run_auction(true)
         .build();
 
-    builder.step(step_request).unwrap();
+    builder.step(step_request).expect("should execute step");
 
     let era_info = {
         let era_info_value = builder

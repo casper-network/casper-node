@@ -100,8 +100,7 @@ use crate::{
 };
 
 /// The maximum amount of motes that payment code execution can cost.
-// pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
-pub const MAX_PAYMENT_AMOUNT: u64 = 3_500_000_000;
+pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// The maximum amount of gas a payment code can use.
 ///
 /// This value also indicates the minimum balance of the main purse of an account when
@@ -660,6 +659,14 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
+        let system_account = match tracking_copy
+            .borrow_mut()
+            .read_account(correlation_id, *SYSTEM_ACCOUNT_ADDRESS)
+        {
+            Ok(account) => account,
+            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
+        };
+
         let system_contract_registry = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)?;
@@ -1124,15 +1131,8 @@ where
                 }
             };
 
-            let system_account = Account::new(
-                *SYSTEM_ACCOUNT_ADDRESS,
-                Default::default(),
-                URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
-                Default::default(),
-                Default::default(),
-            );
-
             let tc = tracking_copy.borrow();
+
             let finalization_tc = Rc::new(RefCell::new(tc.fork()));
 
             let finalize_payment_stack = self.get_new_system_call_stack();
@@ -1244,6 +1244,16 @@ where
             }
         };
 
+        // Finalization is executed by system account (currently genesis account)
+        // payment_code_spec_5: system executes finalization
+        let system_account = match tracking_copy
+            .borrow_mut()
+            .read_account(correlation_id, *SYSTEM_ACCOUNT_ADDRESS)
+        {
+            Ok(account) => account,
+            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
+        };
+
         let payment = deploy_item.payment;
         let session = deploy_item.session;
         let deploy_hash = deploy_item.deploy_hash;
@@ -1348,16 +1358,6 @@ where
                 return Ok(ExecutionResult::precondition_failure(error.into()));
             }
         };
-
-        // Finalization is executed by system account (currently genesis account)
-        // payment_code_spec_5: system executes finalization
-        let system_account = Account::new(
-            *SYSTEM_ACCOUNT_ADDRESS,
-            Default::default(),
-            payment_purse_uref,
-            Default::default(),
-            Default::default(),
-        );
 
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
