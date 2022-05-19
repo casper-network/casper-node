@@ -38,7 +38,7 @@ use casper_types::{
     Timestamp, U512,
 };
 
-use super::{BlockHash, Item, Tag};
+use super::{BlockHash, BlockHashAndHeight, Item, Tag};
 use crate::{
     components::block_proposer::DeployInfo,
     rpcs::docs::DocExample,
@@ -1613,6 +1613,53 @@ pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
     pub execution_results: HashMap<BlockHash, ExecutionResult>,
+}
+
+/// Additional information describing a deploy.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum DeployMetadataExt {
+    /// Holds the execution results of a deploy.
+    Metadata(DeployMetadata),
+    /// Holds the hash and height of the block this deploy was included in.
+    BlockInfo(BlockHashAndHeight),
+    /// No execution results or block information available.
+    Empty,
+}
+
+impl Default for DeployMetadataExt {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
+impl From<DeployMetadata> for DeployMetadataExt {
+    fn from(deploy_metadata: DeployMetadata) -> Self {
+        Self::Metadata(deploy_metadata)
+    }
+}
+
+impl From<BlockHashAndHeight> for DeployMetadataExt {
+    fn from(deploy_block_info: BlockHashAndHeight) -> Self {
+        Self::BlockInfo(deploy_block_info)
+    }
+}
+
+impl PartialEq<DeployMetadata> for DeployMetadataExt {
+    fn eq(&self, other: &DeployMetadata) -> bool {
+        match self {
+            Self::Metadata(metadata) => *metadata == *other,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<BlockHashAndHeight> for DeployMetadataExt {
+    fn eq(&self, other: &BlockHashAndHeight) -> bool {
+        match self {
+            Self::BlockInfo(block_hash_and_height) => *block_hash_and_height == *other,
+            _ => false,
+        }
+    }
 }
 
 impl ToBytes for Deploy {

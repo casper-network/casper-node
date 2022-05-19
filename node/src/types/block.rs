@@ -684,6 +684,39 @@ impl FromBytes for BlockHash {
     }
 }
 
+#[derive(Clone, Copy, DataSize, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct BlockHashAndHeight {
+    pub block_hash: BlockHash,
+    pub block_height: u64,
+}
+
+impl BlockHashAndHeight {
+    pub fn new(block_hash: BlockHash, block_height: u64) -> Self {
+        Self {
+            block_hash,
+            block_height,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen::<u64>(),
+        }
+    }
+}
+
+impl Display for BlockHashAndHeight {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "hash: {}, height {} ",
+            self.block_hash, self.block_height
+        )
+    }
+}
+
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
