@@ -249,7 +249,7 @@ impl Reactor {
             chainspec_loader
                 .chainspec()
                 .core_config
-                .fee_elimination
+                .refund_handling
                 .into(),
         )?;
 

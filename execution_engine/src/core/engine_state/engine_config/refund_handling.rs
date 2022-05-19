@@ -1,9 +1,10 @@
+/// Configuration options of refund handling that is executed as part of handle payment
+/// finalization.
 use num_rational::Ratio;
 
-/// Configuration options of fee elimination as part of handle payment finalization.
-
+/// Defines how refunds are calculated.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FeeElimination {
+pub enum RefundHandling {
     /// Refund of excess payment amount goes to either a pre-defined purse, or back to the sender
     /// and the rest of the payment amount goes to the block proposer.
     Refund {
@@ -16,10 +17,4 @@ pub enum FeeElimination {
         /// Any dust amount that was a result of multiplying by refund_ratio goes back to user.
         refund_ratio: Ratio<u64>,
     },
-    /// Works like a [`FeeElimination::Refund`] variant, but instead of paying a block proposer the
-    /// money is accumulated in a purse owned by a mint. This setting implies 100% refund
-    /// ratio.
-    ///
-    /// This setting makes sense for private chains.
-    Accumulate,
 }

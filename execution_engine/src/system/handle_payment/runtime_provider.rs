@@ -1,4 +1,4 @@
-use crate::core::engine_state::engine_config::FeeElimination;
+use crate::core::engine_state::engine_config::RefundHandling;
 use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
 
 /// Provider of runtime host functionality.
@@ -21,6 +21,6 @@ pub trait RuntimeProvider {
     /// Get caller.
     fn get_caller(&self) -> AccountHash;
 
-    /// Get refund ratio.
-    fn fee_elimination(&self) -> &FeeElimination;
+    /// Get refund handling.
+    fn refund_handling(&self) -> &RefundHandling;
 }

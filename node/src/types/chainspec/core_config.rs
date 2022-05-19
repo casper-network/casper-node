@@ -12,9 +12,10 @@ use num::rational::Ratio;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use self::fee_elimination_config::FeeEliminationConfig;
+use self::{fee_handling::FeeHandlingConfig, refund_handling::RefundHandlingConfig};
 
-mod fee_elimination_config;
+mod fee_handling;
+mod refund_handling;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -51,8 +52,10 @@ pub struct CoreConfig {
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default)]
     pub(crate) administrative_accounts: Vec<AdministratorAccount>,
-    // Refund ratio
-    pub(crate) fee_elimination: FeeEliminationConfig,
+    // Refund handling.
+    pub(crate) refund_handling: RefundHandlingConfig,
+    // Fee handling.
+    pub(crate) fee_handling: FeeHandlingConfig,
 }
 
 #[cfg(test)]
@@ -84,10 +87,16 @@ impl CoreConfig {
                 )
             })
             .collect();
-        let fee_elimination = {
+        let refund_handling = {
             let numer = rng.gen_range(0..=100);
             let refund_ratio = Ratio::new(numer, 100);
-            FeeEliminationConfig::Refund { refund_ratio }
+            RefundHandlingConfig::Refund { refund_ratio }
+        };
+
+        let fee_handling = if rng.gen() {
+            FeeHandlingConfig::PayToProposer
+        } else {
+            FeeHandlingConfig::Accumulate
         };
 
         CoreConfig {
@@ -105,7 +114,8 @@ impl CoreConfig {
             allow_auction_bids,
             administrative_accounts,
             allow_unrestricted_transfers,
-            fee_elimination,
+            refund_handling,
+            fee_handling,
         }
     }
 }
@@ -129,7 +139,8 @@ impl ToBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
-            fee_elimination: refund_ratio,
+            refund_handling,
+            fee_handling,
         } = self;
         buffer.extend(era_duration.to_bytes()?);
         buffer.extend(minimum_era_height.to_bytes()?);
@@ -145,7 +156,8 @@ impl ToBytes for CoreConfig {
         buffer.extend(allow_auction_bids.to_bytes()?);
         buffer.extend(allow_unrestricted_transfers.to_bytes()?);
         buffer.extend(administrative_accounts.to_bytes()?);
-        buffer.extend(refund_ratio.to_bytes()?);
+        buffer.extend(refund_handling.to_bytes()?);
+        buffer.extend(fee_handling.to_bytes()?);
         Ok(buffer)
     }
 
@@ -165,7 +177,8 @@ impl ToBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
-            fee_elimination: refund_ratio,
+            refund_handling,
+            fee_handling,
         } = self;
         era_duration.serialized_length()
             + minimum_era_height.serialized_length()
@@ -181,7 +194,8 @@ impl ToBytes for CoreConfig {
             + allow_auction_bids.serialized_length()
             + allow_unrestricted_transfers.serialized_length()
             + administrative_accounts.serialized_length()
-            + refund_ratio.serialized_length()
+            + refund_handling.serialized_length()
+            + fee_handling.serialized_length()
     }
 }
 
@@ -201,7 +215,8 @@ impl FromBytes for CoreConfig {
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
-        let (refund_ratio, remainder) = FromBytes::from_bytes(remainder)?;
+        let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -217,7 +232,8 @@ impl FromBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
-            fee_elimination: refund_ratio,
+            refund_handling,
+            fee_handling,
         };
         Ok((config, remainder))
     }

@@ -6,12 +6,12 @@ use casper_types::{
 use num::{CheckedAdd, CheckedMul, CheckedSub, One};
 use num_rational::Ratio;
 
-use crate::core::engine_state::engine_config::FeeElimination;
+use crate::core::engine_state::engine_config::RefundHandling;
 
 use super::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
 
 /// Returns the purse for accepting payment for transactions.
-pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
+pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
     match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(uref),
         Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
@@ -22,7 +22,10 @@ pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URe
 /// Sets the purse where refunds (excess funds not spent to pay for computation) will be sent.
 /// Note that if this function is never called, the default location is the main purse of the
 /// deployer's account.
-pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> Result<(), Error> {
+pub(crate) fn set_refund<R: RuntimeProvider>(
+    runtime_provider: &mut R,
+    purse: URef,
+) -> Result<(), Error> {
     if let Phase::Payment = runtime_provider.get_phase() {
         runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
         return Ok(());
@@ -31,7 +34,9 @@ pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> 
 }
 
 /// Returns the currently set refund purse.
-pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Option<URef>, Error> {
+pub(crate) fn get_refund_purse<R: RuntimeProvider>(
+    runtime_provider: &R,
+) -> Result<Option<URef>, Error> {
     match runtime_provider.get_key(REFUND_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(Some(uref)),
         Some(_) => Err(Error::RefundPurseKeyUnexpectedType),
@@ -39,11 +44,11 @@ pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Opti
     }
 }
 
-/// Returns tuple where 1st element is user part, and 2nd element is validator part.
-fn calculate_amounts(
+/// Returns tuple where 1st element is user part, and 2nd element is the fee part.
+fn calculate_refund_amounts(
     amount_gas_spent: U512,
     payment_purse_balance: U512,
-    fee_elimination: &FeeElimination,
+    refund_handling: &RefundHandling,
 ) -> Result<(U512, U512), Error> {
     let amount_gas_spent = Ratio::from(amount_gas_spent);
     let payment_purse_balance = Ratio::from(payment_purse_balance);
@@ -53,15 +58,18 @@ fn calculate_amounts(
             .checked_sub(&amount_gas_spent)
             .ok_or(Error::ArithmeticOverflow)?;
 
-        let refund_ratio = match fee_elimination {
-            FeeElimination::Refund { refund_ratio } => *refund_ratio,
-            FeeElimination::Accumulate => Ratio::one(), // Implied 100%
+        let refund_ratio = match refund_handling {
+            RefundHandling::Refund { refund_ratio } => {
+                debug_assert!(
+                    refund_ratio <= &Ratio::one(),
+                    "refund ratio should be a proper fraction"
+                );
+                *refund_ratio
+            }
         };
 
         let refund_ratio_u512 = {
             let (numer, denom) = refund_ratio.into();
-            debug_assert!(numer <= denom, "refund ratio should be a proper fraction");
-            debug_assert!(denom > 0, "denominator should be greater than zero");
             Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom))
         };
 
@@ -108,7 +116,7 @@ fn calculate_amounts(
 /// refund purse, depending on how much was spent on the computation. This function maintains
 /// the invariant that the balance of the payment purse is zero at the beginning and end of each
 /// deploy and that the refund purse is unset at the beginning and end of each deploy.
-pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
+pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
     provider: &mut P,
     amount_spent: U512,
     account: AccountHash,
@@ -130,7 +138,7 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
     }
 
     let (refund_amount, validator_reward) =
-        calculate_amounts(amount_spent, total, provider.fee_elimination())?;
+        calculate_refund_amounts(amount_spent, total, provider.refund_handling())?;
 
     debug_assert_eq!(validator_reward + refund_amount, total);
 
@@ -174,7 +182,7 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
     Ok(())
 }
 
-pub fn refund_to_account<M: MintProvider>(
+pub(crate) fn refund_to_account<M: MintProvider>(
     mint_provider: &mut M,
     payment_purse: URef,
     account: AccountHash,
@@ -196,9 +204,9 @@ mod tests {
 
         for percentage in 0..=100 {
             let refund_ratio = Ratio::new_raw(percentage, 100);
-            let refund = FeeElimination::Refund { refund_ratio };
+            let refund = RefundHandling::Refund { refund_ratio };
 
-            let (a, b) = calculate_amounts(gas, purse_bal, &refund).unwrap();
+            let (a, b) = calculate_refund_amounts(gas, purse_bal, &refund).unwrap();
 
             let a = Ratio::from(a);
             let b = Ratio::from(b);

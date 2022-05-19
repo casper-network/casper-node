@@ -35,8 +35,8 @@ use crate::{
 
 use super::{
     ACCOUNT_1_ADDR, ACCOUNT_1_PUBLIC_KEY, DEFAULT_ADMIN_ACCOUNT_ADDR,
-    PRIVATE_CHAIN_DEFAULT_ACCOUNTS, PRIVATE_CHAIN_FEE_ELIMINATION,
-    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
+    PRIVATE_CHAIN_DEFAULT_ACCOUNTS, PRIVATE_CHAIN_FEE_HANDLING,
+    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS, PRIVATE_CHAIN_REFUND_HANDLING,
 };
 
 const ADD_ASSOCIATED_KEY_CONTRACT: &str = "add_associated_key.wasm";
@@ -136,7 +136,8 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        PRIVATE_CHAIN_FEE_ELIMINATION,
+        PRIVATE_CHAIN_REFUND_HANDLING,
+        PRIVATE_CHAIN_FEE_HANDLING,
     );
 
     let modified_genesis_request = RunGenesisRequest::new(
@@ -730,7 +731,8 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     let mut builder = super::custom_private_chain_setup(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         true,
-        PRIVATE_CHAIN_FEE_ELIMINATION,
+        PRIVATE_CHAIN_REFUND_HANDLING,
+        PRIVATE_CHAIN_FEE_HANDLING,
     );
 
     let store_contract_request = ExecuteRequestBuilder::standard(

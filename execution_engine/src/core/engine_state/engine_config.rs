@@ -1,6 +1,7 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
-mod fee_elimination;
+mod fee_handling;
+mod refund_handling;
 
 use std::sync::{Arc, Mutex};
 
@@ -13,9 +14,9 @@ use crate::shared::{
     account::SYSTEM_ACCOUNT_ADDRESS, system_config::SystemConfig, wasm_config::WasmConfig,
 };
 
-use super::genesis::AdministratorAccount;
+pub use self::{fee_handling::FeeHandling, refund_handling::RefundHandling};
 
-pub use fee_elimination::FeeElimination;
+use super::genesis::AdministratorAccount;
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -32,9 +33,11 @@ pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
-pub const DEFAULT_FEE_ELIMINATION: FeeElimination = FeeElimination::Refund {
+pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
     refund_ratio: Ratio::new_raw(0, 100),
 };
+/// Default fee handling.
+pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 
 ///
 /// The runtime configuration of the execution engine
@@ -64,8 +67,10 @@ pub struct EngineConfig {
     /// accounts to administrators and administrators to normal accounts but not normal accounts to
     /// normal accounts (aka private chain mode).
     allow_unrestricted_transfers: bool,
-    /// Fee elimination config.
-    fee_elimination: FeeElimination,
+    /// Refund handling config.
+    refund_handling: RefundHandling,
+    /// Fee handling.
+    fee_handling: FeeHandling,
 }
 
 impl Default for EngineConfig {
@@ -81,7 +86,8 @@ impl Default for EngineConfig {
             administrative_accounts: Default::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
             allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
-            fee_elimination: DEFAULT_FEE_ELIMINATION,
+            refund_handling: DEFAULT_REFUND_HANDLING,
+            fee_handling: DEFAULT_FEE_HANDLING,
         }
     }
 }
@@ -172,8 +178,14 @@ impl EngineConfig {
 
     /// Get the engine config's refund ratio.
     #[must_use]
-    pub fn fee_elimination(&self) -> &FeeElimination {
-        &self.fee_elimination
+    pub fn refund_handling(&self) -> &RefundHandling {
+        &self.refund_handling
+    }
+
+    /// Get the engine config's fee handling.
+    #[must_use]
+    pub fn fee_handling(&self) -> FeeHandling {
+        self.fee_handling
     }
 }
 
@@ -193,7 +205,8 @@ pub struct EngineConfigBuilder {
     administrative_accounts: Option<Vec<AdministratorAccount>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
-    fee_elimination: Option<FeeElimination>,
+    refund_handling: Option<RefundHandling>,
+    fee_handling: Option<FeeHandling>,
 }
 
 impl EngineConfigBuilder {
@@ -275,19 +288,24 @@ impl EngineConfigBuilder {
         self
     }
 
-    /// Set the engine config builder's refund ratio.
-    pub fn with_fee_elimination(mut self, fee_elimination: FeeElimination) -> Self {
-        match fee_elimination {
-            FeeElimination::Refund { refund_ratio } => {
+    /// Set the engine config builder's refund handling.
+    pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
+        match refund_handling {
+            RefundHandling::Refund { refund_ratio } => {
                 debug_assert!(
                     refund_ratio <= Ratio::one(),
                     "refund ratio should be a proper fraction"
                 );
             }
-            FeeElimination::Accumulate => {}
         }
 
-        self.fee_elimination = Some(fee_elimination);
+        self.refund_handling = Some(refund_handling);
+        self
+    }
+
+    /// Set the engine config builder's fee handling.
+    pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.fee_handling = Some(fee_handling);
         self
     }
 
@@ -315,7 +333,8 @@ impl EngineConfigBuilder {
         let allow_unrestricted_transfers = self
             .allow_unrestricted_transfers
             .unwrap_or(DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS);
-        let fee_elimination = self.fee_elimination.unwrap_or(DEFAULT_FEE_ELIMINATION);
+        let refund_handling = self.refund_handling.unwrap_or(DEFAULT_REFUND_HANDLING);
+        let fee_handling = self.fee_handling.unwrap_or(DEFAULT_FEE_HANDLING);
 
         EngineConfig {
             max_query_depth,
@@ -328,7 +347,8 @@ impl EngineConfigBuilder {
             administrative_accounts: Arc::new(Mutex::new(administrative_accounts)),
             allow_auction_bids,
             allow_unrestricted_transfers,
-            fee_elimination,
+            refund_handling,
+            fee_handling,
         }
     }
 }

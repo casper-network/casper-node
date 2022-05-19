@@ -56,7 +56,7 @@ use crate::{
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
-use super::engine_config::FeeElimination;
+use super::engine_config::{FeeHandling, RefundHandling};
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -699,7 +699,8 @@ pub struct ExecConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
-    fee_elimination: FeeElimination,
+    refund_handling: RefundHandling,
+    fee_handling: FeeHandling,
 }
 
 impl ExecConfig {
@@ -715,7 +716,8 @@ impl ExecConfig {
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: u64,
         genesis_timestamp_millis: u64,
-        fee_elimination: FeeElimination,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> ExecConfig {
         ExecConfig {
             accounts,
@@ -727,7 +729,8 @@ impl ExecConfig {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
-            fee_elimination,
+            refund_handling,
+            fee_handling,
         }
     }
 
@@ -801,8 +804,14 @@ impl ExecConfig {
     }
 
     /// Returns fee elimination config.
-    pub fn fee_elimination(&self) -> &FeeElimination {
-        &self.fee_elimination
+    pub fn refund_handling(&self) -> &RefundHandling {
+        &self.refund_handling
+    }
+
+    /// Get the exec config's fee handling.
+    #[must_use]
+    pub fn fee_handling(&self) -> FeeHandling {
+        self.fee_handling
     }
 }
 
@@ -831,8 +840,14 @@ impl Distribution<ExecConfig> for Standard {
 
         let genesis_timestamp_millis = rng.gen();
 
-        let fee_elimination = FeeElimination::Refund {
+        let refund_handling = RefundHandling::Refund {
             refund_ratio: Ratio::new_raw(rng.gen_range(0..=100), 100),
+        };
+
+        let fee_handling = if rng.gen() {
+            FeeHandling::Accumulate
+        } else {
+            FeeHandling::PayToProposer
         };
 
         ExecConfig {
@@ -845,7 +860,8 @@ impl Distribution<ExecConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
-            fee_elimination,
+            refund_handling,
+            fee_handling,
         }
     }
 }
@@ -1018,9 +1034,9 @@ where
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
 
-            match self.exec_config.fee_elimination() {
-                FeeElimination::Refund { .. } => {}
-                FeeElimination::Accumulate => {
+            match self.exec_config.fee_handling() {
+                FeeHandling::PayToProposer { .. } => {}
+                FeeHandling::Accumulate => {
                     let rewards_purse_uref = {
                         let rewards_purse_uref = self
                             .address_generator

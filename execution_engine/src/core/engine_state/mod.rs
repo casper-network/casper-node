@@ -51,6 +51,7 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
+use self::engine_config::FeeHandling;
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     chainspec_registry::ChainspecRegistry,
@@ -74,7 +75,6 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
-            engine_config::FeeElimination,
             executable_deploy_item::ExecutionKind,
             execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
@@ -713,13 +713,13 @@ where
                 }
             };
 
-            match self.config.fee_elimination() {
-                FeeElimination::Refund { .. } => {
+            match self.config.fee_handling() {
+                FeeHandling::PayToProposer { .. } => {
                     // the proposer of the block this deploy is in receives the gas from this deploy
                     // execution
                     proposer_account.main_purse()
                 }
-                FeeElimination::Accumulate => {
+                FeeHandling::Accumulate => {
                     let mint_hash = self.get_system_mint_hash(correlation_id, prestate_hash)?;
 
                     let mint_contract = tracking_copy
@@ -1471,13 +1471,13 @@ where
                 }
             };
 
-            match self.config.fee_elimination() {
-                FeeElimination::Refund { .. } => {
+            match self.config.fee_handling() {
+                FeeHandling::PayToProposer => {
                     // the proposer of the block this deploy is in receives the gas from this deploy
                     // execution
                     proposer_account.main_purse()
                 }
-                FeeElimination::Accumulate => {
+                FeeHandling::Accumulate => {
                     let mint_hash = self.get_system_mint_hash(correlation_id, prestate_hash)?;
 
                     let mint_contract = tracking_copy

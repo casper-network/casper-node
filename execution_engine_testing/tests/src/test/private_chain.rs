@@ -14,10 +14,11 @@ use casper_engine_test_support::{
     DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::engine_state::{
-    engine_config::{EngineConfigBuilder, FeeElimination},
+    engine_config::{EngineConfigBuilder, FeeHandling, RefundHandling},
     genesis::{AdministratorAccount, GenesisValidator},
     EngineConfig, ExecConfig, GenesisAccount, RunGenesisRequest,
 };
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_types::{
@@ -131,7 +132,10 @@ static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| 
     default_accounts
 });
 
-const PRIVATE_CHAIN_FEE_ELIMINATION: FeeElimination = FeeElimination::Accumulate;
+const PRIVATE_CHAIN_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
+    refund_ratio: Ratio::new_raw(1, 1),
+};
+const PRIVATE_CHAIN_FEE_HANDLING: FeeHandling = FeeHandling::Accumulate;
 
 static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     ExecConfig::new(
@@ -144,7 +148,8 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        PRIVATE_CHAIN_FEE_ELIMINATION,
+        PRIVATE_CHAIN_REFUND_HANDLING,
+        PRIVATE_CHAIN_FEE_HANDLING,
     )
 });
 
@@ -160,12 +165,14 @@ static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
 fn custom_private_chain_setup(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
-    fee_elimination: FeeElimination,
+    refund_handling: RefundHandling,
+    fee_handling: FeeHandling,
 ) -> InMemoryWasmTestBuilder {
     let mut builder = custom_setup_genesis_only(
         allow_auction_bids,
         allow_unrestricted_transfers,
-        fee_elimination,
+        refund_handling,
+        fee_handling,
     );
 
     let exec_request = ExecuteRequestBuilder::standard(
@@ -183,12 +190,14 @@ fn custom_private_chain_setup(
 fn custom_setup_genesis_only(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
-    fee_elimination: FeeElimination,
+    refund_handling: RefundHandling,
+    fee_handling: FeeHandling,
 ) -> InMemoryWasmTestBuilder {
     let engine_config = make_engine_config(
         allow_auction_bids,
         allow_unrestricted_transfers,
-        fee_elimination,
+        refund_handling,
+        fee_handling,
     );
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
     builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
@@ -199,20 +208,23 @@ fn setup_genesis_only() -> InMemoryWasmTestBuilder {
     custom_setup_genesis_only(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
-        PRIVATE_CHAIN_FEE_ELIMINATION,
+        PRIVATE_CHAIN_REFUND_HANDLING,
+        PRIVATE_CHAIN_FEE_HANDLING,
     )
 }
 
 fn make_engine_config(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
-    fee_elimination: FeeElimination,
+    refund_handling: RefundHandling,
+    fee_handling: FeeHandling,
 ) -> EngineConfig {
     EngineConfigBuilder::default()
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
         .with_allow_auction_bids(allow_auction_bids)
         .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
-        .with_fee_elimination(fee_elimination)
+        .with_refund_handling(refund_handling)
+        .with_fee_handling(fee_handling)
         .build()
 }
 
@@ -220,6 +232,7 @@ fn private_chain_setup() -> InMemoryWasmTestBuilder {
     custom_private_chain_setup(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
-        PRIVATE_CHAIN_FEE_ELIMINATION,
+        PRIVATE_CHAIN_REFUND_HANDLING,
+        PRIVATE_CHAIN_FEE_HANDLING,
     )
 }

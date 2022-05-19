@@ -4,7 +4,7 @@ use casper_types::{
 };
 
 use crate::{
-    core::{engine_state::engine_config::FeeElimination, execution, runtime::Runtime},
+    core::{engine_state::engine_config::RefundHandling, execution, runtime::Runtime},
     storage::global_state::StateReader,
     system::handle_payment::{
         mint_provider::MintProvider, runtime_provider::RuntimeProvider, HandlePayment,
@@ -102,8 +102,8 @@ where
         self.context.get_caller()
     }
 
-    fn fee_elimination(&self) -> &FeeElimination {
-        self.config.fee_elimination()
+    fn refund_handling(&self) -> &RefundHandling {
+        self.config.refund_handling()
     }
 }
 

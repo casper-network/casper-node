@@ -26,7 +26,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self,
-        engine_config::{EngineConfigBuilder, FeeElimination},
+        engine_config::{EngineConfigBuilder, RefundHandling},
         genesis::{AdministratorAccount, GenesisError},
         ChainspecRegistry, EngineState, GenesisSuccess, GetEraValidatorsError,
         GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
@@ -566,7 +566,7 @@ impl ContractRuntime {
         administrative_accounts: Vec<AdministratorAccount>,
         allow_auction_bids: bool,
         allow_unrestricted_transfers: bool,
-        fee_elimination: FeeElimination,
+        refund_handling: RefundHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -602,7 +602,7 @@ impl ContractRuntime {
             .with_administrative_accounts(administrative_accounts)
             .with_allow_auction_bids(allow_auction_bids)
             .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
-            .with_fee_elimination(fee_elimination)
+            .with_refund_handling(refund_handling)
             .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));

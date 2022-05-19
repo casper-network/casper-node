@@ -6,9 +6,11 @@ use tempfile::TempDir;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, engine_config::DEFAULT_FEE_ELIMINATION, genesis::GenesisValidator,
-            run_genesis_request::RunGenesisRequest, ChainspecRegistry, EngineState, ExecConfig,
-            ExecuteRequest, GenesisAccount, RewardItem,
+            self,
+            engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+            genesis::GenesisValidator,
+            run_genesis_request::RunGenesisRequest,
+            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
         },
         execution,
     },
@@ -338,7 +340,8 @@ fn create_run_genesis_request(
             DEFAULT_ROUND_SEIGNIORAGE_RATE,
             DEFAULT_UNBONDING_DELAY,
             DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-            DEFAULT_FEE_ELIMINATION,
+            DEFAULT_REFUND_HANDLING,
+            DEFAULT_FEE_HANDLING,
         )
     };
     RunGenesisRequest::new(

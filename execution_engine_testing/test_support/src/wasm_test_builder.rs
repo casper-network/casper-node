@@ -17,7 +17,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::FeeElimination,
+            engine_config::RefundHandling,
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
@@ -66,7 +66,6 @@ use casper_types::{
     RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use num_rational::Ratio;
-use num_traits::One;
 
 use crate::{
     utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GAS_PRICE,
@@ -1245,9 +1244,8 @@ where
         let gas_amount = Motes::from_gas(self.last_exec_gas_cost(), DEFAULT_GAS_PRICE)
             .expect("should create motes from gas");
 
-        let refund_ratio = match self.engine_state.config().fee_elimination() {
-            FeeElimination::Refund { refund_ratio } => *refund_ratio,
-            FeeElimination::Accumulate => Ratio::one(),
+        let refund_ratio = match self.engine_state.config().refund_handling() {
+            RefundHandling::Refund { refund_ratio } => *refund_ratio,
         };
 
         let (numer, denom) = refund_ratio.into();
