@@ -377,6 +377,7 @@ impl From<Duration> for TimeDiff {
 
 /// A module for the `[serde(with = serde_option_time_diff)]` attribute, to serialize and
 /// deserialize `Option<TimeDiff>` treating `None` as 0.
+#[cfg(any(feature = "std", test))]
 pub mod serde_option_time_diff {
     use super::*;
 

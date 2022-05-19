@@ -95,7 +95,9 @@ pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
-pub use timestamp::{serde_option_time_diff, TimeDiff, Timestamp};
+#[cfg(any(feature = "std", test))]
+pub use timestamp::serde_option_time_diff;
+pub use timestamp::{TimeDiff, Timestamp};
 pub use transfer::{
     DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
     TRANSFER_ADDR_LENGTH,
