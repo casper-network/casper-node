@@ -402,6 +402,7 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::Block(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndMetadataByHeight(_)
+                | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()

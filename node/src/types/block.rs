@@ -1834,6 +1834,60 @@ impl Item for BlockWithMetadata {
     }
 }
 
+#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Wrapper around block and its deploys.
+pub struct BlockAndDeploys {
+    /// Block part.
+    pub block: Block,
+    /// Deploys.
+    pub deploys: Vec<Deploy>,
+}
+
+impl Display for BlockAndDeploys {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "block {} and deploys", self.block.hash())
+    }
+}
+
+impl Item for BlockAndDeploys {
+    type Id = BlockHash;
+
+    type ValidationError = BlockValidationError;
+
+    const TAG: Tag = Tag::BlockAndDeploysByHash;
+
+    // false b/c we're not validating finality signatures.
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        let _ = self.block.verify(verifiable_chunked_hash_activation)?;
+        // Validate that we've got all of the deploys we should have gotten.
+        if !self
+            .block
+            .deploy_hashes()
+            .iter()
+            .chain(self.block.transfer_hashes().iter())
+            .all(|deploy_hash| {
+                self.deploys
+                    .iter()
+                    .any(|deploy| (*deploy).id() == deploy_hash)
+            })
+        {
+            // todo: error
+            panic!("return proper error here")
+        }
+
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        *self.block.hash()
+    }
+}
+
 pub(crate) mod json_compatibility {
     use super::*;
 

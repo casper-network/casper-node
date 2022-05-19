@@ -143,10 +143,11 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        NodeId,
     },
     utils::{SharedFlag, Source},
 };
@@ -926,6 +927,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Puts the given block and its deploys into the store.
+    pub(crate) async fn put_block_and_deploys_to_storage(self, block: Box<BlockAndDeploys>) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockAndDeploys { block, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block from the linear block store.
     pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<Block>
     where
@@ -933,6 +946,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its deploys from the store.
+    pub(crate) async fn get_block_and_deploys_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockAndDeploys>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndDeploys {
                 block_hash,
                 responder,
             },

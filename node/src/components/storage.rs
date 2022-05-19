@@ -88,9 +88,9 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
         HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
         NodeId,
     },
@@ -784,6 +784,20 @@ impl StorageInner {
                     opt_item,
                 )?)
             }
+            NetRequest::BlockAndDeploys(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockAndDeploys>(serialized_id)?;
+                let opt_item = self
+                    .read_block_and_deploys_by_hash(item_id)
+                    .map_err(FatalStorageError::from)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
         }
     }
 
@@ -1185,6 +1199,15 @@ impl StorageInner {
             } => responder
                 .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
+            StorageRequest::PutBlockAndDeploys { block, responder } => responder
+                .respond(self.put_block_and_deploys(&*block)?)
+                .ignore(),
+            StorageRequest::GetBlockAndDeploys {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_block_and_deploys_by_hash(block_hash)?)
+                .ignore(),
         })
     }
 
@@ -1194,6 +1217,34 @@ impl StorageInner {
         let outcome = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
+    }
+
+    /// Puts deploys into storage.
+    pub fn put_deploys<'a, I: IntoIterator<Item = &'a Deploy> + 'a>(
+        &self,
+        deploys: I,
+    ) -> Result<bool, FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let mut outcome = true;
+        for deploy in deploys {
+            outcome = outcome && txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
+        }
+        txn.commit()?;
+        Ok(outcome)
+    }
+
+    /// Puts block and its deploys into storage.
+    pub fn put_block_and_deploys(
+        &self,
+        block_and_deploys: &BlockAndDeploys,
+    ) -> Result<bool, FatalStorageError> {
+        let BlockAndDeploys { block, deploys } = block_and_deploys;
+
+        let write_block_result = self.write_block(block)?;
+
+        let write_deploys_result = self.put_deploys(deploys)?;
+
+        Ok(write_block_result && write_deploys_result)
     }
 
     /// Retrieves a block by hash.
@@ -1299,6 +1350,29 @@ impl StorageInner {
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         let indices = self.indices.read()?;
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)
+    }
+
+    /// Retrieves single block and all of its deploys.
+    /// If any of the deploys can't be found, returns `Ok(None)`.
+    pub fn read_block_and_deploys_by_hash(
+        &self,
+        hash: BlockHash,
+    ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
+        let block = self.read_block(&hash)?;
+        match block {
+            None => Ok(None),
+            Some(block) => {
+                let deploy_hashes = block
+                    .deploy_hashes()
+                    .iter()
+                    .chain(block.transfer_hashes().iter());
+                let deploys_count = block.deploy_hashes().len() + block.transfer_hashes().len();
+                match self.read_deploys(deploys_count, deploy_hashes)? {
+                    None => Ok(None),
+                    Some(deploys) => Ok(Some(BlockAndDeploys { block, deploys })),
+                }
+            }
+        }
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1740,6 +1814,23 @@ impl StorageInner {
     ) -> Result<Option<Deploy>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
+    }
+
+    /// Directly returns all deploys or None if any is missing.
+    pub fn read_deploys<'a, I: Iterator<Item = &'a DeployHash> + 'a>(
+        &self,
+        deploys_count: usize,
+        deploy_hashes: I,
+    ) -> Result<Option<Vec<Deploy>>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let mut result = Vec::with_capacity(deploys_count);
+        for deploy_hash in deploy_hashes {
+            match txn.get_value(self.deploy_db, deploy_hash)? {
+                Some(deploy) => result.push(deploy),
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(result))
     }
 
     /// Stores a set of finalized approvals.

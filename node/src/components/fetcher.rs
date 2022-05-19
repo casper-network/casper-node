@@ -22,9 +22,9 @@ use crate::{
     },
     protocol::Message,
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
-        DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
-        Item, NodeId,
+        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
+        Deploy, DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals,
+        FinalizedApprovalsWithId, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -331,6 +331,40 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
                         .expect("can only contain one result")
                         .map(DeployWithFinalizedApprovals::into_naive),
                 ),
+            })
+    }
+}
+
+impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockAndDeploys>>>> {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    /// Gets a `Deploy` from the storage component.
+    fn get_from_storage<REv: ReactorEventT<BlockAndDeploys>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockHash,
+        peer: NodeId,
+    ) -> Effects<Event<BlockAndDeploys>> {
+        effect_builder
+            .get_block_and_deploys_from_storage(id)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result),
             })
     }
 }
