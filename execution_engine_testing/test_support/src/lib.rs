@@ -11,6 +11,7 @@ mod additive_map_diff;
 /// Utility methods for running the auction in a test or bench context.
 pub mod auction;
 mod deploy_item_builder;
+mod engine_config_builder;
 mod execute_request_builder;
 mod step_request_builder;
 /// Utilities for running transfers in a test or bench context.
@@ -34,6 +35,7 @@ use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, Secr
 
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
+pub use engine_config_builder::EngineConfigBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;

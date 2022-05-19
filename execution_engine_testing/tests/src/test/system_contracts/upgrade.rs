@@ -3,12 +3,13 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
+    EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_WASM_CONFIG,
 };
 
 use casper_execution_engine::{
-    core::engine_state::engine_config::{EngineConfigBuilder, DEFAULT_MAX_ASSOCIATED_KEYS},
+    core::engine_state::engine_config::DEFAULT_MAX_ASSOCIATED_KEYS,
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::{

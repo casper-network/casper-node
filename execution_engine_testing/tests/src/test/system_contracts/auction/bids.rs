@@ -5,9 +5,9 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    utils, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
+    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
@@ -15,7 +15,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::{EngineConfigBuilder, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             genesis::{GenesisAccount, GenesisValidator},
             RewardItem,
         },

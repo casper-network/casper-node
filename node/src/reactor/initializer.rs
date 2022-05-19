@@ -251,6 +251,7 @@ impl Reactor {
                 .core_config
                 .refund_handling
                 .into(),
+            chainspec_loader.chainspec().core_config.fee_handling.into(),
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);

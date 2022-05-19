@@ -21,7 +21,7 @@ use tracing::debug;
 use casper_execution_engine::{
     core::engine_state::{
         engine_config::{
-            DEFAULT_ALLOW_AUCTION_BIDS, DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
+            DEFAULT_ALLOW_AUCTION_BIDS, DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS, DEFAULT_FEE_HANDLING,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_REFUND_HANDLING,
             DEFAULT_STRICT_ARGUMENT_CHECKING,
         },
@@ -253,6 +253,7 @@ impl reactor::Reactor for Reactor {
             DEFAULT_ALLOW_AUCTION_BIDS,
             DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
             DEFAULT_REFUND_HANDLING,
+            DEFAULT_FEE_HANDLING,
         )
         .unwrap();
 

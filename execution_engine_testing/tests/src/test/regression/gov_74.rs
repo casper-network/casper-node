@@ -1,14 +1,11 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{engine_config::EngineConfigBuilder, Error},
-        execution::Error as ExecError,
-    },
+    core::{engine_state::Error, execution::Error as ExecError},
     shared::wasm_config::WasmConfig,
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
