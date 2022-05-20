@@ -3,7 +3,7 @@ use casper_types::{
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
-use num::{CheckedAdd, CheckedMul, CheckedSub, One};
+use num::{CheckedAdd, CheckedMul, CheckedSub, One, Zero};
 use num_rational::Ratio;
 use tracing::error;
 
@@ -91,17 +91,15 @@ fn calculate_amounts(
         .checked_add(&refund_amount.fract())
         .ok_or(Error::ArithmeticOverflow)?;
 
-    // Give the dust amount to the user to reward him for depositing a larger than needed collateral
-    // to execute the code.
+    // Move the dust amount to the reward part
 
-    // note: move dust to proposer/accumulate
     let user_part = refund_amount_trunc
         .checked_add(&dust_amount)
         .ok_or(Error::ArithmeticOverflow)?;
-    debug_assert_eq!(user_part.fract(), Ratio::from(U512::zero()));
+    debug_assert_eq!(user_part.fract(), Ratio::zero());
 
     let validator_part = validator_reward_trunc;
-    debug_assert_eq!(validator_part.fract(), Ratio::from(U512::zero()));
+    debug_assert_eq!(validator_part.fract(), Ratio::zero());
 
     // Makes sure both parts: for user, and for validator sums to the total amount in the
     // payment's purse.
@@ -211,6 +209,20 @@ pub(crate) fn refund_to_account<M: MintProvider>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_move_dust_to_reward() {
+        let purse_bal = U512::from(10u64);
+        let gas = U512::from(3u64);
+        let refund_ratio = Ratio::new_raw(1, 3);
+        let refund = RefundHandling::Refund { refund_ratio };
+
+        let (a, b) = calculate_amounts(gas, purse_bal, &refund).unwrap();
+
+        assert_eq!(a, U512::from(2u64)); // (10 - 3) * 1/3 ~ 2.33 (.33 is dust)
+        assert_eq!(b, U512::from(8u64)); // 10 - 2 = 8
+    }
+
     #[test]
     fn should_account_refund_for_dust() {
         let purse_bal = U512::from(9973u64);
