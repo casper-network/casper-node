@@ -112,11 +112,13 @@ impl DbGlobalState {
     /// This function uses std::thread::sleep, is otherwise intensive and so needs to be called with
     /// tokio::task::spawn_blocking. `force=true` will cause us to always traverse recursively when
     /// searching for missing descendants.
+    /// Will update the working-set cache if `update_working_set=true`.
     pub(crate) fn migrate_state_root_to_rocksdb(
         &self,
         state_root: Digest,
         limit_rate: bool,
         force: bool,
+        update_working_set: bool,
     ) -> Result<(), error::Error> {
         let (lmdb_environment, lmdb_db) = match self.maybe_lmdb_path.as_ref() {
             Some(path) => {
@@ -183,12 +185,13 @@ impl DbGlobalState {
 
                     self.rocksdb_store.write(&key_bytes, value_bytes)?;
 
-                    memoized_find_missing_descendants(
+                    memoized_find_missing_descendants_and_optionally_update_working_set(
                         Bytes::from(value_bytes),
                         &self.rocksdb_store,
                         &mut missing_trie_keys,
                         &mut time_searching_for_trie_keys,
                         force,
+                        update_working_set,
                     )?;
                 }
                 Err(lmdb::Error::NotFound) => {
@@ -264,24 +267,34 @@ impl DbGlobalState {
     }
 }
 
-fn memoized_find_missing_descendants(
+fn memoized_find_missing_descendants_and_optionally_update_working_set(
     value_bytes: Bytes,
     rocksdb_store: &RocksDbTrieStore,
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
     force: bool,
+    update_working_set: bool,
 ) -> Result<(), error::Error> {
-    // A first bytes of `0` indicates a leaf. We short-circuit the function here to speed things up.
-    if let Some(0u8) = value_bytes.get(0) {
-        return Ok(());
+    if !update_working_set {
+        // A first bytes of `0` indicates a leaf. We short-circuit the function here to speed things
+        // up.
+        if let Some(0u8) = value_bytes.get(0) {
+            return Ok(());
+        }
     }
+
     let start_trie_keys = Instant::now();
     let trie: Trie<Key, StoredValue> = bytesrepr::deserialize(value_bytes.into())?;
     match trie {
-        Trie::Leaf { .. } => {
-            // If `bytesrepr` is functioning correctly, this should never be reached (see
-            // optimization above), but it is still correct do nothing here.
-            warn!("did not expect to see a trie leaf in `find_missing_descendents` after shortcut");
+        Trie::Leaf { key, value } => {
+            if update_working_set {
+                let db = rocksdb_store.get_db_store();
+                db.write_to_working_set(key, value)?;
+            } else {
+                // If `bytesrepr` is functioning correctly, this should never be reached (see
+                // optimization above), but it is still correct do nothing here.
+                warn!("did not expect to see a trie leaf in `find_missing_descendents` after shortcut");
+            }
         }
         Trie::Node { pointer_block } => {
             for (_index, ptr) in pointer_block.as_indexed_pointers() {

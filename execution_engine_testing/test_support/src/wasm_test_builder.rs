@@ -302,7 +302,7 @@ impl DbWasmTestBuilder {
         // TODO: replace lmdb fixture files with rocksdb ones, or perhaps a more universal format.
         // Currently copies all state from lmdb file to rocksdb.
         engine_state
-            .migrate_state_root_to_rocksdb_if_needed(post_state_hash, false)
+            .migrate_state_root_to_rocksdb_if_needed(post_state_hash, false, true)
             .expect("unable to migrate state root from lmdb to rocksdb");
 
         WasmTestBuilder {

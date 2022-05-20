@@ -239,6 +239,7 @@ impl Reactor {
                 .verifiable_chunked_hash_activation,
         )?;
 
+        // TODO: only block like this on an upgrade
         {
             let engine_state = Arc::clone(contract_runtime.engine_state());
             // We need to be synchronous here, ensures migration (of just the highest block) is
@@ -248,6 +249,7 @@ impl Reactor {
                     engine_state.migrate_state_root_to_rocksdb_if_needed(
                         *highest_block_header.state_root_hash(),
                         false,
+                        true,
                     )?;
                 }
                 None => {

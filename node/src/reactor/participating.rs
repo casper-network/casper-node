@@ -753,7 +753,9 @@ impl reactor::Reactor for Reactor {
             }
 
             let background_migration = tokio::task::spawn_blocking(move || {
-                migrate_lmdb_data_to_rocksdb(engine_state, state_roots, true)
+                // We don't update the working set in the background migration for historical state
+                // roots. `update_working_set` MUST be set to `false` here.
+                migrate_lmdb_data_to_rocksdb(engine_state, state_roots, true, false)
             });
 
             effects.extend(background_migration.ignore());
@@ -1322,11 +1324,16 @@ pub fn migrate_lmdb_data_to_rocksdb(
     engine_state: Arc<EngineState<DbGlobalState>>,
     state_roots: Vec<Digest>,
     limit_rate: bool,
+    update_working_set: bool,
 ) {
     let mut total_state_roots_migrated = 0;
     for state_root_hash in state_roots {
         let start = Instant::now();
-        match engine_state.migrate_state_root_to_rocksdb_if_needed(state_root_hash, limit_rate) {
+        match engine_state.migrate_state_root_to_rocksdb_if_needed(
+            state_root_hash,
+            limit_rate,
+            update_working_set,
+        ) {
             Ok(true) => {
                 info!(
                     %state_root_hash,

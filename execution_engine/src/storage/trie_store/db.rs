@@ -9,7 +9,7 @@ use std::{
 use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
 
 use casper_hashing::Digest;
-use rocksdb::Options;
+use rocksdb::{DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode, MultiThreaded, Options};
 
 use crate::storage::{
     db_store::DbStore,
@@ -246,6 +246,14 @@ impl RocksDbTrieStore {
             .db
             .put_cf(&lmdb_migration_column, state_root, &[])?;
         Ok(())
+    }
+
+    /// Trie store iterator.
+    pub fn trie_store_iterator<'a: 'b, 'b>(
+        &'a self,
+    ) -> Result<DBIteratorWithThreadMode<'b, DBWithThreadMode<MultiThreaded>>, error::Error> {
+        let cf_handle = self.store.trie_column_family()?;
+        Ok(self.store.db.iterator_cf(&cf_handle, IteratorMode::Start))
     }
 }
 

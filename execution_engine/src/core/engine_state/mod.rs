@@ -133,6 +133,7 @@ impl EngineState<DbGlobalState> {
         &self,
         state_root: Digest,
         limit_rate: bool,
+        update_working_set: bool,
     ) -> Result<bool, storage::error::db::Error> {
         let state_root_bytes = &state_root.value();
 
@@ -148,8 +149,12 @@ impl EngineState<DbGlobalState> {
             db_store.mark_state_root_migration_incomplete(state_root_bytes)?;
 
             // perform migration
-            self.state
-                .migrate_state_root_to_rocksdb(state_root, limit_rate, force)?;
+            self.state.migrate_state_root_to_rocksdb(
+                state_root,
+                limit_rate,
+                force,
+                update_working_set,
+            )?;
 
             db_store.mark_state_root_migration_completed(state_root_bytes)?;
             return Ok(true);

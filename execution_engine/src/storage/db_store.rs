@@ -4,10 +4,8 @@ use std::{
     sync::Arc,
 };
 
-use rocksdb::{
-    BlockBasedOptions, BoundColumnFamily, DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode,
-    MultiThreaded, Options,
-};
+use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use rocksdb::{BlockBasedOptions, BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
 
 use super::error;
 
@@ -97,12 +95,20 @@ impl DbStore {
         })
     }
 
-    /// Trie store iterator.
-    pub fn trie_store_iterator<'a: 'b, 'b>(
-        &'a self,
-    ) -> Result<DBIteratorWithThreadMode<'b, DBWithThreadMode<MultiThreaded>>, error::Error> {
-        let cf_handle = self.trie_column_family()?;
-        Ok(self.db.iterator_cf(&cf_handle, IteratorMode::Start))
+    /// Write a Key and StoredValue pair to the working set.
+    pub fn write_to_working_set(&self, key: Key, value: StoredValue) -> Result<(), error::Error> {
+        let working_set_column = self.working_set_column_family()?;
+        self.db
+            .put_cf(&working_set_column, &key.to_bytes()?, &value.to_bytes()?)?;
+        Ok(())
+    }
+
+    /// Read a StoredValue from the working set.
+    pub fn read_from_working_set(&self, key: Key, value: StoredValue) -> Result<(), error::Error> {
+        let working_set_column = self.working_set_column_family()?;
+        self.db
+            .put_cf(&working_set_column, &key.to_bytes()?, &value.to_bytes()?)?;
+        Ok(())
     }
 
     /// Return the path to the backing rocksdb files.
