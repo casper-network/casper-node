@@ -493,26 +493,34 @@ impl FinalizedBlock {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch)
+        FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch, None)
     }
 
-    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
     #[cfg(test)]
+    /// Generates a random instance using a `TestRng`, but using the specified values.
+    /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
+    /// will be used.
     pub fn random_with_specifics(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
         is_switch: bool,
+        deploy: Option<&Deploy>,
     ) -> Self {
-        let deploy_count = rng.gen_range(0..11);
-        let deploys = iter::repeat_with(|| {
-            DeployWithApprovals::new(
-                DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
-                BTreeSet::new(),
-            )
-        })
-        .take(deploy_count)
-        .collect();
+        let deploys = match deploy {
+            Some(deploy) => vec![DeployWithApprovals::new(*deploy.id(), BTreeSet::new())],
+            None => {
+                let deploy_count = rng.gen_range(0..11);
+                iter::repeat_with(|| {
+                    DeployWithApprovals::new(
+                        DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
+                        BTreeSet::new(),
+                    )
+                })
+                .take(deploy_count)
+                .collect()
+            }
+        };
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -1604,6 +1612,7 @@ impl Block {
             ProtocolVersion::V1_0_0,
             is_switch,
             verifiable_chunked_hash_activation,
+            None,
         )
     }
 
@@ -1625,6 +1634,7 @@ impl Block {
             ProtocolVersion::V1_0_0,
             is_switch,
             verifiable_chunked_hash_activation,
+            None,
         )
     }
 
@@ -1669,10 +1679,12 @@ impl Block {
         protocol_version: ProtocolVersion,
         is_switch: bool,
         verifiable_chunked_hash_activation: EraId,
+        deploy: Option<&Deploy>,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
+        let finalized_block =
+            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploy);
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
             .clone()
@@ -2420,6 +2432,7 @@ mod tests {
             protocol_version,
             is_switch,
             verifiable_chunked_hash_activation,
+            None,
         );
 
         let merkle_block_body = block.body().merklize();

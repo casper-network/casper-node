@@ -434,6 +434,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
                     ProtocolVersion::V1_0_0,
                     is_switch,
                     verifiable_chunked_hash_activation,
+                    None,
                 )
             };
 
@@ -593,6 +594,7 @@ fn can_retrieve_block_by_height() {
                 ProtocolVersion::from_parts(1, 5, 0),
                 true,
                 block_spec.verifiable_chunked_hash_activation,
+                None,
             ));
             let block_14 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
@@ -601,6 +603,7 @@ fn can_retrieve_block_by_height() {
                 ProtocolVersion::from_parts(1, 5, 0),
                 false,
                 block_spec.verifiable_chunked_hash_activation,
+                None,
             ));
             let block_99 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
@@ -609,6 +612,7 @@ fn can_retrieve_block_by_height() {
                 ProtocolVersion::from_parts(1, 5, 0),
                 true,
                 block_spec.verifiable_chunked_hash_activation,
+                None,
             ));
 
             let mut storage =
@@ -746,6 +750,7 @@ fn different_block_at_height_is_fatal() {
         ProtocolVersion::V1_0_0,
         false,
         verifiable_chunked_hash_activation,
+        None,
     ));
     let block_44_b = Box::new(Block::random_with_specifics(
         &mut harness.rng,
@@ -754,6 +759,7 @@ fn different_block_at_height_is_fatal() {
         ProtocolVersion::V1_0_0,
         false,
         verifiable_chunked_hash_activation,
+        None,
     ));
 
     let was_new = put_block(&mut harness, &mut storage, block_44_a.clone());
@@ -1182,6 +1188,10 @@ fn should_hard_reset() {
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
+    let random_deploys: Vec<_> = std::iter::repeat_with(|| Deploy::random(&mut harness.rng))
+        .take(blocks_count)
+        .collect();
+
     // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
     let blocks: Vec<Block> = (0..blocks_count)
         .map(|height| {
@@ -1193,6 +1203,7 @@ fn should_hard_reset() {
                 ProtocolVersion::V1_0_0,
                 is_switch,
                 verifiable_chunked_hash_activation,
+                Some(random_deploys.get(height).expect("should_have_deploy")),
             )
         })
         .collect();
@@ -1219,12 +1230,12 @@ fn should_hard_reset() {
     // and so on.
     let mut deploys = vec![];
     let mut execution_results = vec![];
-    for block_hash in blocks.iter().map(|block| block.hash()) {
-        let deploy = Deploy::random(&mut harness.rng);
+    for (index, block_hash) in blocks.iter().map(|block| block.hash()).enumerate() {
+        let deploy = random_deploys.get(index).expect("should have deploys");
         let execution_result: ExecutionResult = harness.rng.gen();
+        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.id(), execution_result);
-        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
         put_execution_results(
             &mut harness,
             &mut storage,
@@ -1487,6 +1498,7 @@ fn should_garbage_collect() {
                 ProtocolVersion::from_parts(1, 4, 0),
                 is_switch,
                 verifiable_chunked_hash_activation,
+                None,
             )
         })
         .collect();
@@ -1617,6 +1629,7 @@ fn can_put_and_get_blocks_v2() {
             protocol_version,
             i == num_blocks - 1,
             verifiable_chunked_hash_activation,
+            None,
         );
 
         blocks.push(block.clone());
@@ -1768,6 +1781,7 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
         ProtocolVersion::V1_0_0,
         false,
         verifiable_chunked_hash_activation,
+        None,
     );
 
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
@@ -1781,6 +1795,7 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
         ProtocolVersion::V1_0_0,
         is_switch,
         verifiable_chunked_hash_activation,
+        None,
     );
     storage.storage.write_block(&block).unwrap();
 
@@ -1988,6 +2003,7 @@ fn should_restrict_returned_blocks() {
             ProtocolVersion::from_parts(1, 5, 0),
             false,
             verifiable_chunked_hash_activation,
+            None,
         );
         storage.storage.write_block(&block).unwrap();
     });

@@ -707,6 +707,7 @@ mod tests {
             ProtocolVersion::V1_0_0,
             false,
             verifiable_chunked_hash_activation,
+            None,
         );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
@@ -763,6 +764,7 @@ mod tests {
             ProtocolVersion::V1_0_0,
             false,
             verifiable_chunked_hash_activation,
+            None,
         ));
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
@@ -834,7 +836,7 @@ mod tests {
                 BlockHash::random(&mut rng),              // parent hash
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
-                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true),
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true, None),
                 Some(validators.clone()),
                 protocol_version,
                 verifiable_chunked_hash_activation,
@@ -851,7 +853,7 @@ mod tests {
                 BlockHash::random(&mut rng),              // parent hash
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
-                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true),
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true, None),
                 Some(validators),
                 protocol_version,
                 verifiable_chunked_hash_activation,
@@ -952,7 +954,7 @@ mod tests {
                 BlockHash::random(&mut rng),              // parent hash
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
-                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true),
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true, None),
                 Some(validators.clone()),
                 protocol_version,
                 verifiable_chunked_hash_activation,
@@ -968,7 +970,7 @@ mod tests {
                 BlockHash::random(&mut rng),              // parent hash
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
-                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true),
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true, None),
                 Some(validators),
                 protocol_version,
                 verifiable_chunked_hash_activation,
