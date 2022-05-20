@@ -5,7 +5,7 @@ use std::{
 };
 
 use rocksdb::{
-    BlockBasedOptions, BoundColumnFamily, DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode,
+    BlockBasedOptions, BoundColumnFamily, DBWithThreadMode,
     MultiThreaded, Options,
 };
 
@@ -95,14 +95,6 @@ impl DbStore {
         self.db.cf_handle(WORKING_SET_COLUMN_FAMILY).ok_or_else(|| {
             error::Error::UnableToOpenColumnFamily(WORKING_SET_COLUMN_FAMILY.to_string())
         })
-    }
-
-    /// Trie store iterator.
-    pub fn trie_store_iterator<'a: 'b, 'b>(
-        &'a self,
-    ) -> Result<DBIteratorWithThreadMode<'b, DBWithThreadMode<MultiThreaded>>, error::Error> {
-        let cf_handle = self.trie_column_family()?;
-        Ok(self.db.iterator_cf(&cf_handle, IteratorMode::Start))
     }
 
     /// Return the path to the backing rocksdb files.
