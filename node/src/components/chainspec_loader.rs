@@ -581,6 +581,7 @@ mod tests {
                 PROTOCOL_VERSION,
                 IS_NOT_SWITCH,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+                None,
             )
             .header()
             .clone(),
@@ -606,6 +607,7 @@ mod tests {
                 PROTOCOL_VERSION,
                 IS_NOT_SWITCH,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+                None,
             )
             .header()
             .clone(),
@@ -624,6 +626,7 @@ mod tests {
                 PROTOCOL_VERSION,
                 IS_NOT_SWITCH,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+                None,
             )
             .header()
             .clone(),
@@ -642,6 +645,7 @@ mod tests {
                 PROTOCOL_VERSION,
                 IS_SWITCH,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+                None,
             )
             .header()
             .clone(),

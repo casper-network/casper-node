@@ -245,6 +245,7 @@ mod tests {
             past_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(protocol_config.is_last_block_before_activation(block.header()));
 
@@ -256,6 +257,7 @@ mod tests {
             past_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
@@ -267,6 +269,7 @@ mod tests {
             current_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
         let block = Block::random_with_specifics(
@@ -276,6 +279,7 @@ mod tests {
             future_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
@@ -287,6 +291,7 @@ mod tests {
             past_version,
             false,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
     }
