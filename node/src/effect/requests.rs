@@ -264,9 +264,8 @@ pub(crate) enum StorageRequest {
     PutBlockAndDeploys {
         /// Block to be stored.
         block: Box<BlockAndDeploys>,
-        /// Responder to call with the result.  Returns true if the block was stored on this
-        /// attempt or false if it was previously stored.
-        responder: Responder<bool>,
+        /// Responder to call on success.  Failure is a fatal error.
+        responder: Responder<()>,
     },
     /// Retrieve block with given hash.
     GetBlock {

@@ -928,7 +928,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block and its deploys into the store.
-    pub(crate) async fn put_block_and_deploys_to_storage(self, block: Box<BlockAndDeploys>) -> bool
+    pub(crate) async fn put_block_and_deploys_to_storage(self, block: Box<BlockAndDeploys>)
     where
         REv: From<StorageRequest>,
     {

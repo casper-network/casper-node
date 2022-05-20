@@ -1219,32 +1219,35 @@ impl StorageInner {
         Ok(outcome)
     }
 
-    /// Puts deploys into storage.
-    pub fn put_deploys<'a, I: IntoIterator<Item = &'a Deploy> + 'a>(
-        &self,
-        deploys: I,
-    ) -> Result<bool, FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
-        let mut outcome = true;
-        for deploy in deploys {
-            outcome = outcome && txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
-        }
-        txn.commit()?;
-        Ok(outcome)
-    }
-
     /// Puts block and its deploys into storage.
+    ///
+    /// Returns `Ok` only if the block and all deploys were successfully written.
     pub fn put_block_and_deploys(
         &self,
         block_and_deploys: &BlockAndDeploys,
-    ) -> Result<bool, FatalStorageError> {
+    ) -> Result<(), FatalStorageError> {
         let BlockAndDeploys { block, deploys } = block_and_deploys;
 
-        let write_block_result = self.write_block(block)?;
+        block.verify(self.verifiable_chunked_hash_activation)?;
+        let mut txn = self.env.begin_rw_txn()?;
+        match self.write_validated_block(&mut txn, block) {
+            Ok(true) => {}
+            Ok(false) => {
+                txn.abort();
+                return Err(FatalStorageError::FailedToOverwriteBlock);
+            }
+            Err(error) => {
+                txn.abort();
+                return Err(error);
+            }
+        }
 
-        let write_deploys_result = self.put_deploys(deploys)?;
+        for deploy in deploys {
+            let _ = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
+        }
+        txn.commit()?;
 
-        Ok(write_block_result && write_deploys_result)
+        Ok(())
     }
 
     /// Retrieves a block by hash.
@@ -1252,14 +1255,31 @@ impl StorageInner {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
-    /// Writes a block to storage, updating indices as necessary
+    /// Writes a block to storage, updating indices as necessary.
+    ///
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify(self.verifiable_chunked_hash_activation)?;
         let mut txn = self.env.begin_rw_txn()?;
-        // Write the block body
+        let result = self.write_validated_block(&mut txn, block);
+        match &result {
+            Ok(false) | Err(_) => txn.abort(),
+            Ok(true) => txn.commit()?,
+        }
+        result
+    }
+
+    /// Writes a block which has already been verified to storage, updating indices as necessary.
+    ///
+    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
+    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
+    fn write_validated_block(
+        &self,
+        txn: &mut RwTransaction,
+        block: &Block,
+    ) -> Result<bool, FatalStorageError> {
         {
             let block_body_hash = block.header().body_hash();
             let block_body = block.body();
@@ -1268,22 +1288,18 @@ impl StorageInner {
                 .hashing_algorithm_version(self.verifiable_chunked_hash_activation)
             {
                 HashingAlgorithmVersion::V1 => {
-                    self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
+                    self.put_single_block_body_v1(txn, block_body_hash, block_body)?
                 }
-                HashingAlgorithmVersion::V2 => {
-                    self.put_single_block_body_v2(&mut txn, block_body)?
-                }
+                HashingAlgorithmVersion::V2 => self.put_single_block_body_v2(txn, block_body)?,
             };
             if !success {
                 error!("Could not insert body for: {}", block);
-                txn.abort();
                 return Ok(false);
             }
         }
 
         if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
             error!("Could not insert block header for block: {}", block);
-            txn.abort();
             return Ok(false);
         }
 
@@ -1300,7 +1316,6 @@ impl StorageInner {
                 block.body(),
             )?;
         }
-        txn.commit()?;
         Ok(true)
     }
 
