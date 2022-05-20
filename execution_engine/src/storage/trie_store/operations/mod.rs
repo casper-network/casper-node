@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use tracing::{error, info};
+use tracing::{error, trace};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
