@@ -615,10 +615,7 @@ mod tests {
 
         // The output will be empty queues, albeit formatted as JSON. Just check if there is a
         // proper JSON header present.
-        assert_eq!(
-            output,
-            r#"{"queues":{"Control":[],"NetworkIncoming":[],"NetworkLowPriority":[],"Network":[],"Regular":[],"Api":[]}}"#
-        );
+        assert!(output.starts_with(r#"{"queues":{""#));
     }
 
     #[tokio::test]
@@ -627,11 +624,9 @@ mod tests {
 
         let output = run_single_node_console_and_dump_events("interactive").await;
 
-        // The output will be empty queues in debug format.
-        assert_eq!(
-            output,
-            r#"QueueDump { queues: {Control: [], NetworkIncoming: [], NetworkLowPriority: [], Network: [], Regular: [], Api: []} }"#
-        );
+        // The output will be empty queues in debug format. We only look at the start of the output,
+        // since some time-triggered output may have already been included.
+        assert!(output.starts_with(r#"QueueDump { queues: {"#));
     }
 
     #[tokio::test]
@@ -653,9 +648,11 @@ mod tests {
 
         // Construct the debug representation and compare as strings to avoid issues with missing
         // `PartialEq` implementations.
-        scheduler.dump(|dump| {
-            let debug_repr = format!("{:?}", dump);
-            assert_eq!(debug_repr, r#"QueueDump { queues: {Control: [], NetworkIncoming: [], NetworkLowPriority: [], Network: [SmallNetwork(SweepOutgoing)], Regular: [SmallNetwork(GossipOurAddress)], Api: []} }"#);
-        }).await;
+        scheduler
+            .dump(|dump| {
+                let debug_repr = format!("{:?}", dump);
+                assert!(debug_repr.starts_with(r#"QueueDump { queues: {"#));
+            })
+            .await;
     }
 }

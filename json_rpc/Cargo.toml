@@ -1,0 +1,25 @@
+[package]
+name = "casper-json-rpc"
+version = "0.1.0"
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+description = "A library suitable for use as the framework for a JSON-RPC server."
+readme = "README.md"
+documentation = "https://docs.rs/casper-json-rpc"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/casper-network/casper-node/tree/master/json_rpc"
+license = "Apache-2.0"
+
+[dependencies]
+bytes = "1.1.0"
+futures = "0.3.21"
+http = "0.2.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1.34"
+warp = "0.3.2"
+
+[dev-dependencies]
+env_logger = "0.9.0"
+hyper = "0.14.18"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }

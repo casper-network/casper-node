@@ -10,6 +10,8 @@ pub(crate) struct Metrics {
     pub found_on_peer: IntCounter,
     /// Number of fetch requests that timed out.
     pub timeouts: IntCounter,
+    /// Number of total fetch requests made.
+    pub fetch_total: IntCounter,
     /// Reference to the registry for unregistering.
     registry: Registry,
 }
@@ -31,14 +33,20 @@ impl Metrics {
             format!("{}_timeouts", name),
             format!("number of {} fetch requests that timed out", name),
         )?;
+        let fetch_total = IntCounter::new(
+            format!("{}_fetch_total", name),
+            format!("number of {} all fetch requests made", name),
+        )?;
         registry.register(Box::new(found_in_storage.clone()))?;
         registry.register(Box::new(found_on_peer.clone()))?;
         registry.register(Box::new(timeouts.clone()))?;
+        registry.register(Box::new(fetch_total.clone()))?;
 
         Ok(Metrics {
             found_in_storage,
             found_on_peer,
             timeouts,
+            fetch_total,
             registry: registry.clone(),
         })
     }
@@ -49,5 +57,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.found_in_storage);
         unregister_metric!(self.registry, self.found_on_peer);
         unregister_metric!(self.registry, self.timeouts);
+        unregister_metric!(self.registry, self.fetch_total);
     }
 }

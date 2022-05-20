@@ -94,7 +94,10 @@ pub(crate) enum NetworkRequest<P> {
         dest: Box<NodeId>,
         /// Message payload.
         payload: Box<P>,
-        /// Responder to be called when the message is queued.
+        /// If `true`, the responder will be called early after the message has been queued, not
+        /// waiting until it has passed to the kernel.
+        respond_after_queueing: bool,
+        /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
         responder: Responder<()>,
     },
@@ -135,10 +138,12 @@ impl<P> NetworkRequest<P> {
             NetworkRequest::SendMessage {
                 dest,
                 payload,
+                respond_after_queueing,
                 responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
+                respond_after_queueing,
                 responder,
             },
             NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
@@ -181,14 +186,19 @@ where
 #[derive(Debug)]
 pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
-    GetPeers {
+    Peers {
         /// Responder to be called with all connected peers.
         /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, String>>,
     },
     /// Get the peers in random order.
-    GetFullyConnectedPeers {
+    FullyConnectedPeers {
         /// Responder to be called with all connected in random order peers.
+        responder: Responder<Vec<NodeId>>,
+    },
+    /// Get only non-joiner peers in random order.
+    FullyConnectedNonJoinerPeers {
+        /// Responder to be called with all connected non-joiner peers in random order.
         responder: Responder<Vec<NodeId>>,
     },
 }
@@ -196,11 +206,14 @@ pub(crate) enum NetworkInfoRequest {
 impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NetworkInfoRequest::GetPeers { responder: _ } => {
+            NetworkInfoRequest::Peers { responder: _ } => {
                 write!(formatter, "get peers-to-socket-address map")
             }
-            NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
+            NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
                 write!(formatter, "get fully connected peers")
+            }
+            NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder: _ } => {
+                write!(formatter, "get fully connected non-joiner peers")
             }
         }
     }
