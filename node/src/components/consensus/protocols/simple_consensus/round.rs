@@ -5,7 +5,6 @@ use std::{
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
 use crate::{
     components::consensus::{
@@ -199,32 +198,10 @@ impl<C: Context> Round<C> {
         }
     }
 
-    /// Removes all echoes, `true` votes and the proposal: This round was skipped and will never
-    /// become finalized.
+    /// Removes the proposal: This round was skipped and will never become finalized.
     pub(super) fn prune_skipped(&mut self) {
         self.proposal = None;
-        self.outcome.quorum_echoes = None;
         self.outcome.accepted_proposal_height = None;
-        self.echoes.clear();
-        for maybe_vote in self.votes.get_mut(&true).unwrap().iter_mut() {
-            *maybe_vote = None;
-        }
-    }
-
-    /// Removes all `false` votes and all echoes that don't belong to the quorum: This round was
-    /// finalized and can never be skipped.
-    pub(super) fn prune_finalized(&mut self) {
-        for maybe_vote in self.votes.get_mut(&false).unwrap().iter_mut() {
-            *maybe_vote = None;
-        }
-        if self.outcome.quorum_votes == Some(false) {
-            self.outcome.quorum_votes = None;
-        }
-        if let Some(quorum_hash) = self.quorum_echoes() {
-            self.echoes.retain(|hash, _| *hash == quorum_hash);
-        } else {
-            error!("prune_finalized called on a round without accepted proposal");
-        }
     }
 }
 
