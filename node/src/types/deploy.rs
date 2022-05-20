@@ -919,6 +919,8 @@ impl Deploy {
         Ok(())
     }
 
+    /// Returns `Ok` if this block's body hashes to the value of `body_hash` in the header, and if
+    /// this block's header hashes to the value claimed as the block hash.  Otherwise returns `Err`.
     pub(crate) fn has_valid_hash(&self) -> Result<(), DeployConfigurationFailure> {
         let serialized_body = serialize_body(&self.payment, &self.session);
         let body_hash = Digest::hash(&serialized_body);

@@ -488,7 +488,11 @@ impl Display for StorageRequest {
                 block: block_deploys,
                 ..
             } => {
-                write!(formatter, "put block and deploys {}", block_deploys)
+                write!(
+                    formatter,
+                    "put block and deploys {}",
+                    block_deploys.block.hash()
+                )
             }
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
             StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
