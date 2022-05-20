@@ -576,9 +576,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             secret_key,
         );
-        self.add_content(signed_msg.clone());
-        let message = Message::Signed(signed_msg);
-        vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
+        if self.add_content(signed_msg.clone()) {
+            let message = Message::Signed(signed_msg);
+            vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
+        } else {
+            vec![]
+        }
     }
 
     /// When we receive evidence for a fault, we must notify the rest of the network of this
@@ -847,9 +850,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             let serialized_msg = evidence_msg.serialize();
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialized_msg));
             outcomes
-        } else {
-            self.add_content(signed_msg);
+        } else if self.add_content(signed_msg) {
             self.update(now)
+        } else {
+            vec![]
         }
     }
 
@@ -1044,9 +1048,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         false
     }
 
-    /// Adds a signed message content to the state, but does not call `update` and does not detect
-    /// faults.
-    fn add_content(&mut self, signed_msg: SignedMessage<C>) {
+    /// Adds a signed message content to the state if possible, but does not call `update` and does
+    /// not detect faults. Returns whether the message was new and could be added.
+    fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.active[signed_msg.validator_idx].is_none() {
             self.active[signed_msg.validator_idx] = Some(signed_msg.clone());
             // We considered this validator inactive until now, and didn't accept proposals that
@@ -1056,7 +1060,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         if signed_msg.round_id < self.first_non_finalized_round_id {
             debug!(?signed_msg, "dropping message from decided round");
-            return;
+            return false;
+        }
+        if self.faults.contains_key(&signed_msg.validator_idx) {
+            debug!(?signed_msg, "dropping message from faulty validator");
+            return false; // Echoes and votes from double-signers can be ignored.
         }
         let SignedMessage {
             round_id,
@@ -1065,9 +1073,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             signature,
         } = signed_msg;
-        if self.faults.contains_key(&validator_idx) {
-            return; // Echoes and votes from double-signers can be ignored.
-        }
         match content {
             Content::Echo(hash) => {
                 if self
@@ -1078,6 +1083,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     if self.check_new_echo_quorum(round_id, hash) {
                         self.mark_dirty(round_id);
                     }
+                    return true;
                 }
             }
             Content::Vote(vote) => {
@@ -1089,9 +1095,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     if self.check_new_vote_quorum(round_id, vote) {
                         self.mark_dirty(round_id);
                     }
+                    return true;
                 }
             }
         }
+        false
     }
 
     /// If there is a signature for conflicting content, returns the content and signature.
@@ -1744,6 +1752,7 @@ where
         // rounds that aren't finalized (ideally with finality signatures) yet. To support the whole
         // internet restarting, we'd need to store all our own messages.
         if let Some(our_idx) = self.validators.get_index(&our_id) {
+            info!(our_idx = our_idx.0, "start voting");
             self.active_validator = Some((our_idx, secret));
             self.schedule_update(self.params.start_timestamp().max(now))
         } else {
