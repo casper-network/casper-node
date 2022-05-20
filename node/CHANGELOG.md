@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
 * Extend `GlobalStateIdentifier` to include `BlockHeight`.
 * Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
+* Add a new config option `[rpc_server.max_body_bytes]` to allow a configurable value for the maximum size of the body of a JSON-RPC request.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.

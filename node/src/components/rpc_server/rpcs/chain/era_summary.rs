@@ -45,7 +45,7 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
 });
 
 /// The summary of an era
-#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EraSummary {
     /// The block hash
