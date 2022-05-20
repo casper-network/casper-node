@@ -429,11 +429,9 @@ impl EraSupervisor {
             .flat_map(|era_end| era_end.era_report().equivocators.clone())
             .collect();
 
-        let instance_id = instance_id(
-            self.chainspec.hash(),
-            era_id,
-            key_block.hash(self.verifiable_chunked_hash_activation()),
-        );
+        let chainspec_hash = self.chainspec.hash();
+        let key_block_hash = key_block.hash(self.verifiable_chunked_hash_activation());
+        let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
         let now = Timestamp::now();
 
         info!(
@@ -441,6 +439,8 @@ impl EraSupervisor {
             %start_time,
             %now,
             %start_height,
+            %chainspec_hash,
+            %key_block_hash,
             %instance_id,
             %seed,
             era = era_id.value(),
@@ -858,7 +858,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.send_message(to, message.into()).await;
+                        effect_builder.enqueue_message(to, message.into()).await;
                     }
                 }
                 .ignore()

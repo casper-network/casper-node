@@ -172,6 +172,7 @@ has_key = { cost = 1_500, arguments = [0, 840] }
 is_valid_uref = { cost = 760, arguments = [0, 0] }
 load_named_keys = { cost = 42_000, arguments = [0, 0] }
 new_uref = { cost = 17_000, arguments = [0, 0, 590] }
+random_bytes = { cost = 200, arguments = [0, 0] }
 print = { cost = 20_000, arguments = [0, 4_600] }
 provision_contract_user_group_uref = { cost = 200, arguments = [0, 0, 0, 0, 0] }
 put_key = { cost = 38_000, arguments = [0, 1_100, 0, 0] }

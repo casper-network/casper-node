@@ -50,7 +50,7 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -271,6 +271,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
 
+    /// Incoming trie demand.
+    #[from]
+    TrieDemand(TrieDemand),
+
     /// Incoming trie response network message.
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
@@ -348,6 +352,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::NetRequestIncoming(_) => "NetRequestIncoming",
             JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            JoinerEvent::TrieDemand(_) => "TrieDemand",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
@@ -477,6 +482,7 @@ impl Display for JoinerEvent {
             JoinerEvent::NetRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieDemand(inner) => write!(f, "demand: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::ContractRuntimeRequest(req) => {
@@ -577,6 +583,7 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec,
+            true,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
@@ -970,6 +977,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            JoinerEvent::TrieDemand(demand) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, demand.into()),
             ),
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
                 reactor::handle_fetch_response::<Self, TrieOrChunk>(

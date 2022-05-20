@@ -15,6 +15,9 @@ use casper_types::{
 
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 
+/// Number of random bytes returned from the `random_bytes()` function.
+const RANDOM_BYTES_COUNT: usize = 32;
+
 /// Returns the given [`CLValue`] to the host, terminating the currently running module.
 ///
 /// Note this function is only relevant to contracts stored on chain which are invoked via
@@ -339,6 +342,14 @@ pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
             BLAKE2B_DIGEST_LENGTH,
         )
     };
+    api_error::result_from(result).unwrap_or_revert();
+    ret
+}
+
+/// Returns 32 pseudo random bytes.
+pub fn random_bytes() -> [u8; RANDOM_BYTES_COUNT] {
+    let mut ret = [0; RANDOM_BYTES_COUNT];
+    let result = unsafe { ext_ffi::casper_random_bytes(ret.as_mut_ptr(), RANDOM_BYTES_COUNT) };
     api_error::result_from(result).unwrap_or_revert();
     ret
 }

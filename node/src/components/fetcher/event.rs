@@ -36,6 +36,21 @@ pub(crate) enum FetchedData<T> {
     FromPeer { item: Box<T>, peer: NodeId },
 }
 
+impl<T> FetchedData<T> {
+    pub(crate) fn from_storage(item: T) -> Self {
+        FetchedData::FromStorage {
+            item: Box::new(item),
+        }
+    }
+
+    pub(crate) fn from_peer(item: T, peer: NodeId) -> Self {
+        FetchedData::FromPeer {
+            item: Box::new(item),
+            peer,
+        }
+    }
+}
+
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, FetcherError<T>>;
 
 pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
@@ -51,6 +66,7 @@ pub(crate) enum Event<T: Item> {
         id: T::Id,
         peer: NodeId,
         maybe_item: Box<Option<T>>,
+        responder: FetchResponder<T>,
     },
     /// An announcement from a different component that we have accepted and stored the given item.
     GotRemotely {
