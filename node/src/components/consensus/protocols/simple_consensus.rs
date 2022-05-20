@@ -726,16 +726,23 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             }
         }
 
-        // Send them votes they are missing, but exclude faulty validators.
-        let our_true_votes =
-            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some());
+        // Send them votes they are missing, but exclude faulty validators. If there already is a
+        // quorum omit the votes that go against the quorum, since they are irrelevant.
+        let our_true_votes = if round.quorum_votes() == Some(false) {
+            0
+        } else {
+            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some())
+        };
         let missing_true_votes = our_true_votes & !(true_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
             let signature = round.votes(true)[v_idx].unwrap();
             contents.push((Content::Vote(true), v_idx, signature));
         }
-        let our_false_votes =
-            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some());
+        let our_false_votes = if round.quorum_votes() == Some(true) {
+            0
+        } else {
+            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some())
+        };
         let missing_false_votes = our_false_votes & !(false_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
             let signature = round.votes(false)[v_idx].unwrap();
@@ -1058,10 +1065,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             // the next `update` call checks all proposals again.
             self.mark_dirty(self.first_non_finalized_round_id);
         }
-        if signed_msg.round_id < self.first_non_finalized_round_id {
-            debug!(?signed_msg, "dropping message from decided round");
-            return false;
-        }
         if self.faults.contains_key(&signed_msg.validator_idx) {
             debug!(?signed_msg, "dropping message from faulty validator");
             return false; // Echoes and votes from double-signers can be ignored.
@@ -1353,7 +1356,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         for prune_round_id in self.first_non_finalized_round_id..round_id {
             self.round_mut(prune_round_id).prune_skipped();
         }
-        self.round_mut(round_id).prune_finalized();
         self.first_non_finalized_round_id = round_id.saturating_add(1);
         let value = if let Some(block) = proposal.maybe_block.clone() {
             block
