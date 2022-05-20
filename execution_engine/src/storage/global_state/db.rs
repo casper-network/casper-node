@@ -22,7 +22,7 @@ use crate::{
             commit_effects, put_stored_values, scratch::ScratchGlobalState, CommitProvider,
             StateProvider, StateReader,
         },
-        store::{Readable, Store, Writable},
+        store::{BytesReader, BytesWriter, Store},
         trie::{
             merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Pointer, Trie,
             TrieOrChunk, TrieOrChunkId,
@@ -183,7 +183,7 @@ impl DbGlobalState {
                     total_bytes += read_bytes;
                     total_tries += 1;
 
-                    self.trie_store.write(&key_bytes, value_bytes)?;
+                    self.trie_store.write_bytes(&key_bytes, value_bytes)?;
 
                     memoized_find_missing_descendants_and_optionally_update_working_set(
                         Bytes::from(value_bytes),
@@ -197,7 +197,7 @@ impl DbGlobalState {
                 Err(lmdb::Error::NotFound) => {
                     // Gracefully handle roots that only exist in rocksdb, unless we're forcing a
                     // refresh of children (in the case where we have an incomplete root).
-                    if force || self.trie_store.read(&trie_key_bytes)?.is_none() {
+                    if force || self.trie_store.read_bytes(&trie_key_bytes)?.is_none() {
                         return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksDb {
                             trie_key: next_trie_key,
                             state_root,
@@ -288,7 +288,7 @@ fn memoized_find_missing_descendants_and_optionally_update_working_set(
     match trie {
         Trie::Leaf { key, value } => {
             if update_working_set {
-                let db = rocksdb_store.get_db_store();
+                let db = trie_store.get_db_store();
                 db.write_to_working_set(key, value)?;
             } else {
                 // If `bytesrepr` is functioning correctly, this should never be reached (see
@@ -321,7 +321,7 @@ fn find_missing_trie_keys(
     if force {
         missing_trie_keys.push(ptr);
     } else {
-        let existing = rocksdb.read(&ptr.to_bytes()?)?;
+        let existing = rocksdb.read_bytes(&ptr.to_bytes()?)?;
         if existing.is_none() {
             missing_trie_keys.push(ptr);
         }
@@ -433,8 +433,7 @@ impl StateProvider for DbGlobalState {
     ) -> Result<Option<TrieOrChunk>, Self::Error> {
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
 
-        let bytes =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&self.trie_store, &trie_key)?;
+        let bytes = self.trie_store.read_bytes(trie_key.as_ref())?;
 
         bytes.map_or_else(
             || Ok(None),
@@ -454,7 +453,7 @@ impl StateProvider for DbGlobalState {
         _correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
-        Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&self.trie_store, trie_key)
+        self.trie_store.read_bytes(trie_key.as_ref())
     }
 
     fn put_trie_bytes(

@@ -10,7 +10,7 @@ use casper_types::bytesrepr::Bytes;
 use super::{Digest, Store, Trie, TrieStore};
 use crate::storage::{
     error::in_memory::Error,
-    store::{ErrorSource, Readable, Writable},
+    store::{BytesReader, BytesWriter, ErrorSource},
 };
 
 /// An in-memory trie store.
@@ -23,15 +23,15 @@ impl ErrorSource for InMemoryTrieStore {
     type Error = Error;
 }
 
-impl Readable for InMemoryTrieStore {
-    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+impl BytesReader for InMemoryTrieStore {
+    fn read_bytes(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         let bytes = self.data.lock().unwrap().get(&Bytes::from(key)).cloned();
         Ok(bytes)
     }
 }
 
-impl Writable for InMemoryTrieStore {
-    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+impl BytesWriter for InMemoryTrieStore {
+    fn write_bytes(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         self.data
             .lock()
             .unwrap()

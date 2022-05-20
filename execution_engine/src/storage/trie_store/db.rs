@@ -15,7 +15,7 @@ use crate::storage::{
     db_store::DbStore,
     error,
     global_state::CommitError,
-    store::{ErrorSource, Readable, Store, Writable},
+    store::{BytesReader, BytesWriter, ErrorSource, Store},
     trie::Trie,
     trie_store::TrieStore,
 };
@@ -100,7 +100,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         match maybe_trie {
             Some((_, cached)) => Ok(Some(cached)),
             None => {
-                let raw = self.get_raw(digest)?;
+                let raw = self.read_bytes(digest.as_ref())?;
                 match raw {
                     Some(bytes) => {
                         let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
@@ -124,15 +124,15 @@ impl ErrorSource for ScratchTrieStore {
     type Error = error::Error;
 }
 
-impl Readable for ScratchTrieStore {
-    fn read(&self, digest: &[u8]) -> Result<Option<Bytes>, Self::Error> {
-        self.store.read(digest)
+impl BytesReader for ScratchTrieStore {
+    fn read_bytes(&self, digest: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        self.store.read_bytes(digest)
     }
 }
 
-impl Writable for ScratchTrieStore {
-    fn write(&self, digest: &[u8], trie: &[u8]) -> Result<(), Self::Error> {
-        self.store.write(digest, trie)
+impl BytesWriter for ScratchTrieStore {
+    fn write_bytes(&self, digest: &[u8], trie: &[u8]) -> Result<(), Self::Error> {
+        self.store.write_bytes(digest, trie)
     }
 }
 
@@ -140,8 +140,8 @@ impl ErrorSource for RocksDbTrieStore {
     type Error = error::Error;
 }
 
-impl Readable for RocksDbTrieStore {
-    fn read(&self, digest: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+impl BytesReader for RocksDbTrieStore {
+    fn read_bytes(&self, digest: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         let cf = self.store.trie_column_family()?;
         Ok(self.store.db.get_cf(&cf, digest)?.map(|some| {
             let value = some.as_ref();
@@ -150,8 +150,8 @@ impl Readable for RocksDbTrieStore {
     }
 }
 
-impl Writable for RocksDbTrieStore {
-    fn write(&self, digest: &[u8], trie: &[u8]) -> Result<(), Self::Error> {
+impl BytesWriter for RocksDbTrieStore {
+    fn write_bytes(&self, digest: &[u8], trie: &[u8]) -> Result<(), Self::Error> {
         let cf = self.store.trie_column_family()?;
         let _result = self.store.db.put_cf(&cf, digest, trie)?;
         Ok(())

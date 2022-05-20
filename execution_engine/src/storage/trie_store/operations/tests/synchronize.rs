@@ -45,8 +45,10 @@ where
         // Copy source to destination
         let mut queue = vec![root.to_owned()];
         while let Some(trie_key) = queue.pop() {
-            let trie_bytes_to_insert = source_store.get_raw(&trie_key)?.expect("should have trie");
-            target_store.put_raw(&trie_key, trie_bytes_to_insert.as_ref())?;
+            let trie_bytes_to_insert = source_store
+                .read_bytes(trie_key.as_ref())?
+                .expect("should have trie");
+            target_store.write_bytes(trie_key.as_ref(), trie_bytes_to_insert.as_ref())?;
 
             // Now that we've added in `trie_to_insert`, queue up its children
             let new_keys = operations::missing_trie_keys::<_, _, _, E>(

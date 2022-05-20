@@ -8,7 +8,7 @@ use crate::{
     storage::{
         error::{self, in_memory},
         global_state::{commit_effects, CommitProvider, StateProvider, StateReader},
-        store::Store,
+        store::{BytesReader, Store},
         trie::{
             merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
             TrieOrChunkId,
@@ -197,8 +197,7 @@ impl StateProvider for InMemoryGlobalState {
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, Self::Error> {
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let bytes =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &trie_key)?;
+        let bytes = self.trie_store.read_bytes(trie_key.as_ref())?;
         bytes.map_or_else(
             || Ok(None),
             |bytes| {
@@ -217,8 +216,7 @@ impl StateProvider for InMemoryGlobalState {
         _correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, trie_key)?;
+        let ret: Option<Bytes> = self.trie_store.read_bytes(trie_key.as_ref())?;
         Ok(ret)
     }
 

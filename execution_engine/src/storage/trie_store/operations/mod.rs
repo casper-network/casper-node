@@ -17,7 +17,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use crate::{
     shared::newtypes::CorrelationId,
     storage::{
-        store::{Readable, Writable},
+        store::{BytesReader, BytesWriter},
         trie::{
             hash_bytes_into_chunks_if_necessary,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
@@ -253,7 +253,7 @@ where
             continue;
         }
 
-        let retrieved_trie_bytes = match store.get_raw(&trie_key)? {
+        let retrieved_trie_bytes = match store.read_bytes(trie_key.as_ref())? {
             Some(bytes) => bytes,
             None => {
                 // No entry under this trie key.
@@ -328,7 +328,7 @@ where
             continue;
         }
 
-        let retrieved_trie_bytes = match store.get_raw(&trie_key)? {
+        let retrieved_trie_bytes = match store.read_bytes(trie_key.as_ref())? {
             Some(bytes) => bytes,
             None => {
                 // No entry under this trie key.
@@ -402,7 +402,7 @@ fn scan<K, V, S, E>(
 where
     K: ToBytes + FromBytes + Clone,
     V: ToBytes + FromBytes + Clone,
-    S: Readable,
+    S: BytesReader,
     S: TrieStore<K, V>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
@@ -493,7 +493,7 @@ fn delete<K, V, S, E>(
 where
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
-    S: Readable + Writable,
+    S: BytesReader + BytesWriter,
     S: TrieStore<K, V>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
@@ -1024,11 +1024,11 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let trie_hash = hash_bytes_into_chunks_if_necessary(trie_bytes);
-    store.put_raw(&trie_hash, trie_bytes)?;
+    store.write_bytes(trie_hash.as_ref(), trie_bytes)?;
     Ok(trie_hash)
 }
 
-enum KeysIteratorState<S: Readable> {
+enum KeysIteratorState<S: BytesReader> {
     /// Iterate normally
     Ok,
     /// Return the error and stop iterating
