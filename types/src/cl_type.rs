@@ -442,24 +442,10 @@ impl<T: CLTyped> CLTyped for Vec<T> {
     }
 }
 
-macro_rules! impl_cl_typed_for_array {
-    ($($N:literal)+) => {
-        $(
-            impl CLTyped for [u8; $N] {
-                fn cl_type() -> CLType {
-                    CLType::ByteArray($N as u32)
-                }
-            }
-        )+
+impl<const COUNT: usize> CLTyped for [u8; COUNT] {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(COUNT as u32)
     }
-}
-
-impl_cl_typed_for_array! {
-      0  1  2  3  4  5  6  7  8  9
-     10 11 12 13 14 15 16 17 18 19
-     20 21 22 23 24 25 26 27 28 29
-     30 31 32
-     64 128 256 512
 }
 
 impl<T: CLTyped, E: CLTyped> CLTyped for Result<T, E> {

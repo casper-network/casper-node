@@ -53,8 +53,8 @@ impl ChunkWithProof {
     pub const CHUNK_SIZE_BYTES: usize = 10;
 
     #[cfg(not(test))]
-    /// 1 MiB
-    pub const CHUNK_SIZE_BYTES: usize = 1 << 20;
+    /// 8 MiB
+    pub const CHUNK_SIZE_BYTES: usize = 8 * 1024 * 1024;
 
     /// Constructs the [`ChunkWithProof`] that contains the chunk of data with the appropriate index
     /// and the cryptographic proof.

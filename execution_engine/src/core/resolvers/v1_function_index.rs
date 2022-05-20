@@ -57,6 +57,7 @@ pub(crate) enum FunctionIndex {
     DictionaryPutFuncIndex,
     LoadCallStack,
     LoadAuthorizationKeys,
+    RandomBytes,
 }
 
 impl From<FunctionIndex> for usize {

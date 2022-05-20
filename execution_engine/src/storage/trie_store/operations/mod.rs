@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use tracing::{error, info};
+use tracing::{error, trace};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -374,7 +374,7 @@ where
         }
     }
     let elapsed = start.elapsed().as_millis();
-    info!(%elapsed, "descendant_trie_keys took ms");
+    trace!(%elapsed, "descendant_trie_keys took ms");
     Ok(visited)
 }
 

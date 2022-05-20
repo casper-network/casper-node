@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::NodeId;
 
 /// Node peer entry.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PeerEntry {
     /// Node id.
@@ -19,7 +19,7 @@ pub struct PeerEntry {
 }
 
 /// Map of peer IDs to network addresses.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PeersMap(Vec<PeerEntry>);
 
