@@ -9,7 +9,7 @@ use std::{
 use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
 
 use casper_hashing::Digest;
-use rocksdb::{Options, DBIteratorWithThreadMode, DBWithThreadMode, MultiThreaded, IteratorMode};
+use rocksdb::{DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode, MultiThreaded, Options};
 
 use crate::storage::{
     db_store::DbStore,

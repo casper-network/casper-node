@@ -4,10 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use rocksdb::{
-    BlockBasedOptions, BoundColumnFamily, DBWithThreadMode,
-    MultiThreaded, Options,
-};
+use rocksdb::{BlockBasedOptions, BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
 
 use super::error;
 
