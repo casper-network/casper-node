@@ -61,6 +61,7 @@ mod participation;
 mod round;
 #[cfg(test)]
 mod tests;
+mod wal;
 
 use std::{
     any::Any,
@@ -74,6 +75,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, event, info, warn, Level};
 
 use casper_types::{TimeDiff, Timestamp, U512};
@@ -98,6 +100,7 @@ use message::{Content, Message, Proposal, SignedMessage, SyncState};
 use params::Params;
 use participation::{Participation, ParticipationStatus};
 use round::Round;
+use wal::{Entry, ReadWAL, WriteWAL};
 
 /// The timer for syncing with a random peer.
 const TIMER_ID_SYNC_PEER: TimerId = TimerId(0);
@@ -118,8 +121,31 @@ pub(crate) type RoundId = u32;
 type ProposalsAwaitingParent = HashSet<(RoundId, NodeId)>;
 type ProposalsAwaitingValidation<C> = HashSet<(RoundId, Proposal<C>, NodeId)>;
 
+/// Contains the portion of the state required for an active validator to participate in the protocol.
+#[derive(DataSize)]
+pub(crate) struct ActiveValidator<C>
+where
+    C: Context,
+{
+    idx: ValidatorIndex,
+    secret: C::ValidatorSecret,
+    write_wal: WriteWAL<C>,
+}
+
+impl<C: Context> Debug for ActiveValidator<C> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ActiveValidator")
+            .field("idx", &self.idx)
+            .field("secret", &"<REDACTED>")
+            .field("write_wal", &"<NOT-PICTURED>")
+            .finish()
+    }
+}
+
 /// Contains the state required for the protocol.
-#[derive(DataSize, Debug)]
+#[derive(Debug, DataSize)]
+#[allow(clippy::type_complexity)] // TODO
 pub(crate) struct SimpleConsensus<C>
 where
     C: Context,
@@ -132,7 +158,7 @@ where
     validators: Validators<C::ValidatorId>,
     /// If we are a validator ourselves, we must know which index we
     /// are in the [`Validators`] and have a private key for consensus.
-    active_validator: Option<(ValidatorIndex, C::ValidatorSecret)>,
+    active_validator: Option<ActiveValidator<C>>,
     /// When an era has already completed, sometimes we still need to keep
     /// it around to provide evidence for equivocation in previous eras.
     evidence_only: bool,
@@ -169,7 +195,11 @@ where
     next_scheduled_update: Timestamp,
 }
 
-impl<C: Context + 'static> SimpleConsensus<C> {
+impl<C: Context + 'static> SimpleConsensus<C>
+where
+    C::ValidatorId: Serialize,
+    C::ValidatorId: for<'de> Deserialize<'de>,
+{
     /// Creates a new [`SimpleConsensus`] instance.
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -578,12 +608,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     ///
     /// Does not call `update`!
     fn create_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
-        let (validator_idx, secret_key) =
-            if let Some((validator_idx, secret_key)) = &self.active_validator {
-                (*validator_idx, secret_key)
-            } else {
-                return vec![];
-            };
+        let (validator_idx, secret_key) = if let Some(active_validator) = &self.active_validator {
+            (active_validator.idx, &active_validator.secret)
+        } else {
+            return vec![];
+        };
         if self.paused {
             return vec![];
         }
@@ -608,11 +637,32 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             vec![]
         }
     }
-
     /// When we receive evidence for a fault, we must notify the rest of the network of this
     /// evidence. Beyond that, we can remove all of the faulty validator's previous information
     /// from the protocol state.
     fn handle_fault(
+        &mut self,
+        signed_msg: SignedMessage<C>,
+        validator_id: C::ValidatorId,
+        content2: Content<C>,
+        signature2: C::Signature,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
+        if !self.record_entry(&Entry::Evidence(
+            signed_msg.clone(),
+            validator_id.clone(),
+            content2.clone(),
+            signature2.clone(),
+        )) {
+            error!("could not record evidence in WAL");
+            // TODO Kill the node
+            return vec![];
+        }
+        self.handle_fault_no_wal(signed_msg, validator_id, content2, signature2, now)
+    }
+
+    /// Internal to handle_fault, documentation from that applies
+    fn handle_fault_no_wal(
         &mut self,
         signed_msg: SignedMessage<C>,
         validator_id: C::ValidatorId,
@@ -1075,19 +1125,122 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         false
     }
 
-    /// Adds a signed message content to the state if possible, but does not call `update` and does
-    /// not detect faults. Returns whether the message was new and could be added.
+    /// Adds a signed message to the WAL such that we can avoid double signing upon recovery if the node shuts down.
+    fn record_entry(&mut self, entry: &Entry<C>) -> bool {
+        if let Some(active_validator) = &mut self.active_validator {
+            match active_validator.write_wal.record_entry(entry) {
+                Ok(()) => {
+                    return true;
+                }
+                Err(err) => {
+                    // TODO This really should be fatal for the node, it at least cannot
+                    // participate in consensus while this is happening. Handle this case properly.
+                    error!(?err, "could not record a signed message before sending it");
+                    return false;
+                }
+            }
+        }
+        error!("trying to record signed message as a non-active validator");
+        false
+    }
+
+    /// Consumes all of the signed messages we've previously recorded in our write ahead log.
+    fn consume_read_wal(
+        &mut self,
+        mut read_wal: ReadWAL<C>,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
+        loop {
+            use wal::ReadWALError;
+
+            match read_wal.read_next_entry() {
+                Ok(next_entry) => match next_entry {
+                    Entry::SignedMessage(next_message) => {
+                        // TODO wrote this in this way to highlight that I think I should ignore
+                        // the boolean, looking for feedback on this. By the same token, this
+                        // should never happen because we shouldn't write redundant entries in the
+                        // wal.
+                        if self.add_content_no_wal(next_message) {
+                            ()
+                        } else {
+                            ()
+                        }
+                    }
+                    Entry::Proposal(next_proposal, corresponding_round_id) => {
+                        if self
+                            .round_mut(corresponding_round_id)
+                            .insert_proposal(next_proposal)
+                        {
+                            self.mark_dirty(corresponding_round_id);
+                        }
+                    }
+                    Entry::Evidence(
+                        conflicting_message,
+                        offending_validator,
+                        conflicting_message_content,
+                        conflicting_signature,
+                    ) => {
+                        // TODO we drop an FttExceeded message here, gotta make sure it is sent
+                        // later if we drop it, otherwise we need to keep track of whether or not
+                        // we saw any message like that during this loop.
+                        let _ = self.handle_fault_no_wal(
+                            conflicting_message,
+                            offending_validator,
+                            conflicting_message_content,
+                            conflicting_signature,
+                            now,
+                        );
+                        ()
+                    }
+                },
+                Err(ReadWALError::NoMoreEntries) => {
+                    break;
+                }
+                Err(ReadWALError::CouldntReadMessage) => {
+                    // TODO Single corrupt message, rest of wal is useless. Happy case is that the
+                    // machine shut down while flushing to disk, corruption is expected and there
+                    // will be one corrupt record that was never broadcast to anyone. Sad case is
+                    // that due to a bug or some human or divine intervention, the file is messed
+                    // up in some way.
+                    error!("couldn't read a message from the WAL: was this validator recently shut down?");
+                    // TODO Kill the node, request human intervention. Possibly manage the happy
+                    // case, but maybe we want human intervention for that too.
+                    break;
+                }
+                Err(err) => {
+                    // TODO Handle other cases, despite some being impossible. Perhaps refine error
+                    // type to only give possible cases.
+                    warn!(?err, "couldn't read a message from the WAL");
+                    break;
+                }
+            }
+        }
+        self.update(now)
+    }
+
+    /// Adds a signed message content to the state, but does not call `update` and does not detect
+    /// faults. Will not add the content of the message if the WAL is failing to write or if the
+    /// message is sent from a known faulty validator.
     fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
+        if self.faults.contains_key(&signed_msg.validator_idx) {
+            debug!(?signed_msg, "dropping message from faulty validator");
+            return false;
+        }
+        if !self.record_entry(&Entry::SignedMessage(signed_msg.clone())) {
+            error!(?signed_msg, "dropping message we couldn't write to WAL");
+            // TODO Kill the node? Or at least stop being an active validator?
+            return false;
+        }
+        self.add_content_no_wal(signed_msg)
+    }
+
+    fn add_content_no_wal(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.active[signed_msg.validator_idx].is_none() {
             self.active[signed_msg.validator_idx] = Some(signed_msg.clone());
             // We considered this validator inactive until now, and didn't accept proposals that
             // didn't have them in the `inactive` field. Mark all relevant rounds as dirty so that
             // the next `update` call checks all proposals again.
             self.mark_dirty(self.first_non_finalized_round_id);
-        }
-        if self.faults.contains_key(&signed_msg.validator_idx) {
-            debug!(?signed_msg, "dropping message from faulty validator");
-            return false; // Echoes and votes from double-signers can be ignored.
         }
         let SignedMessage {
             round_id,
@@ -1433,8 +1586,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         maybe_parent_round_id: Option<RoundId>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match self.active_validator {
-            Some((our_idx, _)) if our_idx == self.leader(self.current_round) => {}
+        match &self.active_validator {
+            Some(active_validator) if active_validator.idx == self.leader(self.current_round) => {}
             _ => return vec![], // Not the current round leader.
         }
         match self.pending_proposal {
@@ -1628,6 +1781,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 impl<C> ConsensusProtocol<C> for SimpleConsensus<C>
 where
     C: Context + 'static,
+    C::ValidatorId: Serialize,
+    C::ValidatorId: for<'de> Deserialize<'de>,
 {
     fn handle_message(
         &mut self,
@@ -1757,6 +1912,10 @@ where
         if valid {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(?proposal, "handling valid proposal");
+                if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
+                    error!("could not record proposal in WAL");
+                    continue;
+                }
                 if self.round_mut(round_id).insert_proposal(proposal) {
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
@@ -1780,14 +1939,62 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         now: Timestamp,
-        _unit_hash_file: Option<PathBuf>,
+        wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
+        let wal_file = {
+            if let Some(wal_file) = wal_file {
+                wal_file
+            } else {
+                error!("didn't pass in a wal_file to activate_validator");
+                return vec![];
+            }
+        };
         // TODO: Use the unit hash file to remember at least all our own messages from at least all
         // rounds that aren't finalized (ideally with finality signatures) yet. To support the whole
         // internet restarting, we'd need to store all our own messages.
         if let Some(our_idx) = self.validators.get_index(&our_id) {
             info!(our_idx = our_idx.0, "start voting");
-            self.active_validator = Some((our_idx, secret));
+            // TODO Consume a ReadWAL to reproduce the state of the protocol, then create a WriteWAL
+            // pointed at the end of that ReadWAL to write the future network messages.
+            // TODO Think of a sensible way to handle WAL corruption, in case the writes to disk
+            // weren't done atomically. Thankfully, we have signed messages stored in the WAL, so
+            // corruption won't go unnoticed, but we need to do _something_, such as taking
+            // everything that does decode and relying on the sync system to provide us with the
+            // rest. Either way, when we restart using the WAL it has to be purged of corrupted
+            // entries. My thought is that there _should_ only be one that is corrupt, it should be
+            // the last, and the fact that it is corrupt means we didn't flush it to disk and thus
+            // we didn't complete the function call and send it out to the network, so dropping it
+            // on the floor should be safe. Disk corruption which is independent of our program
+            // could easily cause the bad type of error though, where you can't understand a
+            // message that you actually sent. In this case, we have to be careful as we might get
+            // ourselves kicked out of the protocol. My advice is to use a sort of drive which has measures
+            // in place to avoid disk corruption.
+
+            let read_wal = match ReadWAL::<C>::new(&wal_file) {
+                Ok(read_wal) => read_wal,
+                Err(err) => {
+                    error!(?err, "could not create a ReadWAL using this file");
+                    return vec![];
+                }
+            };
+
+            let mut outcomes = vec![];
+
+            outcomes.append(&mut self.consume_read_wal(read_wal, now));
+
+            let write_wal = match WriteWAL::new(&wal_file) {
+                Ok(write_wal) => write_wal,
+                Err(err) => {
+                    error!(?err, "could not create a WriteWAL using this file");
+                    return vec![];
+                }
+            };
+
+            self.active_validator = Some(ActiveValidator {
+                idx: our_idx,
+                secret,
+                write_wal,
+            });
             self.schedule_update(self.params.start_timestamp().max(now))
         } else {
             warn!(
