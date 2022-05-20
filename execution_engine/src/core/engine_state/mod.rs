@@ -137,7 +137,7 @@ impl EngineState<DbGlobalState> {
     ) -> Result<bool, storage::error::db::Error> {
         let state_root_bytes = &state_root.value();
 
-        let db_store = &self.state.rocksdb_store;
+        let db_store = &self.state.trie_store;
 
         let root_migration_state = db_store.get_root_migration_state(state_root_bytes)?;
 
@@ -169,7 +169,7 @@ impl EngineState<DbGlobalState> {
 
     /// Gets path to rocksdb data files.
     pub fn data_path(&self) -> PathBuf {
-        self.state.rocksdb_store.get_db_store().path()
+        self.state.trie_store.get_db_store().path()
     }
 
     /// Provide a local cached-only version of engine-state.

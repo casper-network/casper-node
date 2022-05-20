@@ -248,7 +248,7 @@ impl RocksDbTrieStore {
         Ok(())
     }
 
-    /// Trie store iterator.
+    /// Creates an iterator over all trie nodes.
     pub fn trie_store_iterator<'a: 'b, 'b>(
         &'a self,
     ) -> Result<DBIteratorWithThreadMode<'b, DBWithThreadMode<MultiThreaded>>, error::Error> {

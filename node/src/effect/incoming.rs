@@ -4,13 +4,17 @@
 
 use std::{fmt::Display, sync::Arc};
 
+use casper_execution_engine::storage::trie::TrieOrChunkIdDisplay;
 use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
     components::{consensus, gossiper},
+    protocol::Message,
     types::{FinalitySignature, NodeId, Tag},
 };
+
+use super::Responder;
 
 /// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]
@@ -28,6 +32,26 @@ where
     }
 }
 
+/// An envelope for an incoming demand, attaching a sender address and responder.
+#[derive(DataSize, Debug, Serialize)]
+pub struct DemandIncoming<M> {
+    /// The sender from which the demand originated.
+    pub(crate) sender: NodeId,
+    /// The wrapped demand.
+    pub(crate) request_msg: M,
+    /// Responder to send the answer down through.
+    pub(crate) responder: Responder<Option<Message>>,
+}
+
+impl<M> Display for DemandIncoming<M>
+where
+    M: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "demand from {}: {}", self.sender, self.request_msg)
+    }
+}
+
 /// A new consensus message arrived.
 pub(crate) type ConsensusMessageIncoming = MessageIncoming<consensus::ConsensusMessage>;
 
@@ -39,6 +63,9 @@ pub(crate) type NetRequestIncoming = MessageIncoming<NetRequest>;
 
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
+
+/// A demand for a try that should be answered.
+pub(crate) type TrieDemand = DemandIncoming<TrieRequest>;
 
 /// A new message responding to a request arrived.
 pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
@@ -137,7 +164,7 @@ pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
 
 impl Display for TrieRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("request for trie")
+        write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
     }
 }
 

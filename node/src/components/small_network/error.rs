@@ -111,6 +111,13 @@ pub enum ConnectionError {
         #[source]
         io::Error,
     ),
+    /// Did not succeed setting TCP_NODELAY on the connection.
+    #[error("Could not set TCP_NODELAY on outgoing connection")]
+    TcpNoDelay(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// Handshaking error.
     #[error("TLS handshake error")]
     TlsHandshake(

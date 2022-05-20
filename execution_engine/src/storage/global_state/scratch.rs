@@ -145,7 +145,7 @@ impl CommitProvider for ScratchGlobalState {
                     // value in cache yet.
                     let updated_value = match read::<_, StoredValue, _, Self::Error>(
                         correlation_id,
-                        &self.store.rocksdb_store,
+                        &self.store.trie_store,
                         &state_hash,
                         &key,
                     )? {

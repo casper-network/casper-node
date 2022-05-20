@@ -4,8 +4,9 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 use rocksdb::{BlockBasedOptions, BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
+
+use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 use super::error;
 
