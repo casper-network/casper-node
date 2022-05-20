@@ -7,9 +7,14 @@ use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
 
 /// A validator identifier.
-pub trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display {}
-impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display
-{}
+pub trait ValidatorIdT:
+    Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display + Serialize + DeserializeOwned
+{
+}
+impl<VID> ValidatorIdT for VID where
+    VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display + Serialize + DeserializeOwned
+{
+}
 
 /// The consensus value type, e.g. a list of transactions.
 pub trait ConsensusValueT:
