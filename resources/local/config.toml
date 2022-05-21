@@ -78,7 +78,7 @@ standstill_timeout = '0sec'
 
 # Request the latest protocol state from a random peer periodically, with this interval.
 # '0sec' means it is disabled and we never request the protocol state from a peer.
-sync_state_interval = '1sec'
+sync_state_interval = '50ms'
 
 # Log inactive or faulty validators periodically, with this interval.
 # '0sec' means it is disabled and we never print the log message.
