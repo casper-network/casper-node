@@ -354,12 +354,13 @@ impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
         self.get_from_peer_timeout
     }
 
-    /// Gets a `Deploy` from the storage component.
+    /// Gets a `BlockAndDeploys` from the storage component.
     fn get_from_storage<REv: ReactorEventT<BlockAndDeploys>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
         peer: NodeId,
+        responder: FetchResponder<BlockAndDeploys>,
     ) -> Effects<Event<BlockAndDeploys>> {
         effect_builder
             .get_block_and_deploys_from_storage(id)
@@ -367,6 +368,7 @@ impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
                 id,
                 peer,
                 maybe_item: Box::new(result),
+                responder,
             })
     }
 }

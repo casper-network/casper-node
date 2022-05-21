@@ -1398,10 +1398,9 @@ impl StorageInner {
                     .iter()
                     .chain(block.transfer_hashes().iter());
                 let deploys_count = block.deploy_hashes().len() + block.transfer_hashes().len();
-                match self.read_deploys(deploys_count, deploy_hashes)? {
-                    None => Ok(None),
-                    Some(deploys) => Ok(Some(BlockAndDeploys { block, deploys })),
-                }
+                Ok(self
+                    .read_deploys(deploys_count, deploy_hashes)?
+                    .map(|deploys| BlockAndDeploys { block, deploys }))
             }
         }
     }

@@ -615,6 +615,15 @@ impl DeployWithApprovals {
     }
 }
 
+impl From<&Deploy> for DeployWithApprovals {
+    fn from(deploy: &Deploy) -> Self {
+        DeployWithApprovals {
+            deploy_hash: *deploy.id(),
+            approvals: deploy.approvals().clone(),
+        }
+    }
+}
+
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
 pub struct FinalizedApprovals(BTreeSet<Approval>);

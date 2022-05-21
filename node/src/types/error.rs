@@ -92,6 +92,19 @@ pub enum BlockValidationError {
         /// The `DeployHash` of the missing `Deploy`.
         missing_deploy: DeployHash,
     },
+
+    /// At least one extra deploy is present in a `BlockAndDeploys`.
+    #[error(
+        "extra deploy in block-and-deploys. \
+         block: {block:?} \
+         extra_deploys: {extra_deploys:?}"
+    )]
+    ExtraDeploys {
+        /// The `Block` of the `BlockAndDeploys` with the extra `Deploy`.
+        block: Box<Block>,
+        /// The `DeployHash`es of the extra `Deploy`s.
+        extra_deploys: Vec<DeployHash>,
+    },
 }
 
 impl From<bytesrepr::Error> for BlockValidationError {
