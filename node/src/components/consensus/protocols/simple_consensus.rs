@@ -961,10 +961,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 Level::TRACE,
                 "received a proposal with a timestamp slightly in the future",
             );
-            // TODO: If it's not from an equivocator and from the future, add to queue
-            // trace!("received a proposal from the future; storing for later");
-            // let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
-            // vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
         }
 
         let hash = proposal.hash();
