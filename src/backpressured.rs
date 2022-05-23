@@ -46,9 +46,9 @@ pub struct BackpressuredSink<S, A, Item> {
     /// A stream of integers representing ACKs, see struct documentation for details.
     ack_stream: A,
     /// The highest ACK received so far.
-    next_expected_ack: u64,
+    received_ack: u64,
     /// The number of the next request to be sent.
-    next_request: u64,
+    last_request: u64,
     /// Additional number of items to buffer on inner sink before awaiting ACKs (can be 0, which
     /// still allows for one item).
     window_size: u64,
@@ -65,11 +65,16 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
         Self {
             inner,
             ack_stream,
-            next_expected_ack: 1,
-            next_request: 0,
+            received_ack: 0,
+            last_request: 0,
             window_size,
             _phantom: PhantomData,
         }
+    }
+
+    /// Deconstructs a backpressured sink into its components.
+    pub fn into_inner(self) -> (S, A) {
+        (self.inner, self.ack_stream)
     }
 }
 
@@ -93,21 +98,21 @@ where
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(highest_ack)) => {
-                    if highest_ack >= self_mut.next_request {
+                    if highest_ack > self_mut.last_request {
                         return Poll::Ready(Err(Error::UnexpectedAck {
                             actual: highest_ack,
-                            expected: self_mut.next_expected_ack,
+                            expected: self_mut.received_ack,
                         }));
                     }
 
-                    if highest_ack < self_mut.next_expected_ack {
+                    if highest_ack <= self_mut.received_ack {
                         return Poll::Ready(Err(Error::DuplicateAck {
                             actual: highest_ack,
-                            expected: self_mut.next_expected_ack,
+                            expected: self_mut.received_ack,
                         }));
                     }
 
-                    self_mut.next_expected_ack = highest_ack + 1;
+                    self_mut.received_ack = highest_ack;
                 }
                 Poll::Ready(None) => {
                     // The ACK stream has been closed. Close our sink, now that we know, but try to
@@ -128,7 +133,8 @@ where
                     }
                 }
                 Poll::Pending => {
-                    let in_flight = self_mut.next_expected_ack + 1 - self_mut.next_request;
+                    // Invariant: `received_ack` is always <= `last_request`.
+                    let in_flight = self_mut.last_request - self_mut.received_ack;
 
                     // We have no more ACKs to read. If we have capacity, we can continue, otherwise
                     // return pending.
@@ -150,7 +156,7 @@ where
         // We already know there are slots available, increase request count, then forward to sink.
         let self_mut = Pin::into_inner(self);
 
-        self_mut.next_request += 1;
+        self_mut.last_request += 1;
 
         self_mut.inner.start_send_unpin(item).map_err(Error::Sink)
     }
@@ -169,5 +175,82 @@ where
             .inner
             .poll_close_unpin(cx)
             .map_err(Error::Sink)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::{FutureExt, SinkExt};
+    use tokio::sync::mpsc::UnboundedSender;
+    use tokio_stream::wrappers::UnboundedReceiverStream;
+
+    use crate::error::Error;
+
+    use super::BackpressuredSink;
+
+    /// Window size used in tests.
+    const WINDOW_SIZE: u64 = 3;
+
+    /// A set of fixtures commonly used in the backpressure tests below.
+    struct Fixtures {
+        /// The stream ACKs are sent into.
+        ack_sender: UnboundedSender<u64>,
+        /// The backpressured sink.
+        bp: BackpressuredSink<Vec<char>, UnboundedReceiverStream<u64>, char>,
+    }
+
+    impl Fixtures {
+        /// Creates a new set of fixtures.
+        fn new() -> Self {
+            let sink = Vec::new();
+            let (ack_sender, ack_receiver) = tokio::sync::mpsc::unbounded_channel::<u64>();
+            let ack_stream = UnboundedReceiverStream::new(ack_receiver);
+            let bp = BackpressuredSink::new(sink, ack_stream, WINDOW_SIZE);
+
+            Fixtures { ack_sender, bp }
+        }
+    }
+
+    // Basic lifecycle test.
+    #[test]
+    fn backpressure_can_send_messages_given_sufficient_acks() {
+        let Fixtures { ack_sender, mut bp } = Fixtures::new();
+
+        // The first four attempts at `window_size = 3` should succeed.
+        bp.send('A').now_or_never().unwrap().unwrap();
+        bp.send('B').now_or_never().unwrap().unwrap();
+        bp.send('C').now_or_never().unwrap().unwrap();
+        bp.send('D').now_or_never().unwrap().unwrap();
+
+        // The fifth attempt will fail, due to no ACKs having been received.
+        assert!(bp.send('E').now_or_never().is_none());
+
+        // We can now send some ACKs.
+        ack_sender.send(1).unwrap();
+
+        // Retry sending the fifth message, sixth should still block.
+        bp.send('E').now_or_never().unwrap().unwrap();
+        assert!(bp.send('F').now_or_never().is_none());
+
+        // Send a combined ack for three messages.
+        ack_sender.send(4).unwrap();
+
+        // This allows 3 more messages to go in.
+        bp.send('F').now_or_never().unwrap().unwrap();
+        bp.send('G').now_or_never().unwrap().unwrap();
+        bp.send('H').now_or_never().unwrap().unwrap();
+        assert!(bp.send('I').now_or_never().is_none());
+
+        // We can now close the ACK stream to check if the sink errors after that.
+        drop(ack_sender);
+        assert!(matches!(
+            bp.send('I').now_or_never(),
+            Some(Err(Error::AckStreamClosed))
+        ));
+
+        // Check all data was received correctly.
+        let output: String = bp.into_inner().0.into_iter().collect();
+
+        assert_eq!(output, "ABCDEFGH");
     }
 }
