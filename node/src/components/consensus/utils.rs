@@ -128,3 +128,84 @@ pub(crate) fn get_minimal_set_of_signatures(
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use num::rational::Ratio;
+    use rand::Rng;
+
+    use casper_types::{
+        crypto::{generate_ed25519_keypair, sign},
+        testing::TestRng,
+        EraId, PublicKey, SecretKey, U512,
+    };
+
+    use crate::types::{BlockHash, BlockSignatures};
+
+    use super::get_minimal_set_of_signatures;
+
+    fn generate_validators(
+        n_validators: usize,
+    ) -> (BTreeMap<PublicKey, SecretKey>, BTreeMap<PublicKey, U512>) {
+        let mut keys = BTreeMap::new();
+        let mut weights = BTreeMap::new();
+
+        for _ in 0..n_validators {
+            let (secret_key, pub_key) = generate_ed25519_keypair();
+            keys.insert(pub_key.clone(), secret_key);
+            weights.insert(pub_key, U512::from(1));
+        }
+
+        (keys, weights)
+    }
+
+    fn create_signatures(
+        rng: &mut TestRng,
+        validators: &BTreeMap<PublicKey, SecretKey>,
+        n_sigs: usize,
+    ) -> BlockSignatures {
+        let era = rng.gen_range(10..100);
+
+        let block_hash = BlockHash::random(rng);
+
+        let mut sigs = BlockSignatures::new(block_hash, EraId::from(era));
+
+        for (pub_key, secret_key) in validators.iter().take(n_sigs) {
+            let sig = sign(block_hash, secret_key, pub_key);
+            sigs.insert_proof(pub_key.clone(), sig);
+        }
+
+        sigs
+    }
+
+    #[test]
+    fn should_generate_minimal_set_correctly() {
+        let mut rng = TestRng::new();
+
+        let n_validators = 8;
+        let ftt = Ratio::new(1, 3);
+        let threshold = 6; // 6 out of 8 is the minimum weight to be accepted
+
+        let (keys, weights) = generate_validators(n_validators);
+
+        // If the initial set has too few signatures, the result should be `None`.
+        let sigs = create_signatures(&mut rng, &keys, threshold - 1);
+        let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
+        assert!(minimal_set.is_none());
+
+        // If there were enough signatures, we should get the set with the amount equal to the
+        // threshold.
+        let sigs = create_signatures(&mut rng, &keys, threshold);
+        let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
+        assert!(minimal_set.is_some());
+        assert_eq!(minimal_set.unwrap().proofs.len(), threshold);
+
+        // Same if we were over the threshold initially.
+        let sigs = create_signatures(&mut rng, &keys, threshold + 1);
+        let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
+        assert!(minimal_set.is_some());
+        assert_eq!(minimal_set.unwrap().proofs.len(), threshold);
+    }
+}
