@@ -144,7 +144,7 @@ mod tests {
 
     use crate::types::{BlockHash, BlockSignatures};
 
-    use super::get_minimal_set_of_signatures;
+    use super::{check_sufficient_finality_signatures, get_minimal_set_of_signatures};
 
     fn generate_validators(
         n_validators: usize,
@@ -180,32 +180,45 @@ mod tests {
         sigs
     }
 
-    #[test]
-    fn should_generate_minimal_set_correctly() {
-        let mut rng = TestRng::new();
-
-        let n_validators = 8;
-        let ftt = Ratio::new(1, 3);
-        let threshold = 6; // 6 out of 8 is the minimum weight to be accepted
-
+    fn test_number_of_validators(
+        rng: &mut TestRng,
+        n_validators: usize,
+        ftt: Ratio<u64>,
+        threshold: usize,
+    ) {
         let (keys, weights) = generate_validators(n_validators);
 
         // If the initial set has too few signatures, the result should be `None`.
-        let sigs = create_signatures(&mut rng, &keys, threshold - 1);
+        let sigs = create_signatures(rng, &keys, threshold.saturating_sub(1));
         let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
         assert!(minimal_set.is_none());
 
         // If there were enough signatures, we should get the set with the amount equal to the
         // threshold.
-        let sigs = create_signatures(&mut rng, &keys, threshold);
+        let sigs = create_signatures(rng, &keys, threshold);
         let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
         assert!(minimal_set.is_some());
-        assert_eq!(minimal_set.unwrap().proofs.len(), threshold);
+        let minimal_set = minimal_set.unwrap();
+        assert_eq!(minimal_set.proofs.len(), threshold);
+        assert!(check_sufficient_finality_signatures(&weights, ftt, &minimal_set).is_ok());
 
         // Same if we were over the threshold initially.
-        let sigs = create_signatures(&mut rng, &keys, threshold + 1);
+        let sigs = create_signatures(rng, &keys, threshold.saturating_add(1));
         let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
         assert!(minimal_set.is_some());
-        assert_eq!(minimal_set.unwrap().proofs.len(), threshold);
+        let minimal_set = minimal_set.unwrap();
+        assert_eq!(minimal_set.proofs.len(), threshold);
+        assert!(check_sufficient_finality_signatures(&weights, ftt, &minimal_set).is_ok());
+    }
+
+    #[test]
+    fn should_generate_minimal_set_correctly() {
+        let mut rng = TestRng::new();
+
+        let ftt = Ratio::new(1, 3);
+
+        test_number_of_validators(&mut rng, 8, ftt, 6);
+        test_number_of_validators(&mut rng, 9, ftt, 7);
+        test_number_of_validators(&mut rng, 10, ftt, 7);
     }
 }
