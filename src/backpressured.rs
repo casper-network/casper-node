@@ -1,3 +1,22 @@
+//! Backpressured sink and stream.
+//!
+//! Backpressure is notifying the sender of data that no more data can be sent without the receiver
+//! running out of resources to process it.
+//!
+//! "Natural" backpressure is already built into TCP itself, which has limited send and receive
+//! buffers: If a receiver is not reading fast enough, the sender is ultimately forced to buffer
+//! more data locally or pause sending.
+//!
+//! The issue with this type of implementation is that if multiple channels (see [`crate::mux`]) are
+//! used across a shared TCP connection, a single blocking channel will block all the other channel
+//! (see [Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)). Furthermore,
+//! deadlocks can occur if the data sent is a request which requires a response - should two peers
+//! make requests of each other at the same and end up backpressured, they may end up simultaneously
+//! waiting for the other peer to make progress.
+//!
+//! This module allows implementing backpressure over sinks and streams, which can be organized in a
+//! multiplexed setup, guaranteed to not be impeding the flow of other channels.
+
 use std::{
     marker::PhantomData,
     pin::Pin,
