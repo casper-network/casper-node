@@ -49,9 +49,10 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
+        FinalizedBlock, Item, NodeId, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -452,6 +453,18 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Store a batch of block headers.
+    PutHeadersBatch {
+        /// Batch of block headers to be stored.
+        block_headers: Vec<BlockHeader>,
+        /// Responder to call with the result, if true then the block headers were successfully
+        /// stored.
+        responder: Responder<bool>,
+    },
+    GetHeadersBatch {
+        block_headers_id: BlockHeadersBatchId,
+        responder: Responder<Option<BlockHeadersBatch>>,
+    },
     /// Update the lowest available block height in storage.
     // Note - this is a request rather than an announcement as the chain synchronizer needs to
     // ensure the request has been completed before it can exit, i.e. it awaits the response.
@@ -595,6 +608,14 @@ impl Display for StorageRequest {
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
+            }
+            StorageRequest::PutHeadersBatch { .. } => {
+                write!(formatter, "put block headers batch to storage")
+            }
+            StorageRequest::GetHeadersBatch {
+                block_headers_id, ..
+            } => {
+                write!(formatter, "get block headers batch: {}", block_headers_id)
             }
         }
     }

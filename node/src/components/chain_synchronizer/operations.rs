@@ -27,7 +27,7 @@ use casper_types::{
 use super::{metrics::Metrics, Config};
 use crate::{
     components::{
-        chain_synchronizer::error::{Error, FetchTrieError},
+        chain_synchronizer::error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
         consensus::{self},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
@@ -36,8 +36,9 @@ use crate::{
     reactor::joiner::JoinerEvent,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        FinalizedApprovals, FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
+        BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId,
+        FinalizedBlock, Item, NodeId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -1066,6 +1067,117 @@ async fn fetch_forward(
 }
 
 async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
+
+    info!(
+        trusted_block_height = %trusted_block.height(),
+        locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
+        "starting fetch to genesis",
+    );
+
+    fetch_headers_till_genesis(trusted_block, ctx).await?;
+
+    fetch_blocks_and_state_since_genesis(trusted_block, ctx).await?;
+
+    // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
+    // trusted block, we can update the lowest available block of the continuous range.
+    ctx.effect_builder
+        .update_lowest_available_block_height_in_storage(0)
+        .await;
+
+    Ok(())
+}
+
+// Fetches headers starting from `trusted_block` till the Genesis.
+async fn fetch_headers_till_genesis(
+    trusted_block: &Block,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
+    // TODO: extract
+    let header_size = std::mem::size_of::<BlockHeader>() as u64;
+    // Let's keep it under 5MB for now.
+    const MESSAGE_LIMIT_BYTES: u64 = 5 * 1024 * 1024;
+
+    // How many headers we can fit in the batch.
+    let max_batch_size: u64 = MESSAGE_LIMIT_BYTES - 1 / header_size;
+
+    let mut lowest_trusted_block_header = trusted_block.header().clone();
+
+    loop {
+        match fetch_block_headers_batch(max_batch_size, &lowest_trusted_block_header, ctx).await {
+            Ok(new_lowest) => {
+                info!(?new_lowest, "new lowest trusted block header stored");
+                lowest_trusted_block_header = new_lowest;
+            }
+            Err(_err) => {
+                // TODO: set retry limit
+            }
+        }
+
+        if lowest_trusted_block_header.height() == 0 {
+            break;
+        }
+    }
+    Ok(())
+}
+
+// Fetches a batch of block headers, validates and stores in storage.
+// Returns either an error or lowest valid block in the chain.
+async fn fetch_block_headers_batch(
+    max_batch_size: u64,
+    lowest_trusted_block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
+    let batch_id = BlockHeadersBatchId::from_known(lowest_trusted_block_header, max_batch_size);
+    let fetched_headers_data: FetchedData<BlockHeadersBatch> =
+        fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
+
+    match fetched_headers_data {
+        FetchedData::FromStorage { item: _item } => {
+            todo!("validate batch from storage")
+        }
+        FetchedData::FromPeer { item, peer } => {
+            match BlockHeadersBatch::validate(
+                &*item,
+                lowest_trusted_block_header,
+                ctx.config.verifiable_chunked_hash_activation(),
+            ) {
+                Ok(new_lowest) => {
+                    info!(?batch_id, ?peer, "received valid batch of headers");
+                    ctx.effect_builder
+                        .put_block_headers_batch_to_storage(item.into_inner())
+                        .await;
+                    Ok(new_lowest)
+                }
+                Err(err) => {
+                    error!(
+                        ?err,
+                        ?peer,
+                        ?batch_id,
+                        "block headers batch failed validation"
+                    );
+                    // TODO: decide if we want to disconnect from a peer since we've disabled
+                    // banning for the time being. ctx.effect_builder.
+                    // announce_disconnect_from_peer(peer).await;
+                    Err(err.into())
+                }
+            }
+        }
+    }
+}
+
+// Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
+async fn fetch_blocks_and_state_since_genesis(
+    _trusted_block: &Block,
+    _ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
+    todo!()
+}
+
+async fn fetch_to_genesis_old(
+    trusted_block: &Block,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
     info!(

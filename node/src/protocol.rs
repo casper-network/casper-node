@@ -79,6 +79,7 @@ impl Payload for Message {
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
+                    Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -115,6 +116,7 @@ impl Payload for Message {
                 Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
+                Tag::BlockHeaderBatch => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -126,6 +128,7 @@ impl Payload for Message {
                 Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
+                Tag::BlockHeaderBatch => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -274,6 +277,11 @@ where
                     message: NetRequest::BlockAndDeploys(serialized_id),
                 }
                 .into(),
+                Tag::BlockHeaderBatch => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockHeadersBatch(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -322,6 +330,11 @@ where
                 Tag::BlockAndDeploysByHash => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockAndDeploys(serialized_item),
+                }
+                .into(),
+                Tag::BlockHeaderBatch => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockHeadersBatch(serialized_item),
                 }
                 .into(),
             },

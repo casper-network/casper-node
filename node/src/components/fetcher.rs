@@ -22,9 +22,9 @@ use crate::{
     },
     protocol::Message,
     types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Deploy, DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedApprovalsWithId, Item, NodeId,
+        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockHeadersBatchId, BlockWithMetadata, Deploy, DeployHash, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -598,6 +598,42 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
                 id,
                 peer,
                 maybe_item: Box::new(maybe_block_header),
+                responder,
+            })
+    }
+}
+
+impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHeadersBatchId, HashMap<NodeId, Vec<FetchResponder<BlockHeadersBatch>>>>
+    {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockHeadersBatch>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockHeadersBatchId,
+        peer: NodeId,
+        responder: FetchResponder<BlockHeadersBatch>,
+    ) -> Effects<Event<BlockHeadersBatch>> {
+        effect_builder
+            .get_block_header_batch_from_storage(id)
+            .event(move |maybe_batch| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(maybe_batch),
                 responder,
             })
     }

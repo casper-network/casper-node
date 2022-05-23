@@ -31,6 +31,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
+use tracing::error;
 
 use crate::{
     components::consensus,
@@ -45,7 +46,8 @@ use crate::{
 
 use super::{Item, Tag};
 use crate::types::error::{
-    BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
+    BlockHeaderWithMetadataValidationError, BlockHeadersBatchValidationError,
+    BlockWithMetadataValidationError,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
@@ -1109,6 +1111,198 @@ impl Item for BlockHeaderWithMetadata {
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         self.block_header.height()
+    }
+}
+#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+/// ID idenfitifying a request for a batch of block headers.
+pub struct BlockHeadersBatchId {
+    pub highest: u64,
+    pub lowest: u64,
+}
+
+impl BlockHeadersBatchId {
+    pub fn new(highest: u64, lowest: u64) -> Self {
+        Self { highest, lowest }
+    }
+    pub fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
+        let highest = lowest_known_block_header.height().saturating_sub(1);
+        let lowest = lowest_known_block_header
+            .height()
+            .saturating_sub(max_batch_size);
+
+        Self { highest, lowest }
+    }
+
+    /// Return an iterator over block header heights starting from highest (inclusive) to lowest
+    /// (inclusive).
+    pub fn iter(&self) -> impl Iterator<Item = u64> {
+        self.highest..=self.lowest
+    }
+
+    pub fn len(&self) -> u64 {
+        self.highest + 1 - self.lowest
+    }
+}
+
+impl Display for BlockHeadersBatchId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block header batch {}=..={}", self.highest, self.lowest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct BlockHeadersBatch(Vec<BlockHeader>);
+
+impl BlockHeadersBatch {
+    /// Validates whether received batch is:
+    /// 1) highest block header from the batch has a hash is `latest_known.hash`
+    /// 2) a link of header[n].parent == header[n+1].hash is maintained
+    ///
+    /// Returns lowest block header from the batch or error if batch fails validation.
+    pub(crate) fn validate(
+        &self,
+        latest_known: &BlockHeader,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<BlockHeader, BlockHeadersBatchValidationError> {
+        let highest_header = self
+            .0
+            .first()
+            .ok_or(BlockHeadersBatchValidationError::BatchEmpty)?;
+
+        let highest_hash = highest_header.hash(verifiable_chunked_hash_activation);
+        if &highest_hash != latest_known.parent_hash() {
+            return Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
+                expected: *latest_known.parent_hash(),
+                got: highest_hash,
+            });
+        }
+
+        if !Self::is_continuous_and_descending(self.inner(), verifiable_chunked_hash_activation) {
+            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
+        }
+
+        self.0
+            .last()
+            .cloned()
+            .ok_or(BlockHeadersBatchValidationError::BatchEmpty)
+    }
+
+    /// Tries to create an instance of `BlockHeadersBatch` from a `Vec<BlockHeader>`.
+    ///
+    /// Returns `Some(Self)` if data passes validation, otherwise `None`.
+    pub fn from_vec(
+        batch: Vec<BlockHeader>,
+        requested_id: &BlockHeadersBatchId,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Option<Self> {
+        if !Self::is_continuous_and_descending(&batch, verifiable_chunked_hash_activation) {
+            error!("batch is not continuous");
+            return None;
+        }
+
+        match batch.first() {
+            Some(highest) => {
+                if highest.height() != requested_id.highest {
+                    error!(expected_highest=?requested_id.highest, got_highest=?highest, "input cannot be empty");
+                    return None;
+                }
+            }
+            None => {
+                error!("response cannot be an empty batch");
+                return None;
+            }
+        }
+
+        match batch.last() {
+            Some(lowest) => {
+                if lowest.height() != requested_id.lowest {
+                    error!(expected_lowest=?requested_id.lowest, got_lowest=?lowest, "response does not include lowest indexed block header");
+                    return None;
+                }
+            }
+            None => {
+                error!("input cannot be empty");
+                return None;
+            }
+        }
+
+        Some(Self(batch))
+    }
+
+    /// Returns inner value.
+    pub fn into_inner(self) -> Vec<BlockHeader> {
+        self.0
+    }
+
+    /// Returns a reference to an inner vector of block headers.
+    pub fn inner(&self) -> &Vec<BlockHeader> {
+        &self.0
+    }
+
+    /// Tests whether the block header batch is continuous and in descending order.
+    pub fn is_continuous_and_descending(
+        batch: &[BlockHeader],
+        verifiable_chunked_hash_activation: EraId,
+    ) -> bool {
+        batch
+            .windows(2)
+            .filter_map(|window| match &window {
+                &[l, r] => Some((l, r)),
+                _ => None,
+            })
+            .all(|(l, r)| {
+                l.height() == r.height() + 1
+                    && &l.hash(verifiable_chunked_hash_activation) == r.parent_hash()
+            })
+    }
+}
+
+impl Display for BlockHeadersBatch {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block header batch")
+    }
+}
+
+impl Item for BlockHeadersBatch {
+    type Id = BlockHeadersBatchId;
+
+    type ValidationError = BlockHeadersBatchValidationError;
+
+    const TAG: Tag = Tag::BlockHeaderBatch;
+
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    //TODO: Cover with unit tests
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        if !BlockHeadersBatch::is_continuous_and_descending(
+            self.inner(),
+            verifiable_chunked_hash_activation,
+        ) {
+            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
+        }
+
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        let lower_batch_height = self.0.first().map(|h| h.height());
+        let upper_batch_height = self.0.last().map(|h| h.height());
+        if lower_batch_height.is_none() || upper_batch_height.is_none() {
+            // ID should be infallible but it is possible that the `Vec` is empty.
+            // In that case we log an error to indicate something went really wrong and use `(0,0)`.
+            error!(
+                ?lower_batch_height,
+                ?upper_batch_height,
+                "received header batch is empty"
+            );
+        }
+        BlockHeadersBatchId::new(
+            upper_batch_height.unwrap_or_default(),
+            lower_batch_height.unwrap_or_default(),
+        )
     }
 }
 

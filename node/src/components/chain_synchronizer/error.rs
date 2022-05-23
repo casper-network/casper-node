@@ -14,8 +14,9 @@ use casper_types::{EraId, ProtocolVersion};
 use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Deploy, FinalizedApprovalsWithId,
+        error::BlockHeadersBatchValidationError, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockWithMetadata, Deploy,
+        FinalizedApprovalsWithId,
     },
 };
 
@@ -146,6 +147,14 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         FetchTrieError,
     ),
+
+    /// Error fetching block headers batch.
+    #[error(transparent)]
+    FetchHeadersBatch(
+        #[from]
+        #[serde(skip_serializing)]
+        FetchBlockHeadersBatchError,
+    ),
 }
 
 #[derive(Error, Debug)]
@@ -167,4 +176,15 @@ pub(crate) enum FetchTrieError {
          by a peer somehow. Trie digest: {digest:?}"
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum FetchBlockHeadersBatchError {
+    /// Fetcher error
+    #[error(transparent)]
+    FetchError(#[from] FetcherError<BlockHeadersBatch>),
+
+    // Batch validation error
+    #[error(transparent)]
+    ValidationError(#[from] BlockHeadersBatchValidationError),
 }
