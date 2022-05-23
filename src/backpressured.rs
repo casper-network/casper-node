@@ -25,6 +25,8 @@ use std::{
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 
+use crate::error::Error;
+
 /// A back-pressuring sink.
 ///
 /// Combines a stream `A` of acknoledgements (ACKs) with a sink `S` that will count items in flight
@@ -76,9 +78,10 @@ where
     // TODO: `Unpin` trait bounds can be removed by using `map_unchecked` if necessary.
     S: Sink<Item> + Unpin,
     Self: Unpin,
-    A: Stream<Item = u64> + Unpin, // TODO: Weave in error from stream.
+    A: Stream<Item = u64> + Unpin,
+    <S as Sink<Item>>::Error: std::error::Error,
 {
-    type Error = <S as Sink<Item>>::Error;
+    type Error = Error<<S as Sink<Item>>::Error>;
 
     #[inline]
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -91,17 +94,38 @@ where
             match self_mut.ack_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(highest_ack)) => {
                     if highest_ack >= self_mut.next_request {
-                        todo!("got an ACK for a request we did not send");
+                        return Poll::Ready(Err(Error::UnexpectedAck {
+                            actual: highest_ack,
+                            expected: self_mut.next_expected_ack,
+                        }));
                     }
 
                     if highest_ack < self_mut.next_expected_ack {
-                        todo!("got an ACK that is equal or less than a previously received one")
+                        return Poll::Ready(Err(Error::DuplicateAck {
+                            actual: highest_ack,
+                            expected: self_mut.next_expected_ack,
+                        }));
                     }
 
                     self_mut.next_expected_ack = highest_ack + 1;
                 }
                 Poll::Ready(None) => {
-                    todo!("ACK stream has been closed, exit");
+                    // The ACK stream has been closed. Close our sink, now that we know, but try to
+                    // flush as much as possible.
+                    match self_mut.inner.poll_close_unpin(cx).map_err(Error::Sink) {
+                        Poll::Ready(Ok(())) => {
+                            // All data has been flushed, we can now safely return an error.
+                            return Poll::Ready(Err(Error::AckStreamClosed));
+                        }
+                        Poll::Ready(Err(_)) => {
+                            // The was an error polling the ACK stream.
+                            return Poll::Ready(Err(Error::AckStreamError));
+                        }
+                        Poll::Pending => {
+                            // Data was flushed, but not done yet, keep polling.
+                            return Poll::Pending;
+                        }
+                    }
                 }
                 Poll::Pending => {
                     let in_flight = self_mut.next_expected_ack + 1 - self_mut.next_request;
@@ -118,7 +142,7 @@ where
         }
 
         // We have slots available, it is up to the wrapped sink to accept them.
-        self_mut.inner.poll_ready_unpin(cx)
+        self_mut.inner.poll_ready_unpin(cx).map_err(Error::Sink)
     }
 
     #[inline]
@@ -128,16 +152,22 @@ where
 
         self_mut.next_request += 1;
 
-        self_mut.inner.start_send_unpin(item)
+        self_mut.inner.start_send_unpin(item).map_err(Error::Sink)
     }
 
     #[inline]
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.get_mut().inner.poll_flush_unpin(cx)
+        self.get_mut()
+            .inner
+            .poll_flush_unpin(cx)
+            .map_err(Error::Sink)
     }
 
     #[inline]
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.get_mut().inner.poll_close_unpin(cx)
+        self.get_mut()
+            .inner
+            .poll_close_unpin(cx)
+            .map_err(Error::Sink)
     }
 }
