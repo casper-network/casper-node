@@ -107,7 +107,9 @@ pub(crate) fn get_minimal_set_of_signatures(
         .take_while(|(_, weight)| {
             let to_take = accumulated_weight * U512::from(*lower_bound.denom())
                 <= total_weight * U512::from(*lower_bound.numer());
-            accumulated_weight += *weight;
+            if to_take {
+                accumulated_weight += *weight;
+            }
             to_take
         })
         .map(|(pub_key, _)| pub_key)
