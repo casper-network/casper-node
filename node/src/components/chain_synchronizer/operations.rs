@@ -35,9 +35,9 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals,
-        FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        FinalizedApprovals, FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -698,6 +698,33 @@ async fn fetch_and_store_block_by_hash(
     }
 }
 
+/// Downloads and stores a block with all its deploys.
+async fn fetch_and_store_block_with_deploys_by_hash(
+    block_hash: BlockHash,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>> {
+    let start = Timestamp::now();
+    let fetched_block = fetch_retry_forever::<BlockAndDeploys>(ctx, block_hash).await?;
+    let res = match fetched_block {
+        FetchedData::FromStorage {
+            item: block_and_deploys,
+            ..
+        } => Ok(block_and_deploys),
+        FetchedData::FromPeer {
+            item: block_and_deploys,
+            ..
+        } => {
+            ctx.effect_builder
+                .put_block_and_deploys_to_storage(block_and_deploys.clone())
+                .await;
+            Ok(block_and_deploys)
+        }
+    };
+    ctx.metrics
+        .observe_fetch_block_and_deploys_duration_seconds(start);
+    res
+}
+
 /// A worker task that takes trie keys from a queue and downloads the trie.
 async fn sync_trie_store_worker(
     worker_id: usize,
@@ -984,7 +1011,10 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
     // era 0.
     let mut trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
-    let trusted_block = *fetch_and_store_block_by_hash(ctx.trusted_hash(), ctx).await?;
+    let BlockAndDeploys {
+        block: trusted_block,
+        deploys: _,
+    } = *fetch_and_store_block_with_deploys_by_hash(ctx.trusted_hash(), ctx).await?;
     sync_deploys_and_transfers_and_state(&trusted_block, ctx).await?;
 
     fetch_to_genesis(&trusted_block, ctx).await?;
@@ -1095,15 +1125,19 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
             .chain_sync_block_height_synced
             .set(walkback_block_height as i64);
         info!(%walkback_block_height, "syncing block height");
-        sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
+        sync_trie_store(*walkback_block.header().state_root_hash(), ctx).await?;
         ctx.effect_builder
             .update_lowest_available_block_height_in_storage(walkback_block.height())
             .await;
         if walkback_block.height() == 0 {
             break;
         } else {
-            walkback_block =
-                *fetch_and_store_block_by_hash(*walkback_block.header().parent_hash(), ctx).await?;
+            walkback_block = fetch_and_store_block_with_deploys_by_hash(
+                *walkback_block.header().parent_hash(),
+                ctx,
+            )
+            .await?
+            .block
         }
     }
     Ok(())

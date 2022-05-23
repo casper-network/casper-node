@@ -48,10 +48,10 @@ use crate::{
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, StatusFeed,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -260,6 +260,13 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
+    /// Store given block and its deploys.
+    PutBlockAndDeploys {
+        /// Block to be stored.
+        block: Box<BlockAndDeploys>,
+        /// Responder to call on success.  Failure is a fatal error.
+        responder: Responder<()>,
+    },
     /// Retrieve block with given hash.
     GetBlock {
         /// Hash of block to be retrieved.
@@ -267,6 +274,14 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve block and deploys with given hash.
+    GetBlockAndDeploys {
+        /// Hash of block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<BlockAndDeploys>>,
     },
     /// Retrieve highest block.
     GetHighestBlock {
@@ -469,7 +484,20 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutBlockAndDeploys {
+                block: block_deploys,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "put block and deploys {}",
+                    block_deploys.block.hash()
+                )
+            }
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
+                write!(formatter, "get block and deploys {}", block_hash)
+            }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetHighestBlockHeader { .. } => {
                 write!(formatter, "get highest block header")
