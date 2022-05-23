@@ -97,13 +97,13 @@ pub enum BlockValidationError {
     #[error(
         "extra deploy in block-and-deploys. \
          block: {block:?} \
-         extra_deploys: {extra_deploys:?}"
+         extra_deploys_count: {extra_deploys_count}"
     )]
     ExtraDeploys {
         /// The `Block` of the `BlockAndDeploys` with the extra `Deploy`.
         block: Box<Block>,
-        /// The `DeployHash`es of the extra `Deploy`s.
-        extra_deploys: Vec<DeployHash>,
+        /// The number of extra deploys provided.
+        extra_deploys_count: u32,
     },
 }
 

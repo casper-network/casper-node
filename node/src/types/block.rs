@@ -6,7 +6,7 @@ use std::iter;
 use std::{
     array::TryFromSliceError,
     cmp::Reverse,
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
 };
@@ -1874,13 +1874,12 @@ impl Item for BlockAndDeploys {
         let _ = self.block.verify(verifiable_chunked_hash_activation)?;
         // Validate that we've got all of the deploys we should have gotten, and that their hashes
         // are valid.
-        let expected_deploys = self
+        for deploy_hash in self
             .block
             .deploy_hashes()
             .iter()
             .chain(self.block.transfer_hashes().iter())
-            .collect::<HashSet<_>>();
-        for &deploy_hash in &expected_deploys {
+        {
             match self
                 .deploys
                 .iter()
@@ -1903,21 +1902,12 @@ impl Item for BlockAndDeploys {
         }
 
         // Check we got no extra deploys.
-        if expected_deploys.len() < self.deploys.len() {
-            let extra_deploys = self
-                .deploys
-                .iter()
-                .filter_map(|deploy| {
-                    if expected_deploys.contains(deploy.id()) {
-                        None
-                    } else {
-                        Some(*deploy.id())
-                    }
-                })
-                .collect();
+        let expected_deploys_count =
+            self.block.deploy_hashes().len() + self.block.transfer_hashes().len();
+        if expected_deploys_count < self.deploys.len() {
             return Err(BlockValidationError::ExtraDeploys {
                 block: Box::new(self.block.clone()),
-                extra_deploys,
+                extra_deploys_count: (self.deploys.len() - expected_deploys_count) as u32,
             });
         }
 
@@ -2533,25 +2523,18 @@ mod tests {
                 .collect(),
         };
 
-        let reported_extras = match block_and_deploys
+        match block_and_deploys
             .validate(verifiable_chunked_hash_activation)
             .unwrap_err()
         {
             BlockValidationError::ExtraDeploys {
-                mut extra_deploys, ..
+                extra_deploys_count,
+                ..
             } => {
-                extra_deploys.sort();
-                extra_deploys
+                assert_eq!(extra_deploys_count, extra_deploys.len() as u32);
             }
             _ => panic!("should report extra deploys"),
-        };
-
-        let extra_deploy_hashes = extra_deploys
-            .iter()
-            .map(|deploy| *deploy.id())
-            .sorted()
-            .collect::<Vec<_>>();
-        assert_eq!(reported_extras, extra_deploy_hashes);
+        }
     }
 
     #[test]
