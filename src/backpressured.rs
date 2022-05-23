@@ -97,22 +97,22 @@ where
         // Attempt to read as many ACKs as possible.
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(highest_ack)) => {
-                    if highest_ack > self_mut.last_request {
+                Poll::Ready(Some(ack_received)) => {
+                    if ack_received > self_mut.last_request {
                         return Poll::Ready(Err(Error::UnexpectedAck {
-                            actual: highest_ack,
-                            expected: self_mut.received_ack,
+                            actual: ack_received,
+                            items_sent: self_mut.last_request,
                         }));
                     }
 
-                    if highest_ack <= self_mut.received_ack {
+                    if ack_received <= self_mut.received_ack {
                         return Poll::Ready(Err(Error::DuplicateAck {
-                            actual: highest_ack,
-                            expected: self_mut.received_ack,
+                            ack_received,
+                            highest: self_mut.received_ack,
                         }));
                     }
 
-                    self_mut.received_ack = highest_ack;
+                    self_mut.received_ack = ack_received;
                 }
                 Poll::Ready(None) => {
                     // The ACK stream has been closed. Close our sink, now that we know, but try to
@@ -211,9 +211,8 @@ mod tests {
         }
     }
 
-    // Basic lifecycle test.
     #[test]
-    fn backpressure_can_send_messages_given_sufficient_acks() {
+    fn backpressure_lifecycle() {
         let Fixtures { ack_sender, mut bp } = Fixtures::new();
 
         // The first four attempts at `window_size = 3` should succeed.
@@ -252,5 +251,40 @@ mod tests {
         let output: String = bp.into_inner().0.into_iter().collect();
 
         assert_eq!(output, "ABCDEFGH");
+    }
+
+    #[test]
+    fn ensure_premature_ack_kills_stream() {
+        let Fixtures { ack_sender, mut bp } = Fixtures::new();
+
+        bp.send('A').now_or_never().unwrap().unwrap();
+        bp.send('B').now_or_never().unwrap().unwrap();
+        ack_sender.send(3).unwrap();
+
+        assert!(matches!(
+            bp.send('C').now_or_never(),
+            Some(Err(Error::UnexpectedAck {
+                items_sent: 2,
+                actual: 3
+            }))
+        ));
+    }
+
+    #[test]
+    fn ensure_redundant_ack_kills_stream() {
+        let Fixtures { ack_sender, mut bp } = Fixtures::new();
+
+        bp.send('A').now_or_never().unwrap().unwrap();
+        bp.send('B').now_or_never().unwrap().unwrap();
+        ack_sender.send(2).unwrap();
+        ack_sender.send(2).unwrap();
+
+        assert!(matches!(
+            bp.send('C').now_or_never(),
+            Some(Err(Error::DuplicateAck {
+                ack_received: 2,
+                highest: 2
+            }))
+        ));
     }
 }
