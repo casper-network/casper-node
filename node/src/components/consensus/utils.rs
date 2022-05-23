@@ -80,7 +80,7 @@ pub(crate) fn get_minimal_set_of_signatures(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
     mut block_signatures: BlockSignatures,
-) -> BlockSignatures {
+) -> Option<BlockSignatures> {
     // Calculate the values for comparison.
     let total_weight: U512 = trusted_validator_weights
         .iter()
@@ -113,9 +113,18 @@ pub(crate) fn get_minimal_set_of_signatures(
         .map(|(pub_key, _)| pub_key)
         .collect();
 
-    block_signatures
-        .proofs
-        .retain(|pub_key, _| keys_to_retain.contains(pub_key));
+    // Chack if we managed to collect sufficient weight (there might not have been enough
+    // signatures in the first place).
+    if accumulated_weight * U512::from(*lower_bound.denom())
+        > total_weight * U512::from(*lower_bound.numer())
+    {
+        block_signatures
+            .proofs
+            .retain(|pub_key, _| keys_to_retain.contains(pub_key));
 
-    block_signatures
+        Some(block_signatures)
+    } else {
+        // Return `None` if the signatures weren't enough.
+        None
+    }
 }

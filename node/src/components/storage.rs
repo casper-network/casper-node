@@ -76,9 +76,7 @@ use casper_types::{
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
 use crate::{
-    components::{
-        consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
-    },
+    components::{consensus, fetcher::FetchedOrNotFound, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{NetworkRequest, StateStoreRequest},
@@ -1842,29 +1840,16 @@ impl StorageInner {
             }
             Some(validator_weights) => validator_weights,
         };
+
         let block_signatures = consensus::get_minimal_set_of_signatures(
             validator_weights,
             self.finality_threshold_fraction,
             block_signatures,
         );
 
-        let finality_check_result = consensus::check_sufficient_finality_signatures(
-            validator_weights,
-            self.finality_threshold_fraction,
-            &block_signatures,
-        );
-        match finality_check_result {
-            Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
-                info!(
-                    ?err,
-                    ?block_header,
-                    "insufficient finality signatures for block header read from storage"
-                );
-                Ok(None)
-            }
-            Err(err) => Err(err.into()),
-            Ok(()) => Ok(Some(block_signatures)),
-        }
+        // `block_signatures` is already an `Option`, which is `None` if there weren't enough
+        // signatures to bring the total weight over the threshold.
+        Ok(block_signatures)
     }
 
     /// Retrieves a deploy from the deploy store.
