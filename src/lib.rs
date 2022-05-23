@@ -1,3 +1,4 @@
+pub mod backpressured;
 pub mod chunked;
 pub mod error;
 pub mod length_prefixed;
