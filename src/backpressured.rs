@@ -27,27 +27,46 @@ use futures::{Sink, SinkExt, Stream, StreamExt};
 
 /// A back-pressuring sink.
 ///
-/// Combines a stream of ACKs with a sink that will count requests and expect an appropriate amount
-/// of ACKs to flow back through it.
+/// Combines a stream `A` of acknoledgements (ACKs) with a sink `S` that will count items in flight
+/// and expect an appropriate amount of ACKs to flow back through it.
+///
+/// In other words, the `BackpressuredSink` will send `window_size` items at most to the sink
+/// without expecting to have received one or more ACK through the `ack_stream`.
+///
+/// The ACKs sent back must be `u64`s, the sink will expect to receive at most one ACK per item
+/// sent. The first sent item is expected to receive an ACK of `1u64`, the second `2u64` and so on.
+///
+/// ACKs may not be sent out of order, but may be combined - an ACK of `n` implicitly indicates ACKs
+/// for all previously unsent ACKs less than `n`.
 pub struct BackpressuredSink<S, A, Item> {
+    /// The inner sink that items will be forwarded to.
     inner: S,
+    /// A stream of integers representing ACKs, see struct documentation for details.
     ack_stream: A,
-    _phantom: PhantomData<Item>,
-    highest_ack: u64,
-    last_request: u64, // start at 1
+    /// The highest ACK received so far.
+    next_expected_ack: u64,
+    /// The number of the next request to be sent.
+    next_request: u64,
+    /// Additional number of items to buffer on inner sink before awaiting ACKs (can be 0, which
+    /// still allows for one item).
     window_size: u64,
+    /// Phantom data required to include `Item` in the type.
+    _phantom: PhantomData<Item>,
 }
 
 impl<S, A, Item> BackpressuredSink<S, A, Item> {
     /// Constructs a new backpressured sink.
+    ///
+    /// `window_size` is the maximum number of additional items to send after the first one without
+    /// awaiting ACKs for already sent ones (a size of `0` still allows for one item to be sent).
     pub fn new(inner: S, ack_stream: A, window_size: u64) -> Self {
         Self {
             inner,
             ack_stream,
-            _phantom: PhantomData,
-            highest_ack: 0,
-            last_request: 1,
+            next_expected_ack: 1,
+            next_request: 0,
             window_size,
+            _phantom: PhantomData,
         }
     }
 }
@@ -70,24 +89,26 @@ where
         // Attempt to read as many ACKs as possible.
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(new_highest_ack)) => {
-                    if new_highest_ack > self_mut.last_request {
+                Poll::Ready(Some(highest_ack)) => {
+                    if highest_ack >= self_mut.next_request {
                         todo!("got an ACK for a request we did not send");
                     }
 
-                    if new_highest_ack <= self_mut.highest_ack {
+                    if highest_ack < self_mut.next_expected_ack {
                         todo!("got an ACK that is equal or less than a previously received one")
                     }
 
-                    self_mut.highest_ack = new_highest_ack;
+                    self_mut.next_expected_ack = highest_ack + 1;
                 }
                 Poll::Ready(None) => {
                     todo!("ACK stream has been closed, exit");
                 }
                 Poll::Pending => {
+                    let in_flight = self_mut.next_expected_ack + 1 - self_mut.next_request;
+
                     // We have no more ACKs to read. If we have capacity, we can continue, otherwise
                     // return pending.
-                    if self_mut.highest_ack + self_mut.window_size >= self_mut.last_request {
+                    if in_flight <= self_mut.window_size {
                         break;
                     }
 
@@ -105,7 +126,7 @@ where
         // We already know there are slots available, increase request count, then forward to sink.
         let self_mut = Pin::into_inner(self);
 
-        self_mut.last_request += 1;
+        self_mut.next_request += 1;
 
         self_mut.inner.start_send_unpin(item)
     }
