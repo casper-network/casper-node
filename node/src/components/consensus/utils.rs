@@ -192,6 +192,7 @@ mod tests {
 
         // If the initial set has too few signatures, the result should be `None`.
         let sigs = create_signatures(rng, &keys, threshold.saturating_sub(1));
+        assert!(check_sufficient_finality_signatures(&weights, ftt, &sigs).is_err());
         let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
         assert!(minimal_set.is_none());
 
