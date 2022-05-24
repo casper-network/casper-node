@@ -576,9 +576,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             secret_key,
         );
-        self.add_content(signed_msg.clone());
-        let message = Message::Signed(signed_msg);
-        vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
+        if self.add_content(signed_msg.clone()) {
+            let message = Message::Signed(signed_msg);
+            vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
+        } else {
+            vec![]
+        }
     }
 
     /// When we receive evidence for a fault, we must notify the rest of the network of this
@@ -723,16 +726,23 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             }
         }
 
-        // Send them votes they are missing, but exclude faulty validators.
-        let our_true_votes =
-            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some());
+        // Send them votes they are missing, but exclude faulty validators. If there already is a
+        // quorum omit the votes that go against the quorum, since they are irrelevant.
+        let our_true_votes = if round.quorum_votes() == Some(false) {
+            0
+        } else {
+            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some())
+        };
         let missing_true_votes = our_true_votes & !(true_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
             let signature = round.votes(true)[v_idx].unwrap();
             contents.push((Content::Vote(true), v_idx, signature));
         }
-        let our_false_votes =
-            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some());
+        let our_false_votes = if round.quorum_votes() == Some(true) {
+            0
+        } else {
+            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some())
+        };
         let missing_false_votes = our_false_votes & !(false_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
             let signature = round.votes(false)[v_idx].unwrap();
@@ -847,9 +857,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             let serialized_msg = evidence_msg.serialize();
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialized_msg));
             outcomes
-        } else {
-            self.add_content(signed_msg);
+        } else if self.add_content(signed_msg) {
             self.update(now)
+        } else {
+            vec![]
         }
     }
 
@@ -950,10 +961,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 Level::TRACE,
                 "received a proposal with a timestamp slightly in the future",
             );
-            // TODO: If it's not from an equivocator and from the future, add to queue
-            // trace!("received a proposal from the future; storing for later");
-            // let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
-            // vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
         }
 
         let hash = proposal.hash();
@@ -1044,9 +1051,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         false
     }
 
-    /// Adds a signed message content to the state, but does not call `update` and does not detect
-    /// faults.
-    fn add_content(&mut self, signed_msg: SignedMessage<C>) {
+    /// Adds a signed message content to the state if possible, but does not call `update` and does
+    /// not detect faults. Returns whether the message was new and could be added.
+    fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.active[signed_msg.validator_idx].is_none() {
             self.active[signed_msg.validator_idx] = Some(signed_msg.clone());
             // We considered this validator inactive until now, and didn't accept proposals that
@@ -1054,9 +1061,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             // the next `update` call checks all proposals again.
             self.mark_dirty(self.first_non_finalized_round_id);
         }
-        if signed_msg.round_id < self.first_non_finalized_round_id {
-            debug!(?signed_msg, "dropping message from decided round");
-            return;
+        if self.faults.contains_key(&signed_msg.validator_idx) {
+            debug!(?signed_msg, "dropping message from faulty validator");
+            return false; // Echoes and votes from double-signers can be ignored.
         }
         let SignedMessage {
             round_id,
@@ -1065,9 +1072,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             signature,
         } = signed_msg;
-        if self.faults.contains_key(&validator_idx) {
-            return; // Echoes and votes from double-signers can be ignored.
-        }
         match content {
             Content::Echo(hash) => {
                 if self
@@ -1078,6 +1082,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     if self.check_new_echo_quorum(round_id, hash) {
                         self.mark_dirty(round_id);
                     }
+                    return true;
                 }
             }
             Content::Vote(vote) => {
@@ -1089,9 +1094,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     if self.check_new_vote_quorum(round_id, vote) {
                         self.mark_dirty(round_id);
                     }
+                    return true;
                 }
             }
         }
+        false
     }
 
     /// If there is a signature for conflicting content, returns the content and signature.
@@ -1345,7 +1352,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         for prune_round_id in self.first_non_finalized_round_id..round_id {
             self.round_mut(prune_round_id).prune_skipped();
         }
-        self.round_mut(round_id).prune_finalized();
         self.first_non_finalized_round_id = round_id.saturating_add(1);
         let value = if let Some(block) = proposal.maybe_block.clone() {
             block
@@ -1744,6 +1750,7 @@ where
         // rounds that aren't finalized (ideally with finality signatures) yet. To support the whole
         // internet restarting, we'd need to store all our own messages.
         if let Some(our_idx) = self.validators.get_index(&our_id) {
+            info!(our_idx = our_idx.0, "start voting");
             self.active_validator = Some((our_idx, secret));
             self.schedule_update(self.params.start_timestamp().max(now))
         } else {

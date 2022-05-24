@@ -33,7 +33,7 @@ era_duration = '41seconds'
 # minimum height.
 minimum_era_height = 10
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '1second'
+minimum_block_time = '8seconds'
 # Number of slots available in validator auction.
 validator_slots = 5
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
