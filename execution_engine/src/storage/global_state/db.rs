@@ -2,7 +2,10 @@ use lmdb::{DatabaseFlags, Transaction};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{Arc, RwLock},
+    sync::{
+        mpsc::{sync_channel, SyncSender},
+        Arc, RwLock,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -30,7 +33,7 @@ use crate::{
         trie_store::{
             db::{RocksDbTrieStore, ScratchTrieStore},
             operations::{
-                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie_bytes, read,
+                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie_bytes,
                 read_with_proof, ReadResult,
             },
         },
@@ -81,8 +84,13 @@ mod legacy_lmdb {
     }
 }
 
-/// Global state implemented against a database as a backing data store.
+struct TrieUpdateJob {
+    state_root: Digest,
+    scratch_trie: ScratchTrieStore,
+}
+
 #[derive(Clone)]
+/// Global state implemented against a database as a backing data store.
 pub struct DbGlobalState {
     /// Optional path to legacy LMDB files - loaded for migration only if present.
     maybe_lmdb_path: Option<PathBuf>,
@@ -91,6 +99,10 @@ pub struct DbGlobalState {
     /// Handle to rocksdb.
     pub(crate) trie_store: RocksDbTrieStore,
     digests_without_missing_descendants: Arc<RwLock<HashSet<Digest>>>,
+
+    /// Queue of trie write jobs.
+    /// TODO: replace with column in rocksdb
+    trie_update_queue_sender: SyncSender<TrieUpdateJob>,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -230,15 +242,33 @@ impl DbGlobalState {
             rocksdb_store.put(&root_hash, &root)?;
             root_hash
         };
+
+        // TODO: how many background writes would we like to queue up before blocking the caller?
+        let (trie_update_queue_sender, write_receiver) = sync_channel(0);
+        thread::spawn(move || {
+            for TrieUpdateJob {
+                state_root,
+                scratch_trie,
+            } in write_receiver
+            {
+                log::info!("got a trie update job {}", state_root);
+                if let Err(err) = scratch_trie.write_root_to_db(state_root) {
+                    log::error!("error writing root to db {} {:?}", state_root, err);
+                }
+            }
+        });
+
         Ok(DbGlobalState {
             maybe_lmdb_path,
             empty_root_hash,
             trie_store: rocksdb_store,
             digests_without_missing_descendants: Default::default(),
+            trie_update_queue_sender,
         })
     }
 
-    /// Write stored values to RocksDb.
+    /// Write stored values. Caller is responsible for calling the function returned with the state
+    /// root in order to update the trie database.
     pub fn put_stored_values(
         &self,
         correlation_id: CorrelationId,
@@ -246,13 +276,31 @@ impl DbGlobalState {
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
         let scratch_trie = self.get_scratch_store();
+
+        // Calculate the new state root
         let new_state_root = put_stored_values::<_, error::Error>(
             &scratch_trie,
             correlation_id,
             prestate_hash,
-            stored_values,
+            &stored_values,
         )?;
+
+        // Immediately update the working set
+        for (key, value) in stored_values.iter() {
+            self.trie_store
+                .get_db_store()
+                .write_to_working_set(key, value)?;
+        }
+
         scratch_trie.write_root_to_db(new_state_root)?;
+        // Defer the trie write to the caller
+        // self.trie_update_queue_sender
+        //     .send(TrieUpdateJob {
+        //         state_root: new_state_root,
+        //         scratch_trie,
+        //     })
+        //     .unwrap();
+
         Ok(new_state_root)
     }
 
@@ -289,7 +337,7 @@ fn memoized_find_missing_descendants_and_optionally_update_working_set(
         Trie::Leaf { key, value } => {
             if update_working_set {
                 let db = trie_store.get_db_store();
-                db.write_to_working_set(key, value)?;
+                db.write_to_working_set(&key, &value)?;
             } else {
                 // If `bytesrepr` is functioning correctly, this should never be reached (see
                 // optimization above), but it is still correct do nothing here.
@@ -313,7 +361,7 @@ fn find_missing_trie_keys(
     ptr: Pointer,
     force: bool,
     missing_trie_keys: &mut Vec<Digest>,
-    rocksdb: &RocksDbTrieStore,
+    trie_store: &RocksDbTrieStore,
 ) -> Result<(), error::Error> {
     let ptr = match ptr {
         Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
@@ -321,7 +369,7 @@ fn find_missing_trie_keys(
     if force {
         missing_trie_keys.push(ptr);
     } else {
-        let existing = rocksdb.read_bytes(&ptr.to_bytes()?)?;
+        let existing = trie_store.read_bytes(&ptr.to_bytes()?)?;
         if existing.is_none() {
             missing_trie_keys.push(ptr);
         }
@@ -334,20 +382,10 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
 
     fn read(
         &self,
-        correlation_id: CorrelationId,
+        _correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
-        let ret = match read::<_, _, _, Self::Error>(
-            correlation_id,
-            &self.trie_store,
-            &self.root_hash,
-            key,
-        )? {
-            ReadResult::Found(value) => Some(value),
-            ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("DbGlobalState has invalid root"),
-        };
-        Ok(ret)
+        self.trie_store.get_db_store().read_from_working_set(key)
     }
 
     fn read_with_proof(
@@ -461,10 +499,9 @@ impl StateProvider for DbGlobalState {
         correlation_id: CorrelationId,
         trie_bytes: &[u8],
     ) -> Result<Digest, Self::Error> {
-        let trie_store = self.trie_store.clone();
         let trie_hash = put_trie_bytes::<Key, StoredValue, _, Self::Error>(
             correlation_id,
-            &trie_store,
+            &self.trie_store,
             trie_bytes,
         )?;
         Ok(trie_hash)

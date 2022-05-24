@@ -93,9 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     info!(?state_root, %height, "will migrate state root at height");
                     state_roots.push(state_root);
                 }
-                // We don't update the working set in the background migration for historical state
-                // roots. `update_working_set` MUST be set to `false` here.
-                casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false, false);
+                casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false);
                 return Ok(());
             }
             Ok(None) => {

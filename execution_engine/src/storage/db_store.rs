@@ -6,7 +6,10 @@ use std::{
 
 use rocksdb::{BlockBasedOptions, BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
 
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    Key, StoredValue,
+};
 
 use super::error;
 
@@ -97,7 +100,7 @@ impl DbStore {
     }
 
     /// Write a Key and StoredValue pair to the working set.
-    pub fn write_to_working_set(&self, key: Key, value: StoredValue) -> Result<(), error::Error> {
+    pub fn write_to_working_set(&self, key: &Key, value: &StoredValue) -> Result<(), error::Error> {
         let working_set_column = self.working_set_column_family()?;
         self.db
             .put_cf(&working_set_column, &key.to_bytes()?, &value.to_bytes()?)?;
@@ -105,11 +108,14 @@ impl DbStore {
     }
 
     /// Read a StoredValue from the working set.
-    pub fn read_from_working_set(&self, key: Key, value: StoredValue) -> Result<(), error::Error> {
+    pub fn read_from_working_set(&self, key: &Key) -> Result<Option<StoredValue>, error::Error> {
         let working_set_column = self.working_set_column_family()?;
-        self.db
-            .put_cf(&working_set_column, &key.to_bytes()?, &value.to_bytes()?)?;
-        Ok(())
+        let value = self.db.get_cf(&working_set_column, &key.to_bytes()?)?;
+        let value = match value {
+            Some(value_bytes) => bytesrepr::deserialize(value_bytes)?,
+            None => return Ok(None),
+        };
+        Ok(value)
     }
 
     /// Return the path to the backing rocksdb files.

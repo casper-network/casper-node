@@ -137,7 +137,7 @@ pub fn put_stored_values<S, E>(
     store: &S,
     correlation_id: CorrelationId,
     prestate_hash: Digest,
-    stored_values: HashMap<Key, StoredValue>,
+    stored_values: &HashMap<Key, StoredValue>,
 ) -> Result<Digest, E>
 where
     S: TrieStore<Key, StoredValue>,
