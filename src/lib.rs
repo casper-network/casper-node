@@ -70,7 +70,7 @@ pub(crate) mod tests {
     use std::io::Read;
 
     use bytes::{Buf, Bytes};
-    use futures::{future, stream, SinkExt};
+    use futures::{future, stream, FutureExt, SinkExt};
 
     use crate::{
         chunked::{chunk_frame, SingleChunk},
@@ -88,8 +88,8 @@ pub(crate) mod tests {
     }
 
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
-    #[tokio::test]
-    async fn chunked_length_prefixed_sink() {
+    #[test]
+    fn chunked_length_prefixed_sink() {
         let base_sink: Vec<LengthPrefixedFrame<SingleChunk>> = Vec::new();
 
         let length_prefixed_sink =
@@ -102,7 +102,11 @@ pub(crate) mod tests {
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
-        chunked_sink.send(sample_data).await.expect("send failed");
+        chunked_sink
+            .send(sample_data)
+            .now_or_never()
+            .unwrap()
+            .expect("send failed");
 
         let chunks: Vec<_> = chunked_sink
             .into_inner()
