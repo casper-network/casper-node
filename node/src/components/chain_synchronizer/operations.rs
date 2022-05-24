@@ -1156,9 +1156,7 @@ async fn fetch_block_headers_batch(
                         ?batch_id,
                         "block headers batch failed validation"
                     );
-                    // TODO: decide if we want to disconnect from a peer since we've disabled
-                    // banning for the time being. ctx.effect_builder.
-                    // announce_disconnect_from_peer(peer).await;
+                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                     Err(err.into())
                 }
             }
