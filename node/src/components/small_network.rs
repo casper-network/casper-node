@@ -23,6 +23,7 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
+mod bincode_format;
 mod chain_info;
 mod config;
 mod counting_format;
@@ -50,7 +51,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -71,6 +71,16 @@ use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
+use casper_types::{EraId, PublicKey};
+
+pub(crate) use self::{
+    bincode_format::BincodeFormat,
+    config::Config,
+    error::Error,
+    event::Event,
+    gossiped_address::GossipedAddress,
+    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+};
 use self::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
@@ -78,25 +88,18 @@ use self::{
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,
-    message_pack_format::MessagePackFormat,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::NetworkContext,
+    tasks::{MessageQueueItem, NetworkContext},
 };
-pub(crate) use self::{
-    config::Config,
-    error::Error,
-    event::Event,
-    gossiped_address::GossipedAddress,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
-};
+
 use crate::{
     components::{consensus, Component},
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -107,9 +110,6 @@ use crate::{
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
-
-/// Duration peers are kept on the block list, before being redeemed.
-const BLOCKLIST_RETAIN_DURATION: Duration = Duration::from_secs(60 * 10);
 
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
 /// delays increase exponentially!
@@ -126,7 +126,7 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<Arc<Message<P>>>,
+    sender: UnboundedSender<MessageQueueItem<P>>,
     peer_addr: SocketAddr,
 }
 
@@ -151,6 +151,9 @@ where
     outgoing_manager: OutgoingManager<OutgoingHandle<P>, ConnectionError>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
+
+    /// Tracks nodes that have announced themselves as joining nodes.
+    joining_nodes: HashSet<NodeId>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -186,7 +189,11 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv: ReactorEvent + From<Event<P>> + FromIncoming<P> + From<StorageRequest>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -197,6 +204,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
+        is_joiner: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -218,11 +226,14 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
+        let net_metrics = Arc::new(Metrics::new(registry)?);
+
         let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
                 cfg.max_outgoing_byte_rate_non_validators,
+                net_metrics.accumulated_outgoing_limiter_delay.clone(),
             ))
         };
 
@@ -232,16 +243,15 @@ where
             } else {
                 Box::new(limiter::ClassBasedLimiter::new(
                     cfg.max_incoming_message_rate_non_validators,
+                    net_metrics.accumulated_incoming_limiter_delay.clone(),
                 ))
             };
-
-        let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
                 retry_attempts: RECONNECTION_ATTEMPTS,
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
-                unblock_after: BLOCKLIST_RETAIN_DURATION,
+                unblock_after: cfg.blocklist_retain_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
             },
             net_metrics.create_outgoing_metrics(),
@@ -276,6 +286,12 @@ where
             .map_err(Error::LoadConsensusKeys)?
             .map(|(secret_key, public_key)| ConsensusKeyPair::new(secret_key, public_key));
 
+        // Set the demand max from configuration, regarding `0` as "unlimited".
+        let demand_max = if cfg.max_in_flight_demands == 0 {
+            usize::MAX
+        } else {
+            cfg.max_in_flight_demands as usize
+        };
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
@@ -291,6 +307,8 @@ where
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
+            max_in_flight_demands: demand_max,
+            is_joiner,
         });
 
         // Run the server task.
@@ -314,6 +332,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
+            joining_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -355,7 +374,7 @@ where
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Arc<Message<P>>) {
         for peer_id in self.outgoing_manager.connected_peers() {
-            self.send_message(peer_id, msg.clone());
+            self.send_message(peer_id, msg.clone(), None);
         }
     }
 
@@ -386,17 +405,22 @@ where
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(peer_id, msg.clone());
+            self.send_message(peer_id, msg.clone(), None);
         }
 
         peer_ids.into_iter().collect()
     }
 
     /// Queues a message to be sent to a specific node.
-    fn send_message(&self, dest: NodeId, msg: Arc<Message<P>>) {
+    fn send_message(
+        &self,
+        dest: NodeId,
+        msg: Arc<Message<P>>,
+        opt_responder: Option<Responder<()>>,
+    ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            if let Err(msg) = connection.sender.send(msg) {
+            if let Err(msg) = connection.sender.send((msg, opt_responder)) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
             } else {
@@ -449,6 +473,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
+                is_joiner,
             } => {
                 if self.cfg.max_incoming_peer_connections != 0 {
                     if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
@@ -485,6 +510,7 @@ where
                     .add_incoming(peer_addr, Instant::now())
                 {
                     self.connection_completed(peer_id);
+                    self.update_joining_set(peer_id, is_joiner);
                 }
 
                 // Now we can start the message reader.
@@ -550,15 +576,22 @@ where
             // during regular upgrades.
             ConnectionError::TlsInitialization(_)
             | ConnectionError::TcpConnection(_)
+            | ConnectionError::TcpNoDelay(_)
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
             | ConnectionError::IncompatibleVersion(_) => false,
 
+            // These errors are potential bugs on our side.
+            ConnectionError::HandshakeSenderCrashed(_)
+            | ConnectionError::FailedToReuniteHandshakeSinkAndStream
+            | ConnectionError::CouldNotEncodeOurHandshake(_) => false,
+
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
             | ConnectionError::DidNotSendHandshake
+            | ConnectionError::InvalidRemoteHandshakeMessage(_)
             | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
@@ -617,6 +650,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
+                is_joiner,
             } => {
                 info!("new outgoing connection established");
 
@@ -641,6 +675,7 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
+                    self.update_joining_set(peer_id, is_joiner);
                 }
 
                 effects.extend(
@@ -741,6 +776,17 @@ where
         self.net_metrics.peers.set(self.peers().len() as i64);
     }
 
+    /// Updates a set of known joining nodes.
+    /// If we've just connected to a non-joining node that peer will be removed from the set.
+    fn update_joining_set(&mut self, peer_id: NodeId, is_joiner: bool) {
+        // Update set of joining peers.
+        if is_joiner {
+            self.joining_nodes.insert(peer_id);
+        } else {
+            self.joining_nodes.remove(&peer_id);
+        }
+    }
+
     /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
         let mut ret = BTreeMap::new();
@@ -804,7 +850,8 @@ where
         + From<Event<P>>
         + From<BeginGossipRequest<GossipedAddress>>
         + FromIncoming<P>
-        + From<StorageRequest>,
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -843,12 +890,24 @@ where
                     NetworkRequest::SendMessage {
                         dest,
                         payload,
+                        respond_after_queueing,
                         responder,
                     } => {
-                        // We're given a message to send out.
+                        // We're given a message to send. Pass on the responder so that confirmation
+                        // can later be given once the message has actually been buffered.
                         self.net_metrics.direct_message_requests.inc();
-                        self.send_message(*dest, Arc::new(Message::Payload(*payload)));
-                        responder.respond(()).ignore()
+
+                        if respond_after_queueing {
+                            self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
+                            responder.respond(()).ignore()
+                        } else {
+                            self.send_message(
+                                *dest,
+                                Arc::new(Message::Payload(*payload)),
+                                Some(responder),
+                            );
+                            Effects::new()
+                        }
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.
@@ -874,10 +933,8 @@ where
                 }
             }
             Event::NetworkInfoRequest { req } => match *req {
-                NetworkInfoRequest::GetPeers { responder } => {
-                    responder.respond(self.peers()).ignore()
-                }
-                NetworkInfoRequest::GetFullyConnectedPeers { responder } => {
+                NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
+                NetworkInfoRequest::FullyConnectedPeers { responder } => {
                     let mut symmetric_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
@@ -889,6 +946,20 @@ where
                     symmetric_peers.shuffle(rng);
 
                     responder.respond(symmetric_peers).ignore()
+                }
+                NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder } => {
+                    let mut symmetric_validator_peers: Vec<NodeId> = self
+                        .connection_symmetries
+                        .iter()
+                        .filter_map(|(node_id, sym)| {
+                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
+                        })
+                        .filter(|node_id| !self.joining_nodes.contains(node_id))
+                        .collect();
+
+                    symmetric_validator_peers.shuffle(rng);
+
+                    responder.respond(symmetric_validator_peers).ignore()
                 }
             },
             Event::PeerAddressReceived(gossiped_address) => {
@@ -1044,35 +1115,41 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub(crate) type FramedTransport<P> = tokio_serde::Framed<
-    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
+pub(crate) type FullTransport<P> = tokio_serde::Framed<
+    FramedTransport,
     Message<P>,
     Arc<Message<P>>,
-    CountingFormat<MessagePackFormat>,
+    CountingFormat<BincodeFormat>,
 >;
 
-/// Constructs a new framed transport on a stream.
-fn framed<P>(
+pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDelimitedCodec>;
+
+/// Constructs a new full transport on a stream.
+///
+/// A full transport contains the framing as well as the encoding scheme used to send messages.
+fn full_transport<P>(
     metrics: Weak<Metrics>,
     connection_id: ConnectionId,
-    stream: Transport,
+    framed: FramedTransport,
     role: Role,
-    maximum_net_message_size: u32,
-) -> FramedTransport<P>
+) -> FullTransport<P>
 where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = tokio_util::codec::Framed::new(
-        stream,
+    tokio_serde::Framed::new(
+        framed,
+        CountingFormat::new(metrics, connection_id, role, BincodeFormat::default()),
+    )
+}
+
+/// Constructs a framed transport.
+fn framed_transport(transport: Transport, maximum_net_message_size: u32) -> FramedTransport {
+    tokio_util::codec::Framed::new(
+        transport,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
-    );
-
-    tokio_serde::Framed::new(
-        length_delimited,
-        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
 }
 

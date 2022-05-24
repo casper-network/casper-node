@@ -493,26 +493,30 @@ impl FinalizedBlock {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch)
+        FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch, None)
     }
 
-    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
     #[cfg(test)]
-    pub fn random_with_specifics(
+    /// Generates a random instance using a `TestRng`, but using the specified values.
+    /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
+    /// will be used.
+    pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
         is_switch: bool,
+        deploys_iter: I,
     ) -> Self {
-        let deploy_count = rng.gen_range(0..11);
-        let deploys = iter::repeat_with(|| {
-            DeployWithApprovals::new(
-                DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
-                BTreeSet::new(),
-            )
-        })
-        .take(deploy_count)
-        .collect();
+        let mut deploys = deploys_iter
+            .into_iter()
+            .map(DeployWithApprovals::from)
+            .collect::<Vec<_>>();
+        if deploys.is_empty() {
+            let count = rng.gen_range(0..11);
+            deploys.extend(
+                iter::repeat_with(|| DeployWithApprovals::from(&Deploy::random(rng))).take(count),
+            );
+        }
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -1604,6 +1608,7 @@ impl Block {
             ProtocolVersion::V1_0_0,
             is_switch,
             verifiable_chunked_hash_activation,
+            None,
         )
     }
 
@@ -1625,6 +1630,7 @@ impl Block {
             ProtocolVersion::V1_0_0,
             is_switch,
             verifiable_chunked_hash_activation,
+            None,
         )
     }
 
@@ -1662,17 +1668,19 @@ impl Block {
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
-    pub fn random_with_specifics(
+    pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
         protocol_version: ProtocolVersion,
         is_switch: bool,
         verifiable_chunked_hash_activation: EraId,
+        deploys_iter: I,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
+        let finalized_block =
+            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
             .clone()
@@ -1831,6 +1839,83 @@ impl Item for BlockWithMetadata {
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         self.block.height()
+    }
+}
+
+#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Wrapper around block and its deploys.
+pub struct BlockAndDeploys {
+    /// Block part.
+    pub block: Block,
+    /// Deploys.
+    pub deploys: Vec<Deploy>,
+}
+
+impl Display for BlockAndDeploys {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block {} and deploys", self.block.hash())
+    }
+}
+
+impl Item for BlockAndDeploys {
+    type Id = BlockHash;
+
+    type ValidationError = BlockValidationError;
+
+    const TAG: Tag = Tag::BlockAndDeploysByHash;
+
+    // false b/c we're not validating finality signatures.
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        let _ = self.block.verify(verifiable_chunked_hash_activation)?;
+        // Validate that we've got all of the deploys we should have gotten, and that their hashes
+        // are valid.
+        for deploy_hash in self
+            .block
+            .deploy_hashes()
+            .iter()
+            .chain(self.block.transfer_hashes().iter())
+        {
+            match self
+                .deploys
+                .iter()
+                .find(|&deploy| deploy.id() == deploy_hash)
+            {
+                Some(deploy) => deploy.has_valid_hash().map_err(|error| {
+                    BlockValidationError::UnexpectedDeployHash {
+                        block: Box::new(self.block.clone()),
+                        invalid_deploy: Box::new(deploy.clone()),
+                        deploy_configuration_failure: error,
+                    }
+                })?,
+                None => {
+                    return Err(BlockValidationError::MissingDeploy {
+                        block: Box::new(self.block.clone()),
+                        missing_deploy: *deploy_hash,
+                    })
+                }
+            }
+        }
+
+        // Check we got no extra deploys.
+        let expected_deploys_count =
+            self.block.deploy_hashes().len() + self.block.transfer_hashes().len();
+        if expected_deploys_count < self.deploys.len() {
+            return Err(BlockValidationError::ExtraDeploys {
+                block: Box::new(self.block.clone()),
+                extra_deploys_count: (self.deploys.len() - expected_deploys_count) as u32,
+            });
+        }
+
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        *self.block.hash()
     }
 }
 
@@ -2107,14 +2192,19 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    #[test]
-    fn block_json_roundtrip() {
-        let mut rng = TestRng::new();
-        let block: Block = Block::random(&mut rng);
-        let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
-        let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
-        let block_deserialized = Block::from(json_block);
-        assert_eq!(block, block_deserialized);
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn block_json_roundtrip() {
+            let mut rng = TestRng::new();
+            let block: Block = Block::random(&mut rng);
+            let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
+            let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
+            let block_deserialized = Block::from(json_block);
+            assert_eq!(block, block_deserialized);
+        }
     }
 }
 
@@ -2243,7 +2333,7 @@ mod tests {
 
     #[test]
     fn random_block_check() {
-        let mut rng = TestRng::from_seed([1u8; 16]);
+        let mut rng = TestRng::new();
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
             let (random_v1_block, verifiable_chunked_hash_activation) = Block::random_v1(&mut rng);
@@ -2259,7 +2349,7 @@ mod tests {
 
     #[test]
     fn block_check_bad_body_hash_sad_path() {
-        let mut rng = TestRng::from_seed([2u8; 16]);
+        let mut rng = TestRng::new();
 
         let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
@@ -2289,7 +2379,7 @@ mod tests {
 
     #[test]
     fn block_check_bad_block_hash_sad_path() {
-        let mut rng = TestRng::from_seed([3u8; 16]);
+        let mut rng = TestRng::new();
 
         let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
@@ -2353,6 +2443,7 @@ mod tests {
             protocol_version,
             is_switch,
             verifiable_chunked_hash_activation,
+            None,
         );
 
         let merkle_block_body = block.body().merklize();
@@ -2374,5 +2465,179 @@ mod tests {
             *block.header().body_hash(),
             Digest::hash_slice_rfold(&hashes[..])
         );
+    }
+
+    #[test]
+    fn good_block_and_deploys_should_validate() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        let deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(5)
+            .collect::<Vec<_>>();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+        let block_and_deploys = BlockAndDeploys { block, deploys };
+
+        block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_or_else(|error| panic!("expected to be valid: {:?}", error));
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_extra_deploy() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        // Create block including only the first set of deploys.
+        let deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(5)
+            .collect::<Vec<_>>();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+
+        // Put both sets of deploys in `BlockAndDeploys`
+        let extra_deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(3)
+            .collect::<Vec<_>>();
+        let block_and_deploys = BlockAndDeploys {
+            block,
+            deploys: deploys
+                .iter()
+                .chain(extra_deploys.iter())
+                .cloned()
+                .collect(),
+        };
+
+        match block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_err()
+        {
+            BlockValidationError::ExtraDeploys {
+                extra_deploys_count,
+                ..
+            } => {
+                assert_eq!(extra_deploys_count, extra_deploys.len() as u32);
+            }
+            _ => panic!("should report extra deploys"),
+        }
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_missing_deploy() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        // Create block including both sets of deploys.
+        let deploys1 = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(3)
+            .collect::<Vec<_>>();
+        let deploys2 = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(2)
+            .collect::<Vec<_>>();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys1.iter().chain(deploys2.iter()),
+        );
+
+        // Only put first set of deploys in `BlockAndDeploys`
+        let block_and_deploys = BlockAndDeploys {
+            block,
+            deploys: deploys1,
+        };
+
+        match block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_err()
+        {
+            BlockValidationError::MissingDeploy { missing_deploy, .. } => {
+                assert!(deploys2.iter().any(|deploy| *deploy.id() == missing_deploy))
+            }
+            _ => panic!("should report missing deploy"),
+        };
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_bad_block() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        let deploys = vec![Deploy::random(&mut rng)];
+        let mut block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+
+        // Invalidate the block.
+        block.hash = BlockHash::random(&mut rng);
+
+        let block_and_deploys = BlockAndDeploys { block, deploys };
+
+        assert!(matches!(
+            block_and_deploys
+                .validate(verifiable_chunked_hash_activation)
+                .unwrap_err(),
+            BlockValidationError::UnexpectedBlockHash { .. }
+        ));
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_bad_deploy() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        // Create an invalid deploy and include in deploy set.
+        let mut bad_deploy = Deploy::random(&mut rng);
+        bad_deploy.invalidate();
+        let deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(5)
+            .chain(iter::once(bad_deploy.clone()))
+            .collect::<Vec<_>>();
+
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+
+        let block_and_deploys = BlockAndDeploys { block, deploys };
+
+        match block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_err()
+        {
+            BlockValidationError::UnexpectedDeployHash { invalid_deploy, .. } => {
+                assert_eq!(*invalid_deploy, bad_deploy);
+            }
+            _ => panic!("should report missing deploy"),
+        };
     }
 }

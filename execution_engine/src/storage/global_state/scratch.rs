@@ -53,7 +53,7 @@ impl Cache {
     }
 
     /// Consumes self and returns only written values as values that were only read must be filtered
-    /// out to prevent unecessary writes.
+    /// out to prevent unnecessary writes.
     fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
         self.cached_values
             .into_iter()
@@ -350,6 +350,7 @@ impl StateProvider for ScratchGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys,
+                &Default::default(),
             )?;
         txn.commit()?;
         Ok(missing_descendants)

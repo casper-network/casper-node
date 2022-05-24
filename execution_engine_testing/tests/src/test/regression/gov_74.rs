@@ -3,6 +3,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{engine_state::Error, execution::Error as ExecError},
@@ -53,7 +54,7 @@ fn make_n_arg_call_bytes(arity: usize, arg_type: &str) -> Vec<u8> {
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     builder
 }
 

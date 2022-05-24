@@ -143,10 +143,11 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        NodeId,
     },
     utils::{SharedFlag, Source},
 };
@@ -495,6 +496,26 @@ impl<REv> EffectBuilder<REv> {
         Q: Into<REv>,
         F: FnOnce(Responder<T>) -> Q,
     {
+        let (event, wait_future) = self.create_request_parts(f);
+
+        // Schedule the request before awaiting the response.
+        self.event_queue.schedule(event, queue_kind).await;
+        wait_future.await
+    }
+
+    /// Creates the part necessary to make a request.
+    ///
+    /// A request usually consists of two parts: The request event that needs to be scheduled on the
+    /// reactor queue and associated future that allows waiting for the response. This function
+    /// creates both of them without processing or spawning either.
+    ///
+    /// Usually you will want to call the higher level `make_request` function.
+    pub(crate) fn create_request_parts<T, Q, F>(self, f: F) -> (REv, impl Future<Output = T>)
+    where
+        T: Send + 'static,
+        Q: Into<REv>,
+        F: FnOnce(Responder<T>) -> Q,
+    {
         // Prepare a channel.
         let (sender, receiver) = oneshot::channel();
 
@@ -503,28 +524,32 @@ impl<REv> EffectBuilder<REv> {
 
         // Now inject the request event into the event loop.
         let request_event = f(responder).into();
-        self.event_queue.schedule(request_event, queue_kind).await;
 
-        match receiver.await {
-            Ok(value) => value,
-            Err(err) => {
-                // The channel should usually not be closed except during shutdowns, as it indicates
-                // a panic or disappearance of the remote that is supposed to process the request.
-                //
-                // If it does happen, we pretend nothing happened instead of crashing.
-                if self.event_queue.shutdown_flag().is_set() {
-                    debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
-                } else {
-                    error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
-                           check if a component is stuck from now on");
+        let fut = async move {
+            match receiver.await {
+                Ok(value) => value,
+                Err(err) => {
+                    // The channel should usually not be closed except during shutdowns, as it
+                    // indicates a panic or disappearance of the remote that is
+                    // supposed to process the request.
+                    //
+                    // If it does happen, we pretend nothing happened instead of crashing.
+                    if self.event_queue.shutdown_flag().is_set() {
+                        debug!(%err, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
+                    } else {
+                        error!(%err, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                            check if a component is stuck from now on");
+                    }
+
+                    // We cannot produce any value to satisfy the request, so we just abandon this
+                    // task by waiting on a resource we can never acquire.
+                    let _ = UNOBTAINABLE.acquire().await;
+                    panic!("should never obtain unobtainable semaphore");
                 }
-
-                // We cannot produce any value to satisfy the request, so we just abandon this task
-                // by waiting on a resource we can never acquire.
-                let _ = UNOBTAINABLE.acquire().await;
-                panic!("should never obtain unobtainable semaphore");
             }
-        }
+        };
+
+        (request_event, fut)
     }
 
     /// Run and end effect immediately.
@@ -580,8 +605,8 @@ impl<REv> EffectBuilder<REv> {
 
     /// Sends a network message.
     ///
-    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
-    /// will receive it.
+    /// The message is queued and sent, but no delivery guaranteed. Will return after the message
+    /// has been buffered in the outgoing kernel buffer and thus is subject to backpressure.
     pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,
@@ -590,6 +615,27 @@ impl<REv> EffectBuilder<REv> {
             |responder| NetworkRequest::SendMessage {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
+                respond_after_queueing: false,
+                responder,
+            },
+            QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Enqueues a network message.
+    ///
+    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
+    /// will receive it. Returns as soon as the message is queued inside the networking component.
+    pub(crate) async fn enqueue_message<P>(self, dest: NodeId, payload: P)
+    where
+        REv: From<NetworkRequest<P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::SendMessage {
+                dest: Box::new(dest),
+                payload: Box::new(payload),
+                respond_after_queueing: true,
                 responder,
             },
             QueueKind::Network,
@@ -648,7 +694,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetPeers { responder },
+            |responder| NetworkInfoRequest::Peers { responder },
             QueueKind::Api,
         )
         .await
@@ -660,7 +706,19 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedPeers { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the current network non-joiner peers in random order.
+    pub async fn get_fully_connected_non_joiner_peers(self) -> Vec<NodeId>
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder },
             QueueKind::Regular,
         )
         .await
@@ -869,6 +927,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Puts the given block and its deploys into the store.
+    pub(crate) async fn put_block_and_deploys_to_storage(self, block: Box<BlockAndDeploys>)
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockAndDeploys { block, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block from the linear block store.
     pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<Block>
     where
@@ -876,6 +946,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its deploys from the store.
+    pub(crate) async fn get_block_and_deploys_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockAndDeploys>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndDeploys {
                 block_hash,
                 responder,
             },
@@ -896,6 +984,25 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_header_at_height_from_storage(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderByHeight {
+                block_height,
                 only_from_available_block_range,
                 responder,
             },

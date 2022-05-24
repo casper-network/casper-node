@@ -897,10 +897,16 @@ where
                 )?;
                 let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
                 let digest = crypto::blake2b(&input);
-                if digest.len() != out_size as usize {
-                    let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
-                    return Ok(Some(RuntimeValue::I32(err_value)));
+
+                let result = if digest.len() != out_size as usize {
+                    Err(ApiError::BufferTooSmall)
+                } else {
+                    Ok(())
+                };
+                if result.is_err() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(result))));
                 }
+
                 self.try_get_memory()?
                     .set(out_ptr, &digest)
                     .map_err(|error| Error::Interpreter(error.into()))?;
@@ -942,6 +948,7 @@ where
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
+
             FunctionIndex::NewDictionaryFuncIndex => {
                 // args(0) = pointer to output size (output param)
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
@@ -953,6 +960,7 @@ where
                 let ret = self.new_dictionary(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::DictionaryGetFuncIndex => {
                 // args(0) = pointer to uref in Wasm memory
                 // args(1) = size of uref in Wasm memory
@@ -979,6 +987,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::DictionaryPutFuncIndex => {
                 // args(0) = pointer to uref in Wasm memory
                 // args(1) = size of uref in Wasm memory
@@ -1001,6 +1010,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::LoadCallStack => {
                 // args(0) (Output) Pointer to number of elements in the call stack.
                 // args(1) (Output) Pointer to size in bytes of the serialized call stack.
@@ -1013,6 +1023,7 @@ where
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::LoadAuthorizationKeys => {
                 // args(0) (Output) Pointer to number of authorization keys.
                 // args(1) (Output) Pointer to size in bytes of the total bytes.
@@ -1024,6 +1035,7 @@ where
                 let ret = self.load_authorization_keys(len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::ControlManagementFuncIndex => {
                 // args(0) = key_ptr
                 // args(1) = key_size
@@ -1032,6 +1044,31 @@ where
                 let key: Key = self.t_from_mem(key_ptr, key_size)?;
                 let value = self.control_management(key, operation_type)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(value))))
+            }
+
+            FunctionIndex::RandomBytes => {
+                let (out_ptr, out_size) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.random_bytes,
+                    [out_ptr, out_size],
+                )?;
+
+                let random_bytes = self.context.random_bytes()?;
+
+                let result = if random_bytes.len() != out_size as usize {
+                    Err(ApiError::BufferTooSmall)
+                } else {
+                    Ok(())
+                };
+                if result.is_err() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(result))));
+                }
+
+                self.try_get_memory()?
+                    .set(out_ptr, &random_bytes)
+                    .map_err(|error| Error::Interpreter(error.into()))?;
+
+                Ok(Some(RuntimeValue::I32(0)))
             }
         }
     }

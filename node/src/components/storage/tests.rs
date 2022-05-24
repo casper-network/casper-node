@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
-    thread,
+    iter, thread,
 };
 
 use lmdb::{Cursor, Transaction};
@@ -15,7 +15,8 @@ use smallvec::smallvec;
 
 use casper_hashing::Digest;
 use casper_types::{
-    testing::TestRng, EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512,
+    system::auction::UnbondingPurse, testing::TestRng, AccessRights, EraId, ExecutionResult,
+    ProtocolVersion, PublicKey, SecretKey, URef, U512,
 };
 
 use super::{
@@ -29,6 +30,7 @@ use crate::{
         storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
     },
     effect::{requests::StorageRequest, Multiple},
+    storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy,
@@ -149,7 +151,6 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
     block_signatures
 }
 
-// TODO: This is deprecated (we will never make this request in the actual reactors!)
 /// Requests block header at a specific height from a storage component.
 fn get_block_header_at_height(storage: &mut Storage, height: u64) -> Option<BlockHeader> {
     storage
@@ -173,6 +174,26 @@ fn get_block(
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetBlock {
             block_hash,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Loads a block header by height from a storage component.
+/// Requesting a block header by height is required currently by the RPC
+/// component.
+fn get_block_header_by_height(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    block_height: u64,
+) -> Option<BlockHeader> {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetBlockHeaderByHeight {
+            block_height,
+            only_from_available_block_range: false,
             responder,
         }
         .into()
@@ -413,6 +434,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
                     ProtocolVersion::V1_0_0,
                     is_switch,
                     verifiable_chunked_hash_activation,
+                    None,
                 )
             };
 
@@ -572,6 +594,7 @@ fn can_retrieve_block_by_height() {
                 ProtocolVersion::from_parts(1, 5, 0),
                 true,
                 block_spec.verifiable_chunked_hash_activation,
+                None,
             ));
             let block_14 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
@@ -580,6 +603,7 @@ fn can_retrieve_block_by_height() {
                 ProtocolVersion::from_parts(1, 5, 0),
                 false,
                 block_spec.verifiable_chunked_hash_activation,
+                None,
             ));
             let block_99 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
@@ -588,6 +612,7 @@ fn can_retrieve_block_by_height() {
                 ProtocolVersion::from_parts(1, 5, 0),
                 true,
                 block_spec.verifiable_chunked_hash_activation,
+                None,
             ));
 
             let mut storage =
@@ -725,6 +750,7 @@ fn different_block_at_height_is_fatal() {
         ProtocolVersion::V1_0_0,
         false,
         verifiable_chunked_hash_activation,
+        None,
     ));
     let block_44_b = Box::new(Block::random_with_specifics(
         &mut harness.rng,
@@ -733,6 +759,7 @@ fn different_block_at_height_is_fatal() {
         ProtocolVersion::V1_0_0,
         false,
         verifiable_chunked_hash_activation,
+        None,
     ));
 
     let was_new = put_block(&mut harness, &mut storage, block_44_a.clone());
@@ -1161,6 +1188,10 @@ fn should_hard_reset() {
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
+    let random_deploys: Vec<_> = iter::repeat_with(|| Deploy::random(&mut harness.rng))
+        .take(blocks_count)
+        .collect();
+
     // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
     let blocks: Vec<Block> = (0..blocks_count)
         .map(|height| {
@@ -1172,6 +1203,7 @@ fn should_hard_reset() {
                 ProtocolVersion::V1_0_0,
                 is_switch,
                 verifiable_chunked_hash_activation,
+                iter::once(random_deploys.get(height).expect("should_have_deploy")),
             )
         })
         .collect();
@@ -1198,12 +1230,12 @@ fn should_hard_reset() {
     // and so on.
     let mut deploys = vec![];
     let mut execution_results = vec![];
-    for block_hash in blocks.iter().map(|block| block.hash()) {
-        let deploy = Deploy::random(&mut harness.rng);
+    for (index, block_hash) in blocks.iter().map(|block| block.hash()).enumerate() {
+        let deploy = random_deploys.get(index).expect("should have deploys");
         let execution_result: ExecutionResult = harness.rng.gen();
+        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.id(), execution_result);
-        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
         put_execution_results(
             &mut harness,
             &mut storage,
@@ -1466,6 +1498,7 @@ fn should_garbage_collect() {
                 ProtocolVersion::from_parts(1, 4, 0),
                 is_switch,
                 verifiable_chunked_hash_activation,
+                None,
             )
         })
         .collect();
@@ -1596,6 +1629,7 @@ fn can_put_and_get_blocks_v2() {
             protocol_version,
             i == num_blocks - 1,
             verifiable_chunked_hash_activation,
+            None,
         );
 
         blocks.push(block.clone());
@@ -1747,6 +1781,7 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
         ProtocolVersion::V1_0_0,
         false,
         verifiable_chunked_hash_activation,
+        None,
     );
 
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
@@ -1760,6 +1795,7 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
         ProtocolVersion::V1_0_0,
         is_switch,
         verifiable_chunked_hash_activation,
+        None,
     );
     storage.storage.write_block(&block).unwrap();
 
@@ -1960,7 +1996,15 @@ fn should_restrict_returned_blocks() {
 
     // Create the following disjoint sequences: 1-2 4-5
     [1, 2, 4, 5].iter().for_each(|height| {
-        let (block, _) = random_block_at_height(&mut harness.rng, *height, Block::random_v1);
+        let block = Block::random_with_specifics(
+            &mut harness.rng,
+            EraId::from(1),
+            *height,
+            ProtocolVersion::from_parts(1, 5, 0),
+            false,
+            verifiable_chunked_hash_activation,
+            None,
+        );
         storage.storage.write_block(&block).unwrap();
     });
     // The available range is 4-5.
@@ -2030,4 +2074,77 @@ fn should_restrict_returned_blocks() {
         .storage
         .should_return_block(6, true)
         .expect("should return block failed"));
+}
+
+#[test]
+fn should_get_block_header_by_height() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness, EraId::from(u64::MAX));
+
+    let (block, _) = Block::random_v1(&mut harness.rng);
+    let expected_header = block.header().clone();
+    let height = block.height();
+
+    // Requesting the block header before it is in storage should return None.
+    assert!(get_block_header_by_height(&mut harness, &mut storage, height).is_none());
+
+    let was_new = put_block(&mut harness, &mut storage, Box::new(block));
+    assert!(was_new);
+
+    // Requesting the block header after it is in storage should return the block header.
+    let maybe_block_header = get_block_header_by_height(&mut harness, &mut storage, height);
+    assert!(maybe_block_header.is_some());
+    assert_eq!(expected_header, maybe_block_header.unwrap());
+}
+
+#[test]
+fn should_read_legacy_unbonding_purse() {
+    // These bytes represent the `UnbondingPurse` struct with the `new_validator` field removed
+    // and serialized with `bincode`.
+    // In theory, we can generate these bytes by serializing the `WithdrawPurse`, but at some point,
+    // these two structs may diverge and it's a safe bet to rely on the bytes
+    // that are consistent with what we keep in the current storage.
+    const LEGACY_BYTES: &str = "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e07010000002000000000000000197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610100000020000000000000004508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ffffffffffffffffff40feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+    let decoded = base16::decode(LEGACY_BYTES).expect("decode");
+    let deserialized: UnbondingPurse = deserialize_internal(&decoded)
+        .expect("should deserialize w/o error")
+        .expect("should be Some");
+
+    // Make sure the new field is set to default.
+    assert_eq!(*deserialized.new_validator(), Option::default())
+}
+
+#[test]
+fn unbonding_purse_serialization_roundtrip() {
+    let original = UnbondingPurse::new(
+        URef::new([14; 32], AccessRights::READ_ADD_WRITE),
+        {
+            let secret_key =
+                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+            PublicKey::from(&secret_key)
+        },
+        {
+            let secret_key =
+                SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+            PublicKey::from(&secret_key)
+        },
+        EraId::MAX,
+        U512::max_value() - 1,
+        Some({
+            let secret_key =
+                SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap();
+            PublicKey::from(&secret_key)
+        }),
+    );
+
+    let serialized = serialize_internal(&original).expect("serialization");
+    let deserialized: UnbondingPurse = deserialize_internal(&serialized)
+        .expect("should deserialize w/o error")
+        .expect("should be Some");
+
+    assert_eq!(original, deserialized);
+
+    // Explicitly assert that the `new_validator` is not `None`
+    assert!(deserialized.new_validator().is_some())
 }

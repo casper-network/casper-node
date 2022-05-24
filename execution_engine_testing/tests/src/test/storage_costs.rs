@@ -6,6 +6,7 @@ use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
@@ -118,6 +119,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     remove_contract_user_group_urefs: HostFunction::fixed(0),
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
+    random_bytes: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -144,7 +146,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
         .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
@@ -383,7 +385,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -609,7 +611,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

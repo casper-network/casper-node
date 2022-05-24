@@ -50,7 +50,7 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -69,8 +69,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
-        ExitCode, FinalizedApprovalsWithId, NodeId, NodeState,
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
+        DeployHash, ExitCode, FinalizedApprovalsWithId, NodeId, NodeState,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -133,6 +133,9 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
 
+    #[from]
+    BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
+
     /// Deploy fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
@@ -192,6 +195,9 @@ pub(crate) enum JoinerEvent {
     /// Linear chain block by height fetcher request.
     #[from]
     BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
+
+    #[from]
+    BlockAndDeploysFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAndDeploys>),
 
     /// Deploy fetcher request.
     #[from]
@@ -271,6 +277,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
 
+    /// Incoming trie demand.
+    #[from]
+    TrieDemand(TrieDemand),
+
     /// Incoming trie response network message.
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
@@ -339,6 +349,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockHeaderByHeightFetcherRequest(_) => {
                 "BlockHeaderByHeightFetcherRequest"
             }
+            JoinerEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
+            JoinerEvent::BlockAndDeploysFetcherRequest(_) => "BlockAndDeploysFetcherRequest",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             JoinerEvent::StorageRequest(_) => "StorageRequest",
             JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
@@ -348,6 +360,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::NetRequestIncoming(_) => "NetRequestIncoming",
             JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            JoinerEvent::TrieDemand(_) => "TrieDemand",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
@@ -477,6 +490,7 @@ impl Display for JoinerEvent {
             JoinerEvent::NetRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieDemand(inner) => write!(f, "demand: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::ContractRuntimeRequest(req) => {
@@ -488,6 +502,12 @@ impl Display for JoinerEvent {
             JoinerEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             JoinerEvent::DeployGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
+            }
+            JoinerEvent::BlockAndDeploysFetcher(event) => {
+                write!(f, "block and deploys fetcher: {}", event)
+            }
+            JoinerEvent::BlockAndDeploysFetcherRequest(req) => {
+                write!(f, "block and deploys fetcher request: {}", req)
             }
         }
     }
@@ -510,6 +530,7 @@ pub(crate) struct Reactor {
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
+    block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     diagnostics_port: DiagnosticsPort,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -577,6 +598,7 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec,
+            true,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
@@ -638,6 +660,7 @@ impl reactor::Reactor for Reactor {
         let block_header_and_finality_signatures_by_height_fetcher =
             fetcher_builder.build("block_header_by_height")?;
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
+        let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
@@ -672,6 +695,7 @@ impl reactor::Reactor for Reactor {
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
+                block_and_deploys_fetcher,
                 trie_or_chunk_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
@@ -703,7 +727,8 @@ impl reactor::Reactor for Reactor {
                 self.small_network.handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
-                unreachable!("unhandled control announcement: {}", ctrl_ann)
+                error!("unhandled control announcement: {}", ctrl_ann);
+                Effects::new()
             }
             JoinerEvent::BlocklistAnnouncement(ann) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
@@ -822,6 +847,16 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::TrieOrChunkFetcher,
                 self.trie_or_chunk_fetcher
                     .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::BlockAndDeploysFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::BlockAndDeploysFetcher,
+                self.block_and_deploys_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::BlockAndDeploysFetcherRequest(fetcher_req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockAndDeploysFetcher(fetcher_req.into()),
             ),
             JoinerEvent::ContractRuntime(event) => reactor::wrap_effects(
                 JoinerEvent::ContractRuntime,
@@ -970,6 +1005,11 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            JoinerEvent::TrieDemand(demand) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, demand.into()),
+            ),
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
                 reactor::handle_fetch_response::<Self, TrieOrChunk>(
                     self,
@@ -1056,14 +1096,11 @@ impl Reactor {
                 {
                     Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
                     Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                        error!(
-                            "peer did not have deploy with hash {}: {}",
-                            sender, deploy_hash
-                        );
+                        warn!(?sender, ?deploy_hash, "peer did not have deploy",);
                         return Effects::new();
                     }
                     Err(error) => {
-                        error!("failed to decode deploy from {}: {}", sender, error);
+                        error!(?sender, ?error, "failed to decode deploy");
                         return Effects::new();
                     }
                 };
@@ -1099,8 +1136,8 @@ impl Reactor {
                 // The item trait is used for both fetchers and gossiped things, but this kind of
                 // item is never fetched, only gossiped.
                 warn!(
-                    "Gossiped addresses are never fetched, banning peer: {}",
-                    sender
+                    ?sender,
+                    "gossiped addresses are never fetched, banning peer",
                 );
                 effect_builder
                     .announce_disconnect_from_peer(sender)
@@ -1128,6 +1165,16 @@ impl Reactor {
             }
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, BlockHeaderWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::BlockAndDeploys(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockAndDeploys>(
                     self,
                     effect_builder,
                     rng,

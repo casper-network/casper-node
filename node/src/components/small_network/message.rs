@@ -8,12 +8,13 @@ use std::{
 use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
+use futures::future::BoxFuture;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::types::NodeId;
+use crate::{effect::EffectBuilder, types::NodeId};
 
 use super::counting_format::ConnectionId;
 
@@ -37,6 +38,9 @@ pub(crate) enum Message<P> {
         /// A self-signed certificate indicating validator status.
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
+        /// Joiner node flag.
+        #[serde(default)]
+        is_joiner: bool,
     },
     Payload(P),
 }
@@ -66,6 +70,27 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
+        }
+    }
+
+    /// Attempts to create a demand-event from this message.
+    ///
+    /// Succeeds if the outer message contains a payload that can be converd into a demand.
+    pub(super) fn try_into_demand<REv>(
+        self,
+        effect_builder: EffectBuilder<REv>,
+        sender: NodeId,
+    ) -> Result<(REv, BoxFuture<'static, Option<P>>), Self>
+    where
+        REv: FromIncoming<P> + Send,
+    {
+        match self {
+            Message::Handshake { .. } => Err(self),
+            Message::Payload(payload) => {
+                // Note: For now, the wrapping/unwrapp of the payload is a bit unfortunate here.
+                REv::try_demand_from_incoming(effect_builder, sender, payload)
+                    .map_err(Message::Payload)
+            }
         }
     }
 }
@@ -225,11 +250,12 @@ impl<P: Display> Display for Message<P> {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_joiner,
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: ",
-                    network_name, public_addr, protocol_version
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: , is_joiner: {}",
+                    network_name, public_addr, protocol_version, is_joiner
                 )?;
 
                 if let Some(cert) = consensus_certificate {
@@ -305,6 +331,24 @@ pub(crate) trait Payload:
 pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
     fn from_incoming(sender: NodeId, payload: P) -> Self;
+
+    /// Tries to convert a payload into a demand.
+    ///
+    /// This function can optionally be called before `from_incoming` to attempt to convert an
+    /// incoming payload into a potential demand.
+
+    // TODO: Replace both this and `from_incoming` with a single function that returns an
+    //       appropriate `Either`.
+    fn try_demand_from_incoming(
+        _effect_builder: EffectBuilder<Self>,
+        _sender: NodeId,
+        payload: P,
+    ) -> Result<(Self, BoxFuture<'static, Option<P>>), P>
+    where
+        Self: Sized + Send,
+    {
+        Err(payload)
+    }
 }
 /// A generic configuration for payload weights.
 ///
@@ -341,12 +385,14 @@ pub struct EstimatorWeights {
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
-    use std::net::SocketAddr;
+    use std::{net::SocketAddr, pin::Pin};
 
+    use bytes::BytesMut;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
+    use tokio_serde::{Deserializer, Serializer};
 
-    use crate::protocol;
+    use crate::{components::small_network::message_pack_format::MessagePackFormat, protocol};
 
     use super::*;
 
@@ -430,16 +476,22 @@ mod tests {
 
     /// Serialize a message using the standard serialization method for handshakes.
     fn serialize_message<M: Serialize>(msg: &M) -> Vec<u8> {
-        // The actual serialization/deserialization code can be found at
-        // https://github.com/carllerche/tokio-serde/blob/f3c3d69ce049437973468118c9d01b46e0b1ade5/src/lib.rs#L426-L450
+        let mut serializer = MessagePackFormat;
 
-        rmp_serde::to_vec(&msg).expect("handshake serialization failed")
+        Pin::new(&mut serializer)
+            .serialize(&msg)
+            .expect("handshake serialization failed")
+            .into_iter()
+            .collect()
     }
 
     /// Deserialize a message using the standard deserialization method for handshakes.
     fn deserialize_message<M: DeserializeOwned>(serialized: &[u8]) -> M {
-        rmp_serde::from_read(std::io::Cursor::new(&serialized))
-            .expect("handshake deserialization failed")
+        let mut deserializer = MessagePackFormat;
+
+        Pin::new(&mut deserializer)
+            .deserialize(&BytesMut::from(serialized))
+            .expect("message deserialization failed")
     }
 
     /// Given a message `from` of type `F`, serializes it, then deserializes it as `T`.
@@ -490,6 +542,7 @@ mod tests {
             public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
             consensus_certificate: Some(ConsensusCertificate::random(&mut rng)),
+            is_joiner: false,
         };
 
         let legacy_handshake: V1_0_0_Message = roundtrip_message(&modern_handshake);
@@ -523,11 +576,13 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_joiner,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
+                assert!(!is_joiner)
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -545,11 +600,13 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_joiner,
             } => {
                 assert_eq!(network_name, "serialization-test");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
+                assert!(!is_joiner);
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -567,6 +624,7 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_joiner,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
@@ -591,6 +649,7 @@ mod tests {
                     )
                     .unwrap()
                 );
+                assert!(!is_joiner)
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -608,6 +667,7 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_joiner,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
@@ -632,6 +692,7 @@ mod tests {
                     )
                     .unwrap()
                 );
+                assert!(!is_joiner);
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")

@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -56,7 +56,7 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -221,6 +221,9 @@ pub(crate) enum ParticipatingEvent {
     /// Incoming trie request network message.
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
+    /// Incoming trie demand.
+    #[from]
+    TrieDemand(TrieDemand),
     /// Incoming trie response network message.
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
@@ -296,6 +299,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::NetRequestIncoming(_) => "NetRequestIncoming",
             ParticipatingEvent::NetResponseIncoming(_) => "NetResponseIncoming",
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            ParticipatingEvent::TrieDemand(_) => "TrieDemand",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
@@ -424,6 +428,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::TrieDemand(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
@@ -687,6 +692,7 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec.as_ref(),
+            false,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -1173,7 +1179,7 @@ impl reactor::Reactor for Reactor {
                         {
                             Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
                             Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                                error!(
+                                warn!(
                                     "peer did not have deploy with hash {}: {}",
                                     sender, deploy_hash
                                 );
@@ -1234,6 +1240,14 @@ impl reactor::Reactor for Reactor {
                         );
                         return Effects::new();
                     }
+                    NetResponse::BlockAndDeploys(_) => {
+                        error!(
+                            "cannot handle get response for \
+                            block-and-deploys from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
                 };
 
                 self.dispatch_event(effect_builder, rng, event)
@@ -1242,6 +1256,11 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::TrieDemand(demand) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, demand.into()),
             ),
             ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
                 error!("cannot handle get response for read-trie from {}", sender);

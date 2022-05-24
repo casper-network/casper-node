@@ -1,6 +1,6 @@
 use std::sync::Weak;
 
-use prometheus::{IntCounter, IntGauge, Registry};
+use prometheus::{Counter, IntCounter, IntGauge, Registry};
 use tracing::debug;
 
 use super::{outgoing::OutgoingMetrics, MessageKind};
@@ -68,6 +68,11 @@ pub(super) struct Metrics {
     pub(super) out_state_blocked: IntGauge,
     /// Number of outgoing connections in loopback state.
     pub(super) out_state_loopback: IntGauge,
+
+    /// Total time spent delaying outgoing traffic to non-validators due to limiter, in seconds.
+    pub(super) accumulated_outgoing_limiter_delay: Counter,
+    /// Total time spent delaying incoming traffic from non-validators due to limiter, in seconds.
+    pub(super) accumulated_incoming_limiter_delay: Counter,
 
     /// Registry instance.
     registry: Registry,
@@ -185,6 +190,15 @@ impl Metrics {
             "number of connections in the loopback state",
         )?;
 
+        let accumulated_outgoing_limiter_delay = Counter::new(
+            "accumulated_outgoing_limiter_delay",
+            "seconds spent delaying outgoing traffic to non-validators due to limiter, in seconds",
+        )?;
+        let accumulated_incoming_limiter_delay = Counter::new(
+            "accumulated_incoming_limiter_delay",
+            "seconds spent delaying incoming traffic from non-validators due to limiter, in seconds."
+        )?;
+
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
         registry.register(Box::new(open_connections.clone()))?;
@@ -217,6 +231,9 @@ impl Metrics {
         registry.register(Box::new(out_state_blocked.clone()))?;
         registry.register(Box::new(out_state_loopback.clone()))?;
 
+        registry.register(Box::new(accumulated_outgoing_limiter_delay.clone()))?;
+        registry.register(Box::new(accumulated_incoming_limiter_delay.clone()))?;
+
         Ok(Metrics {
             broadcast_requests,
             direct_message_requests,
@@ -246,6 +263,8 @@ impl Metrics {
             out_state_connected,
             out_state_blocked,
             out_state_loopback,
+            accumulated_outgoing_limiter_delay,
+            accumulated_incoming_limiter_delay,
             registry: registry.clone(),
         })
     }
@@ -340,5 +359,8 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_state_connected);
         unregister_metric!(self.registry, self.out_state_blocked);
         unregister_metric!(self.registry, self.out_state_loopback);
+
+        unregister_metric!(self.registry, self.accumulated_outgoing_limiter_delay);
+        unregister_metric!(self.registry, self.accumulated_incoming_limiter_delay);
     }
 }

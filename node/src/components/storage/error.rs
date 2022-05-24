@@ -62,6 +62,9 @@ pub enum FatalStorageError {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+    /// An internal DB error - blocks should be overwritten.
+    #[error("failed overwriting block")]
+    FailedToOverwriteBlock,
     /// Filesystem error while trying to move file.
     #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
     UnableToMoveFile {
@@ -171,8 +174,7 @@ pub enum FatalStorageError {
     StoredItemSerializationFailure(#[source] bincode::Error),
     /// We tried to store finalized approvals for a nonexistent deploy.
     #[error(
-        "Tried to store FinalizedApprovals for a nonexistent deploy. \
-            Deploy hash: {deploy_hash:?}"
+        "Tried to store FinalizedApprovals for a nonexistent deploy. Deploy hash: {deploy_hash:?}"
     )]
     UnexpectedFinalizedApprovals {
         /// The missing deploy hash.

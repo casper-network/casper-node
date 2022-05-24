@@ -13,13 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Add `casper_random_bytes` function.
 
 
 ## 1.4.4
 
 ### Added
 * Add `URef::withAccessRights` helper function.
-
 
 
 ## [1.4.0] - 2021-10-04

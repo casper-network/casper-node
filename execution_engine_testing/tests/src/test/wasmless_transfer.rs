@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_RUN_GENESIS_REQUEST, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -665,7 +665,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     .build();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(create_account_1_request)
         .expect_success()
         .commit();
@@ -1002,7 +1002,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

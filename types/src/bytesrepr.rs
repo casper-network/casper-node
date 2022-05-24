@@ -532,45 +532,32 @@ impl<T: FromBytes> FromBytes for VecDeque<T> {
     }
 }
 
-macro_rules! impl_to_from_bytes_for_array {
-    ($($N:literal)+) => {
-        $(
-            impl ToBytes for [u8; $N] {
-                #[inline(always)]
-                fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-                    Ok(self.to_vec())
-                }
+impl<const COUNT: usize> ToBytes for [u8; COUNT] {
+    #[inline(always)]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        Ok(self.to_vec())
+    }
 
-                #[inline(always)]
-                fn serialized_length(&self) -> usize { $N }
+    #[inline(always)]
+    fn serialized_length(&self) -> usize {
+        COUNT
+    }
 
-                #[inline(always)]
-                fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-                    writer.extend_from_slice(self);
-                    Ok(())
-                }
-            }
-
-            impl FromBytes for [u8; $N] {
-                fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                    let (bytes, rem) = safe_split_at(bytes, $N)?;
-                    // SAFETY: safe_split_at makes sure `bytes` is exactly $N bytes.
-                    let ptr = bytes.as_ptr() as *const [u8; $N];
-                    let result = unsafe { *ptr };
-                    Ok((result, rem))
-                }
-            }
-        )+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(self);
+        Ok(())
     }
 }
 
-impl_to_from_bytes_for_array! {
-     0  1  2  3  4  5  6  7  8  9
-    10 11 12 13 14 15 16 17 18 19
-    20 21 22 23 24 25 26 27 28 29
-    30 31 32
-    33
-    64 128 256 512
+impl<const COUNT: usize> FromBytes for [u8; COUNT] {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (bytes, rem) = safe_split_at(bytes, COUNT)?;
+        // SAFETY: safe_split_at makes sure `bytes` is exactly `COUNT` bytes.
+        let ptr = bytes.as_ptr() as *const [u8; COUNT];
+        let result = unsafe { *ptr };
+        Ok((result, rem))
+    }
 }
 
 impl<V: ToBytes> ToBytes for BTreeSet<V> {

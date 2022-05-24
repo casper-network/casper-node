@@ -58,6 +58,7 @@ pub(crate) enum FunctionIndex {
     LoadCallStack,
     LoadAuthorizationKeys,
     ControlManagementFuncIndex,
+    RandomBytes,
 }
 
 impl From<FunctionIndex> for usize {

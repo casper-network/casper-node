@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
+use bincode::Options;
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -25,31 +25,43 @@ use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
-    sync::{mpsc::UnboundedReceiver, watch},
+    sync::{mpsc::UnboundedReceiver, watch, Semaphore},
 };
 use tokio_openssl::SslStream;
+use tokio_serde::{Deserializer, Serializer};
 use tracing::{
-    debug, error_span,
+    debug, error, error_span,
     field::{self, Empty},
     info, trace, warn, Instrument, Span,
 };
+
+use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
 
 use super::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
     error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
-    framed,
+    full_transport,
     limiter::LimiterHandle,
-    message::{ConsensusKeyPair, EstimatorWeights},
-    Event, FramedTransport, Message, Metrics, Payload, Transport,
+    message::ConsensusKeyPair,
+    message_pack_format::MessagePackFormat,
+    EstimatorWeights, Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
+    components::small_network::{framed_transport, BincodeFormat, FromIncoming},
+    effect::{requests::NetworkRequest, EffectBuilder, Responder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
     utils::display_error,
 };
+
+/// An item on the internal outgoing message queue.
+///
+/// Contains a reference counted message and an optional responder to call once the message has been
+/// successfully handed over to the kernel for sending.
+pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<Responder<()>>);
 
 /// Low-level TLS connection function.
 ///
@@ -64,6 +76,10 @@ where
     let stream = TcpStream::connect(peer_addr)
         .await
         .map_err(ConnectionError::TcpConnection)?;
+
+    stream
+        .set_nodelay(true)
+        .map_err(ConnectionError::TcpNoDelay)?;
 
     let mut transport = tls::create_tls_connector(context.our_cert.as_x509(), &context.secret_key)
         .and_then(|connector| connector.configure())
@@ -116,19 +132,13 @@ where
 
     debug!("Outgoing TLS connection established");
 
-    // Setup connection sink and stream.
+    // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Dialer,
-        context.chain_info.maximum_net_message_size,
-    );
+    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
+        Ok((framed, public_addr, peer_consensus_public_key, is_joiner)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -138,14 +148,21 @@ where
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
             }
 
-            // Close the receiving end of the transport.
-            let (sink, _stream) = transport.split();
+            // Setup full framed transport, then close down receiving end of the transport.
+            let full_transport = full_transport::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                framed,
+                Role::Dialer,
+            );
+            let (sink, _stream) = full_transport.split();
 
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
                 peer_consensus_public_key,
                 sink,
+                is_joiner,
             }
         }
         Err(error) => OutgoingConnection::Failed {
@@ -189,6 +206,10 @@ where
     pub(super) tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub(super) tarpit_chance: f32,
+    /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
+    pub(super) max_in_flight_demands: usize,
+    /// Flag indicating whether this node is a joining node.
+    pub(super) is_joiner: bool,
 }
 
 /// Handles an incoming connection.
@@ -223,25 +244,26 @@ where
 
     debug!("Incoming TLS connection established");
 
-    // Setup connection sink and stream.
+    // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Listener,
-        context.chain_info.maximum_net_message_size,
-    );
+    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
+        Ok((framed, public_addr, peer_consensus_public_key, is_peer_joiner)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
-            // Close the receiving end of the transport.
-            let (_sink, stream) = transport.split();
+            // Establish full transport and close the receiving end.
+            let full_transport = full_transport::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                framed,
+                Role::Listener,
+            );
+
+            let (_sink, stream) = full_transport.split();
 
             IncomingConnection::Established {
                 peer_addr,
@@ -249,6 +271,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
+                is_joiner: is_peer_joiner,
             }
         }
         Err(error) => IncomingConnection::Failed {
@@ -321,38 +344,62 @@ where
     }
 }
 
+/// Negotiates a handshake between two peers.
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
-    transport: &mut FramedTransport<P>,
+    framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
+) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>, bool), ConnectionError>
 where
     P: Payload,
 {
-    // Send down a handshake and expect one in response.
-    let handshake = context.chain_info.create_handshake(
+    let mut encoder = MessagePackFormat;
+
+    // Manually encode a handshake.
+    let handshake_message = context.chain_info.create_handshake::<P>(
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
+        context.is_joiner,
     );
 
-    io_timeout(
-        context.handshake_timeout.into(),
-        transport.send(Arc::new(handshake)),
-    )
-    .await
-    .map_err(ConnectionError::HandshakeSend)?;
+    let serialized_handshake_message = Pin::new(&mut encoder)
+        .serialize(&Arc::new(handshake_message))
+        .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
 
-    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), transport.next())
+    // To ensure we are not dead-locking, we split the framed transport here and send the handshake
+    // in a background task before awaiting one ourselves. This ensures we can make progress
+    // regardless of the size of the outgoing handshake.
+    let (mut sink, mut stream) = framed.split();
+
+    let handshake_send = tokio::spawn(io_timeout(context.handshake_timeout.into(), async move {
+        sink.send(serialized_handshake_message).await?;
+        Ok(sink)
+    }));
+
+    // The remote's message should be a handshake, but can technically be any message. We receive,
+    // deserialize and check it.
+    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), stream.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
+
+    // Ensure the handshake was sent correctly.
+    let sink = handshake_send
+        .await
+        .map_err(ConnectionError::HandshakeSenderCrashed)?
+        .map_err(ConnectionError::HandshakeSend)?;
+
+    let remote_message: Message<P> = Pin::new(&mut encoder)
+        .deserialize(&remote_message_raw)
+        .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
 
     if let Message::Handshake {
         network_name,
         public_addr,
         protocol_version,
         consensus_certificate,
-    } = remote_handshake
+        is_joiner: is_peer_joiner,
+    } = remote_message
     {
         debug!(%protocol_version, "handshake received");
 
@@ -395,7 +442,16 @@ where
             })
             .transpose()?;
 
-        Ok((public_addr, peer_consensus_public_key))
+        let framed = sink
+            .reunite(stream)
+            .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
+
+        Ok((
+            framed,
+            public_addr,
+            peer_consensus_public_key,
+            is_peer_joiner,
+        ))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -480,7 +536,7 @@ pub(super) async fn server<P, REv>(
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: SplitStream<FramedTransport<P>>,
+    mut stream: SplitStream<FullTransport<P>>,
     limiter: Box<dyn LimiterHandle>,
     mut shutdown_receiver: watch::Receiver<()>,
     peer_id: NodeId,
@@ -488,39 +544,101 @@ pub(super) async fn message_reader<REv, P>(
 ) -> io::Result<()>
 where
     P: DeserializeOwned + Send + Display + Payload,
-    REv: From<Event<P>>,
+    REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
 {
+    let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
+
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
                 Ok(msg) => {
                     trace!(%msg, "message received");
-                    // We've received a message. Ensure we have the proper amount of resources,
-                    // then push it to the reactor.
 
-                    limiter
-                        .request_allowance(
-                            msg.payload_incoming_resource_estimate(&context.payload_weights),
-                        )
-                        .await;
+                    let effect_builder = EffectBuilder::new(context.event_queue);
 
-                    let queue_kind = if msg.is_low_priority() {
-                        QueueKind::NetworkLowPriority
-                    } else {
-                        QueueKind::NetworkIncoming
-                    };
+                    match msg.try_into_demand(effect_builder, peer_id) {
+                        Ok((event, wait_for_response)) => {
+                            // Note: For now, demands bypass the limiter, as we expect the
+                            //       backpressure to handle this instead.
 
-                    context
-                        .event_queue
-                        .schedule(
-                            Event::IncomingMessage {
-                                peer_id: Box::new(peer_id),
-                                msg: Box::new(msg),
-                                span: span.clone(),
-                            },
-                            queue_kind,
-                        )
-                        .await;
+                            // Acquire a permit. If we are handling too many demands at this
+                            // time, this will block, halting the processing of new message,
+                            // thus letting the peer they have reached their maximum allowance.
+                            let in_flight = demands_in_flight
+                                .clone()
+                                .acquire_owned()
+                                .await
+                                // Note: Since the semaphore is reference counted, it must
+                                //       explicitly be closed for acquisition to fail, which we
+                                //       never do. If this happens, there is a bug in the code;
+                                //       we exit with an error and close the connection.
+                                .map_err(|_| {
+                                    io::Error::new(
+                                        io::ErrorKind::Other,
+                                        "demand limiter semaphore closed unexpectedly",
+                                    )
+                                })?;
+
+                            // Spawn a future that will eventually send the returned message. It
+                            // will essentially buffer the response.
+                            tokio::spawn(async move {
+                                if let Some(payload) = wait_for_response.await {
+                                    // Send message and await its return. `send_message` should
+                                    // only return when the message has been buffered, if the
+                                    // peer is not accepting data, we will block here until the
+                                    // send buffer has sufficient room.
+                                    effect_builder.send_message(peer_id, payload).await;
+
+                                    // Note: We could short-circuit the event queue here and
+                                    //       directly insert into the outgoing message queue,
+                                    //       which may be potential performance improvement.
+                                }
+
+                                // Missing else: The handler of the demand did not deem it
+                                // worthy a response. Just drop it.
+
+                                // After we have either successfully buffered the message for
+                                // sending, failed to do so or did not have a message to send
+                                // out, we consider the request handled and free up the permit.
+                                drop(in_flight);
+                            });
+
+                            // Schedule the created event.
+                            context
+                                .event_queue
+                                .schedule::<REv>(event, QueueKind::NetworkDemand)
+                                .await;
+                        }
+                        Err(msg) => {
+                            // We've received a non-demand message. Ensure we have the proper amount
+                            // of resources, then push it to the reactor.
+                            limiter
+                                .request_allowance(
+                                    msg.payload_incoming_resource_estimate(
+                                        &context.payload_weights,
+                                    ),
+                                )
+                                .await;
+
+                            let queue_kind = if msg.is_low_priority() {
+                                QueueKind::NetworkLowPriority
+                            } else {
+                                QueueKind::NetworkIncoming
+                            };
+
+                            context
+                                .event_queue
+                                .schedule(
+                                    Event::IncomingMessage {
+                                        peer_id: Box::new(peer_id),
+                                        msg: Box::new(msg),
+                                        span: span.clone(),
+                                    },
+                                    queue_kind,
+                                )
+                                .await;
+                        }
+                    }
                 }
                 Err(err) => {
                     warn!(
@@ -550,30 +668,50 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<Arc<Message<P>>>,
-    mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+    mut queue: UnboundedReceiver<MessageQueueItem<P>>,
+    mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where
     P: Payload,
 {
-    while let Some(message) = queue.recv().await {
+    while let Some((message, opt_responder)) = queue.recv().await {
         counter.dec();
 
-        // TODO: Refactor message sending to not use `tokio_serde` anymore to avoid duplicate
-        //       serialization.
-        let estimated_wire_size = rmp_serde::to_vec(&message)
-            .as_ref()
-            .map(Vec::len)
-            .unwrap_or(0) as u32;
+        let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
+            Ok(size) => size as u32,
+            Err(error) => {
+                error!(
+                    error = display_error(&error),
+                    "failed to get serialized size of outgoing message, closing outgoing connection"
+                );
+                break;
+            }
+        };
         limiter.request_allowance(estimated_wire_size).await;
 
+        let mut outcome = sink.send(message).await;
+
+        // Notify via responder that the message has been buffered by the kernel.
+        if let Some(responder) = opt_responder {
+            // Since someone is interested in the message, flush the socket to ensure it was sent.
+            outcome = outcome.and(sink.flush().await);
+            responder.respond(()).await;
+        }
+
         // We simply error-out if the sink fails, it means that our connection broke.
-        if let Err(ref err) = sink.send(message).await {
+        if let Err(ref err) = outcome {
             info!(
                 err = display_error(err),
                 "message send failed, closing outgoing connection"
             );
+
+            // To ensure, metrics are up to date, we close the queue and drain it.
+            queue.close();
+            while queue.recv().await.is_some() {
+                counter.dec();
+            }
+
             break;
         };
     }

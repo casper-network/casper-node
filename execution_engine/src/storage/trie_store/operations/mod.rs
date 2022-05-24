@@ -6,7 +6,10 @@ use std::{
     collections::{HashSet, VecDeque},
     convert::TryInto,
     mem,
+    time::Instant,
 };
+
+use tracing::{error, trace};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -237,6 +240,7 @@ pub fn missing_trie_keys<K, V, T, S, E>(
     txn: &T,
     store: &S,
     mut trie_keys_to_visit: Vec<Digest>,
+    known_complete: &HashSet<Digest>,
 ) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -252,16 +256,44 @@ where
         if !visited.insert(trie_key) {
             continue;
         }
-        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        match maybe_retrieved_trie {
-            // If we can't find the trie_key; it is missing and we'll return it
+
+        if known_complete.contains(&trie_key) {
+            // Skip because we know there are no missing descendants.
+            continue;
+        }
+
+        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+            Some(bytes) => bytes,
             None => {
+                // No entry under this trie key.
                 missing_descendants.push(trie_key);
+                continue;
             }
-            // If we could retrieve the node and it is a leaf, the search can move on
-            Some(Trie::Leaf { .. }) => (),
+        };
+
+        // Optimization: Don't deserialize leaves as they have no descendants.
+        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
+            continue;
+        }
+
+        // Parse the trie, handling errors gracefully.
+        let retrieved_trie = match bytesrepr::deserialize_from_slice(retrieved_trie_bytes) {
+            Ok(retrieved_trie) => retrieved_trie,
+            // Couldn't parse; treat as missing and continue.
+            Err(err) => {
+                error!(?err, "unable to parse trie");
+                missing_descendants.push(trie_key);
+                continue;
+            }
+        };
+
+        match retrieved_trie {
+            // Should be unreachable due to checking the first byte as a shortcut above.
+            Trie::<K, V>::Leaf { .. } => {
+                error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
+            }
             // If we hit a pointer block, queue up all of the nodes it points to
-            Some(Trie::Node { pointer_block }) => {
+            Trie::Node { pointer_block } => {
                 for (_, pointer) in pointer_block.as_indexed_pointers() {
                     match pointer {
                         Pointer::LeafPointer(descendant_leaf_trie_key) => {
@@ -274,10 +306,88 @@ where
                 }
             }
             // If we hit an extension block, add its pointer to the queue
-            Some(Trie::Extension { pointer, .. }) => trie_keys_to_visit.push(pointer.into_hash()),
+            Trie::Extension { pointer, .. } => trie_keys_to_visit.push(pointer.into_hash()),
         }
     }
     Ok(missing_descendants)
+}
+
+/// Returns a collection of all descendant trie keys.
+pub fn descendant_trie_keys<K, V, T, S, E>(
+    txn: &T,
+    store: &S,
+    mut trie_keys_to_visit: Vec<Digest>,
+    known_complete: &HashSet<Digest>,
+) -> Result<HashSet<Digest>, E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let start = Instant::now();
+    let mut visited = HashSet::new();
+
+    while let Some(trie_key) = trie_keys_to_visit.pop() {
+        if !visited.insert(trie_key) {
+            continue;
+        }
+
+        if known_complete.contains(&trie_key) {
+            // Skip because we know there are no missing descendants.
+            continue;
+        }
+
+        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+            Some(bytes) => bytes,
+            None => {
+                // No entry under this trie key.
+                continue;
+            }
+        };
+
+        // Optimization: Don't deserialize leaves as they have no descendants.
+        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
+            continue;
+        }
+
+        // Parse the trie, handling errors gracefully.
+        let retrieved_trie = match bytesrepr::deserialize_from_slice(retrieved_trie_bytes) {
+            Ok(retrieved_trie) => retrieved_trie,
+            // Couldn't parse; treat as missing and continue.
+            Err(err) => {
+                error!(?err, "unable to parse trie");
+                continue;
+            }
+        };
+
+        match retrieved_trie {
+            // Should be unreachable due to checking the first byte as a shortcut above.
+            Trie::<K, V>::Leaf { .. } => {
+                error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
+            }
+            // If we hit a pointer block, queue up all of the nodes it points to
+            Trie::Node { pointer_block } => {
+                for (_, pointer) in pointer_block.as_indexed_pointers() {
+                    match pointer {
+                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
+                            trie_keys_to_visit.push(descendant_leaf_trie_key)
+                        }
+                        Pointer::NodePointer(descendant_node_trie_key) => {
+                            trie_keys_to_visit.push(descendant_node_trie_key)
+                        }
+                    }
+                }
+            }
+            // If we hit an extension block, add its pointer to the queue
+            Trie::Extension { pointer, .. } => trie_keys_to_visit.push(pointer.into_hash()),
+        }
+    }
+    let elapsed = start.elapsed().as_millis();
+    trace!(%elapsed, "descendant_trie_keys took ms");
+    Ok(visited)
 }
 
 struct TrieScan<K, V> {

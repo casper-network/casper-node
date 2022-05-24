@@ -12,7 +12,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
+use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
@@ -181,7 +181,9 @@ pub(crate) enum IncomingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
-        stream: SplitStream<FramedTransport<P>>,
+        stream: SplitStream<FullTransport<P>>,
+        /// Flag indicating whether we've established a connection to a joining node.
+        is_joiner: bool,
     },
 }
 
@@ -203,11 +205,12 @@ impl<P> Display for IncomingConnection<P> {
                 peer_id,
                 peer_consensus_public_key,
                 stream: _,
+                is_joiner,
             } => {
                 write!(
                     f,
-                    "connection established from {}/{}; public: {}",
-                    peer_addr, peer_id, public_addr,
+                    "connection established from {}/{}; public: {}, joiner: {}",
+                    peer_addr, peer_id, public_addr, is_joiner,
                 )?;
 
                 if let Some(public_key) = peer_consensus_public_key {
@@ -251,7 +254,9 @@ pub(crate) enum OutgoingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
-        sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+        sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
+        /// Flag indicating whether the peer we've connected to is a joining node.
+        is_joiner: bool,
     },
 }
 
@@ -272,8 +277,13 @@ impl<P> Display for OutgoingConnection<P> {
                 peer_id,
                 peer_consensus_public_key,
                 sink: _,
+                is_joiner,
             } => {
-                write!(f, "connection established to {}/{}", peer_addr, peer_id)?;
+                write!(
+                    f,
+                    "connection established to {}/{}, joiner: {}",
+                    peer_addr, peer_id, is_joiner
+                )?;
 
                 if let Some(public_key) = peer_consensus_public_key {
                     write!(f, " [{}]", public_key)

@@ -6,14 +6,17 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Maximum number of deploys to fetch in parallel.
-max_parallel_deploy_fetches = 20
+# Maximum number of fetch-deploy tasks to run in parallel during chain synchronization.
+max_parallel_deploy_fetches = 5000
 
-# Maximum number of trie nodes to fetch in parallel.
-max_parallel_trie_fetches = 20
+# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+max_parallel_trie_fetches = 5000
 
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'
+
+# How often between sync attempts to redeem a bad node.
+sync_peer_redemption_interval = 10_000
 
 # Whether to synchronize all data back to genesis when joining.
 sync_to_genesis = true
@@ -146,13 +149,17 @@ handshake_timeout = '20sec'
 # connections will be rejected. A value of `0` means unlimited.
 max_incoming_peer_connections = 3
 
-# The maximum amount of upstream bandwidth in bytes per second allocated to non-validating peers.
+# The maximum total of upstream bandwidth in bytes per second allocated to non-validating peers.
 # A value of `0` means unlimited.
 max_outgoing_byte_rate_non_validators = 0
 
-# The maximum allowed impact of requests from non-validating peers per second answered.
+# The maximum allowed total impact of requests from non-validating peers per second answered.
 # A value of `0` means unlimited.
 max_incoming_message_rate_non_validators = 0
+
+# Maximum number of requests for data from a single peer that are allowed be buffered. A value of
+# `0` means unlimited.
+max_in_flight_demands = 50
 
 # Reject incompatible node versions
 #
@@ -184,6 +191,9 @@ tarpit_duration = '10min'
 # set to `1/n` or higher, with `n` being the number of known nodes expected in the configuration of
 # legacy nodes running this software.
 tarpit_chance = 0.2
+
+# How long peers remain blocked after they get blacklisted.
+blocklist_retain_duration = '1min'
 
 # Weights for impact estimation of incoming messages, used in combination with
 # `max_incoming_message_rate_non_validators`.
@@ -219,6 +229,9 @@ address = '0.0.0.0:7777'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 100
+
+# Maximum number of bytes to accept in a single request body.
+max_body_bytes = 2_621_440
 
 
 # ==============================================

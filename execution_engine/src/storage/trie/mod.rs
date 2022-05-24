@@ -374,10 +374,13 @@ impl Display for TrieOrChunk {
 }
 
 impl TrieOrChunk {
+    const TRIE_TAG: u8 = 0;
+    const CHUNK_TAG: u8 = 1;
+
     fn tag(&self) -> u8 {
         match self {
-            TrieOrChunk::Trie(_) => 0,
-            TrieOrChunk::ChunkWithProof(_) => 1,
+            TrieOrChunk::Trie(_) => Self::TRIE_TAG,
+            TrieOrChunk::ChunkWithProof(_) => Self::CHUNK_TAG,
         }
     }
 }
@@ -417,11 +420,11 @@ impl FromBytes for TrieOrChunk {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
-            0 => {
+            Self::TRIE_TAG => {
                 let (trie_bytes, rem) = Bytes::from_bytes(rem)?;
                 Ok((TrieOrChunk::Trie(trie_bytes), rem))
             }
-            1 => {
+            Self::CHUNK_TAG => {
                 let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
                 Ok((TrieOrChunk::ChunkWithProof(chunk), rem))
             }
@@ -441,6 +444,23 @@ impl TrieOrChunkId {
     /// Returns the trie key part of the ID.
     pub fn digest(&self) -> &Digest {
         &self.1
+    }
+
+    /// Given a serialized ID, deserializes it for display purposes.
+    pub fn fmt_serialized(f: &mut Formatter, serialized_id: &[u8]) -> fmt::Result {
+        match bincode::deserialize::<Self>(serialized_id) {
+            Ok(ref trie_or_chunk_id) => Display::fmt(trie_or_chunk_id, f),
+            Err(_) => f.write_str("<invalid>"),
+        }
+    }
+}
+
+/// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
+pub struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
+
+impl<'a> Display for TrieOrChunkIdDisplay<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        TrieOrChunkId::fmt_serialized(f, self.0)
     }
 }
 
@@ -485,11 +505,15 @@ where
 }
 
 impl<K, V> Trie<K, V> {
+    pub(crate) const LEAF_TAG: u8 = 0;
+    const NODE_TAG: u8 = 1;
+    const EXTENSION_TAG: u8 = 2;
+
     fn tag(&self) -> u8 {
         match self {
-            Trie::Leaf { .. } => 0,
-            Trie::Node { .. } => 1,
-            Trie::Extension { .. } => 2,
+            Trie::Leaf { .. } => Self::LEAF_TAG,
+            Trie::Node { .. } => Self::NODE_TAG,
+            Trie::Extension { .. } => Self::EXTENSION_TAG,
         }
     }
 
@@ -633,12 +657,12 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
-            0 => {
+            Self::LEAF_TAG => {
                 let (key, rem) = K::from_bytes(rem)?;
                 let (value, rem) = V::from_bytes(rem)?;
                 Ok((Trie::Leaf { key, value }, rem))
             }
-            1 => {
+            Self::NODE_TAG => {
                 let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
                 Ok((
                     Trie::Node {
@@ -647,7 +671,7 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                     rem,
                 ))
             }
-            2 => {
+            Self::EXTENSION_TAG => {
                 let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))

@@ -86,12 +86,15 @@ impl Bid {
     }
 
     /// Creates a new inactive instance of a bid with 0 staked amount.
-    pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
+    pub fn empty(
+        validator_public_key: PublicKey,
+        bonding_purse: URef,
+        delegation_rate: DelegationRate,
+    ) -> Self {
         let vesting_schedule = None;
         let delegators = BTreeMap::new();
         let inactive = true;
         let staked_amount = 0.into();
-        let delegation_rate = Default::default();
         Self {
             validator_public_key,
             bonding_purse,

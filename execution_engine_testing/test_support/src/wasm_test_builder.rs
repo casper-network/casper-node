@@ -12,6 +12,8 @@ use std::{
 use filesize::PathExt;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 
 use casper_execution_engine::{
     core::{
@@ -25,7 +27,7 @@ use casper_execution_engine::{
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
             QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry,
-            UpgradeConfig, UpgradeSuccess,
+            UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -34,6 +36,10 @@ use casper_execution_engine::{
         execution_journal::ExecutionJournal,
         logging::{self, Settings, Style},
         newtypes::CorrelationId,
+        system_config::{
+            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
+            mint_costs::MintCosts,
+        },
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -56,20 +62,20 @@ use casper_types::{
         auction::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
             ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION,
+            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
-        mint::TOTAL_SUPPLY_KEY,
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
     DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, Motes, ProtocolVersion, PublicKey,
     RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
-use num_rational::Ratio;
 
 use crate::{
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GAS_PRICE,
-    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    chainspec_config::PRODUCTION_PATH, utils, ChainspecConfig, ExecuteRequestBuilder,
+    StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -121,24 +127,7 @@ impl<S> WasmTestBuilder<S> {
 
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_transforms: None,
-            scratch_engine_state: None,
-            system_contract_registry: None,
-            global_state_dir: None,
-        }
+        Self::new_with_chainspec(&*PRODUCTION_PATH, None)
     }
 }
 
@@ -171,9 +160,9 @@ impl InMemoryWasmTestBuilder {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            engine_state: Rc::new(engine_state),
             genesis_hash: None,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
@@ -190,6 +179,34 @@ impl InMemoryWasmTestBuilder {
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let root_hash = global_state.empty_root_hash();
         Self::new(global_state, engine_config, Some(root_hash))
+    }
+
+    /// Returns an [`InMemoryWasmTestBuilder`] instantiated using values from a given chainspec.
+    pub fn new_with_chainspec<P: AsRef<Path>>(
+        chainspec_path: P,
+        post_state_hash: Option<Digest>,
+    ) -> Self {
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.core_config.minimum_delegation_amount,
+            chainspec_config.core_config.strict_argument_checking,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+            chainspec_config.core_config.administrative_accounts.clone(),
+            chainspec_config.core_config.allow_auction_bids,
+            chainspec_config.core_config.allow_unrestricted_transfers,
+            chainspec_config.core_config.refund_handling.into(),
+            chainspec_config.core_config.fee_handling.into(),
+        );
+
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
+
+        Self::new(global_state, engine_config, post_state_hash)
     }
 }
 
@@ -232,6 +249,39 @@ impl LmdbWasmTestBuilder {
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
         }
+    }
+
+    /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
+    /// a given chainspec.
+    pub fn new_with_chainspec<T: AsRef<OsStr> + ?Sized, P: AsRef<Path>>(
+        data_dir: &T,
+        chainspec_path: P,
+    ) -> Self {
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.core_config.minimum_delegation_amount,
+            chainspec_config.core_config.strict_argument_checking,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+            chainspec_config.core_config.administrative_accounts.clone(),
+            chainspec_config.core_config.allow_auction_bids,
+            chainspec_config.core_config.allow_unrestricted_transfers,
+            chainspec_config.core_config.refund_handling.into(),
+            chainspec_config.core_config.fee_handling.into(),
+        );
+
+        Self::new_with_config(data_dir, engine_config)
+    }
+
+    /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
+    /// the production chainspec.
+    pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
+        Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
     }
 
     /// Flushes the LMDB environment to disk.
@@ -530,6 +580,54 @@ where
         };
 
         total_supply
+    }
+
+    /// Queries for the base round reward.
+    /// # Panics
+    /// Panics if the total supply or seigniorage rate can't be found.
+    pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
+        let mint_key: Key = self.get_mint_contract_hash().into();
+
+        let mint_contract = self
+            .query(maybe_post_state, mint_key, &[])
+            .expect("must get mint stored value")
+            .as_contract()
+            .expect("must convert to mint contract")
+            .clone();
+
+        let mint_named_keys = mint_contract.named_keys().clone();
+
+        let total_supply_uref = *mint_named_keys
+            .get(TOTAL_SUPPLY_KEY)
+            .expect("must track total supply")
+            .as_uref()
+            .expect("must get uref");
+
+        let round_seigniorage_rate_uref = *mint_named_keys
+            .get(ROUND_SEIGNIORAGE_RATE_KEY)
+            .expect("must track round seigniorage rate");
+
+        let total_supply = self
+            .query(maybe_post_state, Key::URef(total_supply_uref), &[])
+            .expect("must read value under total supply URef")
+            .as_cl_value()
+            .expect("must convert into CL value")
+            .clone()
+            .into_t::<U512>()
+            .expect("must convert into U512");
+
+        let rate = self
+            .query(maybe_post_state, round_seigniorage_rate_uref, &[])
+            .expect("must read value")
+            .as_cl_value()
+            .expect("must conver to cl value")
+            .clone()
+            .into_t::<Ratio<U512>>()
+            .expect("must conver to ratio");
+
+        rate.checked_mul(&Ratio::from(total_supply))
+            .map(|ratio| ratio.to_integer())
+            .expect("must get base round reward")
     }
 
     /// Runs an [`ExecuteRequest`].
@@ -1149,6 +1247,12 @@ where
         self.get_value(auction_contract, AUCTION_DELAY_KEY)
     }
 
+    /// Gets the unbonding delay
+    pub fn get_unbonding_delay(&mut self) -> u64 {
+        let auction_contract = self.get_auction_contract_hash();
+        self.get_value(auction_contract, UNBONDING_DELAY_KEY)
+    }
+
     /// Gets the [`ContractHash`] of the system auction contract, panics if it can't be found.
     pub fn get_system_auction_hash(&self) -> ContractHash {
         let correlation_id = CorrelationId::new();
@@ -1223,7 +1327,8 @@ where
         &mut self,
         reward_items: impl IntoIterator<Item = RewardItem>,
     ) {
-        self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, reward_items);
+        let auction_delay = self.get_auction_delay();
+        self.advance_eras_by(auction_delay + 1, reward_items);
     }
 
     /// Advancess by a single era.
@@ -1256,5 +1361,24 @@ where
         (refundable_amount * refund_ratio)
             .ceil() // assumes possible dust amounts are always transferred to the user
             .to_integer()
+    }
+
+    /// Returns the costs related to interacting with the auction system contract.
+    pub fn get_auction_costs(&self) -> AuctionCosts {
+        *self.engine_state.config().system_config().auction_costs()
+    }
+
+    /// Returns the costs related to interacting with the mint system contract.
+    pub fn get_mint_costs(&self) -> MintCosts {
+        *self.engine_state.config().system_config().mint_costs()
+    }
+
+    /// Returns the costs related to interacting with the handle payment system contract.
+    pub fn get_handle_payment_costs(&self) -> HandlePaymentCosts {
+        *self
+            .engine_state
+            .config()
+            .system_config()
+            .handle_payment_costs()
     }
 }

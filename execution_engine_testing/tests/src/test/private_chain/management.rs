@@ -7,6 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_SYSTEM_CONFIG,
     DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{Error, ExecConfig, ExecuteRequest, GenesisAccount, RunGenesisRequest},
@@ -88,7 +89,7 @@ fn private_chain_genesis_should_have_admin_accounts() {
 #[test]
 fn public_chain_genesis_should_not_have_admin_accounts() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     assert_eq!(
         builder
@@ -152,7 +153,7 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
 #[test]
 fn should_not_resolve_private_chain_host_functions_on_public_chain() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

@@ -1,5 +1,4 @@
 mod admins;
-mod auction_utils;
 mod balances;
 mod system_contract_registry;
 mod utils;

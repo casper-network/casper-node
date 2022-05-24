@@ -65,22 +65,18 @@ impl ProtocolConfig {
 
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
     pub(super) fn is_valid(&self) -> bool {
-        // If this is not an emergency restart config, assert the `last_emergency_restart` is `None`
-        // or less than `activation_point`.
-        if self.global_state_update.is_none() {
-            if let Some(last_emergency_restart) = self.last_emergency_restart {
-                let activation_point = self.activation_point.era_id();
-                if last_emergency_restart >= activation_point {
-                    error!(
-                        %activation_point,
-                        %last_emergency_restart,
-                        "[protocol.last_emergency_restart] must be lower than \
-                        [protocol.activation_point] in the chainspec."
-                    );
-                    return false;
-                };
-            }
-            return true;
+        // Assert the `last_emergency_restart` is `None` or no more than `activation_point`.
+        if let Some(last_emergency_restart) = self.last_emergency_restart {
+            let activation_point = self.activation_point.era_id();
+            if last_emergency_restart > activation_point {
+                error!(
+                    %activation_point,
+                    %last_emergency_restart,
+                    "[protocol.last_emergency_restart] cannot be greater than \
+                    [protocol.activation_point] in the chainspec."
+                );
+                return false;
+            };
         }
 
         true
@@ -183,37 +179,38 @@ mod tests {
     }
 
     #[test]
-    fn should_validate_if_not_emergency_restart() {
+    fn should_perform_checks_without_global_state_update() {
         let mut rng = crate::new_rng();
         let mut protocol_config = ProtocolConfig::random(&mut rng);
 
-        // If `global_state_update` is `None` then config is valid if `last_emergency_restart` is
-        // also `None`.
+        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
+
+        // We force `global_state_update` to be `None`.
         protocol_config.global_state_update = None;
-        protocol_config.last_emergency_restart = None;
+
+        // The config is valid only if `last_emergency_restart` is no more than `activation_point`.
+        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
+        protocol_config.last_emergency_restart = Some(activation_point);
         assert!(protocol_config.is_valid());
 
-        // If `global_state_update` is `None` then config is valid if `last_emergency_restart` is
-        // less than `activation_point`.
-        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
-        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
-        protocol_config.last_emergency_restart = Some(activation_point - 1);
-        assert!(protocol_config.is_valid());
+        protocol_config.last_emergency_restart = Some(activation_point + 1);
+        assert!(!protocol_config.is_valid());
     }
 
     #[test]
-    fn should_fail_to_validate_if_not_emergency_restart_with_invalid_last() {
+    fn should_perform_checks_with_global_state_update() {
         let mut rng = crate::new_rng();
         let mut protocol_config = ProtocolConfig::random(&mut rng);
 
         let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
 
-        // If `global_state_update` is `None` then config is valid only if `last_emergency_restart`
-        // is less than `activation_point`.
-        protocol_config.global_state_update = None;
+        // We force `global_state_update` to be `Some`.
+        protocol_config.global_state_update = Some(GlobalStateUpdate::random(&mut rng));
+
+        // The config is valid only if `last_emergency_restart` is no more than `activation_point`.
         protocol_config.activation_point = ActivationPoint::EraId(activation_point);
         protocol_config.last_emergency_restart = Some(activation_point);
-        assert!(!protocol_config.is_valid());
+        assert!(protocol_config.is_valid());
 
         protocol_config.last_emergency_restart = Some(activation_point + 1);
         assert!(!protocol_config.is_valid());
@@ -248,6 +245,7 @@ mod tests {
             past_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(protocol_config.is_last_block_before_activation(block.header()));
 
@@ -259,6 +257,7 @@ mod tests {
             past_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
@@ -270,6 +269,7 @@ mod tests {
             current_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
         let block = Block::random_with_specifics(
@@ -279,6 +279,7 @@ mod tests {
             future_version,
             true,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
@@ -290,6 +291,7 @@ mod tests {
             past_version,
             false,
             verifiable_chunked_hash_activation,
+            None,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
     }

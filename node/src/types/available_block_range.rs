@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-/// An unbroken, inclusive range of blocks.
+/// An error returned by attempting to construct an [`AvailableBlockRange`] where the low value
+/// exceeds the high.
 #[derive(
     Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Error,
 )]
@@ -31,6 +32,9 @@ pub struct AvailableBlockRange {
 }
 
 impl AvailableBlockRange {
+    /// An `AvailableRange` of [0, 0].
+    pub const RANGE_0_0: AvailableBlockRange = AvailableBlockRange { low: 0, high: 0 };
+
     /// Returns a new `AvailableBlockRange`.
     pub fn new(low: u64, high: u64) -> Result<Self, AvailableBlockRangeError> {
         if low > high {
@@ -44,6 +48,16 @@ impl AvailableBlockRange {
     /// Returns `true` if `height` is within the range.
     pub fn contains(&self, height: u64) -> bool {
         height >= self.low && height <= self.high
+    }
+
+    /// Returns the low value.
+    pub fn low(&self) -> u64 {
+        self.low
+    }
+
+    /// Returns the high value.
+    pub fn high(&self) -> u64 {
+        self.high
     }
 }
 

@@ -9,7 +9,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
     DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -591,9 +591,10 @@ fn should_calculate_era_validators() {
 
     // Check if there are no missing eras after the calculation, but we don't care about what the
     // elements are
+    let auction_delay = builder.get_auction_delay();
     let eras: Vec<_> = era_validators.keys().copied().collect();
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definitely more than 1 element
+    assert!(era_validators.len() >= auction_delay as usize); // definitely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = {
@@ -604,9 +605,9 @@ fn should_calculate_era_validators() {
     assert_eq!(eras, expected_eras, "Eras {:?}", eras);
 
     assert!(post_era_id > EraId::from(0));
-    let consensus_next_era_id: EraId = post_era_id + DEFAULT_AUCTION_DELAY + 1;
+    let consensus_next_era_id: EraId = post_era_id + auction_delay + 1;
 
-    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+    let snapshot_size = auction_delay as usize + 1;
     assert_eq!(
         era_validators.len(),
         snapshot_size,
@@ -719,13 +720,14 @@ fn should_get_first_seigniorage_recipients() {
     );
 
     let mut era_validators: EraValidators = builder.get_era_validators();
-    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+    let auction_delay = builder.get_auction_delay();
+    let snapshot_size = auction_delay as usize + 1;
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
-    assert!(era_validators.contains_key(&(EraId::from(DEFAULT_AUCTION_DELAY).successor())));
+    assert!(era_validators.contains_key(&(EraId::from(auction_delay).successor())));
 
-    let era_id = EraId::from(DEFAULT_AUCTION_DELAY) - 1;
+    let era_id = EraId::from(auction_delay) - 1;
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
@@ -1053,9 +1055,9 @@ fn should_calculate_era_validators_multiple_new_bids() {
     let genesis_validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validators for initial era");
-
+    let auction_delay = builder.get_auction_delay();
     // new_era is the first era in the future where new era validator weights will be calculated
-    let new_era = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
+    let new_era = INITIAL_ERA_ID + auction_delay + 1;
     assert!(builder.get_validator_weights(new_era).is_none());
     assert_eq!(
         builder.get_validator_weights(new_era - 1).unwrap(),
@@ -1217,7 +1219,7 @@ fn undelegated_funds_should_be_released() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1251,7 +1253,9 @@ fn undelegated_funds_should_be_released() {
 
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    let unbonding_delay = builder.get_unbonding_delay();
+
+    for _ in 0..=unbonding_delay {
         let delegator_1_undelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
         assert_eq!(
@@ -1341,7 +1345,7 @@ fn fully_undelegated_funds_should_be_released() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1375,7 +1379,9 @@ fn fully_undelegated_funds_should_be_released() {
 
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    let unbonding_delay = builder.get_unbonding_delay();
+
+    for _ in 0..=unbonding_delay {
         let delegator_1_undelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
         assert_eq!(
@@ -1500,7 +1506,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1737,7 +1743,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -2879,7 +2885,7 @@ fn should_reset_delegators_stake_after_slashing() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).expect_success().commit();
@@ -3170,7 +3176,7 @@ fn should_delegate_and_redelegate() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -3353,7 +3359,7 @@ fn should_handle_redelegation_to_inactive_validator() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();

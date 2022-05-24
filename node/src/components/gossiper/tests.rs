@@ -48,7 +48,7 @@ use crate::{
         },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
+            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
@@ -108,6 +108,8 @@ enum Event {
     NetResponseIncoming(NetResponseIncoming),
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
+    #[from]
+    TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
@@ -179,6 +181,7 @@ impl Display for Event {
             Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
@@ -408,6 +411,7 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::Block(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndMetadataByHeight(_)
+                | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
@@ -417,6 +421,7 @@ impl reactor::Reactor for Reactor {
             | Event::FinalitySignatureIncoming(_)
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
+            | Event::TrieDemand(_)
             | Event::TrieResponseIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }
