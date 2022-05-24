@@ -461,9 +461,17 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Read batch of block headers by their heights.
     GetHeadersBatch {
         block_headers_id: BlockHeadersBatchId,
         responder: Responder<Option<BlockHeadersBatch>>,
+    },
+    /// Read block hash by its height.
+    GetBlockHashByHeight {
+        /// Block's height.
+        block_height: u64,
+        /// Responder to call when complete.
+        responder: Responder<Option<BlockHash>>,
     },
     /// Update the lowest available block height in storage.
     // Note - this is a request rather than an announcement as the chain synchronizer needs to
@@ -616,6 +624,9 @@ impl Display for StorageRequest {
                 block_headers_id, ..
             } => {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
+            }
+            StorageRequest::GetBlockHashByHeight { block_height, .. } => {
+                write!(formatter, "read block hash by height: {}", block_height)
             }
         }
     }

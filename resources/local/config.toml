@@ -12,6 +12,9 @@ max_parallel_deploy_fetches = 5000
 # Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
 max_parallel_trie_fetches = 5000
 
+# Maximum number of fetch-block tasks to run in parallel during chain synchronization.
+max_parallel_block_fetches = 50
+
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'
 

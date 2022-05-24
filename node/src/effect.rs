@@ -2082,6 +2082,23 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+
+    pub(crate) async fn get_block_hash_by_height_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockHash>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHashByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
 }
 
 /// Construct a fatal error effect.
