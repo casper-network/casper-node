@@ -2903,7 +2903,7 @@ mod tests {
             ProtocolVersion::V1_0_0,
             false,
             EraId::new(100),
-            vec![],
+            std::iter::empty(),
         );
         let trusted_header = trusted_block.take_header();
 
@@ -2911,9 +2911,38 @@ mod tests {
 
         let id = BlockHeadersBatchId::from_known(&trusted_header, batch_size);
 
-        assert_eq!(BlockHeadersBatchId::new(99, 90), id);
+        assert_eq!(
+            BlockHeadersBatchId::new(99, 90),
+            id,
+            "expected batch of proper length and skipping trusted height"
+        );
 
         let id_saturated = BlockHeadersBatchId::from_known(&trusted_header, 1000);
-        assert_eq!(BlockHeadersBatchId::new(99, 0), id_saturated);
+        assert_eq!(
+            BlockHeadersBatchId::new(99, 0),
+            id_saturated,
+            "expect batch towards Genesis"
+        );
+
+        let trusted_last = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(0),
+            1,
+            ProtocolVersion::V1_0_0,
+            false,
+            EraId::new(100),
+            std::iter::empty(),
+        );
+
+        let trusted_last_header = trusted_last.take_header();
+
+        let id_last = BlockHeadersBatchId::from_known(&trusted_last_header, batch_size);
+        assert_eq!(
+            BlockHeadersBatchId::new(0, 0),
+            id_last,
+            "expected batch that saturates towards Genesis and doesn't include known height"
+        );
+    }
+
     }
 }
