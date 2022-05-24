@@ -33,7 +33,7 @@ use casper_execution_engine::{
         self,
         global_state::db::DbGlobalState,
         trie::{TrieOrChunk, TrieOrChunkId},
-        trie_store::db::RocksDbStore,
+        trie_store::db::RocksDbTrieStore,
         ROCKS_DB_DATA_DIR,
     },
 };
@@ -592,7 +592,7 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         }));
 
-        let trie_store = RocksDbStore::new(storage_dir.join(ROCKS_DB_DATA_DIR))
+        let trie_store = RocksDbTrieStore::new(storage_dir.join(ROCKS_DB_DATA_DIR))
             .map_err(|err| ConfigError::Db(storage::error::Error::Db(err.into())))?;
 
         let global_state = DbGlobalState::empty(Some(storage_dir.to_path_buf()), trie_store)?;

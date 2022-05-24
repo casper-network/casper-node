@@ -10,13 +10,13 @@ use super::TestData;
 use crate::storage::{
     store::Store,
     trie::Trie,
-    trie_store::{db::RocksDbStore, in_memory::InMemoryTrieStore},
+    trie_store::{db::RocksDbTrieStore, in_memory::InMemoryTrieStore},
 };
 
 #[test]
-fn lmdb_writer_mutex_does_not_collide_with_readers() {
+fn db_writer_mutex_does_not_collide_with_readers() {
     let dir = tempdir().unwrap();
-    let store = RocksDbStore::new(dir.path()).unwrap();
+    let store = RocksDbTrieStore::new(dir.path()).unwrap();
     let num_threads = 10;
     let barrier = Arc::new(Barrier::new(num_threads + 1));
     let mut handles = Vec::new();
