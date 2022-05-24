@@ -54,6 +54,9 @@ pub(crate) enum Error {
     #[error("no such block hash: {bogus_block_hash}")]
     NoSuchBlockHash { bogus_block_hash: BlockHash },
 
+    #[error("no such block height: {0} when archival sync")]
+    NoSuchBlockHeight(u64),
+
     #[error(transparent)]
     BlockHeaderFetcher(#[from] FetcherError<BlockHeader>),
 

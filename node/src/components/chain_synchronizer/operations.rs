@@ -1174,11 +1174,14 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
     let abort = Arc::new(AtomicBool::new(false));
 
     for block_height in 0..=ctx.config.max_parallel_block_fetches() as u64 {
-        let block_hash = ctx
+        let block_hash = match ctx
             .effect_builder
             .get_block_hash_by_height_from_storage(block_height)
             .await
-            .unwrap(); // TODO proper errors.
+        {
+            Some(hash) => hash,
+            None => return Err(Error::NoSuchBlockHeight(block_height)),
+        };
         queue.push_job(block_hash);
     }
 
@@ -1220,7 +1223,7 @@ async fn fetch_block_worker(
                         .get_block_hash_by_height_from_storage(next_block_height)
                         .await;
                     match next_block_hash {
-                        None => panic!(""),
+                        None => return Err(Error::NoSuchBlockHeight(next_block_height)),
                         Some(hash) => queue.push_job(hash),
                     }
                 }
