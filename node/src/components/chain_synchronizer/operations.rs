@@ -1693,6 +1693,7 @@ mod tests {
             v1_3_0,
             false,
             verifiable_chunked_hash_activation,
+            None,
         )
         .take_header();
 
