@@ -1199,7 +1199,7 @@ impl BlockHeadersBatch {
         match batch.first() {
             Some(highest) => {
                 if highest.height() != requested_id.highest {
-                    error!(expected_highest=?requested_id.highest, got_highest=?highest, "input cannot be empty");
+                    error!(expected_highest=?requested_id.highest, got_highest=?highest, "response does not include highest indexed block header");
                     return None;
                 }
             }
@@ -1253,7 +1253,7 @@ impl BlockHeadersBatch {
             })
             .all(|(l, r)| {
                 l.height() == r.height() + 1
-                    && &l.hash(verifiable_chunked_hash_activation) == r.parent_hash()
+                    && l.parent_hash() == &r.hash(verifiable_chunked_hash_activation)
             })
     }
 }
@@ -1289,8 +1289,8 @@ impl Item for BlockHeadersBatch {
     }
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
-        let lower_batch_height = self.0.first().map(|h| h.height());
-        let upper_batch_height = self.0.last().map(|h| h.height());
+        let upper_batch_height = self.0.first().map(|h| h.height());
+        let lower_batch_height = self.0.last().map(|h| h.height());
         if lower_batch_height.is_none() || upper_batch_height.is_none() {
             // ID should be infallible but it is possible that the `Vec` is empty.
             // In that case we log an error to indicate something went really wrong and use `(0,0)`.
