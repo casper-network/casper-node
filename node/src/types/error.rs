@@ -143,7 +143,7 @@ pub(crate) enum BlockWithMetadataValidationError {
     BlockHeaderWithMetadataValidationError(#[from] BlockHeaderWithMetadataValidationError),
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub(crate) enum BlockHeadersBatchValidationError {
     #[error("Returned batch is not continuous sequence of blocks of parent-child relationship.")]
     BatchNotContinuous,

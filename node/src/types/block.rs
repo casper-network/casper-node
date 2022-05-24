@@ -1256,6 +1256,12 @@ impl BlockHeadersBatch {
                     && l.parent_hash() == &r.hash(verifiable_chunked_hash_activation)
             })
     }
+
+    #[cfg(test)]
+    // Test-only constructor allowing creation otherwise invalid data.
+    fn new(batch: Vec<BlockHeader>) -> Self {
+        Self(batch)
+    }
 }
 
 impl Display for BlockHeadersBatch {
@@ -1273,11 +1279,14 @@ impl Item for BlockHeadersBatch {
 
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    //TODO: Cover with unit tests
     fn validate(
         &self,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<(), Self::ValidationError> {
+        if self.inner().is_empty() {
+            return Err(BlockHeadersBatchValidationError::BatchEmpty);
+        }
+
         if !BlockHeadersBatch::is_continuous_and_descending(
             self.inner(),
             verifiable_chunked_hash_activation,
@@ -3087,6 +3096,58 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(
             BlockHeadersBatch::from_vec(missing_lowest_batch, &id, NEVER_SWITCH_HASHING).is_none()
+        );
+    }
+
+    #[test]
+    fn block_headers_batch_item_validate() {
+        let empty_batch = BlockHeadersBatch::new(vec![]);
+        assert_eq!(
+            Item::validate(&empty_batch, NEVER_SWITCH_HASHING),
+            Err(BlockHeadersBatchValidationError::BatchEmpty)
+        );
+
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        // Invalid ordering.
+        let invalid_batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(invalid_batch.clone()),
+                NEVER_SWITCH_HASHING
+            ),
+            Err(BlockHeadersBatchValidationError::BatchNotContinuous)
+        );
+
+        let valid_batch = {
+            let mut tmp = invalid_batch;
+            tmp.reverse();
+            tmp
+        };
+
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(valid_batch.clone()),
+                NEVER_SWITCH_HASHING
+            ),
+            Ok(())
+        );
+
+        let single_el_valid = vec![valid_batch[0].clone()];
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(single_el_valid),
+                NEVER_SWITCH_HASHING
+            ),
+            Ok(())
         );
     }
 }
