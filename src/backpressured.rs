@@ -240,8 +240,12 @@ mod tests {
         bp.send('H').now_or_never().unwrap().unwrap();
         assert!(bp.send('I').now_or_never().is_none());
 
+        // Send more ACKs to ensure we also get errors if there is capacity.
+        ack_sender.send(6).unwrap();
+
         // We can now close the ACK stream to check if the sink errors after that.
         drop(ack_sender);
+
         assert!(matches!(
             bp.send('I').now_or_never(),
             Some(Err(Error::AckStreamClosed))
