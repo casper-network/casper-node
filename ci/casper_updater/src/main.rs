@@ -247,6 +247,9 @@ fn main() {
     let node_macros = Package::cargo("node_macros", &*regex_data::node_macros::DEPENDENT_FILES);
     node_macros.update();
 
+    let json_rpc = Package::cargo("json_rpc", &*regex_data::json_rpc::DEPENDENT_FILES);
+    json_rpc.update();
+
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 
