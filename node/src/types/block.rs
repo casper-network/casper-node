@@ -1136,9 +1136,10 @@ impl BlockHeadersBatchId {
     /// Return an iterator over block header heights starting from highest (inclusive) to lowest
     /// (inclusive).
     pub fn iter(&self) -> impl Iterator<Item = u64> {
-        self.highest..=self.lowest
+        (self.lowest..=self.highest).rev()
     }
 
+    /// Returns a length of the batch.
     pub fn len(&self) -> u64 {
         self.highest + 1 - self.lowest
     }
@@ -1146,7 +1147,7 @@ impl BlockHeadersBatchId {
 
 impl Display for BlockHeadersBatchId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block header batch {}=..={}", self.highest, self.lowest)
+        write!(f, "block header batch {}..={}", self.highest, self.lowest)
     }
 }
 
@@ -1195,11 +1196,6 @@ impl BlockHeadersBatch {
         requested_id: &BlockHeadersBatchId,
         verifiable_chunked_hash_activation: EraId,
     ) -> Option<Self> {
-        if !Self::is_continuous_and_descending(&batch, verifiable_chunked_hash_activation) {
-            error!("batch is not continuous");
-            return None;
-        }
-
         match batch.first() {
             Some(highest) => {
                 if highest.height() != requested_id.highest {
@@ -1224,6 +1220,11 @@ impl BlockHeadersBatch {
                 error!("input cannot be empty");
                 return None;
             }
+        }
+
+        if !Self::is_continuous_and_descending(&batch, verifiable_chunked_hash_activation) {
+            error!("batch is not continuous");
+            return None;
         }
 
         Some(Self(batch))
@@ -2873,5 +2874,46 @@ mod tests {
             }
             _ => panic!("should report missing deploy"),
         };
+    }
+
+    #[test]
+    fn block_headers_batch_id_iter() {
+        let id = BlockHeadersBatchId::new(5, 1);
+        assert_eq!(vec![5u64, 4, 3, 2, 1], id.iter().collect::<Vec<_>>());
+
+        let id = BlockHeadersBatchId::new(5, 5);
+        assert_eq!(vec![5u64], id.iter().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn block_headers_batch_id_len() {
+        let id = BlockHeadersBatchId::new(5, 1);
+        assert_eq!(id.len(), 5);
+        let id = BlockHeadersBatchId::new(5, 5);
+        assert_eq!(id.len(), 1);
+    }
+
+    #[test]
+    fn block_headers_batch_id_from_known() {
+        let mut rng = TestRng::new();
+        let trusted_block: Block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            100,
+            ProtocolVersion::V1_0_0,
+            false,
+            EraId::new(100),
+            vec![],
+        );
+        let trusted_header = trusted_block.take_header();
+
+        let batch_size = 10;
+
+        let id = BlockHeadersBatchId::from_known(&trusted_header, batch_size);
+
+        assert_eq!(BlockHeadersBatchId::new(99, 90), id);
+
+        let id_saturated = BlockHeadersBatchId::from_known(&trusted_header, 1000);
+        assert_eq!(BlockHeadersBatchId::new(99, 0), id_saturated);
     }
 }
