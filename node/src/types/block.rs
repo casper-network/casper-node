@@ -3050,8 +3050,7 @@ mod tests {
             "single block is valid batch"
         );
 
-        let mut batch_with_holes = vec![];
-        batch_with_holes.push(test_block_iter.next().unwrap().take_header());
+        let mut batch_with_holes = vec![test_block_iter.next().unwrap().take_header()];
         // Skip one block header
         let _ = test_block_iter.next().unwrap();
         batch_with_holes.push(test_block_iter.next().unwrap().take_header());
