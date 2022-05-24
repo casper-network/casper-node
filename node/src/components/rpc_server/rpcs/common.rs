@@ -6,11 +6,12 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use casper_hashing::Digest;
+use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
 use casper_types::{bytesrepr::ToBytes, Key};
 
 use super::{
     chain::{self, BlockIdentifier},
-    state, ErrorCode, ReactorEventT, RpcRequest,
+    state, Error, ReactorEventT, RpcRequest,
 };
 use crate::{
     effect::EffectBuilder,
@@ -44,15 +45,15 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
     state_root_hash: Digest,
     base_key: Key,
     path: Vec<String>,
-) -> Result<(StoredValue, String), warp_json_rpc::Error> {
+) -> Result<(StoredValue, String), Error> {
     let (value, proofs) = state::run_query(effect_builder, state_root_hash, base_key, path).await?;
 
     let value_compat = match StoredValue::try_from(value) {
         Ok(value_compat) => value_compat,
         Err(error) => {
             warn!(?error, "failed to encode stored value");
-            return Err(warp_json_rpc::Error::custom(
-                ErrorCode::InternalError as i64,
+            return Err(Error::new(
+                ReservedErrorCode::InternalError,
                 format!("failed to encode stored value: {}", error),
             ));
         }
@@ -62,8 +63,8 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
         Ok(bytes) => base16::encode_lower(&bytes),
         Err(error) => {
             warn!(?error, ?proofs, "failed to encode proof");
-            return Err(warp_json_rpc::Error::custom(
-                ErrorCode::InternalError as i64,
+            return Err(Error::new(
+                ReservedErrorCode::InternalError,
                 format!("failed to encode proof: {}", error),
             ));
         }
@@ -74,20 +75,24 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 
 /// An enum to be used as the `data` field of a JSON-RPC error response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[serde(rename_all = "snake_case")]
+#[serde(deny_unknown_fields, untagged)]
 pub enum ErrorData {
-    /// The height range (inclusive) of fully available blocks.
-    AvailableBlockRange(AvailableBlockRange),
+    /// The requested block of state root hash is not available on this node.
+    MissingBlockOrStateRoot {
+        /// Additional info.
+        message: String,
+        /// The height range (inclusive) of fully available blocks.
+        available_block_range: AvailableBlockRange,
+    },
 }
 
-/// Returns a `warp_json_rpc::Error` which includes the height range of fully available blocks as
-/// the additional `data` field.
-pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
+/// Returns an `Error` which includes the height range of fully available blocks as the additional
+/// `data` field.
+pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT, E: ErrorCodeT>(
     effect_builder: EffectBuilder<REv>,
-    error_code: ErrorCode,
+    error_code: E,
     error_message: String,
-) -> warp_json_rpc::Error {
+) -> Error {
     let available_block_range = effect_builder
         .make_request(
             |responder| RpcRequest::GetAvailableBlockRange { responder },
@@ -100,15 +105,19 @@ pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
         "got request for non-existent data, will respond with msg: {}", error_message
     );
 
-    warp_json_rpc::Error::custom(error_code as i64, error_message)
-        .with_data(ErrorData::AvailableBlockRange(available_block_range))
+    let error_data = ErrorData::MissingBlockOrStateRoot {
+        message: error_message,
+        available_block_range,
+    };
+
+    Error::new(error_code, error_data)
 }
 
 pub(super) async fn get_block<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
-) -> Result<Block, warp_json_rpc::Error> {
+) -> Result<Block, Error> {
     chain::get_block_with_metadata(maybe_id, only_from_available_block_range, effect_builder)
         .await
         .map(|block_with_metadata| block_with_metadata.block)

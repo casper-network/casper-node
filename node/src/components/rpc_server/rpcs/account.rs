@@ -5,20 +5,17 @@
 
 use std::str;
 
-use futures::{future::BoxFuture, FutureExt};
-use http::Response;
-use hyper::Body;
+use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use warp_json_rpc::Builder;
 
 use casper_types::ProtocolVersion;
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
+    Error, ReactorEventT, RpcRequest, RpcWithParams,
 };
 use crate::{
     components::rpc_server::rpcs::ErrorCode,
@@ -50,7 +47,7 @@ impl DocExample for PutDeployParams {
 }
 
 /// Result for "account_put_deploy" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PutDeployResult {
     /// The RPC API version.
@@ -69,57 +66,47 @@ impl DocExample for PutDeployResult {
 /// "account_put_deploy" RPC
 pub struct PutDeploy {}
 
+#[async_trait]
 impl RpcWithParams for PutDeploy {
     const METHOD: &'static str = "account_put_deploy";
     type RequestParams = PutDeployParams;
     type ResponseResult = PutDeployResult;
-}
 
-impl RpcWithParamsExt for PutDeploy {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        params: Self::RequestParams,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            let deploy_hash = *params.deploy.id();
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, Error> {
+        let deploy_hash = *params.deploy.id();
 
-            // Submit the new deploy to be announced.
-            let put_deploy_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::SubmitDeploy {
-                        deploy: Box::new(params.deploy),
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
+        // Submit the new deploy to be announced.
+        let put_deploy_result = effect_builder
+            .make_request(
+                |responder| RpcRequest::SubmitDeploy {
+                    deploy: Box::new(params.deploy),
+                    responder,
+                },
+                QueueKind::Api,
+            )
+            .await;
 
-            match put_deploy_result {
-                Ok(_) => {
-                    info!(%deploy_hash,
-                    "deploy was stored"
-                    );
-                    let result = Self::ResponseResult {
-                        api_version,
-                        deploy_hash,
-                    };
-                    Ok(response_builder.success(result)?)
-                }
-                Err(error) => {
-                    info!(
-                        %deploy_hash,
-                        %error,
-                        "the deploy submitted by the client was invalid",
-                    );
-                    Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::InvalidDeploy as i64,
-                        error.to_string(),
-                    ))?)
-                }
+        match put_deploy_result {
+            Ok(_) => {
+                info!(%deploy_hash, "deploy was stored");
+                let result = Self::ResponseResult {
+                    api_version,
+                    deploy_hash,
+                };
+                Ok(result)
+            }
+            Err(error) => {
+                info!(
+                    %deploy_hash,
+                    %error,
+                    "the deploy submitted by the client was invalid",
+                );
+                Err(Error::new(ErrorCode::InvalidDeploy, error.to_string()))
             }
         }
-        .boxed()
     }
 }

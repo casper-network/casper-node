@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
-    thread,
+    iter, thread,
 };
 
 use lmdb::{Cursor, Transaction};
@@ -1188,7 +1188,7 @@ fn should_hard_reset() {
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
-    let random_deploys: Vec<_> = std::iter::repeat_with(|| Deploy::random(&mut harness.rng))
+    let random_deploys: Vec<_> = iter::repeat_with(|| Deploy::random(&mut harness.rng))
         .take(blocks_count)
         .collect();
 
@@ -1203,7 +1203,7 @@ fn should_hard_reset() {
                 ProtocolVersion::V1_0_0,
                 is_switch,
                 verifiable_chunked_hash_activation,
-                Some(random_deploys.get(height).expect("should_have_deploy")),
+                iter::once(random_deploys.get(height).expect("should_have_deploy")),
             )
         })
         .collect();

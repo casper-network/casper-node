@@ -5,21 +5,17 @@
 
 use std::{collections::BTreeMap, str};
 
-use futures::{future::BoxFuture, FutureExt};
-use http::Response;
-use hyper::Body;
+use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use warp_json_rpc::Builder;
 
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
-    RpcWithoutParamsExt,
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithoutParams,
 };
 use crate::{
     components::consensus::ValidatorChange,
@@ -82,7 +78,7 @@ impl DocExample for GetDeployParams {
 }
 
 /// The execution result of a single deploy.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JsonExecutionResult {
     /// The block hash.
@@ -92,7 +88,7 @@ pub struct JsonExecutionResult {
 }
 
 /// Result for "info_get_deploy" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetDeployResult {
     /// The RPC API version.
@@ -113,66 +109,59 @@ impl DocExample for GetDeployResult {
 /// "info_get_deploy" RPC.
 pub struct GetDeploy {}
 
+#[async_trait]
 impl RpcWithParams for GetDeploy {
     const METHOD: &'static str = "info_get_deploy";
     type RequestParams = GetDeployParams;
     type ResponseResult = GetDeployResult;
-}
 
-impl RpcWithParamsExt for GetDeploy {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        params: Self::RequestParams,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // Try to get the deploy and metadata from storage.
-            let maybe_deploy_and_metadata = effect_builder
-                .make_request(
-                    |responder| RpcRequest::GetDeploy {
-                        hash: params.deploy_hash,
-                        finalized_approvals: params.finalized_approvals,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, Error> {
+        // Try to get the deploy and metadata from storage.
+        let maybe_deploy_and_metadata = effect_builder
+            .make_request(
+                |responder| RpcRequest::GetDeploy {
+                    hash: params.deploy_hash,
+                    finalized_approvals: params.finalized_approvals,
+                    responder,
+                },
+                QueueKind::Api,
+            )
+            .await;
 
-            let (deploy, metadata) = match maybe_deploy_and_metadata {
-                Some((deploy, metadata)) => (deploy, metadata),
-                None => {
-                    info!(
-                        "failed to get {} and metadata from storage",
-                        params.deploy_hash
-                    );
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::NoSuchDeploy as i64,
-                        "deploy not known",
-                    ))?);
-                }
-            };
+        let (deploy, metadata) = match maybe_deploy_and_metadata {
+            Some((deploy, metadata)) => (deploy, metadata),
+            None => {
+                let message = format!(
+                    "failed to get {} and metadata from storage",
+                    params.deploy_hash
+                );
+                info!("{}", message);
+                return Err(Error::new(ErrorCode::NoSuchDeploy, message));
+            }
+        };
 
-            // Return the result.
-            let execution_results = metadata
-                .execution_results
-                .into_iter()
-                .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
-                .collect();
+        // Return the result.
+        let execution_results = metadata
+            .execution_results
+            .into_iter()
+            .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
+            .collect();
 
-            let result = Self::ResponseResult {
-                api_version,
-                deploy,
-                execution_results,
-            };
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+        let result = Self::ResponseResult {
+            api_version,
+            deploy,
+            execution_results,
+        };
+        Ok(result)
     }
 }
 
 /// Result for "info_get_peers" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetPeersResult {
     /// The RPC API version.
@@ -191,68 +180,58 @@ impl DocExample for GetPeersResult {
 /// "info_get_peers" RPC.
 pub struct GetPeers {}
 
+#[async_trait]
 impl RpcWithoutParams for GetPeers {
     const METHOD: &'static str = "info_get_peers";
     type ResponseResult = GetPeersResult;
-}
 
-impl RpcWithoutParamsExt for GetPeers {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            let peers = effect_builder
-                .make_request(
-                    |responder| RpcRequest::GetPeers { responder },
-                    QueueKind::Api,
-                )
-                .await;
+    ) -> Result<Self::ResponseResult, Error> {
+        let peers = effect_builder
+            .make_request(
+                |responder| RpcRequest::GetPeers { responder },
+                QueueKind::Api,
+            )
+            .await;
 
-            let result = Self::ResponseResult {
-                api_version,
-                peers: PeersMap::from(peers),
-            };
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+        let result = Self::ResponseResult {
+            api_version,
+            peers: PeersMap::from(peers),
+        };
+        Ok(result)
     }
 }
 
 /// "info_get_status" RPC.
 pub struct GetStatus {}
 
+#[async_trait]
 impl RpcWithoutParams for GetStatus {
     const METHOD: &'static str = "info_get_status";
     type ResponseResult = GetStatusResult;
-}
 
-impl RpcWithoutParamsExt for GetStatus {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // Get the status.
-            let status_feed = effect_builder
-                .make_request(
-                    |responder| RpcRequest::GetStatus { responder },
-                    QueueKind::Api,
-                )
-                .await;
+    ) -> Result<Self::ResponseResult, Error> {
+        // Get the status.
+        let status_feed = effect_builder
+            .make_request(
+                |responder| RpcRequest::GetStatus { responder },
+                QueueKind::Api,
+            )
+            .await;
 
-            // Convert to `ResponseResult` and send.
-            let body = Self::ResponseResult::new(status_feed, api_version);
-            Ok(response_builder.success(body)?)
-        }
-        .boxed()
+        // Convert to `ResponseResult` and send.
+        let result = Self::ResponseResult::new(status_feed, api_version);
+        Ok(result)
     }
 }
 
 /// A single change to a validator's status in the given era.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JsonValidatorStatusChange {
     /// The era in which the change occurred.
@@ -271,7 +250,7 @@ impl JsonValidatorStatusChange {
 }
 
 /// The changes in a validator's status.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JsonValidatorChanges {
     /// The public key of the validator.
@@ -293,7 +272,7 @@ impl JsonValidatorChanges {
 }
 
 /// Result for the "info_get_validator_changes" RPC.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetValidatorChangesResult {
     /// The RPC API version.
@@ -337,28 +316,23 @@ impl DocExample for GetValidatorChangesResult {
 /// "info_get_validator_changes" RPC.
 pub struct GetValidatorChanges {}
 
+#[async_trait]
 impl RpcWithoutParams for GetValidatorChanges {
     const METHOD: &'static str = "info_get_validator_changes";
     type ResponseResult = GetValidatorChangesResult;
-}
 
-impl RpcWithoutParamsExt for GetValidatorChanges {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            let changes = effect_builder.get_consensus_validator_changes().await;
-            let result = Self::ResponseResult::new(api_version, changes);
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+    ) -> Result<Self::ResponseResult, Error> {
+        let changes = effect_builder.get_consensus_validator_changes().await;
+        let result = Self::ResponseResult::new(api_version, changes);
+        Ok(result)
     }
 }
 
 /// Result for the "info_get_chainspec" RPC.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct GetChainspecResult {
     /// The RPC API version.
     #[schemars(with = "String")]
@@ -385,22 +359,17 @@ impl DocExample for GetChainspecResult {
 /// "info_get_chainspec" RPC.
 pub struct GetChainspec {}
 
+#[async_trait]
 impl RpcWithoutParams for GetChainspec {
     const METHOD: &'static str = "info_get_chainspec";
     type ResponseResult = GetChainspecResult;
-}
 
-impl RpcWithoutParamsExt for GetChainspec {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            let chainspec_bytes = effect_builder.get_chainspec_raw_bytes().await;
-            let result = Self::ResponseResult::new(api_version, (*chainspec_bytes).clone());
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+    ) -> Result<Self::ResponseResult, Error> {
+        let chainspec_bytes = effect_builder.get_chainspec_raw_bytes().await;
+        let result = Self::ResponseResult::new(api_version, (*chainspec_bytes).clone());
+        Ok(result)
     }
 }

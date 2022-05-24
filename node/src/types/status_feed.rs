@@ -76,7 +76,7 @@ impl ChainspecInfo {
 }
 
 /// The various possible states of operation for the node.
-#[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Deserialize, Serialize, JsonSchema)]
 pub enum NodeState {
     /// The node is currently in the fast syncing state.
     FastSyncing,
@@ -134,7 +134,7 @@ impl StatusFeed {
 }
 
 /// Minimal info of a `Block`.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MinimalBlockInfo {
     hash: BlockHash,
@@ -159,7 +159,7 @@ impl From<Block> for MinimalBlockInfo {
 }
 
 /// Result for "info_get_status" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
     /// The RPC API version.
