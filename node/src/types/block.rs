@@ -1199,7 +1199,7 @@ impl BlockHeadersBatch {
         match batch.first() {
             Some(highest) => {
                 if highest.height() != requested_id.highest {
-                    error!(expected_highest=?requested_id.highest, got_highest=?highest, "response does not include highest indexed block header");
+                    error!(expected_highest=?requested_id.highest, got_highest=?highest, "unexpected highest block header");
                     return None;
                 }
             }
@@ -1212,7 +1212,7 @@ impl BlockHeadersBatch {
         match batch.last() {
             Some(lowest) => {
                 if lowest.height() != requested_id.lowest {
-                    error!(expected_lowest=?requested_id.lowest, got_lowest=?lowest, "response does not include lowest indexed block header");
+                    error!(expected_lowest=?requested_id.lowest, got_lowest=?lowest, "unexpected lowest block header");
                     return None;
                 }
             }
@@ -3051,5 +3051,42 @@ mod tests {
             batch_with_holes.as_slice(),
             NEVER_SWITCH_HASHING
         ));
+    }
+
+    #[test]
+    fn block_headers_batch_from_vec() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+        batch.reverse();
+
+        let id = BlockHeadersBatchId::new(batch[0].height(), batch[2].height());
+
+        let block_headers_batch =
+            BlockHeadersBatch::from_vec(batch.clone(), &id, NEVER_SWITCH_HASHING);
+        assert!(block_headers_batch.is_some());
+        assert_eq!(block_headers_batch.unwrap().inner(), &batch);
+
+        let missing_highest_batch = batch.clone().into_iter().skip(1).collect::<Vec<_>>();
+        assert!(
+            BlockHeadersBatch::from_vec(missing_highest_batch, &id, NEVER_SWITCH_HASHING).is_none()
+        );
+
+        let missing_lowest_batch = batch
+            .clone()
+            .into_iter()
+            .rev()
+            .skip(1)
+            .rev()
+            .collect::<Vec<_>>();
+        assert!(
+            BlockHeadersBatch::from_vec(missing_lowest_batch, &id, NEVER_SWITCH_HASHING).is_none()
+        );
     }
 }
