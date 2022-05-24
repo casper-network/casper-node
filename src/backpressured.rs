@@ -281,12 +281,12 @@ mod tests {
         bp.send('A').now_or_never().unwrap().unwrap();
         bp.send('B').now_or_never().unwrap().unwrap();
         ack_sender.send(2).unwrap();
-        ack_sender.send(2).unwrap();
+        ack_sender.send(1).unwrap();
 
         assert!(matches!(
             bp.send('C').now_or_never(),
             Some(Err(Error::DuplicateAck {
-                ack_received: 2,
+                ack_received: 1,
                 highest: 2
             }))
         ));
