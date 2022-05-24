@@ -161,6 +161,7 @@ where
 
     /// Creates new runtime context cloning values from self.
     #[allow(clippy::too_many_arguments)]
+    #[must_use]
     pub fn new_from_self(
         &self,
         base_key: Key,

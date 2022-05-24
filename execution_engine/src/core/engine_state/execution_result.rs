@@ -160,6 +160,7 @@ impl ExecutionResult {
     ///
     /// This method preserves the [`ExecutionResult`] variant and updates the cost field
     /// only.
+    #[must_use]
     pub fn with_cost(self, cost: Gas) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -189,6 +190,7 @@ impl ExecutionResult {
     ///
     /// This method preserves the [`ExecutionResult`] variant and updates the
     /// `transfers` field only.
+    #[must_use]
     pub fn with_transfers(self, transfers: Vec<TransferAddr>) -> Self {
         match self {
             ExecutionResult::Failure {
@@ -218,6 +220,7 @@ impl ExecutionResult {
     ///
     /// This method preserves the [`ExecutionResult`] variant and updates the
     /// `execution_journal` field only.
+    #[must_use]
     pub fn with_journal(self, execution_journal: ExecutionJournal) -> Self {
         match self {
             ExecutionResult::Failure {

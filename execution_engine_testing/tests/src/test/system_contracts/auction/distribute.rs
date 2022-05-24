@@ -7,9 +7,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_ROUND_SEIGNIORAGE_RATE_U512,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, step::RewardItem,
@@ -67,7 +67,12 @@ static VALIDATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VA
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
 static DELEGATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_3));
-const GENESIS_ROUND_SEIGNIORAGE_RATE: Ratio<U512> = DEFAULT_ROUND_SEIGNIORAGE_RATE_U512;
+static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
+    Ratio::new(
+        U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.numer()),
+        U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.denom()),
+    )
+});
 
 fn get_validator_bid(builder: &mut InMemoryWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
     let mut bids: Bids = builder.get_bids();
@@ -248,7 +253,7 @@ fn should_distribute_delegation_rate_zero() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -521,7 +526,7 @@ fn should_withdraw_bids_after_distribute() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -831,7 +836,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward_1 = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_1_integer = expected_total_reward_1.to_integer();
     assert_eq!(total_payout, expected_total_reward_1_integer);
 
@@ -977,7 +982,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let total_payout_2 = builder.base_round_reward(None);
     assert!(total_supply_2 > initial_supply);
 
-    let expected_total_reward_2 = GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
+    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
 
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
     assert_eq!(total_payout_2, expected_total_reward_2_integer);
@@ -1263,7 +1268,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout_1 = builder.base_round_reward(None);
-    let expected_total_reward_1 = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_1_integer = expected_total_reward_1.to_integer();
     assert_eq!(total_payout_1, expected_total_reward_1_integer);
 
@@ -1418,7 +1423,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         .step(step_request)
         .expect("must execute step successfully");
 
-    let expected_total_reward_2 = GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
+    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
     assert!(expected_total_reward_2 > expected_total_reward_1);
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
     assert_eq!(total_payout_2, expected_total_reward_2_integer);
@@ -1674,7 +1679,7 @@ fn should_distribute_delegation_rate_half() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -1910,7 +1915,7 @@ fn should_distribute_delegation_rate_full() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -2105,7 +2110,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -2342,7 +2347,7 @@ fn should_distribute_by_factor() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(expected_total_reward_integer, total_payout);
 
@@ -2568,7 +2573,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -2795,7 +2800,7 @@ fn should_distribute_by_factor_uneven() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -3097,7 +3102,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -3410,7 +3415,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -4209,7 +4214,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward_before = GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward_before = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward_before.to_integer();
 
     for request in post_genesis_requests {

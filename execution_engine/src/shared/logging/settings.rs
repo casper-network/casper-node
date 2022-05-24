@@ -28,12 +28,14 @@ impl Settings {
 
     /// If `true`, log messages created via `log_metric()` and
     /// `log_duration()` are logged, regardless of the log-level.
+    #[must_use]
     pub fn with_metrics_enabled(mut self, value: bool) -> Self {
         self.enable_metrics = value;
         self
     }
 
     /// Sets the logging style to structured or human-readable.
+    #[must_use]
     pub fn with_style(mut self, value: Style) -> Self {
         self.style = value;
         self

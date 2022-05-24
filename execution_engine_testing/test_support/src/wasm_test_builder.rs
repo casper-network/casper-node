@@ -74,8 +74,8 @@ use casper_types::{
 
 use crate::{
     chainspec_config::PRODUCTION_PATH, utils, ChainspecConfig, ExecuteRequestBuilder,
-    StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+    SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.

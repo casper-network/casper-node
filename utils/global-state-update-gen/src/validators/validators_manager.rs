@@ -118,7 +118,7 @@ impl ValidatorsUpdateManager {
     /// consensus).
     fn add_and_remove_bids(
         &mut self,
-        input_data: &InputData,
+        _input_data: &InputData,
         validators_diff: &ValidatorsDiff,
         new_snapshot: &SeigniorageRecipientsSnapshot,
     ) {
