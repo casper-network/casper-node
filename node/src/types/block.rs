@@ -2944,5 +2944,112 @@ mod tests {
         );
     }
 
+    struct TestBlock(Block, TestRng);
+
+    impl TestBlock {
+        fn new(test_rng: TestRng) -> Self {
+            let mut rng = test_rng;
+            let init = Block::random(&mut rng);
+            Self(init, rng)
+        }
+
+        fn into_iter(self) -> TestBlockIterator {
+            TestBlockIterator(self.0, self.1)
+        }
+    }
+
+    const NEVER_SWITCH_HASHING: EraId = EraId::new(u64::MAX);
+
+    struct TestBlockIterator(Block, TestRng);
+
+    impl Iterator for TestBlockIterator {
+        type Item = Block;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = Block::new(
+                self.0.id(NEVER_SWITCH_HASHING),
+                self.0.header().accumulated_seed(),
+                *self.0.header().state_root_hash(),
+                FinalizedBlock::random_with_specifics(
+                    &mut self.1,
+                    self.0.header().era_id(),
+                    self.0.header().height() + 1,
+                    false,
+                    std::iter::empty(),
+                ),
+                None,
+                self.0.header().protocol_version(),
+                NEVER_SWITCH_HASHING,
+            )
+            .unwrap();
+            self.0 = next.clone();
+            Some(next)
+        }
+    }
+
+    #[test]
+    fn test_block_iter() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+        let mut block_batch = test_block.into_iter().take(500);
+        let mut parent_block: Block = block_batch.next().unwrap();
+        for current_block in block_batch {
+            assert_eq!(
+                current_block.header().height(),
+                parent_block.header().height() + 1,
+                "height should grow monotonically"
+            );
+            assert_eq!(
+                current_block.header().parent_hash(),
+                &parent_block.id(NEVER_SWITCH_HASHING),
+                "block's parent should point at previous block"
+            );
+            parent_block = current_block;
+        }
+    }
+
+    #[test]
+    fn block_batch_is_continuous_and_descending() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !BlockHeadersBatch::is_continuous_and_descending(
+                batch.as_slice(),
+                NEVER_SWITCH_HASHING
+            ),
+            "should fail b/c not descending"
+        );
+
+        batch.reverse();
+        assert!(BlockHeadersBatch::is_continuous_and_descending(
+            batch.as_slice(),
+            NEVER_SWITCH_HASHING
+        ));
+
+        let next_header = test_block_iter.next().unwrap().take_header();
+        assert!(
+            BlockHeadersBatch::is_continuous_and_descending(&[next_header], NEVER_SWITCH_HASHING),
+            "single block is valid batch"
+        );
+
+        let mut batch_with_holes = vec![];
+        batch_with_holes.push(test_block_iter.next().unwrap().take_header());
+        // Skip one block header
+        let _ = test_block_iter.next().unwrap();
+        batch_with_holes.push(test_block_iter.next().unwrap().take_header());
+
+        assert!(!BlockHeadersBatch::is_continuous_and_descending(
+            batch_with_holes.as_slice(),
+            NEVER_SWITCH_HASHING
+        ));
     }
 }
