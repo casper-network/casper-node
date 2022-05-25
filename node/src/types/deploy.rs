@@ -615,6 +615,15 @@ impl DeployWithApprovals {
     }
 }
 
+impl From<&Deploy> for DeployWithApprovals {
+    fn from(deploy: &Deploy) -> Self {
+        DeployWithApprovals {
+            deploy_hash: *deploy.id(),
+            approvals: deploy.approvals().clone(),
+        }
+    }
+}
+
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
 pub struct FinalizedApprovals(BTreeSet<Approval>);
@@ -915,6 +924,25 @@ impl Deploy {
                 max_deploy_size,
                 actual_deploy_size: deploy_size,
             });
+        }
+        Ok(())
+    }
+
+    /// Returns `Ok` if this block's body hashes to the value of `body_hash` in the header, and if
+    /// this block's header hashes to the value claimed as the block hash.  Otherwise returns `Err`.
+    pub(crate) fn has_valid_hash(&self) -> Result<(), DeployConfigurationFailure> {
+        let serialized_body = serialize_body(&self.payment, &self.session);
+        let body_hash = Digest::hash(&serialized_body);
+        if body_hash != self.header.body_hash {
+            warn!(?self, ?body_hash, "invalid deploy body hash");
+            return Err(DeployConfigurationFailure::InvalidBodyHash);
+        }
+
+        let serialized_header = serialize_header(&self.header);
+        let hash = DeployHash::new(Digest::hash(&serialized_header));
+        if hash != self.hash {
+            warn!(?self, ?hash, "invalid deploy hash");
+            return Err(DeployConfigurationFailure::InvalidDeployHash);
         }
         Ok(())
     }
@@ -1523,19 +1551,8 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
         warn!(?deploy, "deploy has no approvals");
         return Err(DeployConfigurationFailure::EmptyApprovals);
     }
-    let serialized_body = serialize_body(&deploy.payment, &deploy.session);
-    let body_hash = Digest::hash(&serialized_body);
-    if body_hash != deploy.header.body_hash {
-        warn!(?deploy, ?body_hash, "invalid deploy body hash");
-        return Err(DeployConfigurationFailure::InvalidBodyHash);
-    }
 
-    let serialized_header = serialize_header(&deploy.header);
-    let hash = DeployHash::new(Digest::hash(&serialized_header));
-    if hash != deploy.hash {
-        warn!(?deploy, ?hash, "invalid deploy hash");
-        return Err(DeployConfigurationFailure::InvalidDeployHash);
-    }
+    deploy.has_valid_hash()?;
 
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {

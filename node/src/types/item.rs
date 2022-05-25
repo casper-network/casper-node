@@ -48,6 +48,8 @@ pub enum Tag {
     BlockHeaderAndFinalitySignaturesByHeight,
     /// A trie or chunk from the global Merkle tree in the execution engine.
     TrieOrChunk,
+    /// A full block and its deploys.
+    BlockAndDeploysByHash,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

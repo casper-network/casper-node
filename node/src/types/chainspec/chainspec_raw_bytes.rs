@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::bytesrepr::Bytes;
 
 /// The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.
-#[derive(Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
 pub struct ChainspecRawBytes {
     #[schemars(
         with = "String",

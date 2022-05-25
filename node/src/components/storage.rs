@@ -88,11 +88,11 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        AvailableBlockRange, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedApprovalsWithId, HashingAlgorithmVersion, Item, MerkleBlockBody,
-        MerkleBlockBodyPart, MerkleLinkedListNode, NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
+        BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy,
+        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedApprovalsWithId, HashingAlgorithmVersion, Item,
+        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId,
     },
     utils::{display_error, FlattenResult, WithDir},
     NodeRng,
@@ -801,6 +801,20 @@ impl StorageInner {
                     opt_item,
                 )?)
             }
+            NetRequest::BlockAndDeploys(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockAndDeploys>(serialized_id)?;
+                let opt_item = self
+                    .read_block_and_deploys_by_hash(item_id)
+                    .map_err(FatalStorageError::from)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
         }
     }
 
@@ -1212,6 +1226,15 @@ impl StorageInner {
             } => responder
                 .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
+            StorageRequest::PutBlockAndDeploys { block, responder } => responder
+                .respond(self.put_block_and_deploys(&*block)?)
+                .ignore(),
+            StorageRequest::GetBlockAndDeploys {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_block_and_deploys_by_hash(block_hash)?)
+                .ignore(),
         })
     }
 
@@ -1223,19 +1246,67 @@ impl StorageInner {
         Ok(outcome)
     }
 
+    /// Puts block and its deploys into storage.
+    ///
+    /// Returns `Ok` only if the block and all deploys were successfully written.
+    pub fn put_block_and_deploys(
+        &self,
+        block_and_deploys: &BlockAndDeploys,
+    ) -> Result<(), FatalStorageError> {
+        let BlockAndDeploys { block, deploys } = block_and_deploys;
+
+        block.verify(self.verifiable_chunked_hash_activation)?;
+        let mut txn = self.env.begin_rw_txn()?;
+        match self.write_validated_block(&mut txn, block) {
+            Ok(true) => {}
+            Ok(false) => {
+                txn.abort();
+                return Err(FatalStorageError::FailedToOverwriteBlock);
+            }
+            Err(error) => {
+                txn.abort();
+                return Err(error);
+            }
+        }
+
+        for deploy in deploys {
+            let _ = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
+        }
+        txn.commit()?;
+
+        Ok(())
+    }
+
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
-    /// Writes a block to storage, updating indices as necessary
+    /// Writes a block to storage, updating indices as necessary.
+    ///
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify(self.verifiable_chunked_hash_activation)?;
         let mut txn = self.env.begin_rw_txn()?;
-        // Write the block body
+        let result = self.write_validated_block(&mut txn, block);
+        match &result {
+            Ok(false) | Err(_) => txn.abort(),
+            Ok(true) => txn.commit()?,
+        }
+        result
+    }
+
+    /// Writes a block which has already been verified to storage, updating indices as necessary.
+    ///
+    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
+    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
+    fn write_validated_block(
+        &self,
+        txn: &mut RwTransaction,
+        block: &Block,
+    ) -> Result<bool, FatalStorageError> {
         {
             let block_body_hash = block.header().body_hash();
             let block_body = block.body();
@@ -1244,22 +1315,18 @@ impl StorageInner {
                 .hashing_algorithm_version(self.verifiable_chunked_hash_activation)
             {
                 HashingAlgorithmVersion::V1 => {
-                    self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
+                    self.put_single_block_body_v1(txn, block_body_hash, block_body)?
                 }
-                HashingAlgorithmVersion::V2 => {
-                    self.put_single_block_body_v2(&mut txn, block_body)?
-                }
+                HashingAlgorithmVersion::V2 => self.put_single_block_body_v2(txn, block_body)?,
             };
             if !success {
                 error!("Could not insert body for: {}", block);
-                txn.abort();
                 return Ok(false);
             }
         }
 
         if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
             error!("Could not insert block header for block: {}", block);
-            txn.abort();
             return Ok(false);
         }
 
@@ -1277,7 +1344,6 @@ impl StorageInner {
                 block.header().height(),
             )?;
         }
-        txn.commit()?;
         Ok(true)
     }
 
@@ -1327,6 +1393,28 @@ impl StorageInner {
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         let indices = self.indices.read()?;
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)
+    }
+
+    /// Retrieves single block and all of its deploys.
+    /// If any of the deploys can't be found, returns `Ok(None)`.
+    pub fn read_block_and_deploys_by_hash(
+        &self,
+        hash: BlockHash,
+    ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
+        let block = self.read_block(&hash)?;
+        match block {
+            None => Ok(None),
+            Some(block) => {
+                let deploy_hashes = block
+                    .deploy_hashes()
+                    .iter()
+                    .chain(block.transfer_hashes().iter());
+                let deploys_count = block.deploy_hashes().len() + block.transfer_hashes().len();
+                Ok(self
+                    .read_deploys(deploys_count, deploy_hashes)?
+                    .map(|deploys| BlockAndDeploys { block, deploys }))
+            }
+        }
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1765,6 +1853,23 @@ impl StorageInner {
     ) -> Result<Option<Deploy>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
+    }
+
+    /// Directly returns all deploys or None if any is missing.
+    pub fn read_deploys<'a, I: Iterator<Item = &'a DeployHash> + 'a>(
+        &self,
+        deploys_count: usize,
+        deploy_hashes: I,
+    ) -> Result<Option<Vec<Deploy>>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let mut result = Vec::with_capacity(deploys_count);
+        for deploy_hash in deploy_hashes {
+            match txn.get_value(self.deploy_db, deploy_hash)? {
+                Some(deploy) => result.push(deploy),
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(result))
     }
 
     /// Stores a set of finalized approvals.

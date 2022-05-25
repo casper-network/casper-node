@@ -7,20 +7,17 @@ mod era_summary;
 
 use std::{num::ParseIntError, str};
 
-use futures::{future::BoxFuture, FutureExt};
-use http::Response;
-use hyper::Body;
+use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use warp_json_rpc::Builder;
 
 use casper_hashing::Digest;
 use casper_types::{Key, ProtocolVersion, Transfer};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
+    Error, ErrorCode, ReactorEventT, ReservedErrorCode, RpcRequest, RpcWithOptionalParams,
 };
 use crate::{
     effect::EffectBuilder,
@@ -125,7 +122,7 @@ impl DocExample for GetBlockParams {
 }
 
 /// Result for "chain_get_block" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetBlockResult {
     /// The RPC API version.
@@ -144,47 +141,39 @@ impl DocExample for GetBlockResult {
 /// "chain_get_block" RPC.
 pub struct GetBlock {}
 
+#[async_trait]
 impl RpcWithOptionalParams for GetBlock {
     const METHOD: &'static str = "chain_get_block";
     type OptionalRequestParams = GetBlockParams;
     type ResponseResult = GetBlockResult;
-}
 
-impl RpcWithOptionalParamsExt for GetBlock {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        maybe_params: Option<Self::OptionalRequestParams>,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // This RPC request is restricted by the block availability index.
-            let only_from_available_block_range = true;
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> Result<Self::ResponseResult, Error> {
+        // This RPC request is restricted by the block availability index.
+        let only_from_available_block_range = true;
 
-            // Get the block.
-            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let json_block = match get_block_with_metadata(
-                maybe_block_id,
-                only_from_available_block_range,
-                effect_builder,
-            )
-            .await
-            {
-                Ok(BlockWithMetadata {
-                    block,
-                    finality_signatures,
-                }) => JsonBlock::new(block, Some(finality_signatures)),
-                Err(error) => return Ok(response_builder.error(error)?),
-            };
+        // Get the block.
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let BlockWithMetadata {
+            block,
+            finality_signatures,
+        } = get_block_with_metadata(
+            maybe_block_id,
+            only_from_available_block_range,
+            effect_builder,
+        )
+        .await?;
+        let json_block = JsonBlock::new(block, Some(finality_signatures));
 
-            // Return the result.
-            let result = Self::ResponseResult {
-                api_version,
-                block: Some(json_block),
-            };
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+        // Return the result.
+        let result = Self::ResponseResult {
+            api_version,
+            block: Some(json_block),
+        };
+        Ok(result)
     }
 }
 
@@ -203,7 +192,7 @@ impl DocExample for GetBlockTransfersParams {
 }
 
 /// Result for "chain_get_block_transfers" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetBlockTransfersResult {
     /// The RPC API version.
@@ -239,51 +228,43 @@ impl DocExample for GetBlockTransfersResult {
 /// "chain_get_block_transfers" RPC.
 pub struct GetBlockTransfers {}
 
+#[async_trait]
 impl RpcWithOptionalParams for GetBlockTransfers {
     const METHOD: &'static str = "chain_get_block_transfers";
     type OptionalRequestParams = GetBlockTransfersParams;
     type ResponseResult = GetBlockTransfersResult;
-}
 
-impl RpcWithOptionalParamsExt for GetBlockTransfers {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        maybe_params: Option<Self::OptionalRequestParams>,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // This RPC request is restricted by the block availability index.
-            let only_from_available_block_range = true;
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> Result<Self::ResponseResult, Error> {
+        // This RPC request is restricted by the block availability index.
+        let only_from_available_block_range = true;
 
-            // Get the block.
-            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block_hash = match common::get_block(
-                maybe_block_id,
-                only_from_available_block_range,
-                effect_builder,
+        // Get the block.
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let block_hash = common::get_block(
+            maybe_block_id,
+            only_from_available_block_range,
+            effect_builder,
+        )
+        .await
+        .map(|block| *block.hash())?;
+
+        let transfers = effect_builder
+            .make_request(
+                |responder| RpcRequest::GetBlockTransfers {
+                    block_hash,
+                    responder,
+                },
+                QueueKind::Api,
             )
-            .await
-            {
-                Ok(block) => *block.hash(),
-                Err(error) => return Ok(response_builder.error(error)?),
-            };
+            .await;
 
-            let transfers = effect_builder
-                .make_request(
-                    |responder| RpcRequest::GetBlockTransfers {
-                        block_hash,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
-
-            // Return the result.
-            let result = Self::ResponseResult::new(api_version, Some(block_hash), transfers);
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+        // Return the result.
+        let result = Self::ResponseResult::new(api_version, Some(block_hash), transfers);
+        Ok(result)
     }
 }
 
@@ -302,7 +283,7 @@ impl DocExample for GetStateRootHashParams {
 }
 
 /// Result for "chain_get_state_root_hash" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetStateRootHashResult {
     /// The RPC API version.
@@ -321,44 +302,35 @@ impl DocExample for GetStateRootHashResult {
 /// "chain_get_state_root_hash" RPC.
 pub struct GetStateRootHash {}
 
+#[async_trait]
 impl RpcWithOptionalParams for GetStateRootHash {
     const METHOD: &'static str = "chain_get_state_root_hash";
     type OptionalRequestParams = GetStateRootHashParams;
     type ResponseResult = GetStateRootHashResult;
-}
 
-impl RpcWithOptionalParamsExt for GetStateRootHash {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        maybe_params: Option<Self::OptionalRequestParams>,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // This RPC request is restricted by the block availability index.
-            let only_from_available_block_range = true;
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> Result<Self::ResponseResult, Error> {
+        // This RPC request is restricted by the block availability index.
+        let only_from_available_block_range = true;
 
-            // Get the block.
-            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block = match common::get_block(
-                maybe_block_id,
-                only_from_available_block_range,
-                effect_builder,
-            )
-            .await
-            {
-                Ok(block) => block,
-                Err(error) => return Ok(response_builder.error(error)?),
-            };
+        // Get the block.
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let block = common::get_block(
+            maybe_block_id,
+            only_from_available_block_range,
+            effect_builder,
+        )
+        .await?;
 
-            // Return the result.
-            let result = Self::ResponseResult {
-                api_version,
-                state_root_hash: Some(*block.state_root_hash()),
-            };
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
+        // Return the result.
+        let result = Self::ResponseResult {
+            api_version,
+            state_root_hash: Some(*block.state_root_hash()),
+        };
+        Ok(result)
     }
 }
 
@@ -377,7 +349,7 @@ impl DocExample for GetEraInfoParams {
 }
 
 /// Result for "chain_get_era_info" RPC response.
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetEraInfoResult {
     /// The RPC API version.
@@ -396,69 +368,55 @@ impl DocExample for GetEraInfoResult {
 /// "chain_get_era_info_by_switch_block" RPC
 pub struct GetEraInfoBySwitchBlock {}
 
+#[async_trait]
 impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
     const METHOD: &'static str = "chain_get_era_info_by_switch_block";
     type OptionalRequestParams = GetEraInfoParams;
     type ResponseResult = GetEraInfoResult;
-}
 
-impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
-    fn handle_request<REv: ReactorEventT>(
+    async fn do_handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        maybe_params: Option<Self::OptionalRequestParams>,
         api_version: ProtocolVersion,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // This RPC request is restricted by the block availability index.
-            let only_from_available_block_range = true;
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> Result<Self::ResponseResult, Error> {
+        // This RPC request is restricted by the block availability index.
+        let only_from_available_block_range = true;
 
-            // TODO: decide if/how to handle era id
-            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block = match common::get_block(
-                maybe_block_id,
-                only_from_available_block_range,
-                effect_builder,
-            )
-            .await
-            {
-                Ok(block) => block,
-                Err(error) => return Ok(response_builder.error(error)?),
-            };
+        // TODO: decide if/how to handle era id
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let block = common::get_block(
+            maybe_block_id,
+            only_from_available_block_range,
+            effect_builder,
+        )
+        .await?;
 
-            if !block.header().is_switch_block() {
-                return Ok(response_builder.success(Self::ResponseResult {
-                    api_version,
-                    era_summary: None,
-                })?);
-            }
-
-            let state_root_hash = block.state_root_hash().to_owned();
-            let era_id = block.header().era_id();
-            let base_key = Key::EraInfo(era_id);
-            let path = Vec::new();
-
-            let query_result =
-                common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await;
-
-            match query_result {
-                Ok((stored_value, merkle_proof)) => {
-                    let result = Self::ResponseResult {
-                        api_version,
-                        era_summary: Some(EraSummary {
-                            block_hash: *block.hash(),
-                            era_id,
-                            stored_value,
-                            state_root_hash,
-                            merkle_proof,
-                        }),
-                    };
-                    Ok(response_builder.success(result)?)
-                }
-                Err(error) => Ok(response_builder.error(error)?),
-            }
+        if !block.header().is_switch_block() {
+            return Ok(Self::ResponseResult {
+                api_version,
+                era_summary: None,
+            });
         }
-        .boxed()
+
+        let state_root_hash = block.state_root_hash().to_owned();
+        let era_id = block.header().era_id();
+        let base_key = Key::EraInfo(era_id);
+        let path = Vec::new();
+
+        let (stored_value, merkle_proof) =
+            common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await?;
+
+        let result = Self::ResponseResult {
+            api_version,
+            era_summary: Some(EraSummary {
+                block_hash: *block.hash(),
+                era_id,
+                stored_value,
+                state_root_hash,
+                merkle_proof,
+            }),
+        };
+        Ok(result)
     }
 }
 
@@ -466,7 +424,7 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
-) -> Result<BlockWithMetadata, warp_json_rpc::Error> {
+) -> Result<BlockWithMetadata, Error> {
     // Get the block from storage or the latest from the linear chain.
     let maybe_result = effect_builder
         .make_request(
@@ -487,23 +445,31 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     //       available block range, so we don't need to request it again inside the
     //       `missing_block_or_state_root_error` function.
     let error = match maybe_id {
-        Some(BlockIdentifier::Hash(block_hash)) => common::missing_block_or_state_root_error(
-            effect_builder,
-            ErrorCode::NoSuchBlock,
-            format!("block {:?} not stored on this node", block_hash.inner()),
-        ),
-        Some(BlockIdentifier::Height(block_height)) => common::missing_block_or_state_root_error(
-            effect_builder,
-            ErrorCode::NoSuchBlock,
-            format!("block at height {} not stored on this node", block_height),
-        ),
-        None => common::missing_block_or_state_root_error(
-            effect_builder,
-            ErrorCode::InternalError,
-            "failed to get highest block".to_string(),
-        ),
-    }
-    .await;
+        Some(BlockIdentifier::Hash(block_hash)) => {
+            common::missing_block_or_state_root_error(
+                effect_builder,
+                ErrorCode::NoSuchBlock,
+                format!("block {:?} not stored on this node", block_hash.inner()),
+            )
+            .await
+        }
+        Some(BlockIdentifier::Height(block_height)) => {
+            common::missing_block_or_state_root_error(
+                effect_builder,
+                ErrorCode::NoSuchBlock,
+                format!("block at height {} not stored on this node", block_height),
+            )
+            .await
+        }
+        None => {
+            common::missing_block_or_state_root_error(
+                effect_builder,
+                ReservedErrorCode::InternalError,
+                "failed to get highest block".to_string(),
+            )
+            .await
+        }
+    };
 
     Err(error)
 }

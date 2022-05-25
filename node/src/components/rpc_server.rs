@@ -50,6 +50,9 @@ use crate::{
 pub use config::Config;
 pub(crate) use event::Event;
 
+/// The URL path for all JSON-RPC requests.
+pub const RPC_API_PATH: &str = "rpc";
+
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
     From<Event>
@@ -105,6 +108,7 @@ impl RpcServer {
             effect_builder,
             api_version,
             config.qps_limit,
+            config.max_body_bytes,
         ));
 
         Ok(RpcServer {
