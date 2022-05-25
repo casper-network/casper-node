@@ -1103,8 +1103,16 @@ async fn fetch_headers_till_genesis(
                 info!(?new_lowest, "new lowest trusted block header stored");
                 lowest_trusted_block_header = new_lowest;
             }
-            Err(_err) => {
-                // TODO: set retry limit
+            Err(err) => {
+                // If we get an error here it means something must have gone really wrong.
+                // Internally we retry ad infinitum if peer times out or item is absent.
+                // The only reason we would end up here is if fetcher couldn't construct a fetch
+                // request.
+                error!(
+                    ?err,
+                    "failed to download block headers batch with infinite retries"
+                );
+                return Err(err.into());
             }
         }
 
@@ -1123,35 +1131,36 @@ async fn fetch_block_headers_batch(
 ) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
     let batch_id =
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
-    let fetched_headers_data: FetchedData<BlockHeadersBatch> =
-        fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
 
-    match fetched_headers_data {
-        FetchedData::FromStorage { item: _item } => {
-            todo!("validate batch from storage")
-        }
-        FetchedData::FromPeer { item, peer } => {
-            match BlockHeadersBatch::validate(
-                &*item,
-                lowest_trusted_block_header,
-                ctx.config.verifiable_chunked_hash_activation(),
-            ) {
-                Ok(new_lowest) => {
-                    info!(?batch_id, ?peer, "received valid batch of headers");
-                    ctx.effect_builder
-                        .put_block_headers_batch_to_storage(item.into_inner())
-                        .await;
-                    Ok(new_lowest)
-                }
-                Err(err) => {
-                    error!(
-                        ?err,
-                        ?peer,
-                        ?batch_id,
-                        "block headers batch failed validation"
-                    );
-                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
-                    Err(err.into())
+    loop {
+        let fetched_headers_data: FetchedData<BlockHeadersBatch> =
+            fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
+        match fetched_headers_data {
+            FetchedData::FromStorage { item: _item } => {
+                todo!("validate batch from storage")
+            }
+            FetchedData::FromPeer { item, peer } => {
+                match BlockHeadersBatch::validate(
+                    &*item,
+                    lowest_trusted_block_header,
+                    ctx.config.verifiable_chunked_hash_activation(),
+                ) {
+                    Ok(new_lowest) => {
+                        info!(?batch_id, ?peer, "received valid batch of headers");
+                        ctx.effect_builder
+                            .put_block_headers_batch_to_storage(item.into_inner())
+                            .await;
+                        return Ok(new_lowest);
+                    }
+                    Err(err) => {
+                        error!(
+                            ?err,
+                            ?peer,
+                            ?batch_id,
+                            "block headers batch failed validation. Trying next peer..."
+                        );
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                    }
                 }
             }
         }
@@ -1223,9 +1232,14 @@ async fn fetch_block_worker(
                 }
             }
             Err(err) => {
-                // TODO: limit retries
-                error!(?err, ?block_hash, "failed to download a block. Retrying...");
-                queue.push_job(block_hash);
+                // We're using `fetch_retry_forever` internally so we should never get
+                // an error other than `FetcherError::CouldNotConstructGetRequest` that we don't
+                // want to retry.
+                error!(
+                    ?err,
+                    ?block_hash,
+                    "failed to download a block with infinite retries."
+                );
             }
         }
         if abort.load(atomic::Ordering::Relaxed) {
