@@ -1417,6 +1417,25 @@ impl<REv> EffectBuilder<REv> {
                 id,
                 peer,
                 responder,
+                bypass_storage: false,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Fetches an item from a fetcher (forcing it to fetch from the network).
+    pub(crate) async fn fetch_from_network<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
+    where
+        REv: From<FetcherRequest<T>>,
+        T: Item + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest {
+                id,
+                peer,
+                responder,
+                bypass_storage: true,
             },
             QueueKind::Regular,
         )

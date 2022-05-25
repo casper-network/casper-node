@@ -208,7 +208,11 @@ const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
-async fn fetch_retry_forever<T>(ctx: &ChainSyncContext<'_>, id: T::Id) -> FetchResult<T>
+async fn fetch_retry_forever<T>(
+    ctx: &ChainSyncContext<'_>,
+    id: T::Id,
+    bypass_storage: bool,
+) -> FetchResult<T>
 where
     T: Item + 'static,
     JoinerEvent: From<FetcherRequest<T>>,
@@ -227,7 +231,12 @@ where
                 id,
                 peer
             );
-            match ctx.effect_builder.fetch::<T>(id, peer).await {
+            let result = if bypass_storage {
+                ctx.effect_builder.fetch_from_network::<T>(id, peer).await
+            } else {
+                ctx.effect_builder.fetch::<T>(id, peer).await
+            };
+            match result {
                 Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                     trace!(
                         "did not get {:?} with id {:?} from {:?}, got from storage instead",
@@ -275,15 +284,16 @@ async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
-    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
-        FetchedData::FromStorage { .. } => {
-            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
-        }
-        FetchedData::FromPeer {
-            item: trie_or_chunk,
-            ..
-        } => *trie_or_chunk,
-    };
+    let trie_or_chunk =
+        match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(0, id), false).await? {
+            FetchedData::FromStorage { .. } => {
+                return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
+            }
+            FetchedData::FromPeer {
+                item: trie_or_chunk,
+                ..
+            } => *trie_or_chunk,
+        };
     let chunk_with_proof = match trie_or_chunk {
         TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
         TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
@@ -301,7 +311,7 @@ async fn fetch_trie_retry_forever(
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
+            match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(index, id), false).await? {
                 FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
@@ -369,7 +379,7 @@ async fn fetch_and_store_block_header(
         return Ok(Box::new(stored_block_header));
     }
 
-    let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash).await?;
+    let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash, false).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
@@ -400,7 +410,7 @@ async fn fetch_and_store_deploy(
         return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
     }
 
-    let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash).await?;
+    let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash, false).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -688,7 +698,7 @@ async fn fetch_and_store_block_by_hash(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Block>, FetcherError<Block>> {
-    let fetched_block = fetch_retry_forever::<Block>(ctx, block_hash).await?;
+    let fetched_block = fetch_retry_forever::<Block>(ctx, block_hash, false).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {

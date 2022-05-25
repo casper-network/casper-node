@@ -624,7 +624,15 @@ where
                 id,
                 peer,
                 responder,
-            }) => self.fetch(effect_builder, id, peer, responder),
+                bypass_storage,
+            }) => {
+                if bypass_storage {
+                    // we don't even try storage
+                    self.failed_to_get_from_storage(effect_builder, id, peer, responder)
+                } else {
+                    self.fetch(effect_builder, id, peer, responder)
+                }
+            }
             Event::GetFromStorageResult {
                 id,
                 peer,

@@ -1082,13 +1082,20 @@ where
     pub(crate) id: T::Id,
     /// The peer id of the peer to be asked if the item is not held locally
     pub(crate) peer: NodeId,
+    /// If set to true, the fetcher will bypass storage (used for re-fetching data that is in
+    /// storage, but is invalid).
+    pub(crate) bypass_storage: bool,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
 }
 
 impl<T: Item> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "request item by id {}", self.id)
+        write!(
+            formatter,
+            "request item by id {} (bypass storage: {})",
+            self.id, self.bypass_storage
+        )
     }
 }
 

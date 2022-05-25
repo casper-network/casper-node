@@ -62,6 +62,7 @@ impl MockReactor {
             id,
             peer,
             responder,
+            ..
         }) = reactor_event
         {
             match deploy.into() {
