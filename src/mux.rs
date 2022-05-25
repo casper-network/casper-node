@@ -8,10 +8,7 @@
 use std::{
     fmt::Debug,
     pin::Pin,
-    sync::{
-        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
@@ -26,9 +23,7 @@ pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>
 
 type SendTaskPayload<F> = (OwnedSemaphorePermit, ChannelPrefixedFrame<F>);
 
-// IDEA: Put Arc<AtomicBools> in a vec and flip, along with a count?
-
-const EMPTY: u8 = 0xFF;
+// TODO: Add skiplist buffer.
 
 #[derive(Debug)]
 struct RoundRobinWaitList {
@@ -105,67 +100,35 @@ where
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let slot = self.slot;
 
+        // Required invariant: For any channel there is only one handle, thus we are the only one
+        // writing to the `waiting[n]` atomic bool.
+
         // Try to grab a slot on the wait list (will put us into the queue if we don't get one).
-        if !self
+        let our_turn = self
             .multiplexer
             .wait_list
             .lock()
             .expect("TODO handle poisoning")
-            .try_take_turn(self.slot)
-        {
+            .try_take_turn(self.slot);
+
+        // At this point, we no longer hold the `wait_list` lock.
+
+        if !our_turn {
             Poll::Pending
         } else {
             // We are now active, check if the sink is ready.
-        }
-
-        // Our first task is to determine whether our channel is currently active, or if we can
-        // activate it ourselves due to it being empty.
-        let active = self.multiplexer.active_slot.fetch_update(
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-            |current| {
-                if current == EMPTY || current == slot {
-                    return Some(slot);
-                }
-                None
-            },
-        );
-
-        match active {
-            Ok(_) => {
-                // Required invariant: For any channel there is only one handle, thus we are the
-                // only one writing to the `waiting[n]` atomic bool.
-
-                // We are the only handle allowed to send right now.
-                let ready_poll_result =
-                    match *self.multiplexer.sink.lock().expect("TODO: Lock Poisoning") {
-                        Some(ref mut sink_ref) => sink_ref.poll_ready_unpin(cx),
-                        None => todo!("handle closed multiplexer"),
-                    };
-
-                match ready_poll_result {
-                    Poll::Ready(Ok(())) => {
-                        self.multiplexer.waiting[self.slot as usize].store(false, Ordering::SeqCst);
-                        Poll::Ready(Ok(()))
-                    }
-                    Poll::Ready(Err(_err)) => todo!("sink closed"),
-                    Poll::Pending => Poll::Pending,
-                }
-            }
-            Err(_) => {
-                // We need to wait until the channel is either empty or our slot is picked. First,
-                // mark us as interested in the wait list.
-                self.multiplexer.waiting[self.slot as usize].store(true, Ordering::SeqCst);
-
-                // We still need to wait our turn.
-                return Poll::Pending;
+            match *self.multiplexer.sink.lock().expect("TODO: Lock Poisoning") {
+                Some(ref mut sink_ref) => sink_ref.poll_ready_unpin(cx),
+                None => todo!("handle closed multiplexer"),
             }
         }
     }
 
     fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
-        let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
         let prefixed = ImmediateFrame::from(self.slot).chain(item);
+
+        let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
+
         match *guard {
             Some(ref mut sink_ref) => sink_ref.start_send_unpin(prefixed),
             None => todo!("handle closed multiplexer"),
@@ -173,20 +136,37 @@ where
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
-        match *guard {
-            Some(ref mut sink_ref) => match sink_ref.poll_flush_unpin(cx) {
-                Poll::Ready(Ok(())) => {
-                    // We finished sending our item. We now iterate through the waitlist.
-                }
-                Poll::Ready(Err(_err)) => todo!("handle sink error"),
-                Poll::Pending => Poll::Pending,
-            },
-            None => todo!("handle closed multiplexer"),
+        // Obtain the flush result, then release the sink lock.
+        let flush_result = {
+            let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
+
+            match *guard {
+                Some(ref mut sink) => sink.poll_flush_unpin(cx),
+                None => todo!("TODO: MISSING SINK"),
+            }
+        };
+
+        match flush_result {
+            Poll::Ready(Ok(())) => {
+                // Acquire wait list lock to update it.
+                self.multiplexer
+                    .wait_list
+                    .lock()
+                    .expect("TODO: Lock poisoning")
+                    .end_turn(self.slot);
+
+                Poll::Ready(Ok(()))
+            }
+            Poll::Ready(Err(_)) => {
+                todo!("handle error")
+            }
+
+            Poll::Pending => Poll::Pending,
         }
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // Simply close? Note invariants, possibly checking them in debug mode.
         todo!()
     }
 }
