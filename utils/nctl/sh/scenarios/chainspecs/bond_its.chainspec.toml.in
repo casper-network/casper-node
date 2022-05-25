@@ -61,8 +61,8 @@ max_runtime_call_stack_height = 12
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
-# The consensus protocol to use. Options are "Simple" and "Highway".
-consensus_protocol = 'Simple'
+# The consensus protocol to use. Options are "Zug" and "Highway".
+consensus_protocol = 'Zug'
 
 [highway]
 # Integer between 0 and 255.  The power of two that is the number of milliseconds in the minimum round length, and
