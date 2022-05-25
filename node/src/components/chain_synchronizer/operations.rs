@@ -74,9 +74,9 @@ struct ChainSyncContext<'a> {
     trusted_block_header: Option<&'a BlockHeader>,
     metrics: &'a Metrics,
     /// A list of peers which should be asked for data in the near future.
-    bad_peer_list: RwLock<VecDeque<NodeId>>,
+    bad_peer_list: Arc<RwLock<VecDeque<NodeId>>>,
     /// Number of times peer lists have been filtered.
-    filter_count: AtomicI64,
+    filter_count: Arc<AtomicI64>,
     /// A range of blocks for which we already have all required data stored locally.
     locally_available_block_range_on_start: AvailableBlockRange,
 }
@@ -93,8 +93,8 @@ impl<'a> ChainSyncContext<'a> {
             config,
             trusted_block_header: None,
             metrics,
-            bad_peer_list: RwLock::new(VecDeque::new()),
-            filter_count: AtomicI64::new(0),
+            bad_peer_list: Arc::new(RwLock::new(VecDeque::new())),
+            filter_count: Arc::new(AtomicI64::new(0)),
             locally_available_block_range_on_start,
         }
     }
@@ -199,6 +199,43 @@ impl<'a> ChainSyncContext<'a> {
                 bad_peer_count = bad_peer_list.len(),
                 "redeemed all bad peers"
             )
+        }
+    }
+
+    // Creates an instance of the context that has a 'static lifetime
+    fn to_owned(&self) -> ChainSyncContextOwned {
+        ChainSyncContextOwned {
+            effect_builder: *self.effect_builder,
+            config: self.config.clone(),
+            trusted_block_header: self.trusted_block_header.cloned(),
+            metrics: self.metrics.clone(),
+            bad_peer_list: self.bad_peer_list.clone(),
+            filter_count: self.filter_count.clone(),
+            locally_available_block_range_on_start: self.locally_available_block_range_on_start,
+        }
+    }
+}
+
+struct ChainSyncContextOwned {
+    effect_builder: EffectBuilder<JoinerEvent>,
+    config: Config,
+    trusted_block_header: Option<BlockHeader>,
+    metrics: Metrics,
+    bad_peer_list: Arc<RwLock<VecDeque<NodeId>>>,
+    filter_count: Arc<AtomicI64>,
+    locally_available_block_range_on_start: AvailableBlockRange,
+}
+
+impl ChainSyncContextOwned {
+    fn as_context(&self) -> ChainSyncContext {
+        ChainSyncContext {
+            effect_builder: &self.effect_builder,
+            config: &self.config,
+            trusted_block_header: self.trusted_block_header.as_ref(),
+            metrics: &self.metrics,
+            bad_peer_list: self.bad_peer_list.clone(),
+            filter_count: self.filter_count.clone(),
+            locally_available_block_range_on_start: self.locally_available_block_range_on_start,
         }
     }
 }
@@ -714,7 +751,7 @@ async fn fetch_and_store_block_with_deploys_by_hash(
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>> {
     let start = Timestamp::now();
-    let fetched_block = fetch_retry_forever::<BlockAndDeploys>(ctx, block_hash).await?;
+    let fetched_block = fetch_retry_forever::<BlockAndDeploys>(ctx, block_hash, false).await?;
     let res = match fetched_block {
         FetchedData::FromStorage {
             item: block_and_deploys,
@@ -1075,6 +1112,8 @@ async fn fetch_forward(
     Ok(most_recent_block)
 }
 
+/// Fetches all blocks from the trusted block or the lowest available block at start backwards to
+/// genesis. Returns the height of the block it started from.
 async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
@@ -1085,6 +1124,7 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
     );
 
     let mut walkback_block = trusted_block.clone();
+    let mut starting_height = trusted_block.height();
     // The available range from storage indicates a range of blocks for which we already have
     // all the corresponding deploys and global state stored locally.  Skip fetching for such a
     // range.
@@ -1100,8 +1140,9 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
             )
             .await;
         if let Some(lowest_available_block) = maybe_lowest_available_block {
+            starting_height = ctx.locally_available_block_range_on_start.low();
             info!(
-                skip_to_height = %ctx.locally_available_block_range_on_start.low(),
+                skip_to_height = %starting_height,
                 current_walkback_height = %walkback_block.height(),
                 "skipping fetch for blocks, deploys and tries in available block range"
             );
@@ -1131,15 +1172,36 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
 
     loop {
         let walkback_block_height = walkback_block.height();
+        if let Some(validator_weights) = walkback_block.header().next_era_validator_weights() {
+            let first_block_in_era =
+                walkback_block_height
+                    .checked_add(1)
+                    .ok_or_else(|| Error::HeightOverflow {
+                        parent: Box::new(walkback_block.header().clone()),
+                    })?;
+            let era = walkback_block.header().next_block_era_id();
+            let ctx_owned = ctx.to_owned();
+            let validator_weights = validator_weights.clone();
+            tokio::spawn(async move {
+                download_and_store_signatures(
+                    ctx_owned,
+                    &validator_weights,
+                    first_block_in_era,
+                    starting_height,
+                    era,
+                )
+                .await;
+            });
+        }
         ctx.metrics
             .chain_sync_block_height_synced
             .set(walkback_block_height as i64);
         info!(%walkback_block_height, "syncing block height");
         sync_trie_store(*walkback_block.header().state_root_hash(), ctx).await?;
         ctx.effect_builder
-            .update_lowest_available_block_height_in_storage(walkback_block.height())
+            .update_lowest_available_block_height_in_storage(walkback_block_height)
             .await;
-        if walkback_block.height() == 0 {
+        if walkback_block_height == 0 {
             break;
         } else {
             walkback_block = fetch_and_store_block_with_deploys_by_hash(
@@ -1147,10 +1209,77 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
                 ctx,
             )
             .await?
-            .block
+            .block;
         }
     }
+
     Ok(())
+}
+
+async fn download_and_store_signatures(
+    ctx_owned: ChainSyncContextOwned,
+    validator_weights: &BTreeMap<PublicKey, U512>,
+    first_block_height: u64,
+    max_height: u64,
+    era_id: EraId,
+) {
+    let ctx = ctx_owned.as_context();
+    for height in first_block_height..=max_height {
+        loop {
+            let fetched_item =
+                fetch_retry_forever::<BlockHeaderWithMetadata>(&ctx, height, true).await;
+            match fetched_item {
+                Ok(FetchedData::FromStorage { .. }) => {
+                    // should never happen
+                    error!("we fetched an item from storage when bypassing storage!");
+                    continue;
+                }
+                Ok(FetchedData::FromPeer { item, peer, .. }) => {
+                    if item.block_header.era_id() != era_id {
+                        // somehow we proceeded to another era - we're done, return
+                        return;
+                    }
+
+                    if let Err(error) = item.finality_signatures().verify() {
+                        warn!(
+                            ?error,
+                            ?peer,
+                            "error validating finality signatures from peer"
+                        );
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        continue;
+                    }
+
+                    if let Err(error) = consensus::check_sufficient_finality_signatures(
+                        validator_weights,
+                        ctx.config.finality_threshold_fraction(),
+                        item.finality_signatures(),
+                    ) {
+                        warn!(?error, ?peer, "insufficient finality signatures from peer");
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        continue;
+                    }
+
+                    // store the signatures
+                    let sigs = item.finality_signatures().clone();
+                    ctx.effect_builder.put_signatures_to_storage(sigs).await;
+
+                    if item.block_header.is_switch_block() {
+                        // this was the last block in the era - we can return
+                        return;
+                    }
+
+                    // if signatures are correct and sufficient, we break out of the `loop` and
+                    // move to the next block
+                    break;
+                }
+                Err(error) => {
+                    error!(?error, ?height, "could not fetch BlockHeaderWithMetadata");
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /// Runs the chain synchronization task.
