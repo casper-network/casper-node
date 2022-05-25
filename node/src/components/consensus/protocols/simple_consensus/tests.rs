@@ -864,26 +864,33 @@ fn test_validator_bit_field() {
 
 #[test]
 fn test_quorum() {
-    let (weights, validators) = abc_weights(66, 33, 1);
-    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
-    let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
-    let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
+    // Alice has almost 2/3 of the weight, Bob almost 1/3, and Carol 1.
+    let weights_without_overflow = (66, 33, 1);
+    // A similar distribution, but the quorum calculation would overflow if it naively added the
+    // total weight to the ftt.
+    let weights_with_overflow = (1 << 63, 1 << 62, 1);
+    for (a, b, c) in [weights_without_overflow, weights_with_overflow] {
+        let (weights, validators) = abc_weights(a, b, c);
+        let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+        let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
+        let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
-    let mut sc = new_test_simple_consensus(weights, vec![], &[]);
+        let mut sc = new_test_simple_consensus(weights, vec![], &[]);
 
-    // The threshold is the highest number that's below 2/3 of the weight.
-    assert_eq!(66, sc.quorum_threshold().0);
+        // The threshold is the highest number that's below 2/3 of the weight.
+        assert_eq!(a, sc.quorum_threshold().0);
 
-    // So Alice alone with 66 is not a quorum, but with Carol she has 67.
-    assert!(!sc.is_quorum(vec![].into_iter()));
-    assert!(!sc.is_quorum(vec![alice_idx].into_iter()));
-    assert!(sc.is_quorum(vec![alice_idx, carol_idx].into_iter()));
-    assert!(sc.is_quorum(vec![alice_idx, bob_idx, carol_idx].into_iter()));
+        // Alice alone is not a quorum, but with Carol she is.
+        assert!(!sc.is_quorum(vec![].into_iter()));
+        assert!(!sc.is_quorum(vec![alice_idx].into_iter()));
+        assert!(sc.is_quorum(vec![alice_idx, carol_idx].into_iter()));
+        assert!(sc.is_quorum(vec![alice_idx, bob_idx, carol_idx].into_iter()));
 
-    // If Carol is known to be faulty, she counts towards every quorum.
-    sc.mark_faulty(&CAROL_PUBLIC_KEY);
+        // If Carol is known to be faulty, she counts towards every quorum.
+        sc.mark_faulty(&CAROL_PUBLIC_KEY);
 
-    // So now Alice's vote alone is sufficient.
-    assert!(!sc.is_quorum(vec![].into_iter()));
-    assert!(sc.is_quorum(vec![alice_idx].into_iter()));
+        // So now Alice's vote alone is sufficient.
+        assert!(!sc.is_quorum(vec![].into_iter()));
+        assert!(sc.is_quorum(vec![alice_idx].into_iter()));
+    }
 }
