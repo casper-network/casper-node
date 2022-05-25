@@ -604,7 +604,7 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
 }
 
 impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn responders(
         &mut self,
