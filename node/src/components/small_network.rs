@@ -99,7 +99,7 @@ use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -416,7 +416,7 @@ where
         &self,
         dest: NodeId,
         msg: Arc<Message<P>>,
-        opt_responder: Option<Responder<()>>,
+        opt_responder: Option<AutoClosingResponder<()>>,
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
@@ -899,7 +899,7 @@ where
 
                         if respond_after_queueing {
                             self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
-                            responder.respond(()).ignore()
+                            responder.into_inner().respond(Some(())).ignore()
                         } else {
                             self.send_message(
                                 *dest,
@@ -913,7 +913,7 @@ where
                         // We're given a message to broadcast.
                         self.net_metrics.broadcast_requests.inc();
                         self.broadcast_message(Arc::new(Message::Payload(*payload)));
-                        responder.respond(()).ignore()
+                        responder.into_inner().respond(Some(())).ignore()
                     }
                     NetworkRequest::Gossip {
                         payload,
@@ -928,7 +928,7 @@ where
                             count,
                             exclude,
                         );
-                        responder.respond(sent_to).ignore()
+                        responder.into_inner().respond(Some(sent_to)).ignore()
                     }
                 }
             }

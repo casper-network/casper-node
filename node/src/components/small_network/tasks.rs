@@ -50,7 +50,7 @@ use super::{
 };
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, FromIncoming},
-    effect::{requests::NetworkRequest, EffectBuilder, Responder},
+    effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -61,7 +61,7 @@ use crate::{
 ///
 /// Contains a reference counted message and an optional responder to call once the message has been
 /// successfully handed over to the kernel for sending.
-pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<Responder<()>>);
+pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
 
 /// Low-level TLS connection function.
 ///
@@ -696,7 +696,7 @@ pub(super) async fn message_sender<P>(
         if let Some(responder) = opt_responder {
             // Since someone is interested in the message, flush the socket to ensure it was sent.
             outcome = outcome.and(sink.flush().await);
-            responder.respond(()).await;
+            responder.into_inner().respond(Some(())).await;
         }
 
         // We simply error-out if the sink fails, it means that our connection broke.

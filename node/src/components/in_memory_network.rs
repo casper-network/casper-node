@@ -550,7 +550,7 @@ where
                     error!("network lock has been poisoned")
                 };
 
-                responder.respond(()).ignore()
+                responder.into_inner().respond(Some(())).ignore()
             }
             NetworkRequest::Broadcast { payload, responder } => {
                 if let Ok(guard) = self.nodes.read() {
@@ -561,7 +561,7 @@ where
                     error!("network lock has been poisoned")
                 };
 
-                responder.respond(()).ignore()
+                responder.into_inner().respond(Some(())).ignore()
             }
             NetworkRequest::Gossip {
                 payload,
@@ -581,10 +581,13 @@ where
                     for dest in chosen.iter() {
                         self.send(&guard, *dest, *payload.clone());
                     }
-                    responder.respond(chosen).ignore()
+                    responder.into_inner().respond(Some(chosen)).ignore()
                 } else {
                     error!("network lock has been poisoned");
-                    responder.respond(Default::default()).ignore()
+                    responder
+                        .into_inner()
+                        .respond(Some(Default::default()))
+                        .ignore()
                 }
             }
         }

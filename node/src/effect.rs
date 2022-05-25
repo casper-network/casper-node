@@ -109,7 +109,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
@@ -155,19 +155,14 @@ use crate::{
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
     ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement,
 };
+use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
-};
-
-use self::{
-    announcements::QueueDumpFormat,
-    diagnostics_port::DumpConsensusStateRequest,
-    requests::{BeginGossipRequest, StateStoreRequest},
+    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
+    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -224,6 +219,10 @@ impl<T> AutoClosingResponder<T> {
 impl<T> Drop for AutoClosingResponder<T> {
     fn drop(&mut self) {
         if let Some(sender) = self.0.sender.take() {
+            debug!(
+                sending_value = %self.0,
+                "responding None by dropping auto-close responder"
+            );
             // We still haven't answered, send an answer.
             if let Err(_unsent_value) = sender.send(None) {
                 debug!(
@@ -256,10 +255,7 @@ impl<T: 'static + Send> Responder<T> {
     }
 }
 
-impl<T> Responder<T>
-where
-    T: Debug,
-{
+impl<T: Debug> Responder<T> {
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
@@ -316,19 +312,13 @@ impl<T> Drop for Responder<T> {
 }
 
 impl<T> Serialize for Responder<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&format!("{:?}", self))
     }
 }
 
 impl<T> Serialize for AutoClosingResponder<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.0.serialize(serializer)
     }
 }
@@ -664,11 +654,11 @@ impl<REv> EffectBuilder<REv> {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
                 respond_after_queueing: false,
-                responder,
+                responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
-        .await
+        .await;
     }
 
     /// Enqueues a network message.
@@ -684,11 +674,11 @@ impl<REv> EffectBuilder<REv> {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
                 respond_after_queueing: true,
-                responder,
+                responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
-        .await
+        .await;
     }
 
     /// Broadcasts a network message.
@@ -701,11 +691,11 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| NetworkRequest::Broadcast {
                 payload: Box::new(payload),
-                responder,
+                responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
-        .await
+        .await;
     }
 
     /// Gossips a network message.
@@ -729,11 +719,12 @@ impl<REv> EffectBuilder<REv> {
                 payload: Box::new(payload),
                 count,
                 exclude,
-                responder,
+                responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
         .await
+        .unwrap_or_default()
     }
 
     /// Gets a map of the current network peers to their socket addresses.
