@@ -1170,6 +1170,7 @@ impl BlockHeadersBatch {
             .first()
             .ok_or(BlockHeadersBatchValidationError::BatchEmpty)?;
 
+        // Check first header first b/c it's cheaper than verifying continuity.
         let highest_hash = highest_header.hash(verifiable_chunked_hash_activation);
         if &highest_hash != latest_known.parent_hash() {
             return Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
@@ -3147,6 +3148,77 @@ mod tests {
                 NEVER_SWITCH_HASHING
             ),
             Ok(())
+        );
+    }
+
+    #[test]
+    fn block_headers_batch_validate() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let headers = {
+            let mut tmp_batch = test_block_iter
+                .by_ref()
+                .take(5)
+                .map(|block| block.take_header())
+                .collect::<Vec<_>>();
+            tmp_batch.reverse();
+            tmp_batch
+        };
+
+        let lowest = headers.last().cloned().unwrap();
+        let (trusted, batch) = (
+            headers.first().cloned().unwrap(),
+            BlockHeadersBatch::new(headers[1..].to_vec()),
+        );
+
+        assert_eq!(
+            Ok(lowest),
+            BlockHeadersBatch::validate(&batch, &trusted, NEVER_SWITCH_HASHING)
+        );
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::BatchEmpty),
+            BlockHeadersBatch::validate(
+                &BlockHeadersBatch::new(vec![]),
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
+        );
+
+        let reversed = {
+            let mut tmp = batch.inner().clone();
+            let correct_first = tmp.first().cloned().unwrap();
+            tmp.reverse();
+            // We are putting highest block at the first index of the batch.
+            // The rest of the batch is in ascending order.
+            // We do that b/c `BlockHeadersBatch::validate` first checks whether the highest header
+            // in the batch is the expected one and only later validates the continuity.
+            // We want to retain that validation order as checking the first header in the batch is
+            // faster than iterating over all headers.
+            if let Some(current_first) = tmp.first_mut() {
+                *current_first = correct_first
+            }
+            BlockHeadersBatch::new(tmp)
+        };
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::BatchNotContinuous),
+            BlockHeadersBatch::validate(&reversed, &trusted, NEVER_SWITCH_HASHING)
+        );
+
+        let (new_highest, invalid_highest_batch) = {
+            let tmp = batch.inner().clone()[1..].to_vec();
+            (tmp.first().cloned().unwrap(), BlockHeadersBatch::new(tmp))
+        };
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
+                expected: headers[1].id(NEVER_SWITCH_HASHING),
+                got: new_highest.id(NEVER_SWITCH_HASHING)
+            }),
+            BlockHeadersBatch::validate(&invalid_highest_batch, &trusted, NEVER_SWITCH_HASHING)
         );
     }
 }
