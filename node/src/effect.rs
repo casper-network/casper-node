@@ -196,6 +196,34 @@ pub(crate) struct Responder<T> {
     is_shutting_down: SharedFlag,
 }
 
+/// A responder that will automatically send a `None` on drop.
+#[must_use]
+#[derive(DataSize)]
+pub(crate) struct AutoClosingResponder<T>(Responder<Option<T>>);
+
+impl<T> AutoClosingResponder<T> {
+    /// Creates a new auto closing responder from a responder of `Option<T>`.
+    fn from_opt_responder(responder: Responder<Option<T>>) -> Self {
+        AutoClosingResponder(responder)
+    }
+
+    /// Extracts the inner responder.
+    fn into_inner(self) -> Responder<Option<T>> {
+        self.0
+    }
+}
+
+impl<T> Drop for AutoClosingResponder<T> {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.sender.take() {
+            // We still haven't answered, send an answer.
+            if let Err(err) = sender.send(None) {
+                debug!("failed to auto-close responder, ignoring")
+            }
+        }
+    }
+}
+
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
