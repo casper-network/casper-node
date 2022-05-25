@@ -10,7 +10,7 @@ maximum_net_message_size = 23_068_672
 
 [core]
 era_duration = '3minutes'
-refund_handling = { Refund = { refund_ratio = [0, 100] } }
+refund_handling = { type = "Refund", refund_ratio = [0, 100] }
 minimum_era_height = 9
 validator_slots = 5
 auction_delay = 3
@@ -20,7 +20,7 @@ unbonding_delay = 14
 max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
-fee_handling = { PayToProposer = {} }
+fee_handling = { type = "PayToProposer" }
 strict_argument_checking = false
 
 [highway]

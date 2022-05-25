@@ -69,9 +69,9 @@ allow_unrestricted_transfers = true
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
 allow_auction_bids = true
 # Refund handling config for finalization of an execution.
-refund_handling = { Refund = { refund_ratio = [0, 100] } }
+refund_handling = { type = "Refund", refund_ratio = [0, 100] }
 # Fee handling config
-fee_handling = { PayToProposer = {} }
+fee_handling = { type = "PayToProposer" }
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

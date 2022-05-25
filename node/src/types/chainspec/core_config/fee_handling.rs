@@ -8,7 +8,8 @@ const FEE_HANDLING_PROPOSER_TAG: u8 = 0;
 const FEE_HANDLING_ACCUMULATE_TAG: u8 = 1;
 
 /// Fee handling config
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum FeeHandlingConfig {
     /// Transaction fees are paid to the block proposer.
     ///
@@ -19,6 +20,48 @@ pub enum FeeHandlingConfig {
     /// This setting makes sense for some private chains.
     Accumulate,
 }
+
+// impl<'de> Deserialize<'de> for FeeHandlingConfig {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         let val: String = Deserialize::deserialize(deserializer)?;
+//         if val == "PayToProposer" {
+//             Ok(FeeHandlingConfig::PayToProposer)
+//         } else if val == "Accumulate" {
+//             Ok(FeeHandlingConfig::Accumulate)
+//         } else {
+//             Err(serde::de::Error::custom("invalid option"))
+//         }
+//     }
+// }
+
+// impl Serialize for FeeHandlingConfig {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         // let mut val = toml::map::Map::new();
+//         match self {
+//             FeeHandlingConfig::PayToProposer => {
+//                 // val.insert("PayToProposer".into(), toml::map::Map::new().into());
+//                 "PayToProposer".serialize(serializer)
+//             }
+//             FeeHandlingConfig::Accumulate => {
+//                 // val.insert("Accumulate".into(), toml::map::Map::new().into());
+//                 "Accumulate".serialize(serializer)
+//             }
+//         }
+//         // val.serialize(serializer)
+//         // val.insert("PayToProposer", {
+//         //     let mut val2 = toml::map::Map::new();
+//         //     val2.insert("refund_ratio", refund_ratio);
+//         //     val2
+//         // });
+//         // val.serialize(serializer)
+//     }
+// }
 
 impl DataSize for FeeHandlingConfig {
     const IS_DYNAMIC: bool = false;
@@ -87,5 +130,11 @@ mod tests {
     fn bytesrepr_roundtrip_for_accumulate() {
         let fee_config = FeeHandlingConfig::Accumulate;
         bytesrepr::test_serialization_roundtrip(&fee_config);
+    }
+
+    #[test]
+    fn does_it_inline() {
+        let f = FeeHandlingConfig::PayToProposer;
+        eprintln!("{}", toml::to_string(&f).unwrap());
     }
 }

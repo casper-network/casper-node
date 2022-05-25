@@ -9,7 +9,8 @@ use crate::utils::serde_helpers;
 
 const REFUND_HANDLING_REFUND_TAG: u8 = 0;
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum RefundHandlingConfig {
     Refund {
         #[serde(deserialize_with = "serde_helpers::proper_fraction_deserializer")]

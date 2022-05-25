@@ -50,11 +50,11 @@ pub struct CoreConfig {
     /// Allows unrestricted transfers between users.
     pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are valid option for for a private chain only.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) administrative_accounts: Vec<AdministratorAccount>,
-    // Refund handling.
+    /// Refund handling.
     pub(crate) refund_handling: RefundHandlingConfig,
-    // Fee handling.
+    /// Fee handling.
     pub(crate) fee_handling: FeeHandlingConfig,
 }
 

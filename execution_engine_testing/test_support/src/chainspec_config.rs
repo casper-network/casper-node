@@ -50,6 +50,7 @@ pub enum Error {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
 pub enum RefundHandlingConfig {
     Refund { refund_ratio: Ratio<u64> },
 }
@@ -66,6 +67,7 @@ impl From<RefundHandlingConfig> for RefundHandling {
 
 /// Fee handling config
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
 pub enum FeeHandlingConfig {
     /// Transaction fees are paid to the block proposer.
     ///

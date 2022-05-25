@@ -54,8 +54,8 @@ max_runtime_call_stack_height = 12
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
-refund_handling = { Refund = { refund_ratio = [0, 100] } }
-fee_handling = { PayToProposer = {} }
+refund_handling = { type = "Refund", refund_ratio = [0, 100] }
+fee_handling = { type = "PayToProposer" }
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
