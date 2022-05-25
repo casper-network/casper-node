@@ -1192,7 +1192,7 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
             Some(hash) => hash,
             None => return Err(Error::NoSuchBlockHeight(block_height)),
         };
-        queue.push_job(block_hash);
+        queue.push_job((block_hash, block_height));
     }
 
     let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_block_fetches())
@@ -1209,12 +1209,17 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
 async fn fetch_block_worker(
     worker_id: usize,
     abort: Arc<AtomicBool>,
-    queue: Arc<WorkQueue<BlockHash>>,
+    queue: Arc<WorkQueue<(BlockHash, u64)>>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     while let Some(job) = queue.next_job().await {
-        let block_hash = *job.inner();
-        info!(worker_id, ?block_hash, "syncing block and deploys");
+        let (block_hash, block_height) = *job.inner();
+        info!(
+            worker_id,
+            ?block_hash,
+            ?block_height,
+            "syncing block and deploys"
+        );
         match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
             Ok(fetched_block) => {
                 trace!(?block_hash, "downloaded block and deploys");
@@ -1234,7 +1239,7 @@ async fn fetch_block_worker(
                         .await;
                     match next_block_hash {
                         None => return Err(Error::NoSuchBlockHeight(next_block_height)),
-                        Some(hash) => queue.push_job(hash),
+                        Some(hash) => queue.push_job((hash, next_block_height)),
                     }
                 }
             }
