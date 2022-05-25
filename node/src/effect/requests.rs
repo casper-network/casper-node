@@ -50,7 +50,7 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed,
     },
     utils::{DisplayIter, Source},
@@ -402,7 +402,7 @@ pub(crate) enum StorageRequest {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadata)>>,
+        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>>,
     },
     /// Retrieve block and its metadata by its hash.
     GetBlockAndMetadataByHash {
@@ -763,7 +763,7 @@ pub(crate) enum RpcRequest {
         /// Whether to return finalized approvals.
         finalized_approvals: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadata)>>,
+        responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
     },
     /// Return the connected peers.
     GetPeers {

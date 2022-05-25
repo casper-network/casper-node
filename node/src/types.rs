@@ -27,14 +27,17 @@ pub use block::{
     FinalizedBlock, HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart,
     MerkleLinkedListNode,
 };
-pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata};
+pub(crate) use block::{
+    BlockHashAndHeight, BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata,
+};
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,
-    DeployOrTransferHash, DeployWithApprovals, DeployWithFinalizedApprovals, Error as DeployError,
-    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals, FinalizedApprovalsWithId,
+    DeployMetadataExt, DeployOrTransferHash, DeployWithApprovals, DeployWithFinalizedApprovals,
+    Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals,
+    FinalizedApprovalsWithId,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

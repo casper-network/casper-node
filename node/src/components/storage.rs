@@ -88,11 +88,11 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
-        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
-        NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
+        BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy,
+        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedApprovalsWithId, HashingAlgorithmVersion, Item,
+        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId,
     },
     utils::{display_error, FlattenResult, WithDir},
     NodeRng,
@@ -233,8 +233,8 @@ struct Indices {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// A map of deploy hashes to hashes of blocks containing them.
-    deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// A map of deploy hashes to hashes and heights of blocks containing them.
+    deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
     /// The height of the highest block from which this node has an unbroken sequence of full
     /// blocks stored (and the corresponding global state).
     lowest_available_block_height: u64,
@@ -565,6 +565,7 @@ impl StorageInner {
                     &mut indices.deploy_hash_index,
                     block_header.hash(verifiable_chunked_hash_activation),
                     &block_body,
+                    block_header.height(),
                 )?;
             }
         }
@@ -983,11 +984,21 @@ impl StorageInner {
                 };
 
                 // Missing metadata is filled using a default.
-                let metadata = self
-                    .get_deploy_metadata(&mut txn, &deploy_hash)?
-                    .unwrap_or_default();
+                let metadata_ext: DeployMetadataExt =
+                    if let Some(metadata) = self.get_deploy_metadata(&mut txn, &deploy_hash)? {
+                        metadata.into()
+                    } else {
+                        let indices = self.indices.read()?;
+                        if let Some(block_hash_and_height) =
+                            self.get_block_hash_and_height_by_deploy_hash(&indices, deploy_hash)?
+                        {
+                            block_hash_and_height.into()
+                        } else {
+                            DeployMetadataExt::Empty
+                        }
+                    };
 
-                responder.respond(Some((deploy, metadata))).ignore()
+                responder.respond(Some((deploy, metadata_ext))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
@@ -1330,6 +1341,7 @@ impl StorageInner {
                 &mut indices.deploy_hash_index,
                 block.header().hash(self.verifiable_chunked_hash_activation),
                 block.body(),
+                block.header().height(),
             )?;
         }
         Ok(true)
@@ -1446,8 +1458,21 @@ impl StorageInner {
         indices
             .deploy_hash_index
             .get(&deploy_hash)
-            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .and_then(|block_hash_and_height| {
+                self.get_single_block_header(tx, &block_hash_and_height.block_hash)
+                    .transpose()
+            })
             .transpose()
+    }
+
+    /// Retrieves the block hash and height for a deploy hash by looking it up in the index
+    /// and returning it.
+    fn get_block_hash_and_height_by_deploy_hash(
+        &self,
+        indices: &Indices,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<BlockHashAndHeight>, FatalStorageError> {
+        Ok(indices.deploy_hash_index.get(&deploy_hash).copied())
     }
 
     /// Retrieves the highest block from storage, if one exists. May return an LMDB error.
@@ -2147,9 +2172,10 @@ fn insert_to_block_header_indices(
 ///
 /// If a duplicate entry is encountered, index is not updated and an error is returned.
 fn insert_to_deploy_index(
-    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHash>,
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
     block_hash: BlockHash,
     block_body: &BlockBody,
+    block_height: u64,
 ) -> Result<(), FatalStorageError> {
     if let Some(hash) = block_body
         .deploy_hashes()
@@ -2158,13 +2184,15 @@ fn insert_to_deploy_index(
         .find(|hash| {
             deploy_hash_index
                 .get(hash)
-                .map_or(false, |old_block_hash| *old_block_hash != block_hash)
+                .map_or(false, |old_block_hash_and_height| {
+                    old_block_hash_and_height.block_hash != block_hash
+                })
         })
     {
         return Err(FatalStorageError::DuplicateDeployIndex {
             deploy_hash: *hash,
             first: deploy_hash_index[hash],
-            second: block_hash,
+            second: BlockHashAndHeight::new(block_hash, block_height),
         });
     }
 
@@ -2173,7 +2201,7 @@ fn insert_to_deploy_index(
         .iter()
         .chain(block_body.transfer_hashes().iter())
     {
-        deploy_hash_index.insert(*hash, block_hash);
+        deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
     }
 
     Ok(())

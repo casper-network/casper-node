@@ -145,7 +145,7 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
         NodeId,
     },
@@ -1302,7 +1302,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>
     where
         REv: From<StorageRequest>,
     {
