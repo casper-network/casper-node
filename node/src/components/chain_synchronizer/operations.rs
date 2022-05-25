@@ -1201,7 +1201,6 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
 
     while let Some(result) = workers.next().await {
         result?; // Return the error if a download failed.
-        ctx.metrics.chain_sync_blocks_synced.inc();
     }
 
     Ok(())
@@ -1219,6 +1218,7 @@ async fn fetch_block_worker(
         match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
             Ok(fetched_block) => {
                 trace!(?block_hash, "downloaded block and deploys");
+                ctx.metrics.chain_sync_blocks_synced.inc();
                 // We want to download the trie only when we know we have the block.
                 sync_trie_store(*fetched_block.block.state_root_hash(), ctx).await?;
                 // Offset the next block height by how much we can parallelize.
