@@ -233,7 +233,7 @@ struct Indices {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// A map of deploy hashes to hashes of blocks containing them.
+    /// A map of deploy hashes to hashes and heights of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
     /// The height of the highest block from which this node has an unbroken sequence of full
     /// blocks stored (and the corresponding global state).

@@ -33,7 +33,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
 * Extend `GlobalStateIdentifier` to include `BlockHeight`.
 * Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
-* Add new `block_hash` and `block_height` optional fields to JSON-RPC deploy query which will be present when execution results aren't available.
+* Add new `block_hash` and `block_height` optional fields to `info_get_deploy` RPC query which will be present when execution results aren't available.
 * Add a new config option `[rpc_server.max_body_bytes]` to allow a configurable value for the maximum size of the body of a JSON-RPC request.
 
 ### Changed
