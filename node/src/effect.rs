@@ -198,17 +198,17 @@ pub(crate) struct Responder<T> {
 
 /// A responder that will automatically send a `None` on drop.
 #[must_use]
-#[derive(DataSize)]
+#[derive(DataSize, Debug)]
 pub(crate) struct AutoClosingResponder<T>(Responder<Option<T>>);
 
 impl<T> AutoClosingResponder<T> {
     /// Creates a new auto closing responder from a responder of `Option<T>`.
-    fn from_opt_responder(responder: Responder<Option<T>>) -> Self {
+    pub(crate) fn from_opt_responder(responder: Responder<Option<T>>) -> Self {
         AutoClosingResponder(responder)
     }
 
     /// Extracts the inner responder.
-    fn into_inner(self) -> Responder<Option<T>> {
+    pub(crate) fn into_inner(self) -> Responder<Option<T>> {
         self.0
     }
 }
@@ -310,6 +310,15 @@ impl<T> Serialize for Responder<T> {
         S: serde::Serializer,
     {
         serializer.serialize_str(&format!("{:?}", self))
+    }
+}
+
+impl<T> Serialize for AutoClosingResponder<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
     }
 }
 

@@ -270,16 +270,16 @@ impl ContractRuntime {
             Err(error) => {
                 // Something is wrong in our trie store, but be courteous and still send a reply.
                 debug!("failed to get trie: {}", error);
-                return responder.respond(None).ignore();
+                return responder.into_inner().respond(None).ignore();
             }
         };
 
         match Message::new_get_response(&fetched_or_not_found) {
-            Ok(message) => responder.respond(Some(message)).ignore(),
+            Ok(message) => responder.into_inner().respond(Some(message)).ignore(),
             Err(error) => {
                 // This should never happen, but if it does, we let the peer know we cannot help.
                 error!("failed to create get-response: {}", error);
-                responder.respond(None).ignore()
+                responder.into_inner().respond(None).ignore()
             }
         }
     }

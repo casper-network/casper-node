@@ -24,7 +24,7 @@ use crate::{
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
             TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
-        EffectBuilder,
+        AutoClosingResponder, EffectBuilder,
     },
     types::{Deploy, FinalitySignature, Item, NodeId, Tag},
 };
@@ -344,7 +344,7 @@ where
                 let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
                     sender,
                     request_msg: TrieRequest(serialized_id),
-                    responder,
+                    responder: AutoClosingResponder::from_opt_responder(responder),
                 });
 
                 Ok((ev, fut.boxed()))

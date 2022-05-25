@@ -14,7 +14,7 @@ use crate::{
     types::{FinalitySignature, NodeId, Tag},
 };
 
-use super::Responder;
+use super::AutoClosingResponder;
 
 /// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]
@@ -40,7 +40,7 @@ pub struct DemandIncoming<M> {
     /// The wrapped demand.
     pub(crate) request_msg: M,
     /// Responder to send the answer down through.
-    pub(crate) responder: Responder<Option<Message>>,
+    pub(crate) responder: AutoClosingResponder<Message>,
 }
 
 impl<M> Display for DemandIncoming<M>
