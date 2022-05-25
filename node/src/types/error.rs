@@ -145,6 +145,8 @@ pub(crate) enum BlockWithMetadataValidationError {
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub(crate) enum BlockHeadersBatchValidationError {
+    #[error("Batch has incorrect lenght. Expect: {expected}, got: {got}")]
+    IncorrectLength { expected: u64, got: u64 },
     #[error("Returned batch is not continuous sequence of blocks of parent-child relationship.")]
     BatchNotContinuous,
     #[error("Empty batch")]

@@ -1162,6 +1162,7 @@ impl BlockHeadersBatch {
     /// Returns lowest block header from the batch or error if batch fails validation.
     pub(crate) fn validate(
         &self,
+        batch_id: &BlockHeadersBatchId,
         latest_known: &BlockHeader,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<BlockHeader, BlockHeadersBatchValidationError> {
@@ -1169,6 +1170,13 @@ impl BlockHeadersBatch {
             .0
             .first()
             .ok_or(BlockHeadersBatchValidationError::BatchEmpty)?;
+
+        if batch_id.len() != self.inner().len() as u64 {
+            return Err(BlockHeadersBatchValidationError::IncorrectLength {
+                expected: batch_id.len(),
+                got: self.inner().len() as u64,
+            });
+        }
 
         // Check first header first b/c it's cheaper than verifying continuity.
         let highest_hash = highest_header.hash(verifiable_chunked_hash_activation);
@@ -3174,15 +3182,21 @@ mod tests {
             BlockHeadersBatch::new(headers[1..].to_vec()),
         );
 
+        let batch_id = BlockHeadersBatchId::new(
+            trusted.height() - 1,
+            batch.inner().last().cloned().unwrap().height(),
+        );
+
         assert_eq!(
             Ok(lowest),
-            BlockHeadersBatch::validate(&batch, &trusted, NEVER_SWITCH_HASHING)
+            BlockHeadersBatch::validate(&batch, &batch_id, &trusted, NEVER_SWITCH_HASHING)
         );
 
         assert_eq!(
             Err(BlockHeadersBatchValidationError::BatchEmpty),
             BlockHeadersBatch::validate(
                 &BlockHeadersBatch::new(vec![]),
+                &batch_id,
                 &trusted,
                 NEVER_SWITCH_HASHING
             )
@@ -3206,19 +3220,46 @@ mod tests {
 
         assert_eq!(
             Err(BlockHeadersBatchValidationError::BatchNotContinuous),
-            BlockHeadersBatch::validate(&reversed, &trusted, NEVER_SWITCH_HASHING)
+            BlockHeadersBatch::validate(&reversed, &batch_id, &trusted, NEVER_SWITCH_HASHING)
+        );
+
+        let invalid_length_batch = BlockHeadersBatch::new(batch.inner().clone()[1..].to_vec());
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::IncorrectLength {
+                expected: 4,
+                got: 3
+            }),
+            BlockHeadersBatch::validate(
+                &invalid_length_batch,
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
         );
 
         let (new_highest, invalid_highest_batch) = {
-            let tmp = batch.inner().clone()[1..].to_vec();
+            let mut tmp = batch.inner().clone();
+            tmp.reverse();
             (tmp.first().cloned().unwrap(), BlockHeadersBatch::new(tmp))
         };
+
         assert_eq!(
             Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
-                expected: headers[1].id(NEVER_SWITCH_HASHING),
+                expected: batch
+                    .inner()
+                    .first()
+                    .cloned()
+                    .unwrap()
+                    .id(NEVER_SWITCH_HASHING),
                 got: new_highest.id(NEVER_SWITCH_HASHING)
             }),
-            BlockHeadersBatch::validate(&invalid_highest_batch, &trusted, NEVER_SWITCH_HASHING)
+            BlockHeadersBatch::validate(
+                &invalid_highest_batch,
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
         );
     }
 }

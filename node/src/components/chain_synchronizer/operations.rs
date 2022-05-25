@@ -1139,6 +1139,7 @@ async fn fetch_block_headers_batch(
             FetchedData::FromStorage { item } => {
                 return BlockHeadersBatch::validate(
                     &*item,
+                    &batch_id,
                     lowest_trusted_block_header,
                     ctx.config.verifiable_chunked_hash_activation(),
                 )
@@ -1147,6 +1148,7 @@ async fn fetch_block_headers_batch(
             FetchedData::FromPeer { item, peer } => {
                 match BlockHeadersBatch::validate(
                     &*item,
+                    &batch_id,
                     lowest_trusted_block_header,
                     ctx.config.verifiable_chunked_hash_activation(),
                 ) {
