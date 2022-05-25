@@ -101,6 +101,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
+    mem,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -208,8 +209,15 @@ impl<T> AutoClosingResponder<T> {
     }
 
     /// Extracts the inner responder.
-    pub(crate) fn into_inner(self) -> Responder<Option<T>> {
-        self.0
+    pub(crate) fn into_inner(mut self) -> Responder<Option<T>> {
+        let is_shutting_down = self.0.is_shutting_down;
+        mem::replace(
+            &mut self.0,
+            Responder {
+                sender: None,
+                is_shutting_down,
+            },
+        )
     }
 }
 
@@ -217,8 +225,11 @@ impl<T> Drop for AutoClosingResponder<T> {
     fn drop(&mut self) {
         if let Some(sender) = self.0.sender.take() {
             // We still haven't answered, send an answer.
-            if let Err(err) = sender.send(None) {
-                debug!("failed to auto-close responder, ignoring")
+            if let Err(_unsent_value) = sender.send(None) {
+                debug!(
+                    unsent_value = %self.0,
+                    "failed to auto-close responder, ignoring"
+                )
             }
         }
     }
