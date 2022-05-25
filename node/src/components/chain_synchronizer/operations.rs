@@ -1105,9 +1105,9 @@ async fn fetch_headers_till_genesis(
             }
             Err(err) => {
                 // If we get an error here it means something must have gone really wrong.
-                // Internally we retry ad infinitum if peer times out or item is absent.
-                // The only reason we would end up here is if fetcher couldn't construct a fetch
-                // request.
+                // We either get the data from storage or from a peer where we retry ad infinitum if
+                // peer times out or item is absent. The only reason we would end up
+                // here is if fetcher couldn't construct a fetch request.
                 error!(
                     ?err,
                     "failed to download block headers batch with infinite retries"
@@ -1136,8 +1136,13 @@ async fn fetch_block_headers_batch(
         let fetched_headers_data: FetchedData<BlockHeadersBatch> =
             fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
         match fetched_headers_data {
-            FetchedData::FromStorage { item: _item } => {
-                todo!("validate batch from storage")
+            FetchedData::FromStorage { item } => {
+                return BlockHeadersBatch::validate(
+                    &*item,
+                    lowest_trusted_block_header,
+                    ctx.config.verifiable_chunked_hash_activation(),
+                )
+                .map_err(FetchBlockHeadersBatchError::InvalidBatchFromStorage)
             }
             FetchedData::FromPeer { item, peer } => {
                 match BlockHeadersBatch::validate(

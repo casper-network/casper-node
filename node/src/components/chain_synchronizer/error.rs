@@ -187,7 +187,6 @@ pub(crate) enum FetchBlockHeadersBatchError {
     #[error(transparent)]
     FetchError(#[from] FetcherError<BlockHeadersBatch>),
 
-    // Batch validation error
-    #[error(transparent)]
-    ValidationError(#[from] BlockHeadersBatchValidationError),
+    #[error("Batch from storage failed validation")]
+    InvalidBatchFromStorage(#[from] BlockHeadersBatchValidationError),
 }
