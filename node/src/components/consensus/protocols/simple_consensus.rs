@@ -91,8 +91,7 @@ use crate::{
         ActionId, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
-    utils::div_round,
-    NodeRng,
+    utils, NodeRng,
 };
 use fault::Fault;
 use message::{Content, Message, Proposal, SignedMessage, SyncState};
@@ -116,9 +115,11 @@ const MAX_FUTURE_ROUNDS: u32 = 7200; // Don't drop messages in 2-hour eras with 
 /// Identifies a single [`Round`] in the protocol.
 pub(crate) type RoundId = u32;
 
+type ProposalsAwaitingParent = HashSet<(RoundId, NodeId)>;
+type ProposalsAwaitingValidation<C> = HashSet<(RoundId, Proposal<C>, NodeId)>;
+
 /// Contains the state required for the protocol.
 #[derive(DataSize, Debug)]
-#[allow(clippy::type_complexity)] // TODO
 pub(crate) struct SimpleConsensus<C>
 where
     C: Context,
@@ -136,11 +137,9 @@ where
     /// it around to provide evidence for equivocation in previous eras.
     evidence_only: bool,
     /// Proposals which have not yet had their parent accepted, by parent round ID.
-    proposals_waiting_for_parent:
-        HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId)>>>,
+    proposals_waiting_for_parent: HashMap<RoundId, HashMap<Proposal<C>, ProposalsAwaitingParent>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
-    proposals_waiting_for_validation:
-        HashMap<ProposedBlock<C>, HashSet<(RoundId, Proposal<C>, NodeId)>>,
+    proposals_waiting_for_validation: HashMap<ProposedBlock<C>, ProposalsAwaitingValidation<C>>,
     /// If we requested a new block from the block proposer component this contains the proposal's
     /// round ID and the parent's round ID, if there is a parent.
     pending_proposal: Option<(BlockContext<C>, RoundId, Option<RoundId>)>,
@@ -172,7 +171,7 @@ where
 
 impl<C: Context + 'static> SimpleConsensus<C> {
     /// Creates a new [`SimpleConsensus`] instance.
-    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
@@ -246,7 +245,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Creates a new boxed [`SimpleConsensus`] instance.
-    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
@@ -275,11 +274,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
-    #[allow(clippy::integer_arithmetic)] // We use u128 to prevent overflows in weight
     fn log_participation(&self) {
-        let mut inactive_w = 0;
-        let mut faulty_w = 0;
-        let total_w = u128::from(self.validators.total_weight().0);
+        let mut inactive_w: u64 = 0;
+        let mut faulty_w: u64 = 0;
+        let total_w = self.validators.total_weight().0;
         let mut inactive_validators = Vec::new();
         let mut faulty_validators = Vec::new();
         for (idx, v_id) in self.validators.enumerate_ids() {
@@ -287,11 +285,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 match status {
                     ParticipationStatus::Equivocated
                     | ParticipationStatus::EquivocatedInOtherEra => {
-                        faulty_w += u128::from(self.validators.weight(idx).0);
+                        faulty_w = faulty_w.saturating_add(self.validators.weight(idx).0);
                         faulty_validators.push((idx, v_id.clone(), status));
                     }
                     ParticipationStatus::Inactive | ParticipationStatus::LastSeenInRound(_) => {
-                        inactive_w += u128::from(self.validators.weight(idx).0);
+                        inactive_w = inactive_w.saturating_add(self.validators.weight(idx).0);
                         inactive_validators.push((idx, v_id.clone(), status));
                     }
                 }
@@ -299,10 +297,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         inactive_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
         faulty_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
+        let inactive_w_100 = u128::from(inactive_w).saturating_mul(100);
+        let faulty_w_100 = u128::from(faulty_w).saturating_mul(100);
         let participation = Participation::<C> {
             instance_id: *self.instance_id(),
-            inactive_stake_percent: div_round(inactive_w * 100, total_w) as u8,
-            faulty_stake_percent: div_round(faulty_w * 100, total_w) as u8,
+            inactive_stake_percent: utils::div_round(inactive_w_100, u128::from(total_w)) as u8,
+            faulty_stake_percent: utils::div_round(faulty_w_100, u128::from(total_w)) as u8,
             inactive_validators,
             faulty_validators,
         };
@@ -483,21 +483,25 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// `first_idx` and the most significant one for `fist_idx + 127`, wrapping around at the total
     /// number of validators. The bits of the validators in `index_iter` that fall into that
     /// range are set to `1`, the others are `0`.
-    #[allow(clippy::integer_arithmetic)] // TODO
     fn validator_bit_field(
         &self,
         ValidatorIndex(first_idx): ValidatorIndex,
         index_iter: impl Iterator<Item = ValidatorIndex>,
     ) -> u128 {
-        let mut bit_field = 0;
         let validator_count = self.validators.len() as u32;
+        if first_idx >= validator_count {
+            return 0;
+        }
+        let mut bit_field = 0;
         for ValidatorIndex(v_idx) in index_iter {
             // The validator's bit is v_idx - first_idx, but we wrap around.
-            let i = v_idx
-                .checked_sub(first_idx)
-                .unwrap_or(v_idx + validator_count - first_idx);
-            if i < 128 {
-                bit_field |= 1 << i; // Set bit number i to 1.
+            let idx = match v_idx.overflowing_sub(first_idx) {
+                (idx, false) => idx,
+                // An underflow occurred. Add validator_count to wrap back around.
+                (idx, true) => idx.wrapping_add(validator_count),
+            };
+            if idx < u128::BITS {
+                bit_field |= 1_u128.wrapping_shl(idx); // Set bit number i to 1.
             }
         }
         bit_field
@@ -506,41 +510,62 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// Returns an iterator over all validator indexes whose bits in the `bit_field` are `1`, where
     /// the least significant one stands for `first_idx` and the most significant one for
     /// `first_idx + 127`, wrapping around.
-    #[allow(clippy::integer_arithmetic)] // TODO
     fn iter_validator_bit_field(
         &self,
-        first_idx: ValidatorIndex,
+        ValidatorIndex(mut idx): ValidatorIndex,
         mut bit_field: u128,
     ) -> impl Iterator<Item = ValidatorIndex> {
         let validator_count = self.validators.len() as u32;
-        let mut idx = first_idx.0; // The last bit stands for first_idx.
         iter::from_fn(move || {
-            if bit_field == 0 {
+            if bit_field == 0 || idx >= validator_count {
                 return None; // No remaining bits with value 1.
             }
             let zeros = bit_field.trailing_zeros();
             // The index of the validator whose bit is 1. We shift the bits to the right so that the
             // least significant bit now corresponds to this one, then we output the index and set
             // the bit to 0.
-            idx = (idx + zeros) % validator_count;
-            bit_field >>= zeros;
+            bit_field = bit_field.wrapping_shr(zeros);
             bit_field &= !1;
+            idx = match idx.overflowing_add(zeros) {
+                (i, false) => i,
+                // If an overflow occurs, go back via an underflow, so the value modulo
+                // validator_count is correct again.
+                (i, true) => i
+                    .checked_rem(validator_count)?
+                    .wrapping_sub(validator_count),
+            }
+            .checked_rem(validator_count)?;
             Some(ValidatorIndex(idx))
         })
     }
 
     /// Returns whether `v_idx` is covered by a validator index that starts at `first_idx`.
-    #[allow(clippy::integer_arithmetic)] // We convert to u64 so it can't overflow.
     fn validator_bit_field_includes(
         &self,
         ValidatorIndex(first_idx): ValidatorIndex,
         ValidatorIndex(v_idx): ValidatorIndex,
     ) -> bool {
-        let v_idx = v_idx as u64;
-        let first_idx = first_idx as u64;
-        let count = self.validators.len() as u64;
-        (v_idx < first_idx + 128 && v_idx >= first_idx)
-            || (v_idx + count < first_idx + 128 && v_idx + count >= first_idx)
+        let validator_count = self.validators.len() as u32;
+        if first_idx >= validator_count {
+            return false;
+        }
+        let high_bit = u128::BITS.saturating_sub(1);
+        // The overflow bit is the 33rd bit of the actual sum.
+        let (last_idx, last_idx_overflow) = first_idx.overflowing_add(high_bit);
+        if v_idx >= first_idx {
+            // v_idx is at least first_idx, so it's in the range unless it's higher than the last
+            // index, taking into account its 33rd bit.
+            last_idx_overflow || v_idx <= last_idx
+        } else {
+            // v_idx is less than first_idx. But if going from the first to the last index we wrap
+            // around, we might still arrive at v_idx:
+            let (v_idx2, v_idx2_overflow) = v_idx.overflowing_add(validator_count);
+            if v_idx2_overflow == last_idx_overflow {
+                v_idx2 <= last_idx
+            } else {
+                last_idx_overflow
+            }
+        }
     }
 
     /// Returns the leader in the specified round.
@@ -646,7 +671,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// When we receive a request to synchronize, we must take a careful diff of our state and the
     /// state in the sync state to ensure we send them exactly what they need to get back up to
     /// speed in the network.
-    #[allow(clippy::too_many_arguments)] // TODO
     fn handle_sync_state(&self, sync_state: SyncState<C>, sender: NodeId) -> ProtocolOutcomes<C> {
         let SyncState {
             round_id,
@@ -1534,14 +1558,19 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Returns the greatest weight such that two sets of validators with this weight can
-    /// intersect in only faulty validators, i.e. have an intersection of weight `<= ftt`. A
-    /// _quorum_ is any set with a weight strictly greater than this, so any two quora have at least
-    /// one correct validator in common.
+    /// intersect in only faulty validators, i.e. have an intersection of weight `<= ftt`. That is
+    /// `(total_weight + ftt) / 2`, rounded down. A _quorum_ is any set with a weight strictly
+    /// greater than this, so any two quorums have at least one correct validator in common.
     fn quorum_threshold(&self) -> Weight {
         let total_weight = self.validators.total_weight().0;
         let ftt = self.params.ftt().0;
-        #[allow(clippy::integer_arithmetic)] // Cannot overflow, even if both are u64::MAX.
-        Weight(total_weight / 2 + ftt / 2 + (total_weight & ftt & 1))
+        // sum_overflow is the 33rd bit of the addition's actual result, representing 2^32.
+        let (sum, sum_overflow) = total_weight.overflowing_add(ftt);
+        if sum_overflow {
+            Weight((sum / 2) | 1u64.reverse_bits()) // Add 2^31.
+        } else {
+            Weight(sum / 2)
+        }
     }
 
     /// Returns the total weight of validators known to be faulty.
