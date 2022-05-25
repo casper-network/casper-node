@@ -1088,23 +1088,17 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
     Ok(())
 }
 
+const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
+
 // Fetches headers starting from `trusted_block` till the Genesis.
 async fn fetch_headers_till_genesis(
     trusted_block: &Block,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
-    // TODO: extract
-    let header_size = std::mem::size_of::<BlockHeader>() as u64;
-    // Let's keep it under 5MB for now.
-    const MESSAGE_LIMIT_BYTES: u64 = 5 * 1024 * 1024;
-
-    // How many headers we can fit in the batch.
-    let max_batch_size: u64 = MESSAGE_LIMIT_BYTES - 1 / header_size;
-
     let mut lowest_trusted_block_header = trusted_block.header().clone();
 
     loop {
-        match fetch_block_headers_batch(max_batch_size, &lowest_trusted_block_header, ctx).await {
+        match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
             Ok(new_lowest) => {
                 info!(?new_lowest, "new lowest trusted block header stored");
                 lowest_trusted_block_header = new_lowest;
@@ -1124,11 +1118,11 @@ async fn fetch_headers_till_genesis(
 // Fetches a batch of block headers, validates and stores in storage.
 // Returns either an error or lowest valid block in the chain.
 async fn fetch_block_headers_batch(
-    max_batch_size: u64,
     lowest_trusted_block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
-    let batch_id = BlockHeadersBatchId::from_known(lowest_trusted_block_header, max_batch_size);
+    let batch_id =
+        BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
     let fetched_headers_data: FetchedData<BlockHeadersBatch> =
         fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
 
