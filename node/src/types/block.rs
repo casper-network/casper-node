@@ -680,9 +680,16 @@ impl FromBytes for BlockHash {
     }
 }
 
-#[derive(Clone, Copy, DataSize, Default, Serialize, Deserialize, Debug, PartialEq)]
+/// Describes a block's hash and height.
+#[derive(
+    Clone, Copy, DataSize, Default, Eq, JsonSchema, Serialize, Deserialize, Debug, PartialEq,
+)]
 pub struct BlockHashAndHeight {
+    /// The hash of the block.
+    #[schemars(description = "The hash of this deploy's block.")]
     pub block_hash: BlockHash,
+    /// The height of the block.
+    #[schemars(description = "The height of this deploy's block.")]
     pub block_height: u64,
 }
 

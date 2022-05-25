@@ -38,8 +38,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
         block_hash: *Block::doc_example().hash(),
         result: ExecutionResult::example().clone(),
     }],
-    block_hash: None,
-    block_height: None,
+    block_hash_and_height: None,
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -103,12 +102,10 @@ pub struct GetDeployResult {
     pub deploy: Deploy,
     /// The map of block hash to execution result.
     pub execution_results: Vec<JsonExecutionResult>,
-    /// The hash of this deploy's block.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_hash: Option<BlockHash>,
-    /// The height of this deploy's block.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_height: Option<u64>,
+    /// The hash and height of the block in which this deploy was executed,
+    /// only provided if the full execution results are not know on this node.
+    #[serde(skip_serializing_if = "Option::is_none", flatten)]
+    pub block_hash_and_height: Option<BlockHashAndHeight>,
 }
 
 impl DocExample for GetDeployResult {
@@ -155,7 +152,7 @@ impl RpcWithParams for GetDeploy {
             }
         };
 
-        let (execution_results, block_hash, block_height) = match metadata_ext {
+        let (execution_results, block_hash_and_height) = match metadata_ext {
             DeployMetadataExt::Metadata(metadata) => (
                 metadata
                     .execution_results
@@ -163,21 +160,18 @@ impl RpcWithParams for GetDeploy {
                     .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
                     .collect(),
                 None,
-                None,
             ),
-            DeployMetadataExt::BlockInfo(BlockHashAndHeight {
-                block_hash,
-                block_height,
-            }) => (Vec::new(), Some(block_hash), Some(block_height)),
-            DeployMetadataExt::Empty => (Vec::new(), None, None),
+            DeployMetadataExt::BlockInfo(block_hash_and_height) => {
+                (Vec::new(), Some(block_hash_and_height))
+            }
+            DeployMetadataExt::Empty => (Vec::new(), None),
         };
 
         let result = Self::ResponseResult {
             api_version,
             deploy,
             execution_results,
-            block_hash,
-            block_height,
+            block_hash_and_height,
         };
         Ok(result)
     }
