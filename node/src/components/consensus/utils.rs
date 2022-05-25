@@ -5,6 +5,12 @@ use num::rational::Ratio;
 
 use crate::{components::consensus::error::FinalitySignatureError, types::BlockSignatures};
 
+/// Computes the lower bound for the fraction of weight of signatures that will be considered
+/// sufficient.
+fn lower_bound(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
+    (finality_threshold_fraction + 1) / 2
+}
+
 /// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
 /// error if it doesn't, or if one of the signatures does not belong to a validator.
 ///
@@ -43,7 +49,7 @@ pub(crate) fn check_sufficient_finality_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = (finality_threshold_fraction + 1) / 2;
+    let lower_bound = lower_bound(finality_threshold_fraction);
     // Verify: signature_weight / total_weight >= lower_bound
     // Equivalent to the following
     if signature_weight * U512::from(*lower_bound.denom())
@@ -87,7 +93,7 @@ pub(crate) fn get_minimal_set_of_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = (finality_threshold_fraction + 1) / 2;
+    let lower_bound = lower_bound(finality_threshold_fraction);
 
     let mut sig_weights: Vec<_> = block_signatures
         .proofs
