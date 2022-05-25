@@ -8,7 +8,7 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 use datasize::DataSize;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
@@ -220,7 +220,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
                     // Only if there's still a responder waiting for the item we increment the
                     // metric. Otherwise we will count every request as timed out, even if the item
                     // had been fetched.
-                    info!(TAG=%T::TAG, %id, %peer, "request timed out");
+                    trace!(TAG=%T::TAG, %id, %peer, "request timed out");
                     self.metrics().timeouts.inc();
                 }
 
@@ -702,7 +702,7 @@ where
             }
             Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
-                info!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
+                trace!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
                 self.signal(id, Err(FetcherError::Absent { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
