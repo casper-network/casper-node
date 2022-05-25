@@ -198,17 +198,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
-        let mut all_responders = match self.responders().remove(&id) {
-            Some(responders) => responders,
-            None => {
-                warn!(
-                    ?id,
-                    ?peer,
-                    "received an item that no responder is waiting for"
-                );
-                return Effects::new();
-            }
-        };
+        let mut all_responders = self.responders().remove(&id).unwrap_or_default();
         match result {
             Ok(item) => {
                 // Since this is a success, we can safely respond to all awaiting processes.
@@ -712,7 +702,7 @@ where
             }
             Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
-                info!(TAG=%T::TAG, ?id, %peer, "item absent on the remote node");
+                info!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
                 self.signal(id, Err(FetcherError::Absent { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
