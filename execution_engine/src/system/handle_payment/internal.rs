@@ -93,12 +93,12 @@ fn calculate_amounts(
 
     // Move the dust amount to the reward part
 
-    let user_part = refund_amount_trunc
-        .checked_add(&dust_amount)
-        .ok_or(Error::ArithmeticOverflow)?;
+    let user_part = refund_amount_trunc;
     debug_assert_eq!(user_part.fract(), Ratio::zero());
 
-    let validator_part = validator_reward_trunc;
+    let validator_part = validator_reward_trunc
+        .checked_add(&dust_amount)
+        .ok_or(Error::ArithmeticOverflow)?;
     debug_assert_eq!(validator_part.fract(), Ratio::zero());
 
     // Makes sure both parts: for user, and for validator sums to the total amount in the
