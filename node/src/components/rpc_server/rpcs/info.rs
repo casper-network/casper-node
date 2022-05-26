@@ -21,7 +21,10 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{Block, BlockHash, ChainspecRawBytes, Deploy, DeployHash, GetStatusResult, PeersMap},
+    types::{
+        Block, BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadataExt, GetStatusResult, PeersMap,
+    },
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -35,6 +38,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
         block_hash: *Block::doc_example().hash(),
         result: ExecutionResult::example().clone(),
     }],
+    block_hash_and_height: None,
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -98,6 +102,10 @@ pub struct GetDeployResult {
     pub deploy: Deploy,
     /// The map of block hash to execution result.
     pub execution_results: Vec<JsonExecutionResult>,
+    /// The hash and height of the block in which this deploy was executed,
+    /// only provided if the full execution results are not know on this node.
+    #[serde(skip_serializing_if = "Option::is_none", flatten)]
+    pub block_hash_and_height: Option<BlockHashAndHeight>,
 }
 
 impl DocExample for GetDeployResult {
@@ -132,8 +140,8 @@ impl RpcWithParams for GetDeploy {
             )
             .await;
 
-        let (deploy, metadata) = match maybe_deploy_and_metadata {
-            Some((deploy, metadata)) => (deploy, metadata),
+        let (deploy, metadata_ext) = match maybe_deploy_and_metadata {
+            Some((deploy, metadata_ext)) => (deploy, metadata_ext),
             None => {
                 let message = format!(
                     "failed to get {} and metadata from storage",
@@ -144,17 +152,26 @@ impl RpcWithParams for GetDeploy {
             }
         };
 
-        // Return the result.
-        let execution_results = metadata
-            .execution_results
-            .into_iter()
-            .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
-            .collect();
+        let (execution_results, block_hash_and_height) = match metadata_ext {
+            DeployMetadataExt::Metadata(metadata) => (
+                metadata
+                    .execution_results
+                    .into_iter()
+                    .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
+                    .collect(),
+                None,
+            ),
+            DeployMetadataExt::BlockInfo(block_hash_and_height) => {
+                (Vec::new(), Some(block_hash_and_height))
+            }
+            DeployMetadataExt::Empty => (Vec::new(), None),
+        };
 
         let result = Self::ResponseResult {
             api_version,
             deploy,
             execution_results,
+            block_hash_and_height,
         };
         Ok(result)
     }

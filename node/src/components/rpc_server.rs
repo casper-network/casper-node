@@ -278,16 +278,18 @@ where
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
                     hash,
-                    result: Box::new(result.map(|(deploy_with_finalized_approvals, metadata)| {
-                        if finalized_approvals {
-                            (deploy_with_finalized_approvals.into_naive(), metadata)
-                        } else {
-                            (
-                                deploy_with_finalized_approvals.discard_finalized_approvals(),
-                                metadata,
-                            )
-                        }
-                    })),
+                    result: Box::new(result.map(
+                        |(deploy_with_finalized_approvals, metadata_ext)| {
+                            if finalized_approvals {
+                                (deploy_with_finalized_approvals.into_naive(), metadata_ext)
+                            } else {
+                                (
+                                    deploy_with_finalized_approvals.discard_finalized_approvals(),
+                                    metadata_ext,
+                                )
+                            }
+                        },
+                    )),
                     main_responder: responder,
                 }),
             Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder

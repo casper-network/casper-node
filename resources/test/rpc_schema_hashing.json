@@ -3139,6 +3139,16 @@
                   "description": "The RPC API version.",
                   "type": "string"
                 },
+                "block_hash": {
+                  "$ref": "#/components/schemas/BlockHash",
+                  "description": "The hash of this deploy's block."
+                },
+                "block_height": {
+                  "description": "The height of this deploy's block.",
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
                 "deploy": {
                   "$ref": "#/components/schemas/Deploy",
                   "description": "The deploy."
