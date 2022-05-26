@@ -538,7 +538,7 @@ where
                 dest,
                 payload,
                 respond_after_queueing: _,
-                responder,
+                auto_closing_responder,
             } => {
                 if *dest == self.node_id {
                     panic!("can't send message to self");
@@ -550,9 +550,12 @@ where
                     error!("network lock has been poisoned")
                 };
 
-                responder.respond(()).ignore()
+                auto_closing_responder.respond(()).ignore()
             }
-            NetworkRequest::Broadcast { payload, responder } => {
+            NetworkRequest::Broadcast {
+                payload,
+                auto_closing_responder,
+            } => {
                 if let Ok(guard) = self.nodes.read() {
                     for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
                         self.send(&guard, *dest, *payload.clone());
@@ -561,13 +564,13 @@ where
                     error!("network lock has been poisoned")
                 };
 
-                responder.respond(()).ignore()
+                auto_closing_responder.respond(()).ignore()
             }
             NetworkRequest::Gossip {
                 payload,
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             } => {
                 if let Ok(guard) = self.nodes.read() {
                     let chosen: HashSet<_> = guard
@@ -581,10 +584,10 @@ where
                     for dest in chosen.iter() {
                         self.send(&guard, *dest, *payload.clone());
                     }
-                    responder.respond(chosen).ignore()
+                    auto_closing_responder.respond(chosen).ignore()
                 } else {
                     error!("network lock has been poisoned");
-                    responder.respond(Default::default()).ignore()
+                    auto_closing_responder.respond(Default::default()).ignore()
                 }
             }
         }
