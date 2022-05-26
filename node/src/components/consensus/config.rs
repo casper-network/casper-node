@@ -45,13 +45,14 @@ impl Default for Config {
     }
 }
 
+type LoadKeyError = LoadError<<Arc<SecretKey> as Loadable>::Error>;
+
 impl Config {
     /// Loads the secret key from the configuration file and derives the public key.
-    #[allow(clippy::type_complexity)]
     pub(crate) fn load_keys<P: AsRef<Path>>(
         &self,
         root: P,
-    ) -> Result<(Arc<SecretKey>, PublicKey), LoadError<<Arc<SecretKey> as Loadable>::Error>> {
+    ) -> Result<(Arc<SecretKey>, PublicKey), LoadKeyError> {
         let secret_signing_key: Arc<SecretKey> = self.secret_key_path.clone().load(root)?;
         let public_key: PublicKey = PublicKey::from(secret_signing_key.as_ref());
         Ok((secret_signing_key, public_key))

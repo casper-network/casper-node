@@ -185,7 +185,7 @@ impl FromBytes for CoreConfig {
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
 pub(crate) enum ConsensusProtocolName {
     Highway,
-    Simple,
+    Zug,
 }
 
 impl Serialize for ConsensusProtocolName {
@@ -195,7 +195,7 @@ impl Serialize for ConsensusProtocolName {
     {
         match self {
             ConsensusProtocolName::Highway => "Highway",
-            ConsensusProtocolName::Simple => "Simple",
+            ConsensusProtocolName::Zug => "Zug",
         }
         .serialize(serializer)
     }
@@ -205,20 +205,20 @@ impl<'de> Deserialize<'de> for ConsensusProtocolName {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         match String::deserialize(deserializer)?.to_lowercase().as_str() {
             "highway" => Ok(ConsensusProtocolName::Highway),
-            "simple" => Ok(ConsensusProtocolName::Simple),
+            "zug" => Ok(ConsensusProtocolName::Zug),
             _ => Err(DeError::custom("unknown consensus protocol name")),
         }
     }
 }
 
 const CONSENSUS_HIGHWAY_TAG: u8 = 0;
-const CONSENSUS_SIMPLE_TAG: u8 = 1;
+const CONSENSUS_ZUG_TAG: u8 = 1;
 
 impl ToBytes for ConsensusProtocolName {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let tag = match self {
             ConsensusProtocolName::Highway => CONSENSUS_HIGHWAY_TAG,
-            ConsensusProtocolName::Simple => CONSENSUS_SIMPLE_TAG,
+            ConsensusProtocolName::Zug => CONSENSUS_ZUG_TAG,
         };
         Ok(vec![tag])
     }
@@ -233,7 +233,7 @@ impl FromBytes for ConsensusProtocolName {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let name = match tag {
             CONSENSUS_HIGHWAY_TAG => ConsensusProtocolName::Highway,
-            CONSENSUS_SIMPLE_TAG => ConsensusProtocolName::Simple,
+            CONSENSUS_ZUG_TAG => ConsensusProtocolName::Zug,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((name, remainder))
@@ -246,7 +246,7 @@ impl Distribution<ConsensusProtocolName> for Standard {
         if rng.gen() {
             ConsensusProtocolName::Highway
         } else {
-            ConsensusProtocolName::Simple
+            ConsensusProtocolName::Zug
         }
     }
 }

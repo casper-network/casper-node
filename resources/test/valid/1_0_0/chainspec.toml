@@ -23,7 +23,7 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
-consensus_protocol = 'Simple'
+consensus_protocol = 'Zug'
 
 [highway]
 minimum_round_exponent = 14

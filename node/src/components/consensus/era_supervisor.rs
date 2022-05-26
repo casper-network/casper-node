@@ -449,7 +449,7 @@ impl EraSupervisor {
         let new_consensus: &ConsensusConstructor =
             match self.chainspec.core_config.consensus_protocol {
                 ConsensusProtocolName::Highway => &HighwayProtocol::new_boxed,
-                ConsensusProtocolName::Simple => &SimpleConsensus::new_boxed,
+                ConsensusProtocolName::Zug => &SimpleConsensus::new_boxed,
             };
 
         // Create and insert the new era instance.
