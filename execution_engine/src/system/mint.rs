@@ -55,11 +55,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         Ok(purse_uref)
     }
 
-    ///
-    ///
-    /// TODO make sure user can't cheat purse transfers by calling a mint directly with system
-    /// account as "to" field
-
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
@@ -103,8 +98,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Transfers `amount` of tokens from `source` purse to a `target` purse.
-    ///
-    /// A flag `is_host_function` identifies if the contract call comes from a host function.
     fn transfer(
         &mut self,
         maybe_to: Option<AccountHash>,
