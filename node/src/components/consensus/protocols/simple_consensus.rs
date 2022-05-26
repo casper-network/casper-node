@@ -208,7 +208,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
 
         info!(
-            %proposal_timeout,
+            %instance_id, %era_start_time, %proposal_timeout,
             "initializing SimpleConsensus instance",
         );
 
@@ -1076,6 +1076,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .round_mut(round_id)
                     .insert_echo(hash, validator_idx, signature)
                 {
+                    debug!(round_id, %hash, validator = validator_idx.0, "inserted echo");
                     self.progress_detected = true;
                     if self.check_new_echo_quorum(round_id, hash) {
                         self.mark_dirty(round_id);
@@ -1088,6 +1089,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .round_mut(round_id)
                     .insert_vote(vote, validator_idx, signature)
                 {
+                    debug!(round_id, vote, validator = validator_idx.0, "inserted vote");
                     self.progress_detected = true;
                     if self.check_new_vote_quorum(round_id, vote) {
                         self.mark_dirty(round_id);
@@ -1131,11 +1133,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// round.
     fn update(&mut self, now: Timestamp) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![];
-        if self.maybe_dirty_round_id.is_none()
-            || self.finalized_switch_block()
-            || self.faulty_weight() > self.params.ftt()
-        {
-            return outcomes; // This era has ended or all rounds are up to date.
+        if self.finalized_switch_block() || self.faulty_weight() > self.params.ftt() {
+            return outcomes; // This era has ended or the FTT was exceeded.
         }
         while let Some(round_id) = self.maybe_dirty_round_id.take() {
             outcomes.extend(self.update_round(round_id, now));
@@ -1185,18 +1184,27 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
                 self.current_timeout = Timestamp::MAX;
                 self.current_round = self.current_round.saturating_add(1);
+                debug!(
+                    round_id = self.current_round,
+                    leader = self.leader(self.current_round).0,
+                    "started a new round"
+                );
             } else if let Some((maybe_parent_round_id, timestamp)) = self.suitable_parent_round(now)
             {
                 if now < timestamp {
                     // The first opportunity to make a proposal is in the future; check again at
                     // that time.
                     outcomes.extend(self.schedule_update(timestamp));
-                } else if self.current_timeout > now + self.proposal_timeout {
-                    // A proposal could be made now. Start the timer and propose if leader.
-                    self.current_timeout = now + self.proposal_timeout;
-                    self.proposal_timeout = self.proposal_timeout * 2u64;
-                    outcomes.extend(self.schedule_update(self.current_timeout));
-                    outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
+                } else {
+                    if self.current_timeout > now + self.proposal_timeout {
+                        // A proposal could be made now. Start the timer and propose if leader.
+                        self.current_timeout = now + self.proposal_timeout;
+                        self.proposal_timeout = self.proposal_timeout * 2u64;
+                        outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
+                    }
+                    if self.current_timeout > now {
+                        outcomes.extend(self.schedule_update(self.current_timeout));
+                    }
                 }
             } else {
                 error!("No suitable parent for current round");
@@ -1205,7 +1213,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // If the round has an accepted proposal and is committed, it is finalized.
         if self.has_accepted_proposal(round_id) && self.is_committed_round(round_id) {
-            self.proposal_timeout = self.params.min_block_time();
+            self.proposal_timeout = self.config.proposal_timeout;
             outcomes.extend(self.finalize_round(round_id));
         }
         outcomes
@@ -1279,8 +1287,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .maybe_parent_round_id
             .and_then(|parent_round_id| self.accepted_proposal(parent_round_id))
         {
-            let min_round_len = self.params.min_block_time();
-            if proposal.timestamp < parent_proposal.timestamp.saturating_add(min_round_len) {
+            let min_block_time = self.params.min_block_time();
+            if proposal.timestamp < parent_proposal.timestamp.saturating_add(min_block_time) {
                 info!("rejecting proposal with timestamp earlier than the parent");
                 return vec![];
             }
@@ -1454,14 +1462,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// Returns a parent if a block with that parent could be proposed in the current round, and the
     /// earliest possible timestamp for a new proposal.
     fn suitable_parent_round(&self, now: Timestamp) -> Option<(Option<RoundId>, Timestamp)> {
-        let min_round_len = self.params.min_block_time();
+        let min_block_time = self.params.min_block_time();
         let mut maybe_parent = None;
         // We iterate through the rounds before the current one, in reverse order.
         for round_id in (0..self.current_round).rev() {
             if let Some((_, parent)) = self.accepted_proposal(round_id) {
                 // All rounds higher than this one are skippable. When the accepted proposal's
                 // timestamp is old enough it can be used as a parent.
-                let timestamp = parent.timestamp.saturating_add(min_round_len);
+                let timestamp = parent.timestamp.saturating_add(min_block_time);
                 if now >= timestamp {
                     return Some((Some(round_id), timestamp));
                 }
@@ -1635,7 +1643,9 @@ where
         match timer_id {
             TIMER_ID_SYNC_PEER => self.handle_sync_peer_timer(now, rng),
             TIMER_ID_UPDATE => {
-                self.next_scheduled_update = Timestamp::MAX;
+                if now >= self.next_scheduled_update {
+                    self.next_scheduled_update = Timestamp::MAX;
+                }
                 self.mark_dirty(self.current_round);
                 self.update(now)
             }
@@ -1720,9 +1730,9 @@ where
                 if self.round_mut(round_id).insert_proposal(proposal) {
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
-                    outcomes.extend(self.update(now));
                 }
             }
+            outcomes.extend(self.update(now));
         } else {
             for (round_id, _, sender) in rounds_and_node_ids {
                 // We don't disconnect from the faulty sender here: The block validator considers
