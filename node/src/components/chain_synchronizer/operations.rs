@@ -357,7 +357,7 @@ async fn fetch_and_store_block_header(
         });
     }
 
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for block but have no peers to query for the data.
@@ -388,7 +388,7 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for a deploy but have no peers to query for the data.
@@ -755,11 +755,21 @@ async fn sync_trie_store_worker(
 
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for a trie but have no peers to query for the data.
-    if let Ok(Some(_trie)) = ctx.effect_builder.get_trie_full(state_root_hash).await {
+    if ctx
+        .effect_builder
+        .get_trie_full(state_root_hash)
+        .await?
+        .is_some()
+        && ctx
+            .effect_builder
+            .find_missing_descendant_trie_keys(state_root_hash)
+            .await?
+            .is_empty()
+    {
         return Ok(());
     }
 
