@@ -492,7 +492,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         if first_idx >= validator_count {
             return 0;
         }
-        let mut bit_field = 0;
+        let mut bit_field: u128 = 0;
         for ValidatorIndex(v_idx) in index_iter {
             // The validator's bit is v_idx - first_idx, but we wrap around.
             let idx = match v_idx.overflowing_sub(first_idx) {
@@ -703,7 +703,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
         let mut contents: Vec<(Content<C>, ValidatorIndex, C::Signature)> = vec![];
         let mut proposal_outcome = None;
-        let mut our_echoes = 0;
+        let mut our_echoes: u128 = 0;
         match proposal_hash {
             Some(hash) if round.quorum_echoes() == None || round.quorum_echoes() == Some(hash) => {
                 // They requested echoes for the proposal that we have a quorum for, or we don't
@@ -752,7 +752,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // Send them votes they are missing, but exclude faulty validators. If there already is a
         // quorum omit the votes that go against the quorum, since they are irrelevant.
-        let our_true_votes = if round.quorum_votes() == Some(false) {
+        let our_true_votes: u128 = if round.quorum_votes() == Some(false) {
             0
         } else {
             self.validator_bit_field(first_validator_idx, round.votes(true).keys_some())
@@ -762,7 +762,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             let signature = round.votes(true)[v_idx].unwrap();
             contents.push((Content::Vote(true), v_idx, signature));
         }
-        let our_false_votes = if round.quorum_votes() == Some(true) {
+        let our_false_votes: u128 = if round.quorum_votes() == Some(true) {
             0
         } else {
             self.validator_bit_field(first_validator_idx, round.votes(false).keys_some())
