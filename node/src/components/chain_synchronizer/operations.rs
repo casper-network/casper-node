@@ -1125,6 +1125,11 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
 
     let mut walkback_block = trusted_block.clone();
     let mut starting_height = trusted_block.height();
+    let last_emergency_restart = ctx
+        .config
+        .chainspec()
+        .protocol_config
+        .last_emergency_restart;
     // The available range from storage indicates a range of blocks for which we already have
     // all the corresponding deploys and global state stored locally.  Skip fetching for such a
     // range.
@@ -1173,25 +1178,29 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
     loop {
         let walkback_block_height = walkback_block.height();
         if let Some(validator_weights) = walkback_block.header().next_era_validator_weights() {
-            let first_block_in_era =
-                walkback_block_height
-                    .checked_add(1)
-                    .ok_or_else(|| Error::HeightOverflow {
-                        parent: Box::new(walkback_block.header().clone()),
-                    })?;
             let era = walkback_block.header().next_block_era_id();
-            let ctx_owned = ctx.to_owned();
-            let validator_weights = validator_weights.clone();
-            tokio::spawn(async move {
-                download_and_store_signatures(
-                    ctx_owned,
-                    &validator_weights,
-                    first_block_in_era,
-                    starting_height,
-                    era,
-                )
-                .await;
-            });
+            // first block after an emergency restart won't have finality signatures, so we don't
+            // need to bother in such a case
+            if last_emergency_restart != Some(era) {
+                let first_block_in_era =
+                    walkback_block_height
+                        .checked_add(1)
+                        .ok_or_else(|| Error::HeightOverflow {
+                            parent: Box::new(walkback_block.header().clone()),
+                        })?;
+                let ctx_owned = ctx.to_owned();
+                let validator_weights = validator_weights.clone();
+                tokio::spawn(async move {
+                    download_and_store_signatures(
+                        ctx_owned,
+                        &validator_weights,
+                        first_block_in_era,
+                        starting_height,
+                        era,
+                    )
+                    .await;
+                });
+            }
         }
         ctx.metrics
             .chain_sync_block_height_synced
