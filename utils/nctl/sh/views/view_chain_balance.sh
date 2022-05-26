@@ -28,11 +28,11 @@ NODE_ADDRESS=$(get_node_address_rpc)
 STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash)}
 
 ACCOUNT_BALANCE=$(
-    $(get_path_to_client) get-balance \
+    $(get_path_to_client) query-balance \
         --node-address "$NODE_ADDRESS" \
         --state-root-hash "$STATE_ROOT_HASH" \
         --purse-uref "$PURSE_UREF" \
-        | jq '.result.balance_value' \
+        | jq '.result.balance' \
         | sed -e 's/^"//' -e 's/"$//'
     )
 
