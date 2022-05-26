@@ -16,7 +16,7 @@ use futures::{
 };
 use prometheus::IntGauge;
 use quanta::Instant;
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
@@ -169,7 +169,7 @@ impl<'a> ChainSyncContext<'a> {
     /// Marks a peer as bad.
     fn mark_bad_peer(&self, peer: NodeId) {
         if self.config.redemption_interval == 0 {
-            info!(%peer, "not marking peer as bad for syncing, redemption is disabled");
+            debug!(%peer, "not marking peer as bad for syncing, redemption is disabled");
             return;
         }
 
@@ -180,7 +180,7 @@ impl<'a> ChainSyncContext<'a> {
 
         // Note: Like `filter_bad_peers`, this may need to be migrated to use sets instead.
         if bad_peer_list.contains(&peer) {
-            info!(%peer, "peer already marked as bad for syncing");
+            debug!(%peer, "peer already marked as bad for syncing");
         } else {
             bad_peer_list.push_back(peer);
             info!(%peer, "marked peer as bad for syncing");
