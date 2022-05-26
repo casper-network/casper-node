@@ -204,7 +204,7 @@ impl<T> AutoClosingResponder<T> {
     }
 
     /// Extracts the inner responder.
-    pub(crate) fn into_inner(mut self) -> Responder<Option<T>> {
+    fn into_inner(mut self) -> Responder<Option<T>> {
         let is_shutting_down = self.0.is_shutting_down;
         mem::replace(
             &mut self.0,
@@ -213,6 +213,18 @@ impl<T> AutoClosingResponder<T> {
                 is_shutting_down,
             },
         )
+    }
+}
+
+impl<T: Debug> AutoClosingResponder<T> {
+    /// Send `Some(data)` to the origin of the request.
+    pub(crate) async fn respond(self, data: T) {
+        self.into_inner().respond(Some(data)).await
+    }
+
+    /// Send `None` to the origin of the request.
+    pub(crate) async fn respond_none(self) {
+        self.into_inner().respond(None).await
     }
 }
 
@@ -654,7 +666,7 @@ impl<REv> EffectBuilder<REv> {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
                 respond_after_queueing: false,
-                responder: AutoClosingResponder::from_opt_responder(responder),
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
@@ -674,7 +686,7 @@ impl<REv> EffectBuilder<REv> {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
                 respond_after_queueing: true,
-                responder: AutoClosingResponder::from_opt_responder(responder),
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
@@ -691,7 +703,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| NetworkRequest::Broadcast {
                 payload: Box::new(payload),
-                responder: AutoClosingResponder::from_opt_responder(responder),
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
@@ -719,7 +731,7 @@ impl<REv> EffectBuilder<REv> {
                 payload: Box::new(payload),
                 count,
                 exclude,
-                responder: AutoClosingResponder::from_opt_responder(responder),
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )

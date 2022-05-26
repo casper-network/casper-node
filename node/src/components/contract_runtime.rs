@@ -261,7 +261,7 @@ impl ContractRuntime {
         &self,
         TrieDemand {
             request_msg: TrieRequest(ref serialized_id),
-            responder,
+            auto_closing_responder,
             ..
         }: TrieDemand,
     ) -> Effects<Event> {
@@ -270,16 +270,16 @@ impl ContractRuntime {
             Err(error) => {
                 // Something is wrong in our trie store, but be courteous and still send a reply.
                 debug!("failed to get trie: {}", error);
-                return responder.into_inner().respond(None).ignore();
+                return auto_closing_responder.respond_none().ignore();
             }
         };
 
         match Message::new_get_response(&fetched_or_not_found) {
-            Ok(message) => responder.into_inner().respond(Some(message)).ignore(),
+            Ok(message) => auto_closing_responder.respond(message).ignore(),
             Err(error) => {
                 // This should never happen, but if it does, we let the peer know we cannot help.
                 error!("failed to create get-response: {}", error);
-                responder.into_inner().respond(None).ignore()
+                auto_closing_responder.respond_none().ignore()
             }
         }
     }

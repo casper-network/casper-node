@@ -344,7 +344,7 @@ where
                 let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
                     sender,
                     request_msg: TrieRequest(serialized_id),
-                    responder: AutoClosingResponder::from_opt_responder(responder),
+                    auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                 });
 
                 Ok((ev, fut.boxed()))

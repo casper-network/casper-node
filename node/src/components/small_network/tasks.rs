@@ -693,10 +693,10 @@ pub(super) async fn message_sender<P>(
         let mut outcome = sink.send(message).await;
 
         // Notify via responder that the message has been buffered by the kernel.
-        if let Some(responder) = opt_responder {
+        if let Some(auto_closing_responder) = opt_responder {
             // Since someone is interested in the message, flush the socket to ensure it was sent.
             outcome = outcome.and(sink.flush().await);
-            responder.into_inner().respond(Some(())).await;
+            auto_closing_responder.respond(()).await;
         }
 
         // We simply error-out if the sink fails, it means that our connection broke.

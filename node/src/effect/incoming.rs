@@ -40,7 +40,7 @@ pub struct DemandIncoming<M> {
     /// The wrapped demand.
     pub(crate) request_msg: M,
     /// Responder to send the answer down through.
-    pub(crate) responder: AutoClosingResponder<Message>,
+    pub(crate) auto_closing_responder: AutoClosingResponder<Message>,
 }
 
 impl<M> Display for DemandIncoming<M>
