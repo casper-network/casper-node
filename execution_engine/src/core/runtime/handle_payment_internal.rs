@@ -4,7 +4,11 @@ use casper_types::{
 };
 
 use crate::{
-    core::{engine_state::engine_config::RefundHandling, execution, runtime::Runtime},
+    core::{
+        engine_state::engine_config::{FeeHandling, RefundHandling},
+        execution,
+        runtime::Runtime,
+    },
     storage::global_state::StateReader,
     system::handle_payment::{
         mint_provider::MintProvider, runtime_provider::RuntimeProvider, HandlePayment,
@@ -104,6 +108,14 @@ where
 
     fn refund_handling(&self) -> &RefundHandling {
         self.config.refund_handling()
+    }
+
+    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
+        self.config.is_account_administrator(account_hash)
+    }
+
+    fn fee_handling(&self) -> FeeHandling {
+        self.config.fee_handling()
     }
 }
 

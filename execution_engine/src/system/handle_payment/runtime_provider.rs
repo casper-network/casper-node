@@ -1,4 +1,4 @@
-use crate::core::engine_state::engine_config::RefundHandling;
+use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
 
 /// Provider of runtime host functionality.
@@ -23,4 +23,13 @@ pub trait RuntimeProvider {
 
     /// Get refund handling.
     fn refund_handling(&self) -> &RefundHandling;
+
+    /// Returns Some(_) with a flag indicating if execution is started by an admin account. This is
+    /// valid only for private chains.
+    ///
+    /// On public chains this will always return None.
+    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool>;
+
+    /// Returns fee handling value.
+    fn fee_handling(&self) -> FeeHandling;
 }

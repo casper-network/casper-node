@@ -43,8 +43,8 @@ use casper_types::{
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
             VALIDATOR_SLOTS_KEY,
         },
-        handle_payment,
-        mint::{self, REWARDS_PURSE_KEY, ROUND_SEIGNIORAGE_RATE_KEY},
+        handle_payment::{self, REWARDS_PURSE_KEY},
+        mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
@@ -727,13 +727,14 @@ where
                     proposer_account.main_purse()
                 }
                 FeeHandling::Accumulate => {
-                    let mint_hash = self.get_system_mint_hash(correlation_id, prestate_hash)?;
+                    let handle_payment_hash =
+                        self.get_handle_payment_hash(correlation_id, prestate_hash)?;
 
-                    let mint_contract = tracking_copy
+                    let handle_payment_contract = tracking_copy
                         .borrow_mut()
-                        .get_contract(correlation_id, mint_hash)?;
+                        .get_contract(correlation_id, handle_payment_hash)?;
 
-                    let rewards_purse_uref = mint_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
+                    let rewards_purse_uref = handle_payment_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
                         error!("fee elimination is configured to accumulate but mint does not have rewards purse; defaulting to a proposer");
                         proposer_account.main_purse()
                     });
@@ -1478,14 +1479,15 @@ where
                     proposer_account.main_purse()
                 }
                 FeeHandling::Accumulate => {
-                    let mint_hash = self.get_system_mint_hash(correlation_id, prestate_hash)?;
+                    let handle_payment_hash =
+                        self.get_handle_payment_hash(correlation_id, prestate_hash)?;
 
-                    let mint_contract = tracking_copy
+                    let handle_payment_contract = tracking_copy
                         .borrow_mut()
-                        .get_contract(correlation_id, mint_hash)?;
+                        .get_contract(correlation_id, handle_payment_hash)?;
 
-                    let rewards_purse_uref = mint_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
-                        error!("fee elimination is configured to accumulate but mint does not have rewards purse; defaulting to a proposer");
+                    let rewards_purse_uref = handle_payment_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
+                        error!("fee elimination is configured to accumulate but handle payment does not have rewards purse; defaulting to a proposer");
                         proposer_account.main_purse()
                     });
 

@@ -1,6 +1,6 @@
 use casper_types::{
     account::AccountHash,
-    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
+    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY, REWARDS_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
 use num::{CheckedAdd, CheckedMul, CheckedSub, One, Zero};
@@ -17,6 +17,15 @@ pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Res
         Some(Key::URef(uref)) => Ok(uref),
         Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
         None => Err(Error::PaymentPurseNotFound),
+    }
+}
+
+/// Returns the purse that contains accumulated gas fees.
+pub(crate) fn get_rewards_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
+    match runtime_provider.get_key(REWARDS_PURSE_KEY) {
+        Some(Key::URef(uref)) => Ok(uref),
+        Some(_) => Err(Error::RewardsPurseKeyUnexpectedType),
+        None => Err(Error::RewardsPurseNotFound),
     }
 }
 
