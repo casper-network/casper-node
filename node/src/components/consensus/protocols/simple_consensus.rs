@@ -1685,9 +1685,6 @@ where
                 }
             }
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
-            // TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => {
-            //     self.synchronizer.add_past_due_stored_vertices(now)
-            // }
             _ => unreachable!("unexpected timer ID"),
         }
     }
@@ -1839,10 +1836,16 @@ where
 
     fn set_paused(&mut self, paused: bool, now: Timestamp) -> ProtocolOutcomes<C> {
         if self.paused && !paused {
+            info!(current_round = self.current_round, "unpausing consensus");
             self.paused = paused;
+            // Reset the timeout to give the proposer another chance, after the pause.
+            self.current_timeout = Timestamp::MAX;
             self.mark_dirty(self.current_round);
             self.update(now)
         } else {
+            if self.paused != paused {
+                info!(current_round = self.current_round, "pausing consensus");
+            }
             self.paused = paused;
             vec![]
         }
