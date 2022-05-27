@@ -1806,10 +1806,16 @@ where
 
     fn set_paused(&mut self, paused: bool, now: Timestamp) -> ProtocolOutcomes<C> {
         if self.paused && !paused {
+            info!(current_round = self.current_round, "unpausing consensus");
             self.paused = paused;
+            // Reset the timeout to give the proposer another chance, after the pause.
+            self.current_timeout = Timestamp::MAX;
             self.mark_dirty(self.current_round);
             self.update(now)
         } else {
+            if self.paused != paused {
+                info!(current_round = self.current_round, "pausing consensus");
+            }
             self.paused = paused;
             vec![]
         }
