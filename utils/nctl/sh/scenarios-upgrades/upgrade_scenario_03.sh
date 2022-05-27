@@ -18,7 +18,8 @@
 # 13. Waits for the auction delay to take effect.
 # 14. Asserts non-genesis validator is NO LONGER an active validator.
 # 15. Asserts delegatee is NO LONGER in auction info.
-# 16. Successful test cleanup.
+# 16. Run Health Checks
+# 17. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -60,6 +61,7 @@ function _main()
     _step_14
     _step_15
     _step_16
+    _step_17
 }
 
 # Step 01: Start network from pre-built stage.
@@ -386,10 +388,24 @@ function _step_15()
     fi
 }
 
-# Step 16: Terminate.
+# Step 16: Run NCTL health checks
 function _step_16()
 {
-    log_step_upgrades 16 "test successful - tidying up"
+    # restarts=6 - Nodes that upgrade
+    log_step_upgrades 16 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=6 \
+            ejections=0
+}
+
+# Step 17: Terminate.
+function _step_17()
+{
+    log_step_upgrades 17 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

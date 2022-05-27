@@ -8,7 +8,8 @@
 # 3. Query auction-info at block height 1.
 # 4. Run through an upgrade
 # 5. Query auction-info at block height 1 and compare with previous result.
-# 6. Successful test cleanup.
+# 6. Run Health Checks
+# 7. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -39,6 +40,7 @@ function _main()
       _step_04
       _step_05
       _step_06
+      _step_07
 }
 
 # Step 01: Start network from pre-built stage.
@@ -105,16 +107,29 @@ function _step_05() {
 
 }
 
-# Step 06: Terminate.
+# Step 06: Run NCTL health checks
 function _step_06()
 {
-    log_step_upgrades 6 "test successful - tidying up"
+    # restarts=5 - Nodes that upgrade
+    log_step_upgrades 9 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=5 \
+            ejections=0
+}
+
+# Step 07: Terminate.
+function _step_07()
+{
+    log_step_upgrades 7 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
     log_break
 }
-
 
 #######################################
 # Returns auction info at a block
