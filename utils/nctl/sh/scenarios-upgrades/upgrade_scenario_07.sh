@@ -334,7 +334,7 @@ function _step_12()
     done
 }
 
-#Step 13: Run NCTL health checks
+# Step 13: Run NCTL health checks
 function _step_13()
 {
     # restarts=12 - Nodes that upgrade
