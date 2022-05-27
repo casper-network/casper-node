@@ -15,7 +15,7 @@ use crate::components::consensus::{
 };
 
 /// An error due to invalid evidence.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub(crate) enum EvidenceError {
     #[error("The sequence numbers in the equivocating units are different.")]
     EquivocationDifferentSeqNumbers,

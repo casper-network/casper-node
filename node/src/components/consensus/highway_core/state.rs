@@ -58,7 +58,7 @@ pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 /// from them.
 const PING_TIMEOUT: u64 = 3;
 
-#[derive(Debug, Error, PartialEq, Clone)]
+#[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub(crate) enum UnitError {
     #[error("The unit is a ballot but doesn't cite any block.")]
     MissingBlock,

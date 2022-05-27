@@ -192,7 +192,7 @@ pub(crate) struct FinalizedBlock<C: Context> {
 
 pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),

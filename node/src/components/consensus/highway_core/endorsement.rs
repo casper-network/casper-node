@@ -7,7 +7,7 @@ use crate::components::consensus::traits::Context;
 use super::validators::ValidatorIndex;
 
 /// An error due to an invalid endorsement.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub(crate) enum EndorsementError {
     #[error("The creator is not a validator.")]
     Creator,

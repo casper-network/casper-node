@@ -111,7 +111,7 @@ fn compute_rewards_for<C: Context>(
 }
 
 /// Information about how a validator participated in a particular round.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum RoundParticipation<'a, C: Context> {
     /// The validator was not assigned: The round ID was not the beginning of one of their rounds.
     Unassigned,
