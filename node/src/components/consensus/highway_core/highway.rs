@@ -48,7 +48,7 @@ pub(crate) enum VertexError {
 }
 
 /// An error due to an invalid ping.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub(crate) enum PingError {
     #[error("The creator is not a validator.")]
     Creator,
