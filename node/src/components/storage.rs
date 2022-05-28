@@ -76,9 +76,7 @@ use casper_types::{
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
 use crate::{
-    components::{
-        consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
-    },
+    components::{consensus, fetcher::FetchedOrNotFound, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{NetworkRequest, StateStoreRequest},
@@ -88,11 +86,11 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
-        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
-        NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
+        BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy,
+        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedApprovalsWithId, HashingAlgorithmVersion, Item,
+        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId,
     },
     utils::{display_error, FlattenResult, WithDir},
     NodeRng,
@@ -233,8 +231,8 @@ struct Indices {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// A map of deploy hashes to hashes of blocks containing them.
-    deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// A map of deploy hashes to hashes and heights of blocks containing them.
+    deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
     /// The height of the highest block from which this node has an unbroken sequence of full
     /// blocks stored (and the corresponding global state).
     lowest_available_block_height: u64,
@@ -565,6 +563,7 @@ impl StorageInner {
                     &mut indices.deploy_hash_index,
                     block_header.hash(verifiable_chunked_hash_activation),
                     &block_body,
+                    block_header.height(),
                 )?;
             }
         }
@@ -800,6 +799,20 @@ impl StorageInner {
                     opt_item,
                 )?)
             }
+            NetRequest::BlockAndDeploys(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockAndDeploys>(serialized_id)?;
+                let opt_item = self
+                    .read_block_and_deploys_by_hash(item_id)
+                    .map_err(FatalStorageError::from)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
         }
     }
 
@@ -969,11 +982,21 @@ impl StorageInner {
                 };
 
                 // Missing metadata is filled using a default.
-                let metadata = self
-                    .get_deploy_metadata(&mut txn, &deploy_hash)?
-                    .unwrap_or_default();
+                let metadata_ext: DeployMetadataExt =
+                    if let Some(metadata) = self.get_deploy_metadata(&mut txn, &deploy_hash)? {
+                        metadata.into()
+                    } else {
+                        let indices = self.indices.read()?;
+                        if let Some(block_hash_and_height) =
+                            self.get_block_hash_and_height_by_deploy_hash(&indices, deploy_hash)?
+                        {
+                            block_hash_and_height.into()
+                        } else {
+                            DeployMetadataExt::Empty
+                        }
+                    };
 
-                responder.respond(Some((deploy, metadata))).ignore()
+                responder.respond(Some((deploy, metadata_ext))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
@@ -1201,6 +1224,15 @@ impl StorageInner {
             } => responder
                 .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
+            StorageRequest::PutBlockAndDeploys { block, responder } => responder
+                .respond(self.put_block_and_deploys(&*block)?)
+                .ignore(),
+            StorageRequest::GetBlockAndDeploys {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_block_and_deploys_by_hash(block_hash)?)
+                .ignore(),
         })
     }
 
@@ -1212,19 +1244,67 @@ impl StorageInner {
         Ok(outcome)
     }
 
+    /// Puts block and its deploys into storage.
+    ///
+    /// Returns `Ok` only if the block and all deploys were successfully written.
+    pub fn put_block_and_deploys(
+        &self,
+        block_and_deploys: &BlockAndDeploys,
+    ) -> Result<(), FatalStorageError> {
+        let BlockAndDeploys { block, deploys } = block_and_deploys;
+
+        block.verify(self.verifiable_chunked_hash_activation)?;
+        let mut txn = self.env.begin_rw_txn()?;
+        match self.write_validated_block(&mut txn, block) {
+            Ok(true) => {}
+            Ok(false) => {
+                txn.abort();
+                return Err(FatalStorageError::FailedToOverwriteBlock);
+            }
+            Err(error) => {
+                txn.abort();
+                return Err(error);
+            }
+        }
+
+        for deploy in deploys {
+            let _ = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
+        }
+        txn.commit()?;
+
+        Ok(())
+    }
+
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
-    /// Writes a block to storage, updating indices as necessary
+    /// Writes a block to storage, updating indices as necessary.
+    ///
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify(self.verifiable_chunked_hash_activation)?;
         let mut txn = self.env.begin_rw_txn()?;
-        // Write the block body
+        let result = self.write_validated_block(&mut txn, block);
+        match &result {
+            Ok(false) | Err(_) => txn.abort(),
+            Ok(true) => txn.commit()?,
+        }
+        result
+    }
+
+    /// Writes a block which has already been verified to storage, updating indices as necessary.
+    ///
+    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
+    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
+    fn write_validated_block(
+        &self,
+        txn: &mut RwTransaction,
+        block: &Block,
+    ) -> Result<bool, FatalStorageError> {
         {
             let block_body_hash = block.header().body_hash();
             let block_body = block.body();
@@ -1233,22 +1313,18 @@ impl StorageInner {
                 .hashing_algorithm_version(self.verifiable_chunked_hash_activation)
             {
                 HashingAlgorithmVersion::V1 => {
-                    self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
+                    self.put_single_block_body_v1(txn, block_body_hash, block_body)?
                 }
-                HashingAlgorithmVersion::V2 => {
-                    self.put_single_block_body_v2(&mut txn, block_body)?
-                }
+                HashingAlgorithmVersion::V2 => self.put_single_block_body_v2(txn, block_body)?,
             };
             if !success {
                 error!("Could not insert body for: {}", block);
-                txn.abort();
                 return Ok(false);
             }
         }
 
         if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
             error!("Could not insert block header for block: {}", block);
-            txn.abort();
             return Ok(false);
         }
 
@@ -1263,9 +1339,9 @@ impl StorageInner {
                 &mut indices.deploy_hash_index,
                 block.header().hash(self.verifiable_chunked_hash_activation),
                 block.body(),
+                block.header().height(),
             )?;
         }
-        txn.commit()?;
         Ok(true)
     }
 
@@ -1317,6 +1393,28 @@ impl StorageInner {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)
     }
 
+    /// Retrieves single block and all of its deploys.
+    /// If any of the deploys can't be found, returns `Ok(None)`.
+    pub fn read_block_and_deploys_by_hash(
+        &self,
+        hash: BlockHash,
+    ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
+        let block = self.read_block(&hash)?;
+        match block {
+            None => Ok(None),
+            Some(block) => {
+                let deploy_hashes = block
+                    .deploy_hashes()
+                    .iter()
+                    .chain(block.transfer_hashes().iter());
+                let deploys_count = block.deploy_hashes().len() + block.transfer_hashes().len();
+                Ok(self
+                    .read_deploys(deploys_count, deploy_hashes)?
+                    .map(|deploys| BlockAndDeploys { block, deploys }))
+            }
+        }
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
@@ -1358,8 +1456,21 @@ impl StorageInner {
         indices
             .deploy_hash_index
             .get(&deploy_hash)
-            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .and_then(|block_hash_and_height| {
+                self.get_single_block_header(tx, &block_hash_and_height.block_hash)
+                    .transpose()
+            })
             .transpose()
+    }
+
+    /// Retrieves the block hash and height for a deploy hash by looking it up in the index
+    /// and returning it.
+    fn get_block_hash_and_height_by_deploy_hash(
+        &self,
+        indices: &Indices,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<BlockHashAndHeight>, FatalStorageError> {
+        Ok(indices.deploy_hash_index.get(&deploy_hash).copied())
     }
 
     /// Retrieves the highest block from storage, if one exists. May return an LMDB error.
@@ -1742,6 +1853,23 @@ impl StorageInner {
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
 
+    /// Directly returns all deploys or None if any is missing.
+    pub fn read_deploys<'a, I: Iterator<Item = &'a DeployHash> + 'a>(
+        &self,
+        deploys_count: usize,
+        deploy_hashes: I,
+    ) -> Result<Option<Vec<Deploy>>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let mut result = Vec::with_capacity(deploys_count);
+        for deploy_hash in deploy_hashes {
+            match txn.get_value(self.deploy_db, deploy_hash)? {
+                Some(deploy) => result.push(deploy),
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(result))
+    }
+
     /// Stores a set of finalized approvals.
     pub fn store_finalized_approvals(
         &self,
@@ -1833,30 +1961,25 @@ impl StorageInner {
             None => return Ok(None),
             Some(switch_block_header) => switch_block_header,
         };
-        let finality_check_result = match switch_block_header.next_era_validator_weights() {
+
+        let validator_weights = match switch_block_header.next_era_validator_weights() {
             None => {
                 return Err(FatalStorageError::InvalidSwitchBlock(Box::new(
                     switch_block_header,
                 )))
             }
-            Some(validator_weights) => consensus::check_sufficient_finality_signatures(
-                validator_weights,
-                self.finality_threshold_fraction,
-                &block_signatures,
-            ),
+            Some(validator_weights) => validator_weights,
         };
-        match finality_check_result {
-            Err(err @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
-                info!(
-                    ?err,
-                    ?block_header,
-                    "insufficient finality signatures for block header read from storage"
-                );
-                Ok(None)
-            }
-            Err(err) => Err(err.into()),
-            Ok(()) => Ok(Some(block_signatures)),
-        }
+
+        let block_signatures = consensus::get_minimal_set_of_signatures(
+            validator_weights,
+            self.finality_threshold_fraction,
+            block_signatures,
+        );
+
+        // `block_signatures` is already an `Option`, which is `None` if there weren't enough
+        // signatures to bring the total weight over the threshold.
+        Ok(block_signatures)
     }
 
     /// Retrieves a deploy from the deploy store.
@@ -2042,9 +2165,10 @@ fn insert_to_block_header_indices(
 ///
 /// If a duplicate entry is encountered, index is not updated and an error is returned.
 fn insert_to_deploy_index(
-    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHash>,
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
     block_hash: BlockHash,
     block_body: &BlockBody,
+    block_height: u64,
 ) -> Result<(), FatalStorageError> {
     if let Some(hash) = block_body
         .deploy_hashes()
@@ -2053,13 +2177,15 @@ fn insert_to_deploy_index(
         .find(|hash| {
             deploy_hash_index
                 .get(hash)
-                .map_or(false, |old_block_hash| *old_block_hash != block_hash)
+                .map_or(false, |old_block_hash_and_height| {
+                    old_block_hash_and_height.block_hash != block_hash
+                })
         })
     {
         return Err(FatalStorageError::DuplicateDeployIndex {
             deploy_hash: *hash,
             first: deploy_hash_index[hash],
-            second: block_hash,
+            second: BlockHashAndHeight::new(block_hash, block_height),
         });
     }
 
@@ -2068,7 +2194,7 @@ fn insert_to_deploy_index(
         .iter()
         .chain(block_body.transfer_hashes().iter())
     {
-        deploy_hash_index.insert(*hash, block_hash);
+        deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
     }
 
     Ok(())

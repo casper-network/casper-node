@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
 * Extend `GlobalStateIdentifier` to include `BlockHeight`.
 * Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
+* Add new `block_hash` and `block_height` optional fields to `info_get_deploy` RPC query which will be present when execution results aren't available.
+* Add a new config option `[rpc_server.max_body_bytes]` to allow a configurable value for the maximum size of the body of a JSON-RPC request.
 * Add a `[consensus.simple_consensus]` section to `config.toml` for the simple consensus protocol.
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 
@@ -50,10 +52,11 @@ All notable changes to this project will be documented in this file.  The format
 * Switch blocks immediately after genesis or an upgrade are now signed.
 * Added CORS behavior to allow any route on the JSON-RPC, REST and SSE servers.
 * Storage operations are now executed in parallel, the degree of parallelism can be controlled through the `storage.max_sync_tasks` setting.
+* The network message format has been replaced with a more efficient encoding while keeping the initial handshake intact.
+* The node flushes outgoing messages immediately, trading bandwidth for latecy. This change is made to optimize feedback loops of various components in the system.
 * Make consensus settings non-optional. A value 0 disables them.
 * Move `finality_threshold_fraction` from the `highway` to the `core` section in the chainspec.
 * Move `max_execution_delay` from the `highway` to the `consensus` section in the `config.toml`.
-* The node flushes outgoing messages immediately, trading bandwidth for latecy. This change is made to optimize feedback loops of various components in the system.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.

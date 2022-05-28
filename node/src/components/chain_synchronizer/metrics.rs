@@ -62,6 +62,9 @@ pub(super) struct Metrics {
     /// Time in seconds of fetching deploys during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_deploys_duration_seconds: Histogram,
+    /// Time in seconds of fetching block with deploys during chain sync.
+    #[data_size(skip)]
+    pub(super) chain_sync_fetch_block_and_deploys_duration_seconds: Histogram,
     /// Integer representing a height of a block that we've successfully downloaded.
     #[data_size(skip)]
     pub(super) chain_sync_block_height_synced: IntGauge,
@@ -195,6 +198,12 @@ impl Metrics {
                 registry,
                 "chain_sync_fetch_deploys_duration_seconds",
                 "time in seconds of fetching deploys during chain sync",
+                buckets.clone(),
+            )?,
+            chain_sync_fetch_block_and_deploys_duration_seconds: utils::register_histogram_metric(
+                registry,
+                "chain_sync_fetch_block_and_deploys_duration_seconds",
+                "time in seconds of fetching block and all of its deploys",
                 buckets,
             )?,
             chain_sync_block_height_synced,
@@ -209,6 +218,11 @@ impl Metrics {
 
     pub(super) fn observe_fetch_deploys_duration_seconds(&self, start: Timestamp) {
         self.chain_sync_fetch_deploys_duration_seconds
+            .observe(start.elapsed().millis() as f64 / 1000.0);
+    }
+
+    pub(super) fn observe_fetch_block_and_deploys_duration_seconds(&self, start: Timestamp) {
+        self.chain_sync_fetch_block_and_deploys_duration_seconds
             .observe(start.elapsed().millis() as f64 / 1000.0);
     }
 }

@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
-    thread,
+    iter, thread,
 };
 
 use lmdb::{Cursor, Transaction};
@@ -33,9 +33,9 @@ use crate::{
     storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy,
-        DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalizedBlock,
+        AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockPayload,
+        BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedBlock,
     },
     utils::WithDir,
 };
@@ -248,7 +248,7 @@ fn get_naive_deploy_and_metadata(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hash: DeployHash,
-) -> Option<(Deploy, DeployMetadata)> {
+) -> Option<(Deploy, DeployMetadataExt)> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetDeployAndMetadata {
             deploy_hash,
@@ -327,6 +327,23 @@ fn put_deploy(
     });
     assert!(harness.is_idle());
     response
+}
+
+fn insert_to_deploy_index(
+    storage: &mut Storage,
+    deploy: Deploy,
+    block_hash_and_height: BlockHashAndHeight,
+) -> bool {
+    let mut indices = storage
+        .storage
+        .indices
+        .write()
+        .expect("Poisoned indices lock.");
+
+    indices
+        .deploy_hash_index
+        .insert(*deploy.id(), block_hash_and_height)
+        .is_none()
 }
 
 /// Stores execution results in a storage component.
@@ -803,6 +820,14 @@ fn can_retrieve_store_and_load_deploys() {
     let deploy = Box::new(Deploy::random(&mut harness.rng));
 
     let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
+    let block_hash_and_height = BlockHashAndHeight::random(&mut harness.rng);
+    // Insert to the deploy hash index as well so that we can perform the GET later.
+    // Also check that we don't have an entry there for this deploy.
+    assert!(insert_to_deploy_index(
+        &mut storage,
+        *deploy.clone(),
+        block_hash_and_height
+    ));
     assert!(was_new, "putting deploy should have returned `true`");
 
     // Storing the same deploy again should work, but yield a result of `false`.
@@ -811,13 +836,18 @@ fn can_retrieve_store_and_load_deploys() {
         !was_new_second_time,
         "storing deploy the second time should have returned `false`"
     );
+    assert!(!insert_to_deploy_index(
+        &mut storage,
+        *deploy.clone(),
+        block_hash_and_height
+    ));
 
     // Retrieve the stored deploy.
     let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
     assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
 
-    // Finally try to get the metadata as well. Since we did not store any, we expect empty default
-    // metadata to present.
+    // Finally try to get the metadata as well. Since we did not store any, we expect to get the
+    // block hash and height from the indices.
     let (deploy_response, metadata_response) = harness
         .send_request(&mut storage, |responder| {
             StorageRequest::GetDeployAndMetadata {
@@ -829,7 +859,47 @@ fn can_retrieve_store_and_load_deploys() {
         .expect("no deploy with metadata returned");
 
     assert_eq!(deploy_response.into_naive(), *deploy);
-    assert_eq!(metadata_response, DeployMetadata::default());
+    match metadata_response {
+        DeployMetadataExt::Metadata(_) => {
+            panic!("We didn't store any metadata but we received it in the response.")
+        }
+        DeployMetadataExt::BlockInfo(recv_block_hash_and_height) => {
+            assert_eq!(block_hash_and_height, recv_block_hash_and_height)
+        }
+        DeployMetadataExt::Empty => panic!(
+            "We stored block info in the deploy hash index \
+                                            but we received nothing in the response."
+        ),
+    }
+
+    // Create a random deploy, store and load it.
+    let deploy = Box::new(Deploy::random(&mut harness.rng));
+
+    assert!(put_deploy(&mut harness, &mut storage, deploy.clone()));
+    // Don't insert to the deploy hash index. Since we have no execution results
+    // either, we should receive an empty metadata response.
+    let (deploy_response, metadata_response) = harness
+        .send_request(&mut storage, |responder| {
+            StorageRequest::GetDeployAndMetadata {
+                deploy_hash: *deploy.id(),
+                responder,
+            }
+            .into()
+        })
+        .expect("no deploy with metadata returned");
+
+    assert_eq!(deploy_response.into_naive(), *deploy);
+    match metadata_response {
+        DeployMetadataExt::Metadata(_) => {
+            panic!("We didn't store any metadata but we received it in the response.")
+        }
+        DeployMetadataExt::BlockInfo(_) => {
+            panic!(
+                "We didn't store any block info in the index but we received it in the response."
+            )
+        }
+        DeployMetadataExt::Empty => { /* We didn't store execution results or block info */ }
+    }
 }
 
 #[test]
@@ -898,7 +968,12 @@ fn store_execution_results_for_two_blocks() {
     assert_eq!(first_deploy, deploy);
     let mut expected_per_block_results = HashMap::new();
     expected_per_block_results.insert(block_hash_a, first_result);
-    assert_eq!(first_metadata.execution_results, expected_per_block_results);
+    assert_eq!(
+        first_metadata,
+        DeployMetadata {
+            execution_results: expected_per_block_results.clone()
+        }
+    );
 
     // Add second result for the same deploy, different block.
     let second_result: ExecutionResult = harness.rng.gen();
@@ -913,8 +988,10 @@ fn store_execution_results_for_two_blocks() {
     assert_eq!(second_deploy, deploy);
     expected_per_block_results.insert(block_hash_b, second_result);
     assert_eq!(
-        second_metadata.execution_results,
-        expected_per_block_results
+        second_metadata,
+        DeployMetadata {
+            execution_results: expected_per_block_results
+        }
     );
 }
 
@@ -1024,7 +1101,12 @@ fn store_random_execution_results() {
 
         assert_eq!(deploy_hash, deploy.id());
 
-        assert_eq!(raw_meta, &metadata.execution_results);
+        assert_eq!(
+            metadata,
+            DeployMetadata {
+                execution_results: raw_meta.clone()
+            }
+        );
     }
 }
 
@@ -1161,11 +1243,14 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
                 get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
             assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
-            let (_, deploy_metadata) =
+            let (_, deploy_metadata_ext) =
                 get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
                     .expect("missing deploy we stored earlier");
 
-            let execution_results = deploy_metadata.execution_results;
+            let execution_results = match deploy_metadata_ext {
+                DeployMetadataExt::Metadata(metadata) => metadata.execution_results,
+                _ => panic!("Unexpected missing metadata."),
+            };
             assert_eq!(execution_results.len(), 1);
             assert_eq!(execution_results[block.hash()], execution_result);
 
@@ -1188,7 +1273,7 @@ fn should_hard_reset() {
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
-    let random_deploys: Vec<_> = std::iter::repeat_with(|| Deploy::random(&mut harness.rng))
+    let random_deploys: Vec<_> = iter::repeat_with(|| Deploy::random(&mut harness.rng))
         .take(blocks_count)
         .collect();
 
@@ -1203,7 +1288,7 @@ fn should_hard_reset() {
                 ProtocolVersion::V1_0_0,
                 is_switch,
                 verifiable_chunked_hash_activation,
-                Some(random_deploys.get(height).expect("should_have_deploy")),
+                iter::once(random_deploys.get(height).expect("should_have_deploy")),
             )
         })
         .collect();
@@ -1289,13 +1374,16 @@ fn should_hard_reset() {
 
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
-            let (_deploy, metadata) =
+            let (_, deploy_metadata_ext) =
                 get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id()).unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
-            assert_eq!(
-                should_have_exec_results,
-                !metadata.execution_results.is_empty()
-            );
+            match deploy_metadata_ext {
+                DeployMetadataExt::Metadata(_metadata) => assert!(should_have_exec_results),
+                DeployMetadataExt::BlockInfo(_block_hash_and_height) => {
+                    assert!(!should_have_exec_results)
+                }
+                DeployMetadataExt::Empty => assert!(!should_have_exec_results),
+            };
         }
     };
 

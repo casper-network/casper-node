@@ -69,8 +69,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
-        ExitCode, FinalizedApprovalsWithId, NodeId, NodeState,
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
+        DeployHash, ExitCode, FinalizedApprovalsWithId, NodeId, NodeState,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -133,6 +133,9 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
 
+    #[from]
+    BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
+
     /// Deploy fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
@@ -192,6 +195,9 @@ pub(crate) enum JoinerEvent {
     /// Linear chain block by height fetcher request.
     #[from]
     BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
+
+    #[from]
+    BlockAndDeploysFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAndDeploys>),
 
     /// Deploy fetcher request.
     #[from]
@@ -343,6 +349,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockHeaderByHeightFetcherRequest(_) => {
                 "BlockHeaderByHeightFetcherRequest"
             }
+            JoinerEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
+            JoinerEvent::BlockAndDeploysFetcherRequest(_) => "BlockAndDeploysFetcherRequest",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             JoinerEvent::StorageRequest(_) => "StorageRequest",
             JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
@@ -495,6 +503,12 @@ impl Display for JoinerEvent {
             JoinerEvent::DeployGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
             }
+            JoinerEvent::BlockAndDeploysFetcher(event) => {
+                write!(f, "block and deploys fetcher: {}", event)
+            }
+            JoinerEvent::BlockAndDeploysFetcherRequest(req) => {
+                write!(f, "block and deploys fetcher request: {}", req)
+            }
         }
     }
 }
@@ -516,6 +530,7 @@ pub(crate) struct Reactor {
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
+    block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     diagnostics_port: DiagnosticsPort,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -645,6 +660,7 @@ impl reactor::Reactor for Reactor {
         let block_header_and_finality_signatures_by_height_fetcher =
             fetcher_builder.build("block_header_by_height")?;
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
+        let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
@@ -679,6 +695,7 @@ impl reactor::Reactor for Reactor {
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
+                block_and_deploys_fetcher,
                 trie_or_chunk_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
@@ -830,6 +847,16 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::TrieOrChunkFetcher,
                 self.trie_or_chunk_fetcher
                     .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::BlockAndDeploysFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::BlockAndDeploysFetcher,
+                self.block_and_deploys_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::BlockAndDeploysFetcherRequest(fetcher_req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockAndDeploysFetcher(fetcher_req.into()),
             ),
             JoinerEvent::ContractRuntime(event) => reactor::wrap_effects(
                 JoinerEvent::ContractRuntime,
@@ -1138,6 +1165,16 @@ impl Reactor {
             }
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, BlockHeaderWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::BlockAndDeploys(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockAndDeploys>(
                     self,
                     effect_builder,
                     rng,

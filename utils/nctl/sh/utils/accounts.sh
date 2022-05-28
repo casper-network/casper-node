@@ -14,13 +14,13 @@ function get_account_balance()
 
     NODE_ADDRESS=$(get_node_address_rpc)
     ACCOUNT_BALANCE=$(
-        $(get_path_to_client) get-balance \
+        $(get_path_to_client) query-balance \
             --node-address "$NODE_ADDRESS" \
             --state-root-hash "$STATE_ROOT_HASH" \
             --purse-uref "$PURSE_UREF" \
-            | jq '.result.balance_value' \
+            | jq '.result.balance' \
             | sed -e 's/^"//' -e 's/"$//'
-        )    
+        )
 
     echo "$ACCOUNT_BALANCE"
 }
@@ -87,7 +87,7 @@ function get_account_prefix()
     local PREFIX="net-$NET_ID.$ACCOUNT_TYPE"
     if [ "$ACCOUNT_TYPE" != "$NCTL_ACCOUNT_TYPE_FAUCET" ]; then
         PREFIX=$PREFIX"-"$ACCOUNT_IDX
-    fi 
+    fi
 
     echo "$PREFIX"
 }
