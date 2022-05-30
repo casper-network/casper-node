@@ -497,7 +497,7 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .participating()
             .storage()
-            .read_block_header_and_sufficient_finality_signatures_by_height(2)
+            .read_block_header_and_enough_sigs_by_height(2)
             .expect("failed to read from storage")
             .expect("missing switch block")
             .block_header;

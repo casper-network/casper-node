@@ -326,20 +326,20 @@ pub fn put_block_with_deploys(
 ) -> Result<(), anyhow::Error> {
     for deploy in block_with_deploys.deploys.iter() {
         if let DeployOrTransferHash::Deploy(_hash) = deploy.deploy_or_transfer_hash() {
-            storage.put_deploy(deploy)?;
+            storage.commit_deploy(deploy)?;
         } else {
             return Err(anyhow::anyhow!("transfer found in list of deploys"));
         }
     }
     for transfer in block_with_deploys.transfers.iter() {
         if let DeployOrTransferHash::Transfer(_hash) = transfer.deploy_or_transfer_hash() {
-            storage.put_deploy(transfer)?;
+            storage.commit_deploy(transfer)?;
         } else {
             return Err(anyhow::anyhow!("deploy found in list of transfers"));
         }
     }
     let block: Block = block_with_deploys.block.clone().try_into()?;
-    storage.write_block(&block)?;
+    storage.commit_block(&block)?;
     Ok(())
 }
 

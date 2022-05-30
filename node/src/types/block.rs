@@ -682,7 +682,18 @@ impl FromBytes for BlockHash {
 
 /// Describes a block's hash and height.
 #[derive(
-    Clone, Copy, DataSize, Default, Eq, JsonSchema, Serialize, Deserialize, Debug, PartialEq,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Debug,
+    DataSize,
+    JsonSchema,
 )]
 pub struct BlockHashAndHeight {
     /// The hash of the block.
@@ -717,6 +728,37 @@ impl Display for BlockHashAndHeight {
             "hash: {}, height {} ",
             self.block_hash, self.block_height
         )
+    }
+}
+
+impl ToBytes for BlockHashAndHeight {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block_hash.write_bytes(writer)?;
+        self.block_height.write_bytes(writer)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block_hash.serialized_length() + self.block_height.serialized_length()
+    }
+}
+
+impl FromBytes for BlockHashAndHeight {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_hash, remainder) = BlockHash::from_bytes(bytes)?;
+        let (block_height, remainder) = u64::from_bytes(remainder)?;
+        Ok((
+            BlockHashAndHeight {
+                block_hash,
+                block_height,
+            },
+            remainder,
+        ))
     }
 }
 
@@ -1524,15 +1566,8 @@ impl Block {
         })
     }
 
-    pub(crate) fn new_from_header_and_body(
-        header: BlockHeader,
-        body: BlockBody,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Result<Self, BlockValidationError> {
-        let hash = header.hash(verifiable_chunked_hash_activation);
-        let block = Block { hash, header, body };
-        block.verify(verifiable_chunked_hash_activation)?;
-        Ok(block)
+    pub(crate) fn new_unchecked(hash: BlockHash, header: BlockHeader, body: BlockBody) -> Self {
+        Block { hash, header, body }
     }
 
     pub(crate) fn body(&self) -> &BlockBody {
@@ -2345,6 +2380,16 @@ mod tests {
         let mut rng = TestRng::new();
         let block_header: BlockHeader = Block::random(&mut rng).header;
         bytesrepr::test_serialization_roundtrip(&block_header);
+    }
+
+    #[test]
+    fn block_hash_and_height_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block_hash_and_height = BlockHashAndHeight {
+            block_hash: BlockHash::random(&mut rng),
+            block_height: rng.gen(),
+        };
+        bytesrepr::test_serialization_roundtrip(&block_hash_and_height);
     }
 
     #[test]

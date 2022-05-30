@@ -11,7 +11,7 @@ use tracing::error;
 use casper_hashing::Digest;
 use casper_types::{crypto, EraId};
 
-use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool, Indices};
+use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool};
 use crate::{
     components::consensus::error::FinalitySignatureError,
     types::{
@@ -180,11 +180,9 @@ pub enum FatalStorageError {
         /// The missing deploy hash.
         deploy_hash: DeployHash,
     },
-    /// Locking the indices lock failed due to lock poisoning.
-    ///
-    /// A thread holding the lock has crashed.
-    #[error("indices lock poisoned")]
-    IndicesLockPoisoned,
+    /// Attempted to get a block or block header with an invalid getter ID.
+    #[error("invalid block getter id")]
+    InvalidBlockGetterId,
     /// Locking the item memory pool lock failed due to lock poisoning.
     ///
     /// A thread holding the lock has crashed.
@@ -204,20 +202,6 @@ pub enum FatalStorageError {
 impl From<lmdb::Error> for FatalStorageError {
     fn from(err: lmdb::Error) -> Self {
         LmdbExtError::from(err).into()
-    }
-}
-
-// While we usually avoid blanked `From` impls on errors, the type is specific enough (includes
-// `Indices`) to make an exception to this rule here for both read and write lock poisoning.
-impl<'a> From<PoisonError<RwLockReadGuard<'a, Indices>>> for FatalStorageError {
-    fn from(_: PoisonError<RwLockReadGuard<'a, Indices>>) -> Self {
-        FatalStorageError::IndicesLockPoisoned
-    }
-}
-
-impl<'a> From<PoisonError<RwLockWriteGuard<'a, Indices>>> for FatalStorageError {
-    fn from(_: PoisonError<RwLockWriteGuard<'a, Indices>>) -> Self {
-        FatalStorageError::IndicesLockPoisoned
     }
 }
 

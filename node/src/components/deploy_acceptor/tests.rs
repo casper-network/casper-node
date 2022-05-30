@@ -612,7 +612,7 @@ impl reactor::Reactor for Reactor {
 
 fn put_block_to_storage(
     block: Box<Block>,
-    responder: Responder<bool>,
+    responder: Responder<()>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
         effect_builder
@@ -711,7 +711,7 @@ async fn run_deploy_acceptor_without_timeout(
     while runner.try_crank(&mut rng).await.is_none() {
         time::sleep(POLL_INTERVAL).await;
     }
-    assert!(block_receiver.await.unwrap());
+    block_receiver.await.unwrap();
 
     // Create a responder to assert the validity of the deploy
     let (deploy_sender, deploy_receiver) = oneshot::channel();

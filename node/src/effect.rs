@@ -967,7 +967,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    pub(crate) async fn put_block_to_storage(self, block: Box<Block>) -> bool
+    pub(crate) async fn put_block_to_storage(self, block: Box<Block>)
     where
         REv: From<StorageRequest>,
     {
@@ -1096,7 +1096,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts a block header to storage.
-    pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
+    pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>)
     where
         REv: From<StorageRequest>,
     {

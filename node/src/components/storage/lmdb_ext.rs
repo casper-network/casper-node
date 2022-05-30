@@ -129,6 +129,11 @@ pub(super) trait WriteTransactionExt {
         value: &V,
         overwrite: bool,
     ) -> Result<bool, LmdbExtError>;
+
+    /// Deletes the value under the given key.
+    ///
+    /// Ignores "not found" error, but returns `Err` on any other DB failure.
+    fn delete<K: AsRef<[u8]>>(&mut self, db: Database, key: &K) -> Result<(), LmdbExtError>;
 }
 
 impl<T> TransactionExt for T
@@ -236,6 +241,13 @@ impl WriteTransactionExt for RwTransaction<'_> {
             Ok(()) => Ok(true),
             // If we did not add the value due to it already existing, just return `false`.
             Err(lmdb::Error::KeyExist) => Ok(false),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn delete<K: AsRef<[u8]>>(&mut self, db: Database, key: &K) -> Result<(), LmdbExtError> {
+        match self.del(db, key, None) {
+            Ok(_) | Err(lmdb::Error::NotFound) => Ok(()),
             Err(err) => Err(err.into()),
         }
     }

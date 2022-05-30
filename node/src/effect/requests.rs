@@ -259,9 +259,8 @@ pub(crate) enum StorageRequest {
     PutBlock {
         /// Block to be stored.
         block: Box<Block>,
-        /// Responder to call with the result.  Returns true if the block was stored on this
-        /// attempt or false if it was previously stored.
-        responder: Responder<bool>,
+        /// Responder to call with the result.
+        responder: Responder<()>,
     },
     /// Store given block and its deploys.
     PutBlockAndDeploys {
@@ -451,9 +450,8 @@ pub(crate) enum StorageRequest {
     PutBlockHeader {
         /// Block header that is to be stored.
         block_header: Box<BlockHeader>,
-        /// Responder to call with the result, if true then the block header was successfully
-        /// stored.
-        responder: Responder<bool>,
+        /// Responder to call with the result.
+        responder: Responder<()>,
     },
     /// Update the lowest available block height in storage.
     // Note - this is a request rather than an announcement as the chain synchronizer needs to
