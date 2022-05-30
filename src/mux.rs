@@ -17,20 +17,69 @@ use crate::{error::Error, ImmediateFrame};
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
 
-// TODO: Add skiplist buffer.
-
+/// A waiting list handing out turns to interested participants in round-robin fashion.
+///
+/// The list is set up with a set of `n` participants labelled from `0..(n-1)` and no active
+/// participant. Any participant can attempt to acquire the lock by calling the `try_acquire`
+/// function.
+///
+/// If the lock is currently unavailable, the participant will be put in a wait queue and is
+/// guaranteed a turn "in order" at some point when it calls `try_acquire` again. If a participant
+/// has not registered interest in obtaining the lock their turn is skipped.
+///
+/// Once work has been completed, the lock must manually be released using the `end_turn`
+///
+/// This "lock" differs from `Mutex` in multiple ways:
+///
+/// * Mutable access required: Counterintuitively this lock needs to be wrapped in a `Mutex` to
+///   guarding access to its internals.
+/// * No notifications/waiting: There is no way to wait for the lock to become available, rather it
+///   is assumed participants get an external notification indication that the lock might now be
+///   available.
+/// * Advisory: No actual access control is enforced by the type system, rather it is assumed that
+///   clients are well behaved and respect the lock.
+///   (TODO: We can possibly put a ghost cell here to enforce it)
+/// * Fixed set of participants: The total set of participants must be specified in advance.
 #[derive(Debug)]
-struct RoundRobinWaitList {
+struct RoundRobinAdvisoryLock {
+    /// The currently active lock holder.
     active: Option<u8>,
+    /// Participants wanting to take a turn.
     waiting: Vec<bool>,
 }
 
-impl RoundRobinWaitList {
+impl RoundRobinAdvisoryLock {
+    /// Creates a new round robin advisory lock with the given number of participants.
+    pub fn new(num_participants: u8) -> Self {
+        let mut waiting = Vec::new();
+        waiting.resize(num_participants as usize, false);
+
+        Self {
+            active: None,
+            waiting,
+        }
+    }
+
     /// Tries to take a turn on the wait list.
     ///
     /// If it is our turn, or if the wait list was empty, marks us as active and returns `true`.
     /// Otherwise, marks `me` as wanting a turn and returns `false`.
-    fn try_take_turn(&mut self, me: u8) -> bool {
+    ///
+    /// # Safety
+    ///
+    /// A participant MUST NOT give up on calling `try_acquire` once it has called it once, as the
+    /// lock will ultimately prevent any other participant from acquiring it while the interested is
+    /// registered.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `me` is not a participant in the initial set of participants.
+    fn try_acquire(&mut self, me: u8) -> bool {
+        debug_assert!(
+            self.waiting.len() as u8 > me,
+            "participant out of bounds in advisory lock"
+        );
+
         if let Some(active) = self.active {
             if active == me {
                 return true;
@@ -54,8 +103,12 @@ impl RoundRobinWaitList {
     /// # Panic
     ///
     /// Panics if the active turn was modified in the meantime.
-    fn end_turn(&mut self, me: u8) {
-        assert_eq!(self.active, Some(me));
+    fn release(&mut self, me: u8) {
+        assert_eq!(
+            self.active,
+            Some(me),
+            "tried to release unacquired advisory lock"
+        );
 
         // We finished our turn, mark us as no longer interested.
         self.waiting[me as usize] = false;
@@ -78,7 +131,7 @@ impl RoundRobinWaitList {
 ///
 /// Typically the multiplexer is not used directly, but used to spawn multiplexing handles.
 struct Multiplexer<S> {
-    wait_list: Mutex<RoundRobinWaitList>,
+    wait_list: Mutex<RoundRobinAdvisoryLock>,
     sink: Mutex<Option<S>>,
 }
 
@@ -119,7 +172,7 @@ where
             .wait_list
             .lock()
             .expect("TODO handle poisoning")
-            .try_take_turn(self.slot);
+            .try_acquire(self.slot);
 
         // At this point, we no longer hold the `wait_list` lock.
 
@@ -163,7 +216,7 @@ where
                     .wait_list
                     .lock()
                     .expect("TODO: Lock poisoning")
-                    .end_turn(self.slot);
+                    .release(self.slot);
 
                 Poll::Ready(Ok(()))
             }
