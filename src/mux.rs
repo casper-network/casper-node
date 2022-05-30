@@ -3,8 +3,6 @@
 //! Multiplexes multiple sinks into a single one, allowing no more than one frame to be buffered for
 //! each to avoid starvation or flooding.
 
-// Have a locked
-
 use std::{
     fmt::Debug,
     pin::Pin,
@@ -13,15 +11,11 @@ use std::{
 };
 
 use bytes::Buf;
-use futures::{Future, Sink, SinkExt};
-use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
-use tokio_util::sync::{PollSendError, PollSender};
+use futures::{Sink, SinkExt};
 
 use crate::{error::Error, ImmediateFrame};
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
-
-type SendTaskPayload<F> = (OwnedSemaphorePermit, ChannelPrefixedFrame<F>);
 
 // TODO: Add skiplist buffer.
 
@@ -80,9 +74,27 @@ impl RoundRobinWaitList {
     }
 }
 
+/// A frame multiplexer.
+///
+/// Typically the multiplexer is not used directly, but used to spawn multiplexing handles.
 struct Multiplexer<S> {
     wait_list: Mutex<RoundRobinWaitList>,
     sink: Mutex<Option<S>>,
+}
+
+impl<S> Multiplexer<S> {
+    /// Create a handle for a specific multiplexer channel on this multiplexer.
+    ///
+    /// # Safety
+    ///
+    /// This function **must not** be called multiple times on the same `Multiplexer` with the same
+    /// `channel` value.
+    pub fn get_channel_handle(self: Arc<Self>, channel: u8) -> MultiplexerHandle<S> {
+        MultiplexerHandle {
+            multiplexer: self.clone(),
+            slot: channel,
+        }
+    }
 }
 
 struct MultiplexerHandle<S> {
@@ -98,8 +110,6 @@ where
     type Error = <S as Sink<ChannelPrefixedFrame<F>>>::Error;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        let slot = self.slot;
-
         // Required invariant: For any channel there is only one handle, thus we are the only one
         // writing to the `waiting[n]` atomic bool.
 
