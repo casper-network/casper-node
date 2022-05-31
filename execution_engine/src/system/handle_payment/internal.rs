@@ -1,6 +1,6 @@
 use casper_types::{
     account::AccountHash,
-    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY, REWARDS_PURSE_KEY},
+    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
 use num::{CheckedAdd, CheckedMul, CheckedSub, One, Zero};
@@ -17,15 +17,6 @@ pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Res
         Some(Key::URef(uref)) => Ok(uref),
         Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
         None => Err(Error::PaymentPurseNotFound),
-    }
-}
-
-/// Returns the purse that contains accumulated gas fees.
-pub(crate) fn get_rewards_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
-    match runtime_provider.get_key(REWARDS_PURSE_KEY) {
-        Some(Key::URef(uref)) => Ok(uref),
-        Some(_) => Err(Error::RewardsPurseKeyUnexpectedType),
-        None => Err(Error::RewardsPurseNotFound),
     }
 }
 
@@ -88,38 +79,38 @@ fn calculate_amounts(
             .ok_or(Error::ArithmeticOverflow)?
     };
 
-    let validator_reward = payment_purse_balance
+    let fees_reward = payment_purse_balance
         .checked_sub(&refund_amount)
         .ok_or(Error::ArithmeticOverflow)?;
 
     let refund_amount_trunc = refund_amount.trunc();
-    let validator_reward_trunc = validator_reward.trunc();
+    let fees_reward_trunc = fees_reward.trunc();
 
-    let dust_amount = validator_reward
+    let dust_amount = fees_reward
         .fract()
         .checked_add(&refund_amount.fract())
         .ok_or(Error::ArithmeticOverflow)?;
 
     // Move the dust amount to the reward part
 
-    let user_part = refund_amount_trunc;
-    debug_assert_eq!(user_part.fract(), Ratio::zero());
+    let refund_amount = refund_amount_trunc;
+    debug_assert_eq!(refund_amount.fract(), Ratio::zero());
 
-    let validator_part = validator_reward_trunc
+    let fees_amount = fees_reward_trunc
         .checked_add(&dust_amount)
         .ok_or(Error::ArithmeticOverflow)?;
-    debug_assert_eq!(validator_part.fract(), Ratio::zero());
+    debug_assert_eq!(fees_amount.fract(), Ratio::zero());
 
     // Makes sure both parts: for user, and for validator sums to the total amount in the
     // payment's purse.
     debug_assert_eq!(
-        user_part + validator_part,
+        refund_amount + fees_amount,
         payment_purse_balance,
         "both user part and validator part should equal to the purse balance"
     );
 
     // Safely convert ratio to integer after making sure there's no dust amount left behind.
-    Ok((user_part.to_integer(), validator_part.to_integer()))
+    Ok((refund_amount.to_integer(), fees_amount.to_integer()))
 }
 
 /// Transfers funds from the payment purse to the validator rewards purse, as well as to the
@@ -138,7 +129,7 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
     }
 
     let payment_purse = get_payment_purse(provider)?;
-    let payment_amount = match provider.balance(payment_purse)? {
+    let mut payment_amount = match provider.balance(payment_purse)? {
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
@@ -167,36 +158,63 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
     // give refund
 
     if !refund_amount.is_zero() {
-        match refund_purse {
-            Some(refund_purse) => {
-                // in case of failure to transfer to refund purse we fall back on the account's main
-                // purse
-                match provider.transfer_purse_to_purse(payment_purse, refund_purse, refund_amount) {
-                    Ok(()) => {}
-                    Err(error) => {
-                        error!(%error, %refund_amount, %account, "unable to transfer refund to a refund purse; refunding to account");
-                        refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+        if target == URef::default() {
+            payment_amount = payment_amount
+                .checked_sub(refund_amount)
+                .ok_or(Error::ArithmeticOverflow)?;
+
+            provider.write_balance(payment_purse, payment_amount)?;
+            provider.reduce_total_supply(refund_amount)?;
+        } else {
+            match refund_purse {
+                Some(refund_purse) => {
+                    // in case of failure to transfer to refund purse we fall back on the account's
+                    // main purse
+                    match provider.transfer_purse_to_purse(
+                        payment_purse,
+                        refund_purse,
+                        refund_amount,
+                    ) {
+                        Ok(()) => {}
+                        Err(error) => {
+                            error!(%error, %refund_amount, %account, "unable to transfer refund to a refund purse; refunding to account");
+                            refund_to_account::<P>(
+                                provider,
+                                payment_purse,
+                                account,
+                                refund_amount,
+                            )?;
+                        }
                     }
                 }
-            }
-            None => {
-                refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+                None => {
+                    refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+                }
             }
         }
     }
 
     // pay the reward to the target
 
-    // validator_reward purse is already resolved based on fee elimination config which is either a
-    // proposer or rewards purse
-    match provider.transfer_purse_to_purse(payment_purse, target, validator_reward) {
-        Ok(()) => {}
-        Err(error) => {
-            error!(%error, %validator_reward, %target, "unable to transfer reward");
-            return Err(Error::FailedTransferToRewardsPurse);
+    if target == URef::default() {
+        payment_amount = payment_amount
+            .checked_sub(validator_reward)
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        provider.write_balance(payment_purse, payment_amount)?;
+        provider.reduce_total_supply(validator_reward)?;
+    } else {
+        // validator_reward purse is already resolved based on fee elimination config which is
+        // either a proposer or rewards purse
+
+        match provider.transfer_purse_to_purse(payment_purse, target, validator_reward) {
+            Ok(()) => {}
+            Err(error) => {
+                error!(%error, %validator_reward, %target, "unable to transfer reward");
+                return Err(Error::FailedTransferToRewardsPurse);
+            }
         }
     }
-
     Ok(())
 }
 

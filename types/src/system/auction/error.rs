@@ -314,6 +314,18 @@ pub enum Error {
     /// assert_eq!(47, Error::AuctionBidsDisabled as u8);
     /// ```
     AuctionBidsDisabled = 47,
+    /// Error getting accumulation purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(48, Error::GetAccumulationPurse as u8);
+    /// ```
+    GetAccumulationPurse = 48,
+    /// Failed to transfer desired amount into administrators account.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(49, Error::TransferToAdministrator as u8);
+    /// ```
+    TransferToAdministrator = 49,
 }
 
 impl Display for Error {
@@ -367,6 +379,8 @@ impl Display for Error {
             Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
             Error::RuntimeStack => formatter.write_str("Runtime stack error"),
             Error::AuctionBidsDisabled => formatter.write_str("Auction bids are disabled"),
+            Error::GetAccumulationPurse => formatter.write_str("Get accumulation purse error"),
+            Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
         }
     }
 }
@@ -446,6 +460,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::DelegationAmountTooSmall as u8 => Ok(Error::DelegationAmountTooSmall),
             d if d == Error::RuntimeStack as u8 => Ok(Error::RuntimeStack),
             d if d == Error::AuctionBidsDisabled as u8 => Ok(Error::AuctionBidsDisabled),
+            d if d == Error::GetAccumulationPurse as u8 => Ok(Error::GetAccumulationPurse),
+            d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             _ => Err(TryFromU8ForError(())),
         }
     }

@@ -1,25 +1,22 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::{
-    engine_state::{engine_config::RefundHandling, Error},
-    execution,
-};
+use casper_execution_engine::core::engine_state::{engine_config::RefundHandling, RewardItem};
 use casper_types::{
-    account::AccountHash,
     runtime_args,
-    system::{
-        handle_payment::{self, REWARDS_PURSE_KEY},
-        mint,
-    },
-    ApiError, RuntimeArgs, U512,
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
+    RuntimeArgs, U512,
 };
 
 use crate::{
-    test::private_chain::{self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR},
+    test::private_chain::{
+        self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, VALIDATOR_1_PUBLIC_KEY,
+    },
     wasm_utils,
 };
+
+const VALIDATOR_1_REWARD_FACTOR: u64 = 0;
 
 #[ignore]
 #[test]
@@ -39,18 +36,11 @@ fn default_genesis_config_should_not_have_rewards_purse() {
         .expect("should have handle payment contract");
 
     assert!(
-        !handle_payment_contract
+        handle_payment_contract
             .named_keys()
-            .contains_key(REWARDS_PURSE_KEY),
-        "Found rewards purse in handle payment's named keys {:?}",
+            .contains_key(ACCUMULATION_PURSE_KEY),
+        "Did not find rewards purse in handle payment's named keys {:?}",
         handle_payment_contract.named_keys()
-    );
-
-    assert!(
-        !handle_payment_contract
-            .entry_points()
-            .has_entry_point(handle_payment::METHOD_GET_REWARDS_PURSE),
-        "handle payment contract should not have get rewards purse"
     );
 }
 
@@ -66,7 +56,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let rewards_purse_key = handle_payment_1
         .named_keys()
-        .get(REWARDS_PURSE_KEY)
+        .get(ACCUMULATION_PURSE_KEY)
         .expect("should have rewards purse");
     let rewards_purse_uref = rewards_purse_key.into_uref().expect("should be uref");
     assert_eq!(builder.get_purse_balance(rewards_purse_uref), U512::zero());
@@ -145,7 +135,7 @@ fn should_accumulate_deploy_fees() {
         .get_contract(handle_payment_hash)
         .expect("should have handle payment contract");
 
-    let rewards_purse = handle_payment_contract.named_keys()[REWARDS_PURSE_KEY]
+    let rewards_purse = handle_payment_contract.named_keys()[ACCUMULATION_PURSE_KEY]
         .into_uref()
         .expect("should be uref");
 
@@ -169,12 +159,16 @@ fn should_accumulate_deploy_fees() {
         .expect("should have handle payment contract");
 
     assert_eq!(
-        handle_payment_after.named_keys().get(REWARDS_PURSE_KEY),
-        handle_payment_contract.named_keys().get(REWARDS_PURSE_KEY),
+        handle_payment_after
+            .named_keys()
+            .get(ACCUMULATION_PURSE_KEY),
+        handle_payment_contract
+            .named_keys()
+            .get(ACCUMULATION_PURSE_KEY),
         "keys should not change before and after deploy has been processed",
     );
 
-    let rewards_purse = handle_payment_contract.named_keys()[REWARDS_PURSE_KEY]
+    let rewards_purse = handle_payment_contract.named_keys()[ACCUMULATION_PURSE_KEY]
         .into_uref()
         .expect("should be uref");
     let rewards_balance_after = builder.get_purse_balance(rewards_purse);
@@ -196,14 +190,14 @@ fn should_accumulate_deploy_fees() {
 
 #[ignore]
 #[test]
-fn should_withdraw_rewards_as_admin() {
+fn should_distribute_accumulated_fees_to_admins() {
     let mut builder = super::private_chain_setup();
 
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment = builder
         .get_contract(handle_payment_hash)
         .expect("should have handle payment contract");
-    let rewards_purse = handle_payment.named_keys()[REWARDS_PURSE_KEY]
+    let accumulation_purse = handle_payment.named_keys()[ACCUMULATION_PURSE_KEY]
         .as_uref()
         .cloned()
         .unwrap();
@@ -219,93 +213,55 @@ fn should_withdraw_rewards_as_admin() {
 
     // At this point rewards purse balance is not zero as the `private_chain_setup` executes bunch
     // of deploys before
-    let rewards_balance_before = builder.get_purse_balance(rewards_purse);
-    assert!(!rewards_balance_before.is_zero());
+    let accumulated_purse_balance_before = builder.get_purse_balance(accumulation_purse);
+    assert!(!accumulated_purse_balance_before.is_zero());
 
-    // Ensures default proposer didn't receive any funds
-    let target_account = AccountHash::new([11; 32]);
-    assert!(builder.get_account(target_account).is_none());
+    let admin = builder
+        .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .expect("should have admin account");
+    let admin_balance_before = builder.get_purse_balance(admin.main_purse());
 
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        "withdraw_rewards.wasm",
-        runtime_args! {
-            "target" => target_account,
-            "amount" => rewards_balance_before,
-        },
-    )
-    .build();
+    let mut timestamp_millis = 0;
+    for _ in 0..3 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_next_era_id(builder.get_era().successor())
+            .with_era_end_timestamp_millis(timestamp_millis)
+            .with_run_auction(true)
+            .build();
+        builder.step(step_request).expect("should execute step");
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
 
-    builder.exec(exec_request_2).expect_success().commit();
+    let last_trusted_era = builder.get_era();
 
-    assert_ne!(
-        builder.get_purse_balance(rewards_purse),
-        rewards_balance_before,
-        "we emptied out what we have in rewards purse, but it gets filled with new gas fees"
-    );
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_1_PUBLIC_KEY.clone(),
+            VALIDATOR_1_REWARD_FACTOR,
+        ))
+        .with_next_era_id(last_trusted_era.successor())
+        .with_era_end_timestamp_millis(timestamp_millis)
+        .with_run_auction(true)
+        .build();
 
-    let account_1 = builder
-        .get_account(target_account)
-        .expect("should have account");
+    builder.step(step_request).expect("should execute step");
+
+    let accumulated_purse_balance_after = builder.get_purse_balance(accumulation_purse);
+
     assert_eq!(
-        builder.get_purse_balance(account_1.main_purse()),
-        rewards_balance_before
+        accumulated_purse_balance_after,
+        U512::zero(),
+        "purse should be empty after distributing accumulated fees"
     );
-}
 
-#[ignore]
-#[test]
-fn should_not_allow_to_withdraw_rewards_as_user() {
-    let mut builder = super::private_chain_setup();
-
-    let handle_payment_hash = builder.get_handle_payment_contract_hash();
-    let handle_payment = builder
-        .get_contract(handle_payment_hash)
-        .expect("should have handle payment contract");
-    let rewards_purse = handle_payment.named_keys()[REWARDS_PURSE_KEY]
-        .as_uref()
-        .cloned()
-        .unwrap();
-
-    let exec_request_1 = ExecuteRequestBuilder::module_bytes(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        wasm_utils::do_minimum_bytes(),
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    builder.exec(exec_request_1).expect_success().commit();
-
-    // At this point rewards purse balance is not zero as the `private_chain_setup` executes bunch
-    // of deploys before
-    let rewards_balance_before = builder.get_purse_balance(rewards_purse);
-    assert!(!rewards_balance_before.is_zero());
-
-    // Ensures default proposer didn't receive any funds
-    let target_account = AccountHash::new([11; 32]);
-    assert!(builder.get_account(target_account).is_none());
-
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        *ACCOUNT_1_ADDR,
-        "withdraw_rewards.wasm",
-        runtime_args! {
-            "target" => target_account,
-            "amount" => rewards_balance_before,
-        },
-    )
-    .build();
-
-    builder.exec(exec_request_2).expect_failure().commit();
-
-    let error = builder.get_error().expect("should have error");
+    let admin_balance_after = builder.get_purse_balance(admin.main_purse());
 
     assert!(
-        matches!(
-            error,
-            Error::Exec(execution::Error::Revert(ApiError::HandlePayment(handle_payment_error))) if handle_payment_error == handle_payment::Error::SystemFunctionCalledByUserAccount as u8
-        ),
-        "{:?}",
-        error
+        admin_balance_after > admin_balance_before,
+        "admin balance should grow after distributing accumulated purse"
     );
-    assert!(builder.get_account(target_account).is_none());
 }

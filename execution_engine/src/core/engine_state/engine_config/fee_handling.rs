@@ -5,8 +5,11 @@ pub enum FeeHandling {
     ///
     /// This is the default option for public chains.
     PayToProposer,
-    /// Transaction fees are accumulated in a special rewards purse.
+    /// Transaction fees are accumulated in a special purse and then distributed during end of era
+    /// processing evenly among all administrator accounts.
     ///
-    /// This setting makes sense for some private chains.
+    /// This setting is applicable for some private chains (but not all).
     Accumulate,
+    /// Burn the fees.
+    Burn,
 }

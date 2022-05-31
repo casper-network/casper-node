@@ -15,11 +15,15 @@ use casper_types::{
     ApiError, EraId, PublicKey, U512,
 };
 
-use self::providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
+use crate::core::engine_state::engine_config::FeeHandling;
+
+use self::providers::{
+    AccountProvider, HandlePaymentProvider, MintProvider, RuntimeProvider, StorageProvider,
+};
 
 /// Bonding auction contract interface
 pub trait Auction:
-    StorageProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
+    StorageProvider + RuntimeProvider + MintProvider + AccountProvider + HandlePaymentProvider + Sized
 {
     /// Returns active validators and auction winners for a number of future eras determined by the
     /// configured auction_delay.
@@ -532,6 +536,32 @@ pub trait Auction:
     fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
+        }
+
+        // Distribute accumulation purse balance into all administrators
+        match self.fee_handling() {
+            FeeHandling::PayToProposer => {}
+            FeeHandling::Accumulate => {
+                let administrative_accounts = self.administrative_accounts();
+                let accumulation_purse = self.get_accumulation_purse()?;
+                let accumulated_balance = self.get_balance(accumulation_purse)?.unwrap_or_default();
+
+                // Total amount of administrators that will receive their share of accumulated rewards.
+                let reward_recipients = U512::from(administrative_accounts.len());
+                if let Some(reward_amount) = accumulated_balance.checked_div(reward_recipients) {
+                    for admin in administrative_accounts {
+                        // Round the amounts down and leave the dust amount in the accumulation
+                        // purse.
+                        let target = admin.public_key().to_account_hash();
+                        self.mint_transfer_from_purse_to_account(
+                            accumulation_purse,
+                            target,
+                            reward_amount,
+                        )?;
+                    }
+                }
+            }
+            FeeHandling::Burn => {}
         }
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;

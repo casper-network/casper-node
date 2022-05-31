@@ -1,5 +1,7 @@
 use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
-use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
+use casper_types::{
+    account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, URef, U512,
+};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -32,4 +34,7 @@ pub trait RuntimeProvider {
 
     /// Returns fee handling value.
     fn fee_handling(&self) -> FeeHandling;
+
+    /// Write new balance.
+    fn write_balance(&mut self, purse_uref: URef, amount: U512) -> Result<(), Error>;
 }

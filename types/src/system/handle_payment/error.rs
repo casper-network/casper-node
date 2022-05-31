@@ -225,7 +225,23 @@ pub enum Error {
     #[doc(hidden)]
     GasLimit = 32,
     /// Refund purse is a payment purse.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(33, Error::RefundPurseIsPaymentPurse as u8);
+    /// ```
     RefundPurseIsPaymentPurse = 33,
+    /// Error raised while reducing total supply on the mint system contract.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(34, Error::ReduceTotalSupply as u8);
+    /// ```
+    ReduceTotalSupply = 34,
+    /// Error writing to a storage.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(36, Error::Storage as u8);
+    /// ```
+    Storage = 36,
 }
 
 impl Display for Error {
@@ -291,6 +307,8 @@ impl Display for Error {
             Error::RefundPurseIsPaymentPurse => {
                 formatter.write_str("Refund purse is a payment purse.")
             }
+            Error::ReduceTotalSupply => formatter.write_str("Failed to reduce total supply."),
+            Error::Storage => formatter.write_str("Failed to write to storage."),
         }
     }
 }
@@ -359,6 +377,8 @@ impl TryFrom<u8> for Error {
             v if v == Error::ArithmeticOverflow as u8 => Error::ArithmeticOverflow,
             v if v == Error::GasLimit as u8 => Error::GasLimit,
             v if v == Error::RefundPurseIsPaymentPurse as u8 => Error::RefundPurseIsPaymentPurse,
+            v if v == Error::ReduceTotalSupply as u8 => Error::ReduceTotalSupply,
+            v if v == Error::Storage as u8 => Error::Storage,
             _ => return Err(()),
         };
         Ok(error)

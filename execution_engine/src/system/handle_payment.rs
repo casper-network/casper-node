@@ -40,17 +40,4 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
     ) -> Result<(), Error> {
         internal::finalize_payment(self, amount_spent, account, target)
     }
-
-    /// Get payment purse.
-    fn get_rewards_purse(&self) -> Result<URef, Error> {
-        match self.is_account_administrator(&self.get_caller()) {
-            Some(true) => {
-                // Returns a purse with full rights as we know we're called by an administrator
-                // account.
-                let purse = internal::get_rewards_purse(self)?;
-                Ok(purse)
-            }
-            Some(false) | None => Err(Error::SystemFunctionCalledByUserAccount),
-        }
-    }
 }

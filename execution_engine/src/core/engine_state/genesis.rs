@@ -15,9 +15,7 @@ use casper_hashing::Digest;
 use casper_types::{
     account::{AccountHash, AddKeyFailure, Weight},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::{
-        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
-    },
+    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -26,13 +24,13 @@ use casper_types::{
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{self, REWARDS_PURSE_KEY},
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    EraId, Key, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StoredValue, URef, U512,
+    AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, ContractWasmHash, EntryPoints, EraId, Key, Motes, Phase, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -1073,50 +1071,38 @@ where
                 handle_payment::PAYMENT_PURSE_KEY.to_string(),
                 payment_purse_uref.into(),
             );
-            match self.exec_config.fee_handling() {
-                FeeHandling::PayToProposer { .. } => {}
-                FeeHandling::Accumulate => {
-                    let rewards_purse_uref = {
-                        let rewards_purse_uref = self
-                            .address_generator
-                            .borrow_mut()
-                            .new_uref(AccessRights::READ_ADD_WRITE);
 
-                        self.tracking_copy.borrow_mut().write(
-                            Key::Balance(rewards_purse_uref.addr()),
-                            StoredValue::CLValue(CLValue::from_t(U512::zero()).map_err(|_| {
-                                GenesisError::CLValue(REWARDS_PURSE_KEY.to_string())
-                            })?),
-                        );
+            // This purse is used only in FeeHandling::Accumulate setting.
+            let rewards_purse_uref =
+                {
+                    let rewards_purse_uref = self
+                        .address_generator
+                        .borrow_mut()
+                        .new_uref(AccessRights::READ_ADD_WRITE);
 
-                        self.tracking_copy.borrow_mut().write(
-                            rewards_purse_uref.into(),
-                            StoredValue::CLValue(CLValue::unit()),
-                        );
-                        rewards_purse_uref
-                    };
+                    self.tracking_copy.borrow_mut().write(
+                        Key::Balance(rewards_purse_uref.addr()),
+                        StoredValue::CLValue(CLValue::from_t(U512::zero()).map_err(|_| {
+                            GenesisError::CLValue(ACCUMULATION_PURSE_KEY.to_string())
+                        })?),
+                    );
 
-                    named_keys.insert(REWARDS_PURSE_KEY.to_string(), rewards_purse_uref.into());
-                }
-            }
+                    self.tracking_copy.borrow_mut().write(
+                        rewards_purse_uref.into(),
+                        StoredValue::CLValue(CLValue::unit()),
+                    );
+                    rewards_purse_uref
+                };
+
+            named_keys.insert(
+                ACCUMULATION_PURSE_KEY.to_string(),
+                rewards_purse_uref.into(),
+            );
+
             named_keys
         };
 
-        let mut entry_points = handle_payment::handle_payment_entry_points();
-
-        match self.exec_config.fee_handling() {
-            FeeHandling::PayToProposer => {}
-            FeeHandling::Accumulate => {
-                let get_rewards_purse = EntryPoint::new(
-                    handle_payment::METHOD_GET_REWARDS_PURSE,
-                    Parameters::new(),
-                    CLType::URef,
-                    EntryPointAccess::Public,
-                    EntryPointType::Contract,
-                );
-                entry_points.add_entry_point(get_rewards_purse);
-            }
-        }
+        let entry_points = handle_payment::handle_payment_entry_points();
 
         let access_key = self
             .address_generator

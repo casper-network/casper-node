@@ -43,7 +43,7 @@ use casper_types::{
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
             VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{self, REWARDS_PURSE_KEY},
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
@@ -734,13 +734,14 @@ where
                         .borrow_mut()
                         .get_contract(correlation_id, handle_payment_hash)?;
 
-                    let rewards_purse_uref = handle_payment_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
+                    let rewards_purse_uref = handle_payment_contract.named_keys().get(ACCUMULATION_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
                         error!("fee elimination is configured to accumulate but mint does not have rewards purse; defaulting to a proposer");
                         proposer_account.main_purse()
                     });
 
                     rewards_purse_uref
                 }
+                FeeHandling::Burn => URef::default(),
             }
         };
 
@@ -1486,13 +1487,14 @@ where
                         .borrow_mut()
                         .get_contract(correlation_id, handle_payment_hash)?;
 
-                    let rewards_purse_uref = handle_payment_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
+                    let rewards_purse_uref = handle_payment_contract.named_keys().get(ACCUMULATION_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
                         error!("fee elimination is configured to accumulate but handle payment does not have rewards purse; defaulting to a proposer");
                         proposer_account.main_purse()
                     });
 
                     rewards_purse_uref
                 }
+                FeeHandling::Burn => URef::default(),
             }
         };
 
@@ -1924,9 +1926,10 @@ where
         correlation_id: CorrelationId,
         step_request: StepRequest,
     ) -> Result<StepSuccess, StepError> {
-        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
+        let state_root_hash = step_request.pre_state_hash;
+        let tracking_copy = match self.tracking_copy(state_root_hash) {
             Err(error) => return Err(StepError::TrackingCopyError(error)),
-            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
+            Ok(None) => return Err(StepError::RootNotFound(state_root_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 

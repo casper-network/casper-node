@@ -89,6 +89,7 @@ maximum_round_exponent = 17
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
+# 
 compute_rewards = true
 
 [deploys]

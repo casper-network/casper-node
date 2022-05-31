@@ -61,8 +61,6 @@ use crate::{
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
-use super::engine_state::engine_config::FeeHandling;
-
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
@@ -780,16 +778,6 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
-            handle_payment::METHOD_GET_REWARDS_PURSE
-                if self.config.fee_handling() == FeeHandling::Accumulate =>
-            {
-                (|| {
-                    runtime.charge_system_contract_call(handle_payment_costs.get_refund_purse)?;
-                    let rights_controlled_purse =
-                        runtime.get_rewards_purse().map_err(Self::reverter)?;
-                    CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)
-                })()
-            }
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };

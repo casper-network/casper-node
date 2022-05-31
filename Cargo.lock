@@ -5332,14 +5332,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "withdraw-rewards"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "wyz"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
