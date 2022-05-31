@@ -1239,6 +1239,14 @@ impl reactor::Reactor for Reactor {
                         );
                         return Effects::new();
                     }
+                    NetResponse::BlockAndDeploys(_) => {
+                        error!(
+                            "cannot handle get response for \
+                            block-and-deploys from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
                 };
 
                 self.dispatch_event(effect_builder, rng, event)

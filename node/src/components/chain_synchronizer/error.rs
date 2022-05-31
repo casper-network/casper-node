@@ -14,8 +14,8 @@ use casper_types::{EraId, ProtocolVersion};
 use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
-        FinalizedApprovalsWithId,
+        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
+        Deploy, FinalizedApprovalsWithId,
     },
 };
 
@@ -61,6 +61,9 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     BlockWithMetadataFetcher(#[from] FetcherError<BlockWithMetadata>),
+
+    #[error(transparent)]
+    BlockAndDeploysFetcher(#[from] FetcherError<BlockAndDeploys>),
 
     #[error(transparent)]
     DeployWithMetadataFetcher(#[from] FetcherError<Deploy>),

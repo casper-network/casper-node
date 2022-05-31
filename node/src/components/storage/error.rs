@@ -15,8 +15,8 @@ use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool, Indices};
 use crate::{
     components::consensus::error::FinalitySignatureError,
     types::{
-        error::BlockValidationError, BlockBody, BlockHash, BlockHeader, DeployHash,
-        HashingAlgorithmVersion,
+        error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
+        DeployHash, HashingAlgorithmVersion,
     },
 };
 
@@ -55,13 +55,16 @@ pub enum FatalStorageError {
         /// Deploy hash at which duplicate was found.
         deploy_hash: DeployHash,
         /// First block hash encountered at `deploy_hash`.
-        first: BlockHash,
+        first: BlockHashAndHeight,
         /// Second block hash encountered at `deploy_hash`.
-        second: BlockHash,
+        second: BlockHashAndHeight,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+    /// An internal DB error - blocks should be overwritten.
+    #[error("failed overwriting block")]
+    FailedToOverwriteBlock,
     /// Filesystem error while trying to move file.
     #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
     UnableToMoveFile {

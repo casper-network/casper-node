@@ -260,6 +260,9 @@ address = '0.0.0.0:7777'
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 50
 
+# Maximum number of bytes to accept in a single request body.
+max_body_bytes = 2_621_440
+
 
 # ==============================================
 # Configuration options for the REST HTTP server
@@ -411,7 +414,7 @@ get_from_peer_timeout = '3sec'
 # If unset, defaults to 805,306,368,000 == 750 GiB.
 #
 # The size should be a multiple of the OS page size.
-max_global_state_size = 1_099_511_627_776
+max_global_state_size = 2_089_072_132_096
 
 # Optional depth limit to use for global state queries.
 #
