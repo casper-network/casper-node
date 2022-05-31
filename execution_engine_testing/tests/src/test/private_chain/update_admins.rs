@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use casper_engine_test_support::{UpgradeRequestBuilder, DEFAULT_PROTOCOL_VERSION};
 use casper_execution_engine::core::engine_state::genesis::AdministratorAccount;
-use casper_types::{account::Weight, Motes, ProtocolVersion, PublicKey, SecretKey, SemVer};
+use casper_types::{Motes, ProtocolVersion, PublicKey, SecretKey, SemVer};
 use itertools::Itertools;
 
 use super::{ADMIN_ACCOUNT_INITIAL_BALANCE, PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS};
@@ -23,7 +23,6 @@ fn should_update_list_of_admins_on_private_chain() {
         admins.push(AdministratorAccount::new(
             new_admin_public_key,
             Motes::new(ADMIN_ACCOUNT_INITIAL_BALANCE),
-            Weight::MAX,
         ));
 
         assert!(

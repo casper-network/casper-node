@@ -13,7 +13,7 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
-    account::{AccountHash, ActionThresholds, Weight},
+    account::{AccountHash, Weight},
     bytesrepr::ToBytes,
     runtime_args,
     system::{
@@ -64,11 +64,6 @@ const DELEGATE_ENTRYPOINT: &str = "delegate";
 const TEST_PAYMENT_STORED_CONTRACT: &str = "test_payment_stored.wasm";
 const TEST_PAYMENT_STORED_HASH_NAME: &str = "test_payment_hash";
 const PAY_ENTRYPOINT: &str = "pay";
-
-const EXPECTED_PRIVATE_CHAIN_THRESHOLDS: ActionThresholds = ActionThresholds {
-    deployment: Weight::new(1),  // 0 >= 0
-    key_management: Weight::MAX, // 0 >= 1
-};
 
 #[ignore]
 #[test]
@@ -177,14 +172,6 @@ fn should_not_resolve_private_chain_host_functions_on_public_chain() {
 fn genesis_accounts_should_not_update_key_weight() {
     let mut builder = super::private_chain_setup();
 
-    let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
-        .expect("should have account 1");
-    assert_eq!(
-        account_1.action_thresholds(),
-        &EXPECTED_PRIVATE_CHAIN_THRESHOLDS,
-    );
-
     let exec_request_1 = {
         let session_args = runtime_args! {
             ARG_ACCOUNT => *ACCOUNT_1_ADDR,
@@ -231,17 +218,6 @@ fn genesis_accounts_should_not_update_key_weight() {
 fn genesis_accounts_should_not_modify_action_thresholds() {
     let mut builder = super::private_chain_setup();
 
-    let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
-        .expect("should have account 1");
-    assert_eq!(
-        account_1.action_thresholds(),
-        &ActionThresholds {
-            deployment: Weight::new(1),
-            key_management: Weight::MAX,
-        }
-    );
-
     let exec_request = {
         let session_args = runtime_args! {
             ARG_DEPLOY_THRESHOLD => Weight::new(1),
@@ -273,17 +249,6 @@ fn genesis_accounts_should_not_manage_their_own_keys() {
     let secondary_account_hash = AccountHash::new([55; 32]);
 
     let mut builder = super::private_chain_setup();
-
-    let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
-        .expect("should have account 1");
-    assert_eq!(
-        account_1.action_thresholds(),
-        &ActionThresholds {
-            deployment: Weight::new(1),
-            key_management: Weight::MAX,
-        }
-    );
 
     let exec_request = {
         let session_args = runtime_args! {
@@ -453,7 +418,7 @@ fn administrator_account_should_disable_any_account() {
 
 #[ignore]
 #[test]
-fn native_transfer_should_create_new_restricted_private_account() {
+fn native_transfer_should_create_new_private_account() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
@@ -467,20 +432,14 @@ fn native_transfer_should_create_new_restricted_private_account() {
 
     builder.exec(transfer_request).expect_success().commit();
 
-    let account_2 = builder
+    let _account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
-        .expect("should have account 1 after genesis");
-
-    assert_eq!(
-        account_2.action_thresholds(),
-        &EXPECTED_PRIVATE_CHAIN_THRESHOLDS,
-        "newly created account should have expected thresholds"
-    );
+        .expect("should have account 1 after transfer");
 }
 
 #[ignore]
 #[test]
-fn wasm_transfer_should_create_new_restricted_private_account() {
+fn wasm_transfer_should_create_new_private_account() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
@@ -497,15 +456,9 @@ fn wasm_transfer_should_create_new_restricted_private_account() {
 
     builder.exec(transfer_request).expect_success().commit();
 
-    let account_2 = builder
+    let _account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
         .expect("should have account 1 after genesis");
-
-    assert_eq!(
-        account_2.action_thresholds(),
-        &EXPECTED_PRIVATE_CHAIN_THRESHOLDS,
-        "newly created account should have expected thresholds"
-    );
 }
 
 #[ignore]

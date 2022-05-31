@@ -21,7 +21,10 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, ActionType, Weight},
+    account::{
+        Account, AccountHash, ActionThresholds, ActionType, AddKeyFailure, RemoveKeyFailure,
+        SetThresholdFailure, UpdateKeyFailure, Weight,
+    },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -49,7 +52,7 @@ use crate::{
         tracking_copy::TrackingCopyExt,
     },
     shared::{
-        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS},
+        account::{self, SYSTEM_ACCOUNT_ADDRESS},
         host_function_costs::{Cost, HostFunction},
         wasm_prep::{self, PreprocessingError},
     },
@@ -1941,6 +1944,26 @@ where
         Error::Revert(status.into()).into()
     }
 
+    /// Checks if a caller can manage its own associated keys and thresholds.
+    ///
+    /// On a private chain this requires that the caller is an admin to be able to manage its own
+    /// keys. On a public chain there is no restrictions.
+    fn can_manage_keys(&self) -> bool {
+        match self
+            .config
+            .is_account_administrator(&self.context.get_caller())
+        {
+            Some(is_caller_admin) => {
+                // Private chain
+                is_caller_admin
+            }
+            None => {
+                // Public chain
+                true
+            }
+        }
+    }
+
     fn add_associated_key(
         &mut self,
         account_hash_ptr: u32,
@@ -1956,6 +1979,10 @@ where
             source
         };
         let weight = Weight::new(weight_value);
+
+        if !self.can_manage_keys() {
+            return Ok(AddKeyFailure::PermissionDenied as i32);
+        }
 
         match self.context.add_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
@@ -1982,6 +2009,11 @@ where
                 bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
+
+        if !self.can_manage_keys() {
+            return Ok(RemoveKeyFailure::PermissionDenied as i32);
+        }
+
         match self.context.remove_associated_key(account_hash) {
             Ok(_) => Ok(0),
             Err(Error::RemoveKeyFailure(e)) => Ok(e as i32),
@@ -2005,6 +2037,10 @@ where
         };
         let weight = Weight::new(weight_value);
 
+        if !self.can_manage_keys() {
+            return Ok(UpdateKeyFailure::PermissionDenied as i32);
+        }
+
         match self.context.update_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
             // This relies on the fact that `UpdateKeyFailure` is represented as
@@ -2022,6 +2058,10 @@ where
         action_type_value: u32,
         threshold_value: u8,
     ) -> Result<i32, Trap> {
+        if !self.can_manage_keys() {
+            return Ok(SetThresholdFailure::PermissionDeniedError as i32);
+        }
+
         match ActionType::try_from(action_type_value) {
             Ok(action_type) => {
                 let threshold = Weight::new(threshold_value);
@@ -2228,14 +2268,7 @@ where
             Ok(()) => {
                 // None, and Some(_) with empty container is considered equal for the purpose of
                 // listing admin keys.
-                let admin_accounts = self.config.administrative_accounts();
-                let account_config = if admin_accounts.is_empty() {
-                    AccountConfig::Normal
-                } else {
-                    AccountConfig::Restricted
-                };
-
-                let account = account::create_account(account_config, target, target_purse)?;
+                let account = account::create_account(target, target_purse);
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::{
-    account::{AccountHash, AddKeyFailure, Weight},
+    account::{AccountHash, AddKeyFailure},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::{
@@ -43,10 +43,7 @@ use crate::{
         tracking_copy::TrackingCopy,
     },
     shared::{
-        account::{self, AccountConfig},
-        newtypes::CorrelationId,
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
+        account, newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig,
     },
     storage::global_state::StateProvider,
 };
@@ -167,17 +164,15 @@ pub struct DelegatorAccount {
 pub struct AdministratorAccount {
     public_key: PublicKey,
     balance: Motes,
-    weight: Weight,
 }
 
 impl AdministratorAccount {
     /// Creates new special account.
     #[must_use]
-    pub fn new(public_key: PublicKey, balance: Motes, weight: Weight) -> Self {
+    pub fn new(public_key: PublicKey, balance: Motes) -> Self {
         Self {
             public_key,
             balance,
-            weight,
         }
     }
 
@@ -185,12 +180,6 @@ impl AdministratorAccount {
     #[must_use]
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
-    }
-
-    /// Get the administrator account's weight.
-    #[must_use]
-    pub fn weight(&self) -> Weight {
-        self.weight
     }
 }
 
@@ -206,7 +195,6 @@ impl AdministratorAccount {
         Self {
             public_key,
             balance: Motes::new(rng.gen()),
-            weight: Weight::new(rng.gen_range(1..=255)),
         }
     }
 }
@@ -216,12 +204,10 @@ impl ToBytes for AdministratorAccount {
         let AdministratorAccount {
             public_key,
             balance,
-            weight,
         } = self;
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(public_key.to_bytes()?);
         buffer.extend(balance.to_bytes()?);
-        buffer.extend(weight.to_bytes()?);
         Ok(buffer)
     }
 
@@ -229,20 +215,17 @@ impl ToBytes for AdministratorAccount {
         let AdministratorAccount {
             public_key,
             balance,
-            weight,
         } = self;
-        public_key.serialized_length() + balance.serialized_length() + weight.serialized_length()
+        public_key.serialized_length() + balance.serialized_length()
     }
 }
 impl FromBytes for AdministratorAccount {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (public_key, remainder) = FromBytes::from_bytes(bytes)?;
         let (balance, remainder) = FromBytes::from_bytes(remainder)?;
-        let (weight, remainder) = FromBytes::from_bytes(remainder)?;
         let administrator_account = AdministratorAccount {
             public_key,
             balance,
-            weight,
         };
         Ok((administrator_account, remainder))
     }
@@ -373,7 +356,6 @@ impl GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key: _,
                 balance: _,
-                weight: _,
             }) => {
                 // This is defaulted to zero because administrator accounts are filtered out before
                 // validator set is created at the genesis.
@@ -511,12 +493,10 @@ impl ToBytes for GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key,
                 balance,
-                weight,
             }) => {
                 buffer.push(GenesisAccountTag::Administrator as u8);
                 buffer.extend(public_key.to_bytes()?);
                 buffer.extend(balance.to_bytes()?);
-                buffer.extend(weight.to_bytes()?);
             }
         }
         Ok(buffer)
@@ -550,13 +530,7 @@ impl ToBytes for GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key,
                 balance,
-                weight,
-            }) => {
-                public_key.serialized_length()
-                    + balance.serialized_length()
-                    + weight.serialized_length()
-                    + TAG_LENGTH
-            }
+            }) => public_key.serialized_length() + balance.serialized_length() + TAG_LENGTH,
         }
     }
 }
@@ -592,11 +566,9 @@ impl FromBytes for GenesisAccount {
             tag if tag == GenesisAccountTag::Administrator as u8 => {
                 let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
                 let (balance, remainder) = FromBytes::from_bytes(remainder)?;
-                let (weight, remainder) = FromBytes::from_bytes(remainder)?;
                 let genesis_account = GenesisAccount::Administrator(AdministratorAccount {
                     public_key,
                     balance,
-                    weight,
                 });
                 Ok((genesis_account, remainder))
             }
@@ -1417,8 +1389,6 @@ where
             return Err(GenesisError::DuplicatedAdministratorEntry);
         }
 
-        let is_private_chain = self.exec_config.administrative_accounts().next().is_some();
-
         let mut total_supply = U512::zero();
 
         for account in accounts.iter() {
@@ -1431,16 +1401,7 @@ where
 
             let key = Key::Account(account_hash);
 
-            let account_config = if is_private_chain {
-                AccountConfig::Restricted
-            } else {
-                AccountConfig::Normal
-            };
-
-            let account = match account::create_account(account_config, account_hash, main_purse) {
-                Ok(value) => value,
-                Err(value) => return Err(value.into()),
-            };
+            let account = account::create_account(account_hash, main_purse);
             let stored_value = StoredValue::Account(account);
             self.tracking_copy.borrow_mut().write(key, stored_value);
         }

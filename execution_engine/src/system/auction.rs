@@ -546,7 +546,8 @@ pub trait Auction:
                 let accumulation_purse = self.get_accumulation_purse()?;
                 let accumulated_balance = self.get_balance(accumulation_purse)?.unwrap_or_default();
 
-                // Total amount of administrators that will receive their share of accumulated rewards.
+                // Total amount of administrators that will receive their share of accumulated
+                // rewards.
                 let reward_recipients = U512::from(administrative_accounts.len());
                 if let Some(reward_amount) = accumulated_balance.checked_div(reward_recipients) {
                     for admin in administrative_accounts {

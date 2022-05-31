@@ -1,5 +1,5 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::shared::account::{self, AccountConfig};
+use casper_execution_engine::shared::account;
 use casper_types::{
     bytesrepr::ToBytes, system::mint, AccessRights, AsymmetricType, CLTyped, CLValue, Key,
     PublicKey, StoredValue, URef, U512,
@@ -55,12 +55,7 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
 
         let account_key = Key::Account(pub_key.to_account_hash());
         let account_value = {
-            let account = account::create_account(
-                AccountConfig::Restricted,
-                pub_key.to_account_hash(),
-                main_purse,
-            )
-            .expect("valid associated keys");
+            let account = account::create_account(pub_key.to_account_hash(), main_purse);
             StoredValue::Account(account)
         };
         print_entry(&account_key, &account_value);

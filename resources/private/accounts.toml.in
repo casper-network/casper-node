@@ -46,4 +46,3 @@ delegation_rate = 5
 [[administrators]]
 public_key = "PBK_FAUCET"
 balance = "1000000000000000000000000000000000"
-weight = 255

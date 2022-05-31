@@ -1,10 +1,10 @@
 use casper_execution_engine::core::engine_state::genesis::AdministratorAccount;
-#[cfg(test)]
-use casper_types::{account::Weight, testing::TestRng, Motes, PublicKey};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     TimeDiff,
 };
+#[cfg(test)]
+use casper_types::{testing::TestRng, Motes, PublicKey};
 
 use datasize::DataSize;
 use num::rational::Ratio;
@@ -79,13 +79,7 @@ impl CoreConfig {
         let allow_auction_bids = rng.gen();
         let allow_unrestricted_transfers = rng.gen();
         let administrative_accounts = (0..rng.gen_range(0..=10u32))
-            .map(|_| {
-                AdministratorAccount::new(
-                    PublicKey::random(rng),
-                    Motes::new(rng.gen()),
-                    Weight::new(rng.gen_range(1u8..=255)),
-                )
-            })
+            .map(|_| AdministratorAccount::new(PublicKey::random(rng), Motes::new(rng.gen())))
             .collect();
         let refund_handling = {
             let numer = rng.gen_range(0..=100);

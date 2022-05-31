@@ -24,9 +24,8 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_types::{
-    account::{AccountHash, Weight},
-    system::auction::DELEGATION_RATE_DENOMINATOR,
-    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, Motes, PublicKey,
+    RuntimeArgs, SecretKey, U512,
 };
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
@@ -42,7 +41,6 @@ static DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ADMIN_ACCOUNT_SECRET_KEY));
 static DEFAULT_ADMIN_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY.to_account_hash());
-const DEFAULT_ADMIN_ACCOUNT_WEIGHT: Weight = Weight::MAX;
 
 static ADMIN_1_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([240; 32]).unwrap());
@@ -50,7 +48,6 @@ static ADMIN_1_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ADMIN_1_ACCOUNT_SECRET_KEY));
 static ADMIN_1_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| ADMIN_1_ACCOUNT_PUBLIC_KEY.to_account_hash());
-const ADMIN_1_ACCOUNT_WEIGHT: Weight = Weight::new(254);
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([251; 32]).unwrap());
@@ -75,12 +72,10 @@ static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = L
     let default_admin = AdministratorAccount::new(
         DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY.clone(),
         Motes::new(ADMIN_ACCOUNT_INITIAL_BALANCE),
-        DEFAULT_ADMIN_ACCOUNT_WEIGHT,
     );
     let admin_1 = AdministratorAccount::new(
         ADMIN_1_ACCOUNT_PUBLIC_KEY.clone(),
         Motes::new(ADMIN_ACCOUNT_INITIAL_BALANCE),
-        ADMIN_1_ACCOUNT_WEIGHT,
     );
     vec![default_admin, admin_1]
 });

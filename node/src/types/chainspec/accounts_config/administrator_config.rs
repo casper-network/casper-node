@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::{genesis::AdministratorAccount, GenesisAccount};
 use casper_types::{
-    account::Weight,
     bytesrepr::{self, FromBytes, ToBytes},
     Motes, PublicKey,
 };
@@ -16,15 +15,13 @@ use rand::Rng;
 pub struct AdministratorConfig {
     pub(super) public_key: PublicKey,
     balance: Motes,
-    weight: Weight,
 }
 
 impl AdministratorConfig {
-    pub fn new(public_key: PublicKey, balance: Motes, weight: Weight) -> Self {
+    pub fn new(public_key: PublicKey, balance: Motes) -> Self {
         Self {
             public_key,
             balance,
-            weight,
         }
     }
 
@@ -36,24 +33,16 @@ impl AdministratorConfig {
         self.balance
     }
 
-    /// Get the administrator config's weight.
-    #[must_use]
-    pub fn weight(&self) -> Weight {
-        self.weight
-    }
-
     #[cfg(test)]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let public_key =
             PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
         let balance = Motes::new(rng.gen());
-        let weight = Weight::new(rng.gen_range(2..=255));
 
         AdministratorConfig {
             public_key,
             balance,
-            weight,
         }
     }
 }
@@ -64,11 +53,9 @@ impl ToBytes for AdministratorConfig {
         let AdministratorConfig {
             public_key,
             balance,
-            weight,
         } = self;
         buffer.extend(public_key.to_bytes()?);
         buffer.extend(balance.to_bytes()?);
-        buffer.extend(weight.to_bytes()?);
         Ok(buffer)
     }
 
@@ -76,9 +63,8 @@ impl ToBytes for AdministratorConfig {
         let AdministratorConfig {
             public_key,
             balance,
-            weight,
         } = self;
-        public_key.serialized_length() + balance.serialized_length() + weight.serialized_length()
+        public_key.serialized_length() + balance.serialized_length()
     }
 }
 
@@ -86,11 +72,9 @@ impl FromBytes for AdministratorConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (public_key, remainder) = FromBytes::from_bytes(bytes)?;
         let (balance, remainder) = FromBytes::from_bytes(remainder)?;
-        let (weight, remainder) = FromBytes::from_bytes(remainder)?;
         let account_config = AdministratorConfig {
             public_key,
             balance,
-            weight,
         };
         Ok((account_config, remainder))
     }
@@ -101,9 +85,8 @@ impl From<AdministratorConfig> for AdministratorAccount {
         let AdministratorConfig {
             public_key,
             balance,
-            weight,
         } = administrator_config;
-        AdministratorAccount::new(public_key, balance, weight)
+        AdministratorAccount::new(public_key, balance)
     }
 }
 

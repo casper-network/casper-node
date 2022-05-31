@@ -85,7 +85,7 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS},
+        account::{self, SYSTEM_ACCOUNT_ADDRESS},
         additive_map::AdditiveMap,
         newtypes::CorrelationId,
         transform::Transform,
@@ -874,19 +874,7 @@ where
                     );
                 match maybe_uref {
                     Some(main_purse) => {
-                        let account_config = if self.config.is_private_chain() {
-                            AccountConfig::Restricted
-                        } else {
-                            AccountConfig::Normal
-                        };
-
-                        let new_account =
-                            match account::create_account(account_config, account_hash, main_purse)
-                                .map_err(Error::reverter)
-                            {
-                                Ok(account) => account,
-                                Err(error) => return Ok(make_charged_execution_failure(error)),
-                            };
+                        let new_account = account::create_account(account_hash, main_purse);
                         // write new account
                         let _ = tracking_copy.borrow_mut().write(
                             Key::Account(account_hash),
