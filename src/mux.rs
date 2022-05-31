@@ -4,220 +4,124 @@
 //! each to avoid starvation or flooding.
 
 use std::{
-    fmt::Debug,
+    mem,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use bytes::Buf;
-use futures::{Sink, SinkExt};
+use futures::{
+    future::{BoxFuture, Fuse, FusedFuture},
+    Future, FutureExt, Sink, SinkExt,
+};
+use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio_util::sync::ReusableBoxFuture;
 
 use crate::{error::Error, ImmediateFrame};
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
 
-/// A waiting list handing out turns to interested participants in round-robin fashion.
-///
-/// The list is set up with a set of `n` participants labelled from `0..(n-1)` and no active
-/// participant. Any participant can attempt to acquire the lock by calling the `try_acquire`
-/// function.
-///
-/// If the lock is currently unavailable, the participant will be put in a wait queue and is
-/// guaranteed a turn "in order" at some point when it calls `try_acquire` again. If a participant
-/// has not registered interest in obtaining the lock their turn is skipped.
-///
-/// Once work has been completed, the lock must manually be released using the `end_turn`
-///
-/// This "lock" differs from `Mutex` in multiple ways:
-///
-/// * Mutable access required: Counterintuitively this lock needs to be wrapped in a `Mutex` to
-///   guarding access to its internals.
-/// * No notifications/waiting: There is no way to wait for the lock to become available, rather it
-///   is assumed participants get an external notification indication that the lock might now be
-///   available.
-/// * Advisory: No actual access control is enforced by the type system, rather it is assumed that
-///   clients are well behaved and respect the lock.
-///   (TODO: We can possibly put a ghost cell here to enforce it)
-/// * Fixed set of participants: The total set of participants must be specified in advance.
-#[derive(Debug)]
-struct RoundRobinAdvisoryLock {
-    /// The currently active lock holder.
-    active: Option<u8>,
-    /// Participants wanting to take a turn.
-    waiting: Vec<bool>,
-}
-
-impl RoundRobinAdvisoryLock {
-    /// Creates a new round robin advisory lock with the given number of participants.
-    pub fn new(num_participants: u8) -> Self {
-        let mut waiting = Vec::new();
-        waiting.resize(num_participants as usize, false);
-
-        Self {
-            active: None,
-            waiting,
-        }
-    }
-
-    /// Tries to take a turn on the wait list.
-    ///
-    /// If it is our turn, or if the wait list was empty, marks us as active and returns `true`.
-    /// Otherwise, marks `me` as wanting a turn and returns `false`.
-    ///
-    /// # Safety
-    ///
-    /// A participant MUST NOT give up on calling `try_acquire` once it has called it once, as the
-    /// lock will ultimately prevent any other participant from acquiring it while the interested is
-    /// registered.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `me` is not a participant in the initial set of participants.
-    fn try_acquire(&mut self, me: u8) -> bool {
-        debug_assert!(
-            self.waiting.len() as u8 > me,
-            "participant out of bounds in advisory lock"
-        );
-
-        if let Some(active) = self.active {
-            if active == me {
-                return true;
-            }
-
-            // Someone is already sending, mark us as interested.
-            self.waiting[me as usize] = true;
-            return false;
-        }
-
-        // If we reached this, no one was sending, mark us as active.
-        self.active = Some(me);
-        true
-    }
-
-    /// Finish taking a turn.
-    ///
-    /// This function must only be called if `try_take_turn` returned `true` and the wait has not
-    /// been modified in the meantime.
-    ///
-    /// # Panic
-    ///
-    /// Panics if the active turn was modified in the meantime.
-    fn release(&mut self, me: u8) {
-        assert_eq!(
-            self.active,
-            Some(me),
-            "tried to release unacquired advisory lock"
-        );
-
-        // We finished our turn, mark us as no longer interested.
-        self.waiting[me as usize] = false;
-
-        // Now determine the next slot in line.
-        for offset in 0..self.waiting.len() {
-            let idx = (me as usize + offset) % self.waiting.len();
-            if self.waiting[idx] {
-                self.active = Some(idx as u8);
-                return;
-            }
-        }
-
-        // We found no slot, so we're inactive.
-        self.active = None;
-    }
-}
-
 /// A frame multiplexer.
 ///
 /// Typically the multiplexer is not used directly, but used to spawn multiplexing handles.
 struct Multiplexer<S> {
-    wait_list: Mutex<RoundRobinAdvisoryLock>,
-    sink: Mutex<Option<S>>,
+    sink: Arc<Mutex<Option<S>>>,
 }
 
 impl<S> Multiplexer<S> {
     /// Create a handle for a specific multiplexer channel on this multiplexer.
-    ///
-    /// # Safety
-    ///
-    /// This function **must not** be called multiple times on the same `Multiplexer` with the same
-    /// `channel` value.
     pub fn get_channel_handle(self: Arc<Self>, channel: u8) -> MultiplexerHandle<S> {
         MultiplexerHandle {
             multiplexer: self.clone(),
             slot: channel,
+            lock_future: todo!(),
+            guard: None,
         }
     }
 }
+
+type SinkGuard<S> = OwnedMutexGuard<Option<S>>;
+
+trait FuseFuture: Future + FusedFuture + Send {}
+impl<T> FuseFuture for T where T: Future + FusedFuture + Send {}
+
+type BoxFusedFuture<'a, T> = Pin<Box<dyn FuseFuture<Output = T> + Send + 'a>>;
 
 struct MultiplexerHandle<S> {
     multiplexer: Arc<Multiplexer<S>>,
     slot: u8,
+    // TODO: We ideally want to reuse the alllocated memory here,
+    // mem::replace, then Box::Pin on it.
+
+    // TODO NEW IDEA: Maybe we can create the lock future right away, but never poll it? Then use
+    //                the `ReusableBoxFuture` and always create a new one right away? Need to check
+    //                source of `lock`.
+    lock_future: Box<dyn Future<Output = SinkGuard<S>> + Send + 'static>,
+    guard: Option<SinkGuard<S>>,
+}
+
+impl<S> MultiplexerHandle<S> {
+    fn assume_get_sink(&mut self) -> &mut S {
+        match self.guard {
+            Some(ref mut guard) => {
+                let mref = guard.as_mut().expect("TODO: guard disappeard");
+                mref
+            }
+            None => todo!("assumed sink, but no sink"),
+        }
+    }
 }
 
 impl<F, S> Sink<F> for MultiplexerHandle<S>
 where
-    S: Sink<ChannelPrefixedFrame<F>> + Unpin,
+    S: Sink<ChannelPrefixedFrame<F>> + Unpin + Send + 'static,
     F: Buf,
 {
     type Error = <S as Sink<ChannelPrefixedFrame<F>>>::Error;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Required invariant: For any channel there is only one handle, thus we are the only one
-        // writing to the `waiting[n]` atomic bool.
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let guard = match self.guard {
+            None => {
+                // We do not hold the lock yet. If there is no future to acquire it, create one.
+                if self.lock_fused {
+                    let new_fut = self.multiplexer.sink.clone().lock_owned();
 
-        // Try to grab a slot on the wait list (will put us into the queue if we don't get one).
-        let our_turn = self
-            .multiplexer
-            .wait_list
-            .lock()
-            .expect("TODO handle poisoning")
-            .try_acquire(self.slot);
+                    mem::replace(&mut self.lock_future, new_fut);
+                    let fut = self.multiplexer.sink.clone().lock_owned().fused().boxed();
+                    // TODO: mem::replace here?
+                    self.lock_future = fut;
+                }
 
-        // At this point, we no longer hold the `wait_list` lock.
+                let fut = &mut self.lock_future;
 
-        if !our_turn {
-            Poll::Pending
-        } else {
-            // We are now active, check if the sink is ready.
-            match *self.multiplexer.sink.lock().expect("TODO: Lock Poisoning") {
-                Some(ref mut sink_ref) => sink_ref.poll_ready_unpin(cx),
-                None => todo!("handle closed multiplexer"),
+                let guard = match fut.poll_unpin(cx) {
+                    Poll::Ready(guard) => {
+                        // Lock acquired. Store it and clear the future, so we don't poll it again.
+                        self.guard.insert(guard)
+                    }
+                    Poll::Pending => return Poll::Pending,
+                };
+
+                guard
             }
-        }
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
-        let prefixed = ImmediateFrame::from(self.slot).chain(item);
-
-        let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
-
-        match *guard {
-            Some(ref mut sink_ref) => sink_ref.start_send_unpin(prefixed),
-            None => todo!("handle closed multiplexer"),
-        }
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Obtain the flush result, then release the sink lock.
-        let flush_result = {
-            let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
-
-            match *guard {
-                Some(ref mut sink) => sink.poll_flush_unpin(cx),
-                None => todo!("TODO: MISSING SINK"),
-            }
+            Some(ref mut guard) => guard,
         };
 
-        match flush_result {
+        // Now that we hold the lock, poll the sink.
+        self.assume_get_sink().poll_ready_unpin(cx)
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+        let prefixed = ImmediateFrame::from(self.slot).chain(item);
+        self.assume_get_sink().start_send_unpin(prefixed)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // Obtain the flush result, then release the sink lock.
+        match self.assume_get_sink().poll_flush_unpin(cx) {
             Poll::Ready(Ok(())) => {
                 // Acquire wait list lock to update it.
-                self.multiplexer
-                    .wait_list
-                    .lock()
-                    .expect("TODO: Lock poisoning")
-                    .release(self.slot);
-
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(_)) => {
