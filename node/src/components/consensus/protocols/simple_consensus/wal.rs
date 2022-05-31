@@ -25,7 +25,7 @@ use super::RoundId;
 pub(super) enum Entry<C: Context> {
     SignedMessage(SignedMessage<C>),
     Proposal(Proposal<C>, RoundId),
-    Evidence(SignedMessage<C>, C::ValidatorId, Content<C>, C::Signature),
+    Evidence(SignedMessage<C>, Content<C>, C::Signature),
 }
 
 /// The messages are written to disk like:

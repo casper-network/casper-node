@@ -75,7 +75,6 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, event, info, warn, Level};
 
 use casper_types::{TimeDiff, Timestamp, U512};
@@ -195,11 +194,7 @@ where
     next_scheduled_update: Timestamp,
 }
 
-impl<C: Context + 'static> SimpleConsensus<C>
-where
-    C::ValidatorId: Serialize,
-    C::ValidatorId: for<'de> Deserialize<'de>,
-{
+impl<C: Context + 'static> SimpleConsensus<C> {
     /// Creates a new [`SimpleConsensus`] instance.
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -650,7 +645,6 @@ where
     ) -> ProtocolOutcomes<C> {
         if !self.record_entry(&Entry::Evidence(
             signed_msg.clone(),
-            validator_id.clone(),
             content2.clone(),
             signature2.clone(),
         )) {
@@ -1176,16 +1170,25 @@ where
                     }
                     Entry::Evidence(
                         conflicting_message,
-                        offending_validator,
                         conflicting_message_content,
                         conflicting_signature,
                     ) => {
+                        let validator_id = {
+                            if let Some(validator_id) =
+                                self.validators.id(conflicting_message.validator_idx)
+                            {
+                                validator_id.clone()
+                            } else {
+                                warn!(?conflicting_message.validator_idx, "No validator present at this index, despite holding conflicting messages for it in the WAL");
+                                continue;
+                            }
+                        };
                         // TODO we drop an FttExceeded message here, gotta make sure it is sent
                         // later if we drop it, otherwise we need to keep track of whether or not
                         // we saw any message like that during this loop.
                         let _ = self.handle_fault_no_wal(
                             conflicting_message,
-                            offending_validator,
+                            validator_id,
                             conflicting_message_content,
                             conflicting_signature,
                             now,
@@ -1781,8 +1784,6 @@ where
 impl<C> ConsensusProtocol<C> for SimpleConsensus<C>
 where
     C: Context + 'static,
-    C::ValidatorId: Serialize,
-    C::ValidatorId: for<'de> Deserialize<'de>,
 {
     fn handle_message(
         &mut self,
