@@ -61,10 +61,10 @@ impl Stream for Dechunker {
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         let mut dechunker_mut = self.as_mut();
-        let full_message = loop {
+        let full_message = {
             if dechunker_mut.chunks.is_empty() {
                 return Poll::Ready(None);
             }
@@ -86,7 +86,7 @@ impl Stream for Dechunker {
                         })
                         .for_each(|chunk_data| intermediate_buffer.extend(chunk_data));
                     dechunker_mut.chunks.drain(0..final_chunk_index + 1);
-                    break intermediate_buffer.freeze();
+                    intermediate_buffer.freeze()
                 }
                 None => return Poll::Pending,
             }
