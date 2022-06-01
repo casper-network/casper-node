@@ -1183,7 +1183,8 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
     // Flag set by a worker when it encounters an error.
     let abort = Arc::new(AtomicBool::new(false));
 
-    for block_height in 0..=ctx.config.max_parallel_block_fetches() as u64 {
+    // Enqueue all of the missing hashes.
+    for block_height in 0..ctx.trusted_block_header().height() {
         let block_hash = match ctx
             .effect_builder
             .get_block_hash_by_height_from_storage(block_height)
@@ -1223,25 +1224,18 @@ async fn fetch_block_worker(
         match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
             Ok(fetched_block) => {
                 trace!(?block_hash, "downloaded block and deploys");
-                ctx.metrics.chain_sync_blocks_synced.inc();
                 // We want to download the trie only when we know we have the block.
-                sync_trie_store(*fetched_block.block.state_root_hash(), ctx).await?;
-                // Offset the next block height by how much we can parallelize.
-                // This makes sure that we don't fetch the same block more than once across other
-                // workers.
-                let next_block_height =
-                    fetched_block.block.height() + ctx.config.max_parallel_block_fetches() as u64;
-                // No need to fetch beyond known trusted block.
-                if next_block_height < ctx.trusted_block_header().height() {
-                    let next_block_hash: Option<BlockHash> = ctx
-                        .effect_builder
-                        .get_block_hash_by_height_from_storage(next_block_height)
-                        .await;
-                    match next_block_hash {
-                        None => return Err(Error::NoSuchBlockHeight(next_block_height)),
-                        Some(hash) => queue.push_job((hash, next_block_height)),
-                    }
+                if let Err(error) =
+                    sync_trie_store(*fetched_block.block.state_root_hash(), ctx).await
+                {
+                    error!(
+                        ?error,
+                        ?block_hash,
+                        "failed to download trie with inifite retries"
+                    );
+                    return Err(error);
                 }
+                ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
                 // We're using `fetch_retry_forever` internally so we should never get
@@ -1250,14 +1244,15 @@ async fn fetch_block_worker(
                 error!(
                     ?err,
                     ?block_hash,
-                    "failed to download a block with infinite retries."
+                    "failed to download a block with infinite retries"
                 );
             }
         }
         if abort.load(atomic::Ordering::Relaxed) {
             return Ok(()); // Another task failed and sent an error.
         }
-        drop(job); // Make sure the job gets dropped only when the children are in the queue.
+        // Dropping job signals completion and notifiers waiters.
+        drop(job);
     }
     Ok(())
 }
