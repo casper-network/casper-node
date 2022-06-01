@@ -358,7 +358,7 @@ async fn fetch_and_store_block_header(
         });
     }
 
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for block but have no peers to query for the data.
@@ -389,7 +389,7 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for a deploy but have no peers to query for the data.
@@ -757,11 +757,21 @@ async fn sync_trie_store_worker(
 
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for a trie but have no peers to query for the data.
-    if let Ok(Some(_trie)) = ctx.effect_builder.get_trie_full(state_root_hash).await {
+    if ctx
+        .effect_builder
+        .get_trie_full(state_root_hash)
+        .await?
+        .is_some()
+        && ctx
+            .effect_builder
+            .find_missing_descendant_trie_keys(state_root_hash)
+            .await?
+            .is_empty()
+    {
         return Ok(());
     }
 
@@ -1438,10 +1448,6 @@ async fn retry_execution_with_approvals_from_peer(
         .await?)
 }
 
-/// Maximum number of times the node will try to download finalized approvals from a single peer in
-/// an attempt to find a set of approvals matching the block execution results.
-const APPROVAL_FETCH_RETRIES: usize = 2;
-
 async fn execute_blocks(
     most_recent_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
@@ -1512,16 +1518,15 @@ async fn execute_blocks(
             )
             .await?;
 
-        if block != *block_and_execution_effects.block() {
+        let mut blocks_match = block == *block_and_execution_effects.block();
+
+        while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            // Retry up to two times.
-            let mut success = false;
             for peer in ctx
                 .effect_builder
                 .get_fully_connected_non_joiner_peers()
                 .await
                 .into_iter()
-                .take(APPROVAL_FETCH_RETRIES)
             {
                 info!(block_hash=%block.hash(), "start - re-executing finalized block");
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
@@ -1534,8 +1539,8 @@ async fn execute_blocks(
                 )
                 .await?;
                 info!(block_hash=%block.hash(), "finish - re-executing finalized block");
-                if block == *block_and_execution_effects.block() {
-                    success = true;
+                blocks_match = block == *block_and_execution_effects.block();
+                if blocks_match {
                     break;
                 } else {
                     warn!(
@@ -1546,23 +1551,16 @@ async fn execute_blocks(
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                 }
             }
-            if success {
-                // matching now! store new approval sets for the deploys
-                for deploy in deploys.into_iter().chain(transfers.into_iter()) {
-                    ctx.effect_builder
-                        .store_finalized_approvals(
-                            *deploy.id(),
-                            FinalizedApprovals::new(deploy.approvals().clone()),
-                        )
-                        .await;
-                }
-            } else {
-                // didn't work again - give up
-                return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
-                    executed_block: Box::new(Block::from(block_and_execution_effects)),
-                    downloaded_block: Box::new(block.clone()),
-                });
-            }
+        }
+
+        // matching now! store new approval sets for the deploys
+        for deploy in deploys.into_iter().chain(transfers.into_iter()) {
+            ctx.effect_builder
+                .store_finalized_approvals(
+                    *deploy.id(),
+                    FinalizedApprovals::new(deploy.approvals().clone()),
+                )
+                .await;
         }
 
         most_recent_block_header = block.take_header();

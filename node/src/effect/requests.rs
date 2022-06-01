@@ -45,7 +45,7 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
-    effect::Responder,
+    effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
@@ -100,7 +100,7 @@ pub(crate) enum NetworkRequest<P> {
         respond_after_queueing: bool,
         /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
-        responder: Responder<()>,
+        auto_closing_responder: AutoClosingResponder<()>,
     },
     /// Send a message on the network to all peers.
     /// Note: This request is deprecated and should be phased out, as not every network
@@ -110,7 +110,7 @@ pub(crate) enum NetworkRequest<P> {
         payload: Box<P>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<()>,
+        auto_closing_responder: AutoClosingResponder<()>,
     },
     /// Gossip a message to a random subset of peers.
     Gossip {
@@ -123,7 +123,7 @@ pub(crate) enum NetworkRequest<P> {
         exclude: HashSet<NodeId>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<HashSet<NodeId>>,
+        auto_closing_responder: AutoClosingResponder<HashSet<NodeId>>,
     },
 }
 
@@ -140,27 +140,30 @@ impl<P> NetworkRequest<P> {
                 dest,
                 payload,
                 respond_after_queueing,
-                responder,
+                auto_closing_responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
                 respond_after_queueing,
-                responder,
+                auto_closing_responder,
             },
-            NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
+            NetworkRequest::Broadcast {
+                payload,
+                auto_closing_responder,
+            } => NetworkRequest::Broadcast {
                 payload: Box::new(wrap_payload(*payload)),
-                responder,
+                auto_closing_responder,
             },
             NetworkRequest::Gossip {
                 payload,
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             } => NetworkRequest::Gossip {
                 payload: Box::new(wrap_payload(*payload)),
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             },
         }
     }
