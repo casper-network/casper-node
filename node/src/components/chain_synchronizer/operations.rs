@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     mem,
     sync::{
-        atomic::{self, AtomicBool, AtomicI64, Ordering},
+        atomic::{self, AtomicBool, AtomicI64, AtomicU64, Ordering},
         Arc, RwLock,
     },
 };
@@ -1179,26 +1179,11 @@ async fn fetch_block_headers_batch(
 async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     info!("syncing blocks and deploys and state since Genesis");
 
-    let queue = Arc::new(WorkQueue::default());
-
-    // Flag set by a worker when it encounters an error.
-    let abort = Arc::new(AtomicBool::new(false));
-
-    // Enqueue all of the missing hashes.
-    for block_height in 0..ctx.trusted_block_header().height() {
-        let block_hash = match ctx
-            .effect_builder
-            .get_block_hash_by_height_from_storage(block_height)
-            .await
-        {
-            Some(hash) => hash,
-            None => return Err(Error::NoSuchBlockHeight(block_height)),
-        };
-        queue.push_job((block_hash, block_height));
-    }
+    // TODO: We could read the highest full block from store.
+    let latest_height_requested: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
     let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_block_fetches())
-        .map(|worker_id| fetch_block_worker(worker_id, abort.clone(), queue.clone(), ctx))
+        .map(|worker_id| fetch_block_worker(worker_id, latest_height_requested.clone(), ctx))
         .collect();
 
     while let Some(result) = workers.next().await {
@@ -1210,16 +1195,30 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
 
 async fn fetch_block_worker(
     worker_id: usize,
-    abort: Arc<AtomicBool>,
-    queue: Arc<WorkQueue<(BlockHash, u64)>>,
+    latest_height_requested: Arc<AtomicU64>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
-    while let Some(job) = queue.next_job().await {
-        let (block_hash, block_height) = *job.inner();
+    let trusted_block_height = ctx.trusted_block_header().height();
+    loop {
+        let next_block_height = latest_height_requested.fetch_add(1, Ordering::SeqCst);
+        if next_block_height >= trusted_block_height {
+            info!(%worker_id, ?next_block_height, ?trusted_block_height, "fetch-block worker finished");
+            return Ok(());
+        }
+
+        let block_hash = match ctx
+            .effect_builder
+            .get_block_hash_by_height_from_storage(next_block_height)
+            .await
+        {
+            Some(hash) => hash,
+            None => return Err(Error::NoSuchBlockHeight(next_block_height)),
+        };
+
         info!(
             worker_id,
             ?block_hash,
-            ?block_height,
+            ?next_block_height,
             "syncing block and deploys"
         );
         match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
@@ -1245,18 +1244,11 @@ async fn fetch_block_worker(
                 error!(
                     ?err,
                     ?block_hash,
-                    "failed to download a block with infinite retries"
+                    "failed to download block with infinite retries"
                 );
             }
         }
-        if abort.load(atomic::Ordering::Relaxed) {
-            return Ok(()); // Another task failed and sent an error.
-        }
-        // Dropping job signals completion and notifiers waiters.
-        drop(job);
     }
-    info!(%worker_id, "fetch-block worker finished");
-    Ok(())
 }
 
 /// Runs the chain synchronization task.
