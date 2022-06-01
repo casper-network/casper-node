@@ -4,7 +4,7 @@
 //! continuation byte, which is `0x00` if more chunks are following, `0xFF` if this is the frame's
 //! last chunk.
 
-use std::{num::NonZeroUsize, task::Poll};
+use std::{num::NonZeroUsize, pin::Pin, task::Poll};
 
 use bytes::{Buf, Bytes, BytesMut};
 use futures::Stream;
@@ -19,19 +19,23 @@ const MORE_CHUNKS: u8 = 0x00;
 /// Final chunk indicator.
 pub const FINAL_CHUNK: u8 = 0xFF;
 
-pub(crate) struct Dechunker {
-    chunks: Vec<Bytes>,
+pub(crate) struct Dechunker<R: Stream> {
+    stream: R,
+    buffer: Vec<Bytes>,
 }
 
-impl Dechunker {
+impl<R: Stream> Dechunker<R> {
     #[cfg(test)]
-    pub(crate) fn new(chunks: Vec<Bytes>) -> Self {
-        Self { chunks }
+    pub(crate) fn new(stream: R) -> Self {
+        Self {
+            stream,
+            buffer: vec![],
+        }
     }
 
     // If there's a full frame in the bufer, the index of the last chunk is returned.
     fn have_full_message(&self) -> Option<usize> {
-        self.chunks
+        self.buffer
             .iter()
             .enumerate()
             .find(|(_, chunk)| {
@@ -48,7 +52,7 @@ impl Dechunker {
     // If not possible, returns 0, indicating that the caller
     // needs to assume that the size of the next message is unknown.
     fn buffer_size_hint(&self, final_chunk_index: usize) -> usize {
-        let maybe_first_chunk = self.chunks.first();
+        let maybe_first_chunk = self.buffer.first();
         match maybe_first_chunk {
             Some(first_chunk) => first_chunk.len() * (final_chunk_index + 1),
             None => 0,
@@ -56,42 +60,47 @@ impl Dechunker {
     }
 }
 
-impl Stream for Dechunker {
+impl<R> Stream for Dechunker<R>
+where
+    R: Stream + Unpin,
+    R: Stream<Item = Bytes>,
+{
     type Item = Bytes;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
+        cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         let mut dechunker_mut = self.as_mut();
-        let full_message = {
-            if dechunker_mut.chunks.is_empty() {
-                return Poll::Ready(None);
-            }
-
+        let final_chunk_index = loop {
             match dechunker_mut.have_full_message() {
                 Some(final_chunk_index) => {
-                    let mut intermediate_buffer =
-                        BytesMut::with_capacity(dechunker_mut.buffer_size_hint(final_chunk_index));
-                    dechunker_mut
-                        .chunks
-                        .iter()
-                        .take(final_chunk_index + 1)
-                        .map(|chunk| {
-                            let maybe_split = chunk.split_first();
-                            match maybe_split {
-                                Some((_, chunk_data)) => chunk_data,
-                                None => panic!("encountered chunk with zero size"),
-                            }
-                        })
-                        .for_each(|chunk_data| intermediate_buffer.extend(chunk_data));
-                    dechunker_mut.chunks.drain(0..final_chunk_index + 1);
-                    intermediate_buffer.freeze()
+                    break final_chunk_index;
                 }
-                None => return Poll::Pending,
+                None => match Pin::new(&mut dechunker_mut.stream).poll_next(cx) {
+                    Poll::Ready(result) => match result {
+                        Some(chunk) => dechunker_mut.buffer.push(chunk),
+                        None => return Poll::Ready(None),
+                    },
+                    Poll::Pending => return Poll::Pending,
+                },
             }
         };
-        Poll::Ready(Some(full_message))
+
+        let mut intermediate_buffer =
+            BytesMut::with_capacity(dechunker_mut.buffer_size_hint(final_chunk_index));
+
+        dechunker_mut
+            .buffer
+            .iter()
+            .take(final_chunk_index + 1)
+            .map(|chunk| match chunk.split_first() {
+                Some((_, chunk_data)) => chunk_data,
+                None => panic!("encountered chunk with zero size"),
+            })
+            .for_each(|chunk_data| intermediate_buffer.extend(chunk_data));
+        dechunker_mut.buffer.drain(0..final_chunk_index + 1);
+        Poll::Ready(Some(intermediate_buffer.freeze()))
     }
 }
 

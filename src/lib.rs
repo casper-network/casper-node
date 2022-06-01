@@ -129,8 +129,7 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
         let expected = "ABCDEFGHIJKL";
 
-        let reader = Reader::new(stream);
-        let dechunker = Dechunker::new(reader.collect().await);
+        let dechunker = Dechunker::new(Reader::new(stream));
 
         let messages: Vec<_> = dechunker.collect().await;
         assert_eq!(
@@ -144,8 +143,7 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
         let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
 
-        let reader = Reader::new(stream);
-        let dechunker = Dechunker::new(reader.collect().await);
+        let dechunker = Dechunker::new(Reader::new(stream));
 
         let messages: Vec<_> = dechunker.collect().await;
         assert_eq!(expected, messages);

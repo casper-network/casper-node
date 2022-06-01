@@ -78,7 +78,7 @@ where
                                         .buffer
                                         .extend_from_slice(&intermediate_buffer[0..count])
                                 }
-                                Err(err) => panic!("error on poll_read(): {}", err),
+                                Err(err) => panic!("error on Reader::poll_read(): {}", err),
                             },
                             Poll::Pending => return Poll::Pending,
                         }
