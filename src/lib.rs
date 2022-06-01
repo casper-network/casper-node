@@ -74,6 +74,7 @@ pub(crate) mod tests {
     use futures::{future, stream, FutureExt, SinkExt, StreamExt};
 
     use crate::{
+        chunked::Dechunker,
         chunked::{chunk_frame, SingleChunk},
         error::Error,
         length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
@@ -126,10 +127,15 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn stream_to_message() {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
-        let expected = "ABCDEFGHIJ";
+        let expected = "ABCDEFGHIJKL";
 
         let reader = Reader::new(stream);
-        let frames: Vec<_> = reader.collect().await;
-        dbg!(&frames);
+        let dechunker = Dechunker::new(reader.collect().await);
+
+        let messages: Vec<_> = dechunker.collect().await;
+        assert_eq!(
+            expected,
+            messages.first().expect("should have at least one message")
+        );
     }
 }
