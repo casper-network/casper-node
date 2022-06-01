@@ -5,6 +5,8 @@ use futures::{AsyncRead, Stream};
 
 use crate::error::Error;
 
+const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
+
 pub(crate) struct Reader<R: AsyncRead> {
     stream: R,
     buffer: BytesMut,
@@ -21,8 +23,6 @@ impl<R: AsyncRead> Reader<R> {
 
     // If there's a full frame in the bufer, it's length is returned.
     fn have_full_frame(&self) -> Result<Option<usize>, Error> {
-        const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
-
         let bytes_in_buffer = self.buffer.remaining();
         if bytes_in_buffer < LENGTH_MARKER_SIZE {
             return Ok(None);
@@ -88,6 +88,9 @@ where
             }
         };
 
-        return Poll::Ready(Some(reader_mut.buffer.split_to(frame_length).freeze()));
+        let mut frame_data = reader_mut.buffer.split_to(frame_length);
+        let _ = frame_data.split_to(LENGTH_MARKER_SIZE);
+
+        Poll::Ready(Some(frame_data.freeze()))
     }
 }
