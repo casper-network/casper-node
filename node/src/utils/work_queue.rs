@@ -160,12 +160,9 @@ impl<T> WorkQueue<T> {
     /// Creates a streaming consumer of the work queue.
     #[inline]
     pub fn to_stream(self: Arc<Self>) -> impl Stream<Item = JobHandle<T>> {
-        stream::unfold((), move |_| {
-            let local_ref = self.clone();
-            async move {
-                let next = local_ref.next_job().await;
-                next.map(|handle| (handle, ()))
-            }
+        stream::unfold(self, |work_queue| async move {
+            let next = work_queue.next_job().await;
+            next.map(|handle| (handle, work_queue))
         })
     }
 
