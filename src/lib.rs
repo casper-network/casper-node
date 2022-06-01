@@ -3,6 +3,7 @@ pub mod chunked;
 pub mod error;
 pub mod length_prefixed;
 pub mod mux;
+pub mod reader;
 
 use bytes::Buf;
 
@@ -70,12 +71,13 @@ pub(crate) mod tests {
     use std::io::Read;
 
     use bytes::{Buf, Bytes};
-    use futures::{future, stream, FutureExt, SinkExt};
+    use futures::{future, stream, FutureExt, SinkExt, StreamExt};
 
     use crate::{
         chunked::{chunk_frame, SingleChunk},
         error::Error,
         length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
+        reader::Reader,
     };
 
     /// Collects everything inside a `Buf` into a `Vec`.
@@ -119,5 +121,15 @@ pub(crate) mod tests {
             chunks,
             vec![b"\x06\x00\x00QRSTU".to_vec(), b"\x02\x00\xffV".to_vec()]
         )
+    }
+
+    #[tokio::test]
+    async fn stream_to_message() {
+        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
+        let expected = "ABCDEFGHIJ";
+
+        let reader = Reader::new(stream);
+        let frames: Vec<_> = reader.collect().await;
+        dbg!(&frames);
     }
 }
