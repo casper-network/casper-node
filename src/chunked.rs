@@ -43,6 +43,17 @@ impl Dechunker {
             })
             .map(|(index, _)| index)
     }
+
+    // Tries to calculate the expected size of the next message.
+    // If not possible, returns 0, indicating that the caller
+    // needs to assume that the size of the next message is unknown.
+    fn buffer_size_hint(&self, final_chunk_index: usize) -> usize {
+        let maybe_first_chunk = self.chunks.first();
+        match maybe_first_chunk {
+            Some(first_chunk) => first_chunk.len() * (final_chunk_index + 1),
+            None => 0,
+        }
+    }
 }
 
 impl Stream for Dechunker {
@@ -60,8 +71,8 @@ impl Stream for Dechunker {
 
             match dechunker_mut.have_full_message() {
                 Some(final_chunk_index) => {
-                    // let mut intermediate_buffer = BytesMut::with_capacity("we're able to precalculate size");
-                    let mut intermediate_buffer = BytesMut::new();
+                    let mut intermediate_buffer =
+                        BytesMut::with_capacity(dechunker_mut.buffer_size_hint(final_chunk_index));
                     dechunker_mut
                         .chunks
                         .iter()
