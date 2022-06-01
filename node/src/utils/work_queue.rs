@@ -140,7 +140,7 @@ impl<T> WorkQueue<T> {
             // Note: Any notification sent while executing this segment (after the guard has been
             // dropped, but before `waiting.await` has been entered) will still be picked up by
             // `waiting.await`, as the call to `notified()` marks the beginning of the waiting
-            // period, not `waiting.await`.
+            // period, not `waiting.await`. See `tests::notification_assumption_holds`.
 
             // After freeing the lock, wait for a new job to arrive or be finished.
             waiting.await;
@@ -221,12 +221,33 @@ mod tests {
         time::Duration,
     };
 
-    use futures::StreamExt;
+    use futures::{FutureExt, StreamExt};
+    use tokio::sync::Notify;
 
     use super::WorkQueue;
 
     #[derive(Debug)]
     struct TestJob(u32);
+
+    // Verify that the assumption made about `Notification` -- namely that a call to `notified()` is
+    // enough to "register" the waiter -- holds.
+    #[test]
+    fn notification_assumption_holds() {
+        let not = Notify::new();
+
+        // First attempt to await a notification, should return pending.
+        assert!(not.notified().now_or_never().is_none());
+
+        // Second, we notify, then try notification again. Should also return pending, as we were
+        // "not around" when the notification happened.
+        not.notify_waiters();
+        assert!(not.notified().now_or_never().is_none());
+
+        // Finally, we "register" for notification beforehand.
+        let waiter = not.notified();
+        not.notify_waiters();
+        assert!(waiter.now_or_never().is_some());
+    }
 
     /// Process a job, sleeping a short amout of time on every 5th job.
     async fn job_worker_simple(queue: Arc<WorkQueue<TestJob>>, sum: Arc<AtomicU32>) {
