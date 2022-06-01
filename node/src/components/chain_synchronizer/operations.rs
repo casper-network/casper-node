@@ -1254,6 +1254,7 @@ async fn fetch_block_worker(
         // Dropping job signals completion and notifiers waiters.
         drop(job);
     }
+    info!(%worker_id, "fetch-block worker finished");
     Ok(())
 }
 
