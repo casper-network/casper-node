@@ -1197,16 +1197,11 @@ impl StorageInner {
                 block_header,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
                 let block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
-                match self.put_block_header(&mut txn, *block_header) {
-                    Ok(result) => {
-                        txn.commit()?;
-                        responder.respond(result).ignore()
-                    }
+                match self.put_block_headers(vec![*block_header]) {
+                    Ok(result) => responder.respond(result).ignore(),
                     Err(err) => {
                         error!(?err, ?block_header_hash, "error when storing block header");
-                        txn.abort();
                         return Err(err);
                     }
                 }
@@ -1214,26 +1209,9 @@ impl StorageInner {
             StorageRequest::PutHeadersBatch {
                 block_headers,
                 responder,
-            } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                let mut result = false;
-                for block_header in block_headers.into_iter() {
-                    let block_header_hash =
-                        block_header.hash(self.verifiable_chunked_hash_activation);
-                    match self.put_block_header(&mut txn, block_header) {
-                        Ok(single_result) => {
-                            result = result && single_result;
-                        }
-                        Err(err) => {
-                            error!(?err, ?block_header_hash, "error when storing block header");
-                            txn.abort();
-                            return Err(err);
-                        }
-                    }
-                }
-                txn.commit()?;
-                responder.respond(result).ignore()
-            }
+            } => responder
+                .respond(self.put_block_headers(block_headers)?)
+                .ignore(),
             StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
                 self.update_lowest_available_block_height(height)?;
                 responder.respond(()).ignore()
@@ -1673,28 +1651,44 @@ impl StorageInner {
         indices.block_height_index.contains_key(&block_height)
     }
 
-    /// Puts block header to storage and updates the indices.
-    ///
-    /// Returns boolean indicating whether value stored overwrote previous one or error.
-    fn put_block_header(
+    /// Stores block headers in the db and, if successful, updates the in-memory indices.
+    /// Returns an error on failure or a boolean indicating whether any of the block headers were
+    /// previously known.
+    fn put_block_headers(
         &self,
-        tx: &mut RwTransaction,
-        block_header: BlockHeader,
+        block_headers: Vec<BlockHeader>,
     ) -> Result<bool, FatalStorageError> {
-        let result = tx.put_value(
-            self.block_header_db,
-            &block_header.hash(self.verifiable_chunked_hash_activation),
-            &block_header,
-            false,
-        )?;
+        let mut txn = self.env.begin_rw_txn()?;
+        let mut result = false;
 
+        for block_header in &block_headers {
+            let block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
+            match txn.put_value(
+                self.block_header_db,
+                &block_header_hash,
+                block_header,
+                false,
+            ) {
+                Ok(single_result) => {
+                    result = result && single_result;
+                }
+                Err(err) => {
+                    error!(?err, ?block_header_hash, "error when storing block header");
+                    txn.abort();
+                    return Err(err.into());
+                }
+            }
+        }
+        txn.commit()?;
+        // Update the indices if and only if we wrote to storage correctly.
         let mut indices = self.indices.write()?;
-        insert_to_block_header_indices(
-            &mut indices,
-            &block_header,
-            self.verifiable_chunked_hash_activation,
-        )?;
-
+        for block_header in &block_headers {
+            insert_to_block_header_indices(
+                &mut indices,
+                block_header,
+                self.verifiable_chunked_hash_activation,
+            )?;
+        }
         Ok(result)
     }
 
