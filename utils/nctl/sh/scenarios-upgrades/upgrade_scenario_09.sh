@@ -11,7 +11,8 @@
 # Step 06: Await 1 era.
 # Step 07: Stage node-6 with old trusted hash.
 # Step 08: Verify that node-6 successfully syncs.
-# Step 09: Terminate.
+# Step 09: Run Health Checks
+# Step 10: Terminate.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -53,6 +54,7 @@ function _main()
     _step_07 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_08 '6'
     _step_09
+    _step_10
 }
 
 # Step 01: Start network from pre-built stage.
@@ -226,10 +228,24 @@ function _step_08()
     done
 }
 
-# Step 09: Terminate.
+# Step 09: Run NCTL health checks
 function _step_09()
 {
-    log_step_upgrades 9 "upgrade_scenario_09 successful - tidying up"
+    # restarts=5 - Nodes that upgrade
+    log_step_upgrades 9 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=5 \
+            ejections=0
+}
+
+# Step 10: Terminate.
+function _step_10()
+{
+    log_step_upgrades 10 "upgrade_scenario_09 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
