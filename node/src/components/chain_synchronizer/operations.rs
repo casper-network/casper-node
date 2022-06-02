@@ -751,7 +751,6 @@ async fn sync_trie_store_worker(
         }
         drop(job); // Make sure the job gets dropped only when the children are in the queue.
     }
-    info!(%worker_id, "sync-trie worker finished");
     Ok(())
 }
 
