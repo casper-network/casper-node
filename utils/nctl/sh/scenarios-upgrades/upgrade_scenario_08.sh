@@ -41,6 +41,7 @@ function _main()
     _step_05 "6"
     _step_06 "6"
     _step_07
+    _step_08
 }
 
 # Step 01: Start network from pre-built stage.
@@ -128,11 +129,23 @@ function _step_06()
     fi
 }
 
-
-# Step 07: Terminate.
+# Step 07: Run NCTL health checks
 function _step_07()
 {
-    log_step_upgrades 7 "test successful - tidying up"
+    log_step_upgrades 7 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=0 \
+            ejections=0
+}
+
+# Step 08: Terminate.
+function _step_08()
+{
+    log_step_upgrades 8 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
