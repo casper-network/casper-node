@@ -1113,6 +1113,7 @@ impl Item for BlockHeaderWithMetadata {
         self.block_header.height()
     }
 }
+
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 /// ID identifying a request for a batch of block headers.
 pub struct BlockHeadersBatchId {
@@ -1656,6 +1657,24 @@ impl Display for BlockSignatures {
             self.era_id,
             self.proofs.len()
         )
+    }
+}
+
+impl Item for BlockSignatures {
+    type Id = BlockHash;
+    type ValidationError = crypto::Error;
+    const TAG: Tag = Tag::FinalitySignaturesByHash;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.block_hash
     }
 }
 

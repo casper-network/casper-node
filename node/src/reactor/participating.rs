@@ -1256,6 +1256,13 @@ impl reactor::Reactor for Reactor {
                         );
                         return Effects::new();
                     }
+                    NetResponse::FinalitySignatures(_) => {
+                        error!(
+                            ?sender,
+                            "cannot handle get response for finality-signatures",
+                        );
+                        return Effects::new();
+                    }
                 };
 
                 self.dispatch_event(effect_builder, rng, event)

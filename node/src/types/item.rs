@@ -52,6 +52,8 @@ pub enum Tag {
     BlockAndDeploysByHash,
     /// A batch of block headers requested by their lower and upper height indices.
     BlockHeaderBatch,
+    /// Finality signatures for a block requested by the block's hash.
+    FinalitySignaturesByHash,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

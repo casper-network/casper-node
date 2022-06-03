@@ -1096,6 +1096,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested sufficient signatures for a given block hash.
+    pub(crate) async fn get_sufficient_signatures_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSufficientBlockSignatures {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts a block header to storage.
     pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
     where

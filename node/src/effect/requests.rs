@@ -441,6 +441,13 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<Option<BlockSignatures>>,
     },
+    /// Get sufficient finality signatures for a Block hash.
+    GetSufficientBlockSignatures {
+        /// The hash for the request
+        block_hash: BlockHash,
+        /// Responder to call with the result.
+        responder: Responder<Option<BlockSignatures>>,
+    },
     /// Store finality signatures.
     PutBlockSignatures {
         /// Signatures that are to be stored.
@@ -576,6 +583,13 @@ impl Display for StorageRequest {
                 write!(
                     formatter,
                     "get finality signatures for block hash {}",
+                    block_hash
+                )
+            }
+            StorageRequest::GetSufficientBlockSignatures { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get sufficient finality signatures for block hash {}",
                     block_hash
                 )
             }

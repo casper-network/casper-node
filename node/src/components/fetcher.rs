@@ -23,8 +23,8 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockWithMetadata, Deploy, DeployHash, DeployWithFinalizedApprovals,
-        FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -513,6 +513,41 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
         effect_builder
             .get_block_header_and_sufficient_finality_signatures_by_height_from_storage(id)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result),
+                responder,
+            })
+    }
+}
+
+impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockSignatures>>>> {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockSignatures>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockHash,
+        peer: NodeId,
+        responder: FetchResponder<BlockSignatures>,
+    ) -> Effects<Event<BlockSignatures>> {
+        effect_builder
+            .get_sufficient_signatures_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
