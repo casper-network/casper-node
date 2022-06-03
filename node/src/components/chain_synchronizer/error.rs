@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use serde::Serialize;
 use thiserror::Error;
-use tokio::task::JoinError;
+use tokio::{sync::AcquireError, task::JoinError};
 
 use casper_execution_engine::{
     core::{engine_state, engine_state::GetEraValidatorsError},
@@ -147,6 +147,14 @@ pub(crate) enum Error {
         #[from]
         #[serde(skip_serializing)]
         FetchBlockHeadersBatchError,
+    ),
+
+    /// Semaphore closed unexpectedly.
+    #[error(transparent)]
+    SemaphoreError(
+        #[from]
+        #[serde(skip_serializing)]
+        AcquireError,
     ),
 }
 

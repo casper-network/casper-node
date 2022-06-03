@@ -16,6 +16,7 @@ use futures::{
 };
 use prometheus::IntGauge;
 use quanta::Instant;
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
@@ -80,6 +81,7 @@ struct ChainSyncContext<'a> {
     filter_count: AtomicI64,
     /// A range of blocks for which we already have all required data stored locally.
     locally_available_block_range_on_start: AvailableBlockRange,
+    trie_fetch_limit: Semaphore,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -97,6 +99,7 @@ impl<'a> ChainSyncContext<'a> {
             bad_peer_list: RwLock::new(VecDeque::new()),
             filter_count: AtomicI64::new(0),
             locally_available_block_range_on_start,
+            trie_fetch_limit: Semaphore::new(config.max_parallel_trie_fetches()),
         }
     }
 
@@ -734,6 +737,15 @@ async fn sync_trie_store_worker(
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     while let Some(job) = queue.next_job().await {
+        let permit = match ctx.trie_fetch_limit.acquire().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                error!(?worker_id, ?job, "semaphore closed unexpectedly");
+                // We can't fetch any more tries after this.
+                drop(job);
+                return Err(Error::SemaphoreError(error));
+            }
+        };
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
         let child_jobs = fetch_and_store_trie(*job.inner(), ctx)
             .await
@@ -750,6 +762,7 @@ async fn sync_trie_store_worker(
             queue.push_job(child_job);
         }
         drop(job); // Make sure the job gets dropped only when the children are in the queue.
+        drop(permit); // Drop permit to allow other workers to acquire it.
     }
     Ok(())
 }
