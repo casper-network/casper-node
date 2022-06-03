@@ -78,7 +78,6 @@ where
                             Poll::Ready(result) => match result {
                                 Ok(bytes_read) => {
                                     buffer.truncate(start + bytes_read);
-                                    dbg!(&buffer);
 
                                     // For testing purposes assume that when the stream is empty
                                     // we finish processing. In production, we'll keep waiting
@@ -97,5 +96,28 @@ where
                 Err(err) => panic!("length_delimited_frame() failed: {}", err),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::{FutureExt, StreamExt};
+
+    use crate::frame_reader::FrameReader;
+
+    #[test]
+    fn produces_fragments_from_stream() {
+        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x02\x00\xffM"[..];
+        let expected = vec![
+            b"\x00ABCDE".to_vec(),
+            b"\x00FGHIJ".to_vec(),
+            b"\xffKL".to_vec(),
+            b"\xffM".to_vec(),
+        ];
+
+        let dechunker = FrameReader::new(stream);
+
+        let messages: Vec<_> = dechunker.collect().now_or_never().unwrap();
+        assert_eq!(expected, messages);
     }
 }
