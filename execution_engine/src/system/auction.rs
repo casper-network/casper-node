@@ -69,8 +69,8 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512, ApiError> {
         if !self.auction_bids_allowed() {
-            // Validation set rotation is disabled on private chains and we should not allow new
-            // bids to come in.
+            // Validation set rotation might be disabled on some private chains and we should not
+            // allow new bids to come in.
             return Err(Error::AuctionBidsDisabled.into());
         }
 
@@ -220,8 +220,8 @@ pub trait Auction:
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.auction_bids_allowed() {
-            // Validation set rotation is disabled on private chains and we should not allow new
-            // bids to come in.
+            // Validation set rotation might be disabled on some private chains and we should not
+            // allow new bids to come in.
             return Err(Error::AuctionBidsDisabled.into());
         }
         let provided_account_hash =
@@ -542,7 +542,7 @@ pub trait Auction:
         match self.fee_handling() {
             FeeHandling::PayToProposer => {}
             FeeHandling::Accumulate => {
-                let administrative_accounts = self.administrative_accounts();
+                let administrative_accounts = self.administrative_accounts().clone();
                 let accumulation_purse = self.get_accumulation_purse()?;
                 let accumulated_balance = self.get_balance(accumulation_purse)?.unwrap_or_default();
 
@@ -550,10 +550,9 @@ pub trait Auction:
                 // rewards.
                 let reward_recipients = U512::from(administrative_accounts.len());
                 if let Some(reward_amount) = accumulated_balance.checked_div(reward_recipients) {
-                    for admin in administrative_accounts {
+                    for target in administrative_accounts {
                         // Round the amounts down and leave the dust amount in the accumulation
                         // purse.
-                        let target = admin.public_key().to_account_hash();
                         self.mint_transfer_from_purse_to_account(
                             accumulation_purse,
                             target,
@@ -574,11 +573,6 @@ pub trait Auction:
 
         for (public_key, reward_factor) in reward_factors {
             if reward_factor == 0 {
-                // Consensus can be configured to always provide 0 in rewards for each validator.
-                // If that's the case we know we're running as a private chain and we don't need to
-                // compute anything and distribute tokens.
-                // So we will just short circuit here and add a seigniorage allocation with 0
-                // because consensus needs this data (but doesn't care about the stakes)
                 let allocation = SeigniorageAllocation::validator(public_key.clone(), U512::zero());
                 seigniorage_allocations.push(allocation);
                 continue;
@@ -587,9 +581,8 @@ pub trait Auction:
                 .get(&public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
-            let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
-            if total_stake.is_zero() {
-                // TODO: error?
+            let current_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
+            if current_stake.is_zero() {
                 continue;
             }
 
@@ -609,7 +602,8 @@ pub trait Auction:
                     U512::from(*recipient.delegation_rate()),
                     U512::from(DELEGATION_RATE_DENOMINATOR),
                 );
-                let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
+                let reward_multiplier: Ratio<U512> =
+                    Ratio::new(delegator_total_stake, current_stake);
                 let delegator_reward: Ratio<U512> = total_reward
                     .checked_mul(&reward_multiplier)
                     .ok_or(Error::ArithmeticOverflow)?;

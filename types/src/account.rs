@@ -229,6 +229,20 @@ impl Account {
         Ok(())
     }
 
+    /// Sets action thresholds with provided total weight of keys.
+    pub fn set_action_thresholds_with_total_weight(
+        &mut self,
+        total_weight: Weight,
+        action_type: ActionType,
+        weight: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        if weight > total_weight {
+            return Err(SetThresholdFailure::InsufficientTotalWeight);
+        }
+        self.action_thresholds.set_threshold(action_type, weight)?;
+        Ok(())
+    }
+
     /// Checks whether all authorization keys are associated with this account.
     pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
         !authorization_keys.is_empty()

@@ -1,11 +1,11 @@
 [package]
-name = "control-management"
+name = "disable-contract"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "control_management"
+name = "disable_contract"
 path = "src/main.rs"
 bench = false
 doctest = false

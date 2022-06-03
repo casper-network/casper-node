@@ -173,7 +173,7 @@ pub enum Error {
     #[error("Contract is disabled")]
     DisabledContract(ContractHash),
     /// Failed to transfer tokens on a private chain.
-    #[error("Failed to transfer tokens on a private chain")]
+    #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
 }
 

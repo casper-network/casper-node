@@ -10,7 +10,7 @@ use casper_types::{
     CLTyped, EraId, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
-use crate::core::engine_state::{engine_config::FeeHandling, genesis::AdministratorAccount};
+use crate::core::engine_state::engine_config::FeeHandling;
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -36,7 +36,7 @@ pub trait RuntimeProvider {
     fn fee_handling(&self) -> FeeHandling;
 
     /// Returns list of administrative accounts.
-    fn administrative_accounts(&self) -> Vec<AdministratorAccount>;
+    fn administrative_accounts(&self) -> &BTreeSet<AccountHash>;
 }
 
 /// Provides functionality of a contract storage.

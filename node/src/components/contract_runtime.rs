@@ -7,7 +7,7 @@ mod operations;
 mod types;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Debug, Display, Formatter},
     path::Path,
     sync::{Arc, Mutex},
@@ -27,7 +27,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         engine_config::{FeeHandling, RefundHandling},
-        genesis::{AdministratorAccount, GenesisError},
+        genesis::GenesisError,
         ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess, GetEraValidatorsError,
         GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
@@ -41,7 +41,7 @@ use casper_execution_engine::{
 };
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion};
+use casper_types::{account::AccountHash, bytesrepr::Bytes, EraId, ProtocolVersion};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -596,7 +596,7 @@ impl ContractRuntime {
         strict_argument_checking: bool,
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
-        administrative_accounts: Vec<AdministratorAccount>,
+        administrative_accounts: BTreeSet<AccountHash>,
         allow_auction_bids: bool,
         allow_unrestricted_transfers: bool,
         refund_handling: RefundHandling,

@@ -1,10 +1,12 @@
-use casper_execution_engine::core::engine_state::genesis::AdministratorAccount;
+use std::collections::BTreeSet;
+
 use casper_types::{
+    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     TimeDiff,
 };
 #[cfg(test)]
-use casper_types::{testing::TestRng, Motes, PublicKey};
+use casper_types::{testing::TestRng, PublicKey};
 
 use datasize::DataSize;
 use num::rational::Ratio;
@@ -50,8 +52,8 @@ pub struct CoreConfig {
     /// Allows unrestricted transfers between users.
     pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are valid option for for a private chain only.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) administrative_accounts: Vec<AdministratorAccount>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub(crate) administrators: BTreeSet<AccountHash>, // todo: PublicKey
     /// Refund handling.
     pub(crate) refund_handling: RefundHandlingConfig,
     /// Fee handling.
@@ -78,8 +80,8 @@ impl CoreConfig {
         let strict_argument_checking = rng.gen();
         let allow_auction_bids = rng.gen();
         let allow_unrestricted_transfers = rng.gen();
-        let administrative_accounts = (0..rng.gen_range(0..=10u32))
-            .map(|_| AdministratorAccount::new(PublicKey::random(rng), Motes::new(rng.gen())))
+        let administrators = (0..rng.gen_range(0..=10u32))
+            .map(|_| PublicKey::random(rng).to_account_hash())
             .collect();
         let refund_handling = {
             let numer = rng.gen_range(0..=100);
@@ -106,7 +108,7 @@ impl CoreConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             allow_auction_bids,
-            administrative_accounts,
+            administrators,
             allow_unrestricted_transfers,
             refund_handling,
             fee_handling,
@@ -132,7 +134,7 @@ impl ToBytes for CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             allow_unrestricted_transfers,
-            administrative_accounts,
+            administrators,
             refund_handling,
             fee_handling,
         } = self;
@@ -149,7 +151,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(strict_argument_checking.to_bytes()?);
         buffer.extend(allow_auction_bids.to_bytes()?);
         buffer.extend(allow_unrestricted_transfers.to_bytes()?);
-        buffer.extend(administrative_accounts.to_bytes()?);
+        buffer.extend(administrators.to_bytes()?);
         buffer.extend(refund_handling.to_bytes()?);
         buffer.extend(fee_handling.to_bytes()?);
         Ok(buffer)
@@ -170,7 +172,7 @@ impl ToBytes for CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             allow_unrestricted_transfers,
-            administrative_accounts,
+            administrators: administrative_accounts,
             refund_handling,
             fee_handling,
         } = self;
@@ -225,7 +227,7 @@ impl FromBytes for CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             allow_unrestricted_transfers,
-            administrative_accounts,
+            administrators: administrative_accounts,
             refund_handling,
             fee_handling,
         };

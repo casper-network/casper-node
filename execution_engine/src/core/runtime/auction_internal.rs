@@ -14,10 +14,7 @@ use casper_types::{
 
 use super::Runtime;
 use crate::{
-    core::{
-        engine_state::{engine_config::FeeHandling, genesis::AdministratorAccount},
-        execution,
-    },
+    core::{engine_state::engine_config::FeeHandling, execution},
     storage::global_state::StateReader,
     system::auction::{
         providers::{
@@ -150,7 +147,7 @@ where
         self.config.fee_handling()
     }
 
-    fn administrative_accounts(&self) -> Vec<AdministratorAccount> {
+    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
         self.config.administrative_accounts()
     }
 }

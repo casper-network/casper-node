@@ -57,7 +57,6 @@ pub(crate) enum FunctionIndex {
     DictionaryPutFuncIndex,
     LoadCallStack,
     LoadAuthorizationKeys,
-    ControlManagementFuncIndex,
     RandomBytes,
 }
 

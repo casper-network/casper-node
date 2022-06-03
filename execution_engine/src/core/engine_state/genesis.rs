@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::{
-    account::{AccountHash, AddKeyFailure},
+    account::{Account, AccountHash, AddKeyFailure},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::{
@@ -42,9 +42,7 @@ use crate::{
         execution::AddressGenerator,
         tracking_copy::TrackingCopy,
     },
-    shared::{
-        account, newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
 };
 #[cfg(test)]
@@ -159,7 +157,7 @@ pub struct DelegatorAccount {
     delegated_amount: Motes,
 }
 
-/// Special account in the system used for private chains.
+/// Special account in the system that is useful only for some private chains.
 #[derive(DataSize, Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct AdministratorAccount {
     public_key: PublicKey,
@@ -252,7 +250,7 @@ pub enum GenesisAccount {
     Delegator(DelegatorAccount),
     /// An administrative account in the genesis process.
     ///
-    /// This variant is valid only for private chains.
+    /// This variant makes sense for some private chains.
     Administrator(AdministratorAccount),
 }
 
@@ -898,7 +896,7 @@ pub enum GenesisError {
     MissingChainspecRegistryEntry,
     /// Duplicated administrator entry.
     ///
-    /// This error can occur only on private chains.
+    /// This error can occur only on some private chains.
     DuplicatedAdministratorEntry,
     /// Error adding administrator account.
     AddAdministratorAccount(AddKeyFailure),
@@ -1360,10 +1358,6 @@ where
         Ok(standard_payment_hash)
     }
 
-    fn is_private_chain(&self) -> bool {
-        self.exec_config.administrative_accounts().next().is_some()
-    }
-
     pub(crate) fn create_accounts(
         &self,
         total_supply_key: Key,
@@ -1376,10 +1370,10 @@ where
             ret
         };
 
-        if self.is_private_chain()
-            && self
-                .exec_config
-                .administrative_accounts()
+        let mut administrative_accounts = self.exec_config.administrative_accounts().peekable();
+
+        if administrative_accounts.peek().is_some()
+            && administrative_accounts
                 .duplicates_by(|admin| &admin.public_key)
                 .next()
                 .is_some()
@@ -1394,14 +1388,21 @@ where
         for account in accounts.iter() {
             let account_hash = account.account_hash();
             let main_purse = match account {
-                GenesisAccount::System if self.is_private_chain() => payment_purse_uref,
+                GenesisAccount::System
+                    if self.exec_config.administrative_accounts().next().is_some() =>
+                {
+                    payment_purse_uref
+                }
                 _ => self.create_purse(account.balance().value())?,
             };
             total_supply += account.balance().value();
 
             let key = Key::Account(account_hash);
 
-            let account = account::create_account(account_hash, main_purse);
+            let account = {
+                let named_keys = NamedKeys::default();
+                Account::create(account_hash, named_keys, main_purse)
+            };
             let stored_value = StoredValue::Account(account);
             self.tracking_copy.borrow_mut().write(key, stored_value);
         }

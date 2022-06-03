@@ -84,12 +84,7 @@ use crate::{
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{
-        account::{self, SYSTEM_ACCOUNT_ADDRESS},
-        additive_map::AdditiveMap,
-        newtypes::CorrelationId,
-        transform::Transform,
-    },
+    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
@@ -307,40 +302,6 @@ where
                 ));
             }
         };
-
-        match (
-            self.config.is_private_chain(),
-            upgrade_config.administrative_accounts(),
-        ) {
-            (true, Some(administrative_accounts)) => {
-                if administrative_accounts.is_empty() {
-                    // Specifying empty vector here would transfer engine state into a public chain.
-                    return Err(Error::ProtocolUpgrade(
-                        ProtocolUpgradeError::FailedToChangeChainMode,
-                    ));
-                }
-                // private -> private = Update admins
-                self.config
-                    .set_administrative_accounts(administrative_accounts.clone());
-            }
-            (false, Some(_)) => {
-                // public -> private
-                error!("Unable to change public chain into a private chain");
-                return Err(Error::ProtocolUpgrade(
-                    ProtocolUpgradeError::FailedToChangeChainMode,
-                ));
-            }
-            (true, None) => {
-                // private -> public
-                error!("Unable to change private chain into a public chain");
-                return Err(Error::ProtocolUpgrade(
-                    ProtocolUpgradeError::FailedToChangeChainMode,
-                ));
-            }
-            (false, None) => {
-                // public -> public Nothing to do
-            }
-        }
 
         let mint_hash = registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
@@ -589,6 +550,13 @@ where
             }
         };
 
+        let admin_set = self.config().administrative_accounts();
+
+        if !admin_set.is_empty() && admin_set.intersection(authorization_keys).next().is_some() {
+            // Exit early if there's at least a single signature coming from an admin.
+            return Ok(account);
+        }
+
         // Authorize using provided authorization keys
         if !account.can_authorize(authorization_keys) {
             return Err(error::Error::Authorization);
@@ -661,7 +629,7 @@ where
 
         let system_account = match tracking_copy
             .borrow_mut()
-            .read_account(correlation_id, *SYSTEM_ACCOUNT_ADDRESS)
+            .read_account(correlation_id, PublicKey::System.to_account_hash())
         {
             Ok(account) => account,
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -814,8 +782,7 @@ where
             self.config.allow_unrestricted_transfers(),
             self.config.is_account_administrator(&account_hash),
         ) {
-            // Under private chain operation mode we need to ensure that source or target has to be
-            // admin.
+            // We need to make sure that source or target has to be admin.
             match transfer_target_mode {
                 TransferTargetMode::ExistingAccount {
                     target_account_hash,
@@ -827,7 +794,7 @@ where
                     let is_target_admin = self
                         .config
                         .is_account_administrator(&target_account_hash)
-                        .expect("is_account_administrator() returns Some(_) on a private chain");
+                        .expect("is_account_administrator() returned Some(_) earlier in the flow");
 
                     if !is_source_admin && !is_target_admin {
                         // Transferring from normal account to a purse doesn't work.
@@ -874,7 +841,10 @@ where
                     );
                 match maybe_uref {
                     Some(main_purse) => {
-                        let new_account = account::create_account(account_hash, main_purse);
+                        let new_account = {
+                            let named_keys = NamedKeys::default();
+                            Account::create(account_hash, named_keys, main_purse)
+                        };
                         // write new account
                         let _ = tracking_copy.borrow_mut().write(
                             Key::Account(account_hash),
@@ -1238,7 +1208,7 @@ where
         // payment_code_spec_5: system executes finalization
         let system_account = match tracking_copy
             .borrow_mut()
-            .read_account(correlation_id, *SYSTEM_ACCOUNT_ADDRESS)
+            .read_account(correlation_id, PublicKey::System.to_account_hash())
         {
             Ok(account) => account,
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -1925,12 +1895,16 @@ where
 
         let virtual_system_account = {
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(*SYSTEM_ACCOUNT_ADDRESS, NamedKeys::default(), purse)
+            Account::create(
+                PublicKey::System.to_account_hash(),
+                NamedKeys::default(),
+                purse,
+            )
         };
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
-            ret.insert(*SYSTEM_ACCOUNT_ADDRESS);
+            ret.insert(PublicKey::System.to_account_hash());
             ret
         };
 

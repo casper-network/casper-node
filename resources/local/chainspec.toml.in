@@ -65,6 +65,7 @@ allow_auction_bids = true
 allow_unrestricted_transfers = true
 # Refund handling config for finalization of an execution.
 refund_handling = { type = "Refund", refund_ratio = [0, 100] }
+# Fee handling config
 fee_handling = { type = "PayToProposer" }
 
 [highway]

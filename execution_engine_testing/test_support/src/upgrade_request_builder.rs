@@ -143,7 +143,6 @@ impl UpgradeRequestBuilder {
             self.new_unbonding_delay,
             self.global_state_update,
             self.chainspec_registry,
-            self.administrative_accounts,
         )
     }
 }

@@ -252,10 +252,9 @@ fn should_distribute_accumulated_fees_to_admins() {
 
     let accumulated_purse_balance_after = builder.get_purse_balance(accumulation_purse);
 
-    assert_eq!(
-        accumulated_purse_balance_after,
-        U512::zero(),
-        "purse should be empty after distributing accumulated fees"
+    assert!(
+        accumulated_purse_balance_after < accumulated_purse_balance_before,
+        "accumulated purse balance should be distributed"
     );
 
     let admin_balance_after = builder.get_purse_balance(admin.main_purse());

@@ -985,15 +985,6 @@ where
             return Err(AddKeyFailure::PermissionDenied.into());
         }
 
-        if !self
-            .account()
-            .can_manage_keys_with(&self.authorization_keys)
-        {
-            // Exit early if authorization keys weight doesn't exceed required
-            // key management threshold
-            return Err(AddKeyFailure::PermissionDenied.into());
-        }
-
         // Converts an account's public key into a URef
         let key = Key::Account(self.account().account_hash());
 
@@ -1095,6 +1086,16 @@ where
         Ok(())
     }
 
+    pub(crate) fn is_authorized_by_admin(&self) -> bool {
+        let admin_set = self.engine_config.administrative_accounts();
+
+        !admin_set.is_empty()
+            && admin_set
+                .intersection(&self.authorization_keys)
+                .next()
+                .is_some()
+    }
+
     /// Set threshold of an associated key.
     pub(crate) fn set_action_threshold(
         &mut self,
@@ -1107,24 +1108,21 @@ where
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        if !self
-            .account()
-            .can_manage_keys_with(&self.authorization_keys)
-        {
-            // Exit early if authorization keys weight doesn't exceed required
-            // key management threshold
-            return Err(SetThresholdFailure::PermissionDeniedError.into());
-        }
-
         // Converts an account's public key into a URef
         let key = Key::Account(self.account().account_hash());
 
         // Take an account out of the global state
         let mut account: Account = self.read_gs_typed(&key)?;
 
+        let total_weight = if self.is_authorized_by_admin() {
+            Weight::MAX
+        } else {
+            account.associated_keys().total_keys_weight()
+        };
+
         // Exit early in case of error without updating global state
         account
-            .set_action_threshold(action_type, threshold)
+            .set_action_thresholds_with_total_weight(total_weight, action_type, threshold)
             .map_err(Error::from)?;
 
         let account_value = self.account_to_validated_value(account)?;
@@ -1169,7 +1167,11 @@ where
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package: ContractPackage = self.read_gs_typed(&Key::from(package_hash))?;
-        self.validate_uref(&contract_package.access_key())?;
+
+        if !self.is_authorized_by_admin() {
+            self.validate_uref(&contract_package.access_key())?;
+        }
+
         Ok(contract_package)
     }
 

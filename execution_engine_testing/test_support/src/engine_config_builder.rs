@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use casper_execution_engine::{
     core::engine_state::{
         engine_config::{
@@ -6,11 +8,11 @@ use casper_execution_engine::{
             DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             DEFAULT_REFUND_HANDLING, DEFAULT_STRICT_ARGUMENT_CHECKING,
         },
-        genesis::AdministratorAccount,
         EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
+use casper_types::account::AccountHash;
 use num_rational::Ratio;
 use num_traits::One;
 
@@ -27,7 +29,7 @@ pub struct EngineConfigBuilder {
     system_config: Option<SystemConfig>,
     minimum_delegation_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
-    administrative_accounts: Option<Vec<AdministratorAccount>>,
+    administrative_accounts: Option<BTreeSet<AccountHash>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
     refund_handling: Option<RefundHandling>,
@@ -95,7 +97,7 @@ impl EngineConfigBuilder {
     /// Sets new chain kind.
     pub fn with_administrative_accounts(
         mut self,
-        administrator_accounts: Vec<AdministratorAccount>,
+        administrator_accounts: BTreeSet<AccountHash>,
     ) -> Self {
         self.administrative_accounts = Some(administrator_accounts);
         self

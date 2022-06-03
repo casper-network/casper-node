@@ -3,17 +3,15 @@ mod fees_accumulation;
 pub mod management;
 mod restricted_auction;
 mod unrestricted_transfers;
-mod update_admins;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use casper_engine_test_support::{
-    EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    EngineConfigBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::{FeeHandling, RefundHandling},
@@ -25,7 +23,7 @@ use once_cell::sync::Lazy;
 
 use casper_types::{
     account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, Motes, PublicKey,
-    RuntimeArgs, SecretKey, U512,
+    SecretKey, U512,
 };
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
@@ -63,8 +61,6 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_
 
 const ADMIN_ACCOUNT_INITIAL_BALANCE: U512 = U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
 
-const CONTROL_MANAGEMENT_CONTRACT: &str = "control_management.wasm";
-
 const PRIVATE_CHAIN_ALLOW_AUCTION_BIDS: bool = false;
 const PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS: bool = false;
 
@@ -78,6 +74,13 @@ static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = L
         Motes::new(ADMIN_ACCOUNT_INITIAL_BALANCE),
     );
     vec![default_admin, admin_1]
+});
+
+static PRIVATE_CHAIN_GENESIS_ADMIN_SET: Lazy<BTreeSet<AccountHash>> = Lazy::new(|| {
+    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS
+        .iter()
+        .map(|admin| admin.public_key().to_account_hash())
+        .collect()
 });
 
 static PRIVATE_CHAIN_GENESIS_VALIDATORS: Lazy<BTreeMap<PublicKey, GenesisValidator>> =
@@ -159,31 +162,6 @@ static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
     )
 });
 
-fn custom_private_chain_setup(
-    allow_auction_bids: bool,
-    allow_unrestricted_transfers: bool,
-    refund_handling: RefundHandling,
-    fee_handling: FeeHandling,
-) -> InMemoryWasmTestBuilder {
-    let mut builder = custom_setup_genesis_only(
-        allow_auction_bids,
-        allow_unrestricted_transfers,
-        refund_handling,
-        fee_handling,
-    );
-
-    let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        CONTROL_MANAGEMENT_CONTRACT,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    builder.exec(exec_request).expect_success().commit();
-
-    builder
-}
-
 fn custom_setup_genesis_only(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
@@ -216,8 +194,13 @@ fn make_engine_config(
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
 ) -> EngineConfig {
+    let administrator_accounts = {
+        let mut admin_set = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
+        admin_set.insert(PublicKey::System.to_account_hash());
+        admin_set
+    };
     EngineConfigBuilder::default()
-        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
+        .with_administrative_accounts(administrator_accounts)
         .with_allow_auction_bids(allow_auction_bids)
         .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
         .with_refund_handling(refund_handling)
@@ -226,7 +209,7 @@ fn make_engine_config(
 }
 
 fn private_chain_setup() -> InMemoryWasmTestBuilder {
-    custom_private_chain_setup(
+    custom_setup_genesis_only(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         PRIVATE_CHAIN_REFUND_HANDLING,

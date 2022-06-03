@@ -1,12 +1,12 @@
-use std::{collections::BTreeSet, ops::Deref};
+use std::collections::BTreeSet;
 
 use casper_engine_test_support::{
     DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{Error, ExecConfig, ExecuteRequest, GenesisAccount, RunGenesisRequest},
@@ -18,15 +18,17 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate},
-        mint, standard_payment,
+        mint,
+        standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, ContractHash, Key, RuntimeArgs, U512,
+    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, Key, PublicKey, RuntimeArgs,
+    U512,
 };
 
 use crate::{
     test::private_chain::{
-        ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, CONTROL_MANAGEMENT_CONTRACT,
-        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS, VALIDATOR_1_PUBLIC_KEY,
+        self, ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        VALIDATOR_1_PUBLIC_KEY,
     },
     wasm_utils,
 };
@@ -34,17 +36,17 @@ use crate::{
 use super::{
     ACCOUNT_1_ADDR, ACCOUNT_1_PUBLIC_KEY, DEFAULT_ADMIN_ACCOUNT_ADDR,
     PRIVATE_CHAIN_DEFAULT_ACCOUNTS, PRIVATE_CHAIN_FEE_HANDLING,
-    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS, PRIVATE_CHAIN_REFUND_HANDLING,
+    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS, PRIVATE_CHAIN_GENESIS_ADMIN_SET,
+    PRIVATE_CHAIN_REFUND_HANDLING,
 };
 
 const ADD_ASSOCIATED_KEY_CONTRACT: &str = "add_associated_key.wasm";
+const REMOVE_ASSOCIATED_KEY_CONTRACT: &str = "remove_associated_key.wasm";
 const SET_ACTION_THRESHOLDS_CONTRACT: &str = "set_action_thresholds.wasm";
 const UPDATE_ASSOCIATED_KEY_CONTRACT: &str = "update_associated_key.wasm";
+const DISABLE_CONTRACT: &str = "disable_contract.wasm";
 const TRANSFER_TO_ACCOUNT_CONTRACT: &&str = &"transfer_to_account.wasm";
-const CONTRACT_HASH_NAME: &str = "contract_hash";
-const DISABLE_ACCOUNT_ENTRYPOINT: &str = "disable_account";
-const ENABLE_ACCOUNT_ENTRYPOINT: &str = "enable_account";
-const ARG_ACCOUNT_HASH: &str = "account_hash";
+const ARG_CONTRACT_PACKAGE_HASH: &str = "contract_package_hash";
 const ARG_CONTRACT_HASH: &str = "contract_hash";
 
 const ARG_ACCOUNT: &str = "account";
@@ -53,9 +55,6 @@ const ARG_WEIGHT: &str = "weight";
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
 const ARG_DEPLOY_THRESHOLD: &str = "deploy_threshold";
 const DO_NOTHING_HASH_NAME: &str = "do_nothing_hash";
-
-const DISABLE_CONTRACT_ENTRYPOINT: &str = "disable_contract";
-const ENABLE_CONTRACT_ENTRYPOINT: &str = "enable_contract";
 
 const DO_NOTHING_STORED_CONTRACT: &str = "do_nothing_stored.wasm";
 const CALL_CONTRACT_PROXY: &str = "call_contract.wasm";
@@ -68,13 +67,18 @@ const PAY_ENTRYPOINT: &str = "pay";
 #[ignore]
 #[test]
 fn private_chain_genesis_should_have_admin_accounts() {
+    let admin_set = {
+        let mut admin_set = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
+        admin_set.insert(PublicKey::System.to_account_hash());
+        admin_set
+    };
+
     assert_eq!(
         super::private_chain_setup()
             .get_engine_state()
             .config()
-            .administrative_accounts()
-            .deref(),
-        &*PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
+            .administrative_accounts(),
+        &admin_set,
         "private chain genesis has administrator accounts defined"
     );
 }
@@ -89,9 +93,8 @@ fn public_chain_genesis_should_not_have_admin_accounts() {
         builder
             .get_engine_state()
             .config()
-            .administrative_accounts()
-            .deref(),
-        &Vec::new(),
+            .administrative_accounts(),
+        &BTreeSet::new(),
         "private chain genesis has administrator accounts defined"
     );
 }
@@ -103,7 +106,7 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
     let engine_config = EngineConfigBuilder::default()
         // This change below makes genesis config validation to fail as administrator accounts are
         // only valid for private chains.
-        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
+        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone())
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
@@ -141,30 +144,6 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
     );
 
     builder.run_genesis(&modified_genesis_request);
-}
-
-#[ignore]
-#[test]
-fn should_not_resolve_private_chain_host_functions_on_public_chain() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
-
-    let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTROL_MANAGEMENT_CONTRACT,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    builder.exec(exec_request).expect_failure();
-
-    let error = builder.get_error().expect("should have error");
-
-    assert!(matches!(
-        error,
-        Error::Exec(execution::Error::Interpreter(msg))
-        if msg == "host module doesn't export function with name casper_control_management"
-    ));
 }
 
 #[ignore]
@@ -245,7 +224,7 @@ fn genesis_accounts_should_not_modify_action_thresholds() {
 
 #[ignore]
 #[test]
-fn genesis_accounts_should_not_manage_their_own_keys() {
+fn genesis_accounts_should_not_add_associated_keys() {
     let secondary_account_hash = AccountHash::new([55; 32]);
 
     let mut builder = super::private_chain_setup();
@@ -274,54 +253,64 @@ fn genesis_accounts_should_not_manage_their_own_keys() {
 
 #[ignore]
 #[test]
-fn genesis_accounts_should_have_special_associated_key() {
-    let builder = super::private_chain_setup();
+fn genesis_accounts_should_not_remove_associated_keys() {
+    let secondary_account_hash = AccountHash::new([55; 32]);
 
-    let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
-        .expect("should create genesis account");
+    let mut builder = super::private_chain_setup();
 
-    let identity_weight = account_1
-        .associated_keys()
-        .get(&*ACCOUNT_1_ADDR)
-        .expect("should have identity key");
-    assert_eq!(identity_weight, &Weight::new(1));
+    let add_associated_key_request = {
+        let session_args = runtime_args! {
+            ARG_ACCOUNT => secondary_account_hash,
+            ARG_WEIGHT => Weight::MAX,
+        };
 
-    let administrative_accounts: BTreeSet<AccountHash> = get_administrator_account_hashes(&builder);
+        let account_hash = *ACCOUNT_1_ADDR;
+        let deploy_hash: [u8; 32] = [55; 32];
 
-    assert!(
-        itertools::equal(
-            administrative_accounts,
-            [*DEFAULT_ADMIN_ACCOUNT_ADDR, *ADMIN_1_ACCOUNT_ADDR]
-        ),
-        "administrators should be populated with single account"
-    );
+        let deploy = DeployItemBuilder::new()
+            .with_address(account_hash)
+            .with_session_code(ADD_ASSOCIATED_KEY_CONTRACT, session_args)
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => *DEFAULT_PAYMENT
+            })
+            .with_authorization_keys(&[*ADMIN_1_ACCOUNT_ADDR])
+            .with_deploy_hash(deploy_hash)
+            .build();
 
-    let administrator_account = builder
-        .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
-        .expect("should create special account");
-    assert_eq!(
-        administrator_account.associated_keys().len(),
-        // PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.len(),
-        1,
-        "should have identity key only"
-    );
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
 
-    let identity_weight = administrator_account
-        .associated_keys()
-        .get(&*DEFAULT_ADMIN_ACCOUNT_ADDR)
-        .expect("should have identity special key");
-    assert_eq!(identity_weight, &Weight::new(1));
-}
-
-fn get_administrator_account_hashes(builder: &InMemoryWasmTestBuilder) -> BTreeSet<AccountHash> {
     builder
-        .get_engine_state()
-        .config()
-        .administrative_accounts()
-        .into_iter()
-        .map(|admin| admin.public_key().to_account_hash())
-        .collect()
+        .exec(add_associated_key_request)
+        .expect_success()
+        .commit();
+
+    let remove_associated_key_request = {
+        let session_args = runtime_args! {
+            ARG_ACCOUNT => secondary_account_hash,
+        };
+        ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            REMOVE_ASSOCIATED_KEY_CONTRACT,
+            session_args,
+        )
+        .build()
+    };
+
+    builder
+        .exec(remove_associated_key_request)
+        .expect_failure()
+        .commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+        ),
+        "{:?}",
+        error
+    );
 }
 
 #[ignore]
@@ -342,22 +331,31 @@ fn administrator_account_should_disable_any_account() {
     .build();
     builder.exec(exec_request_1).expect_success().commit();
 
-    // Freeze account 1
-    let freeze_request_1 = {
+    // Disable account 1
+    let disable_request_1 = {
         let session_args = runtime_args! {
-            ARG_ACCOUNT_HASH => *ACCOUNT_1_ADDR,
+            ARG_DEPLOY_THRESHOLD => Weight::MAX,
+            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::MAX,
         };
 
-        ExecuteRequestBuilder::contract_call_by_name(
-            *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            CONTRACT_HASH_NAME,
-            DISABLE_ACCOUNT_ENTRYPOINT,
-            session_args,
-        )
-        .build()
+        {
+            let sender = *ACCOUNT_1_ADDR;
+            let deploy_hash = [54; 32];
+
+            // Here, deploy is sent as an account, but signed by an administrator.
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
+                .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+                .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
+                .with_deploy_hash(deploy_hash)
+                .build();
+
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        }
     };
 
-    builder.exec(freeze_request_1).expect_success().commit();
+    builder.exec(disable_request_1).expect_success().commit();
     // Account 1 can not deploy after freezing
     let exec_request_2 = ExecuteRequestBuilder::module_bytes(
         *ACCOUNT_1_ADDR,
@@ -373,30 +371,59 @@ fn administrator_account_should_disable_any_account() {
         Error::Exec(execution::Error::DeploymentAuthorizationFailure)
     ));
 
-    let account_1_frozen = builder
+    let account_1_disabled = builder
         .get_account(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
     assert_ne!(
-        account_1_genesis, account_1_frozen,
+        account_1_genesis, account_1_disabled,
         "account 1 should be modified"
     );
 
     // Unfreeze account 1
-    let unfreeze_request_1 = {
+    let enable_request_1 = {
         let session_args = runtime_args! {
-            ARG_ACCOUNT_HASH => *ACCOUNT_1_ADDR,
+            ARG_DEPLOY_THRESHOLD => Weight::new(1),
+            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
         };
 
-        ExecuteRequestBuilder::contract_call_by_name(
-            *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            CONTRACT_HASH_NAME,
-            ENABLE_ACCOUNT_ENTRYPOINT,
-            session_args,
-        )
-        .build()
+        let sender = *ACCOUNT_1_ADDR;
+        let deploy_hash = [53; 32];
+
+        // Here, deploy is sent as an account, but signed by an administrator.
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(unfreeze_request_1).expect_success().commit();
+    let enable_request_2 = {
+        let session_args = runtime_args! {
+            ARG_DEPLOY_THRESHOLD => Weight::new(0),
+            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
+        };
+
+        let sender = *ACCOUNT_1_ADDR;
+        let deploy_hash = [52; 32];
+
+        // Here, deploy is sent as an account, but signed by an administrator.
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(enable_request_1).expect_success().commit();
+    builder.exec(enable_request_2).expect_success().commit();
 
     // Account 1 can deploy after unfreezing
     let exec_request_3 = ExecuteRequestBuilder::module_bytes(
@@ -496,6 +523,11 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         Key::from(contract.contract_package_hash())
     };
 
+    let do_nothing_contract_package_hash = do_nothing_contract_package_key
+        .into_hash()
+        .map(ContractPackageHash::new)
+        .expect("should be package hash");
+
     let contract_package_before = builder
         .query(None, do_nothing_contract_package_key, &[])
         .expect("should query")
@@ -517,19 +549,15 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     .build();
     builder.exec(exec_request_1).expect_success().commit();
 
-    // Freeze account 1
+    // Disable stored contract
     let disable_request = {
         let session_args = runtime_args! {
+            ARG_CONTRACT_PACKAGE_HASH => do_nothing_contract_package_hash,
             ARG_CONTRACT_HASH => stored_contract_hash,
         };
 
-        ExecuteRequestBuilder::contract_call_by_name(
-            *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            CONTRACT_HASH_NAME,
-            DISABLE_CONTRACT_ENTRYPOINT,
-            session_args,
-        )
-        .build()
+        ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, DISABLE_CONTRACT, session_args)
+            .build()
     };
 
     builder.exec(disable_request).expect_success().commit();
@@ -599,79 +627,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     }
 
     // Enable contract
-    let enable_contract_request = {
-        let session_args = runtime_args! {
-            ARG_CONTRACT_HASH => stored_contract_hash,
-        };
-
-        ExecuteRequestBuilder::contract_call_by_name(
-            *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            CONTRACT_HASH_NAME,
-            ENABLE_CONTRACT_ENTRYPOINT,
-            session_args,
-        )
-        .build()
-    };
-
-    builder
-        .exec(enable_contract_request)
-        .expect_success()
-        .commit();
-
-    let contract_package_after_enable = builder
-        .query(None, do_nothing_contract_package_key, &[])
-        .expect("should query")
-        .into_contract_package()
-        .expect("should be contract package");
-
-    assert_eq!(
-        contract_package_before, contract_package_after_enable,
-        "enabling a contract should remove entries from disabled versions"
-    );
-    assert_eq!(
-        contract_package_after_enable.is_contract_disabled(&stored_contract_hash),
-        Some(false)
-    );
-
-    // Account 1 can deploy after enabling
-    let call_delegate_requests_2 = {
-        // Unable to call disabled stored contract directly
-        let call_delegate_by_name = ExecuteRequestBuilder::contract_call_by_name(
-            *ACCOUNT_1_ADDR,
-            DO_NOTHING_HASH_NAME,
-            DELEGATE_ENTRYPOINT,
-            RuntimeArgs::default(),
-        )
-        .build();
-
-        let call_delegate_by_hash = ExecuteRequestBuilder::contract_call_by_hash(
-            *ACCOUNT_1_ADDR,
-            stored_contract_hash,
-            DELEGATE_ENTRYPOINT,
-            RuntimeArgs::default(),
-        )
-        .build();
-
-        let call_delegate_from_wasm = make_call_contract_session_request(
-            *ACCOUNT_1_ADDR,
-            stored_contract_hash,
-            DELEGATE_ENTRYPOINT,
-            RuntimeArgs::default(),
-        );
-
-        vec![
-            call_delegate_by_name,
-            call_delegate_by_hash,
-            call_delegate_from_wasm,
-        ]
-    };
-
-    for call_delegate_request in call_delegate_requests_2 {
-        builder
-            .exec(call_delegate_request)
-            .expect_success()
-            .commit();
-    }
+    // TODO: https://github.com/casper-network/casper-node/issues/3033
 }
 
 #[ignore]
@@ -679,7 +635,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 fn administrator_account_should_disable_any_contract_used_as_payment() {
     // We'll simulate enabled unrestricted transfers here to test if stored payment contract is
     // disabled.
-    let mut builder = super::custom_private_chain_setup(
+    let mut builder = private_chain::custom_setup_genesis_only(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         true,
         PRIVATE_CHAIN_REFUND_HANDLING,
@@ -715,6 +671,11 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         let contract = stored_value.into_contract().expect("should be contract");
         Key::from(contract.contract_package_hash())
     };
+
+    let test_payment_stored_package_hash = test_payment_stored_package_key
+        .into_hash()
+        .map(ContractPackageHash::new)
+        .expect("should have contract package");
 
     let contract_package_before = builder
         .query(None, test_payment_stored_package_key, &[])
@@ -756,16 +717,12 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     // Disable payment contract
     let disable_request = {
         let session_args = runtime_args! {
+            ARG_CONTRACT_PACKAGE_HASH => test_payment_stored_package_hash,
             ARG_CONTRACT_HASH => stored_contract_hash,
         };
 
-        ExecuteRequestBuilder::contract_call_by_name(
-            *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            CONTRACT_HASH_NAME,
-            DISABLE_CONTRACT_ENTRYPOINT,
-            session_args,
-        )
-        .build()
+        ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, DISABLE_CONTRACT, session_args)
+            .build()
     };
 
     builder.exec(disable_request).expect_success().commit();
@@ -841,88 +798,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     }
 
     // Enable contract
-    let enable_contract_request = {
-        let session_args = runtime_args! {
-            ARG_CONTRACT_HASH => stored_contract_hash,
-        };
-
-        ExecuteRequestBuilder::contract_call_by_name(
-            *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            CONTRACT_HASH_NAME,
-            ENABLE_CONTRACT_ENTRYPOINT,
-            session_args,
-        )
-        .build()
-    };
-
-    builder
-        .exec(enable_contract_request)
-        .expect_success()
-        .commit();
-
-    let contract_package_after_enable = builder
-        .query(None, test_payment_stored_package_key, &[])
-        .expect("should query")
-        .into_contract_package()
-        .expect("should be contract package");
-
-    assert_eq!(
-        contract_package_before, contract_package_after_enable,
-        "enabling a contract should remove entries from disabled versions"
-    );
-    assert_eq!(
-        contract_package_after_enable.is_contract_disabled(&stored_contract_hash),
-        Some(false)
-    );
-
-    // Account 1 can deploy after enabling
-
-    let call_stored_payment_requests_2 = {
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let session_args = RuntimeArgs::default();
-
-        let call_by_name = {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [100; 32];
-
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-                .with_stored_payment_named_key(
-                    TEST_PAYMENT_STORED_HASH_NAME,
-                    PAY_ENTRYPOINT,
-                    payment_args.clone(),
-                )
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
-        };
-
-        let call_by_hash = {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [100; 32];
-
-            let session_args = RuntimeArgs::default();
-
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-                .with_stored_payment_hash(stored_contract_hash, PAY_ENTRYPOINT, payment_args)
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
-        };
-
-        vec![call_by_name, call_by_hash]
-    };
-
-    for execute_request in call_stored_payment_requests_2 {
-        builder.exec(execute_request).expect_success().commit();
-    }
+    // TODO: https://github.com/casper-network/casper-node/issues/3033
 }
 
 #[ignore]

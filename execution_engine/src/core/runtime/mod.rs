@@ -22,8 +22,8 @@ use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_types::{
     account::{
-        Account, AccountHash, ActionThresholds, ActionType, AddKeyFailure, RemoveKeyFailure,
-        SetThresholdFailure, UpdateKeyFailure, Weight,
+        Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
+        UpdateKeyFailure, Weight,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
@@ -52,7 +52,6 @@ use crate::{
         tracking_copy::TrackingCopyExt,
     },
     shared::{
-        account::{self, SYSTEM_ACCOUNT_ADDRESS},
         host_function_costs::{Cost, HostFunction},
         wasm_prep::{self, PreprocessingError},
     },
@@ -1223,25 +1222,6 @@ where
         // if not public, restricted to user group access
         self.validate_group_membership(&contract_package, entry_point.access())?;
 
-        if self.config.is_private_chain() {
-            // Private chains are verifying if a contract is disabled
-            let res = contract_package.is_contract_disabled(&contract_hash);
-            match res {
-                Some(false) => {
-                    // Contract exists and is enabled.s
-                }
-                Some(true) => {
-                    // Contract is disabled through administrative operation.
-                    return Err(Error::DisabledContract(contract_hash));
-                }
-                None => {
-                    // This variant should not occur as we alraedy validated the contract before
-                    // calling `call_contract_checked`.
-                    return Err(Error::InvalidContract(contract_hash));
-                }
-            }
-        }
-
         if self.config.strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
@@ -1270,6 +1250,16 @@ where
                 }
             }
         }
+
+        match contract_package.is_contract_disabled(&contract_hash) {
+            Some(true) | None => {
+                if !self.context.is_system_contract(&contract_hash)? {
+                    return Err(Error::DisabledContract(contract_hash));
+                }
+            }
+            Some(false) => {}
+        }
+
         // if session the caller's context
         // else the called contract's context
         let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
@@ -1946,20 +1936,29 @@ where
 
     /// Checks if a caller can manage its own associated keys and thresholds.
     ///
-    /// On a private chain this requires that the caller is an admin to be able to manage its own
-    /// keys. On a public chain there is no restrictions.
+    /// On some private chains with administrator keys configured this requires that the caller is
+    /// an admin to be able to manage its own keys. If the caller is not an administrator then the
+    /// deploy has to be signed by an administrator.
     fn can_manage_keys(&self) -> bool {
         match self
             .config
             .is_account_administrator(&self.context.get_caller())
         {
             Some(is_caller_admin) => {
-                // Private chain
+                if !is_caller_admin {
+                    // If caller is not an admin check if deploy was co-signed by admin account and
+                    // proceed
+                    if self.context.is_authorized_by_admin() {
+                        return true;
+                    }
+                }
                 is_caller_admin
             }
             None => {
                 // Public chain
-                true
+                self.context
+                    .account()
+                    .can_manage_keys_with(self.context.authorization_keys())
             }
         }
     }
@@ -2068,7 +2067,7 @@ where
                 match self.context.set_action_threshold(action_type, threshold) {
                     Ok(_) => Ok(0),
                     Err(Error::SetThresholdFailure(e)) => Ok(e as i32),
-                    Err(e) => Err(e.into()),
+                    Err(error) => Err(error.into()),
                 }
             }
             Err(_) => Err(Trap::new(TrapKind::Unreachable)),
@@ -2229,7 +2228,7 @@ where
                 .is_account_administrator(&target)
                 .expect("is_account_administrator() returns Some(_) on a private chain");
 
-            if self.context.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
+            if self.context.get_caller() != PublicKey::System.to_account_hash()
                 && !is_source_admin
                 && !is_target_admin
             {
@@ -2268,7 +2267,10 @@ where
             Ok(()) => {
                 // None, and Some(_) with empty container is considered equal for the purpose of
                 // listing admin keys.
-                let account = account::create_account(target, target_purse);
+                let account = {
+                    let named_keys = NamedKeys::default();
+                    Account::create(target, named_keys, target_purse)
+                };
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -2961,92 +2963,6 @@ where
         let length_bytes = length.to_le_bytes();
         if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
             return Err(Error::Interpreter(error.into()).into());
-        }
-
-        Ok(Ok(()))
-    }
-
-    pub(crate) fn control_management(
-        &mut self,
-        key: Key,
-        enable: bool,
-    ) -> Result<Result<(), ApiError>, Error> {
-        // Iterates over the administrator accounts elements
-
-        if !self.config.is_private_chain() {
-            // This host function should resolve only if the chain specifies at least one
-            // administrator account and therefore operates as a private chain.
-            return Ok(Err(ApiError::PermissionDenied));
-        }
-
-        match key {
-            account_key @ Key::Account(_) => {
-                match self.context.read_gs_direct(&account_key)? {
-                    Some(StoredValue::Account(account)) => {
-                        let deployment_threshold = if enable {
-                            // Enable
-                            Weight::new(1)
-                        } else {
-                            // Disable
-                            Weight::MAX
-                        };
-
-                        let key_management_threshold = account.action_thresholds().key_management();
-
-                        let new_action_thresholds = ActionThresholds::new_raw(
-                            deployment_threshold,
-                            *key_management_threshold,
-                        );
-
-                        let new_account = Account::new(
-                            account.account_hash(),
-                            account.named_keys().clone(),
-                            account.main_purse(),
-                            account.associated_keys().clone(),
-                            new_action_thresholds,
-                        );
-
-                        self.context.write_account(account_key, new_account)?;
-                    }
-                    Some(_) => {
-                        // Key::Account is only expected to contain only stored values of Account
-                        // type.
-                        return Err(Error::UnexpectedStoredValueVariant);
-                    }
-                    None => return Ok(Err(ApiError::InvalidArgument)),
-                }
-            }
-            contract_key @ Key::Hash(contract_hash_bytes) => {
-                let contract_hash = ContractHash::new(contract_hash_bytes);
-
-                let contract = match self.context.read_gs_direct(&contract_key)? {
-                    Some(StoredValue::Contract(contract)) => contract,
-                    Some(_) => return Err(Error::UnexpectedStoredValueVariant),
-                    None => return Ok(Err(ApiError::InvalidArgument)),
-                };
-
-                let contract_package_key = contract.contract_package_hash().into();
-                let mut contract_package =
-                    match self.context.read_gs_direct(&contract_package_key)? {
-                        Some(StoredValue::ContractPackage(contract_package)) => contract_package,
-                        Some(_) => return Err(Error::UnexpectedStoredValueVariant),
-                        None => return Ok(Err(ApiError::InvalidArgument)),
-                    };
-
-                let modify_result = if enable {
-                    contract_package.enable_contract_version(&contract_hash)
-                } else {
-                    contract_package.disable_contract_version(&contract_hash)
-                };
-
-                if let Err(error) = modify_result {
-                    return Ok(Err(ApiError::from(error)));
-                }
-
-                self.context
-                    .metered_write_gs_unsafe(contract_package_key, contract_package)?;
-            }
-            _ => return Ok(Err(ApiError::InvalidArgument)),
         }
 
         Ok(Ok(()))

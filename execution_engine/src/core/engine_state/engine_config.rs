@@ -3,19 +3,15 @@
 mod fee_handling;
 mod refund_handling;
 
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeSet;
 
 use num_rational::Ratio;
 
 use casper_types::account::AccountHash;
 
-use crate::shared::{
-    account::SYSTEM_ACCOUNT_ADDRESS, system_config::SystemConfig, wasm_config::WasmConfig,
-};
+use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 pub use self::{fee_handling::FeeHandling, refund_handling::RefundHandling};
-
-use super::genesis::AdministratorAccount;
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -55,16 +51,15 @@ pub struct EngineConfig {
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     /// A private network specifies a list of administrative accounts.
-    administrative_accounts: Arc<Mutex<Vec<AdministratorAccount>>>,
+    administrative_accounts: BTreeSet<AccountHash>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`.
     allow_auction_bids: bool,
     /// Allow unrestricted transfers between normal accounts.
     ///
-    /// If set to `true` accounts can transfer tokens between themselves without restrictions (aka
-    /// public chain mode). If set to `false` tokens can be transferred only from normal
-    /// accounts to administrators and administrators to normal accounts but not normal accounts to
-    /// normal accounts (aka private chain mode).
+    /// If set to `true` accounts can transfer tokens between themselves without restrictions. If
+    /// set to `false` tokens can be transferred only from normal accounts to administrators
+    /// and administrators to normal accounts but not normal accounts to normal accounts.
     allow_unrestricted_transfers: bool,
     /// Refund handling config.
     refund_handling: RefundHandling,
@@ -102,7 +97,7 @@ impl EngineConfig {
         strict_argument_checking: bool,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
-        administrative_accounts: Vec<AdministratorAccount>,
+        administrative_accounts: BTreeSet<AccountHash>,
         allow_auction_bids: bool,
         allow_unrestricted_transfers: bool,
         refund_handling: RefundHandling,
@@ -116,7 +111,7 @@ impl EngineConfig {
             strict_argument_checking,
             wasm_config,
             system_config,
-            administrative_accounts: Arc::new(Mutex::new(administrative_accounts)),
+            administrative_accounts,
             allow_auction_bids,
             allow_unrestricted_transfers,
             refund_handling,
@@ -156,14 +151,8 @@ impl EngineConfig {
 
     /// Get the engine config's administrative accouAnts.
     #[must_use]
-    pub fn administrative_accounts(&self) -> Vec<AdministratorAccount> {
-        self.administrative_accounts.lock().unwrap().clone()
-    }
-
-    /// Checks if chain is configured in private mode.
-    #[must_use]
-    pub fn is_private_chain(&self) -> bool {
-        !self.administrative_accounts().is_empty()
+    pub fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
+        &self.administrative_accounts
     }
 
     /// Get the engine config's allow auction bids.
@@ -180,31 +169,17 @@ impl EngineConfig {
 
     /// Checks if an account hash is an administrator.
     ///
-    /// This method returns a `None` if chain is not configured in a private chain. Otherwise Some
-    /// with a value whether passed account hash is an admin.
+    /// This method returns a `None` if there is no administrators configured.
+    /// Otherwise returns Some with a flag indicating if a passed account hash is an admin.
     #[must_use]
     pub(crate) fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
-        let borrowed_admins = self.administrative_accounts.lock().unwrap();
-        let mut admins = borrowed_admins.iter().peekable();
-
-        // Ensure it's a private chain and there's at least one administrator configured.
-        admins.peek()?;
-
-        if account_hash == &*SYSTEM_ACCOUNT_ADDRESS {
-            // Admin is also an administrator to allow custom payment code.
-            return Some(true);
+        // Ensure there's at least one administrator configured.
+        if self.administrative_accounts.is_empty() {
+            return None;
         }
 
-        // Find an administrator by its public key.
-        let has_admin_account_hash =
-            admins.any(|admin| &admin.public_key().to_account_hash() == account_hash);
-        Some(has_admin_account_hash)
-    }
-
-    /// Set engine config's new administrative accounts.
-    pub fn set_administrative_accounts(&self, value: Vec<AdministratorAccount>) {
-        let mut guard = self.administrative_accounts.lock().unwrap();
-        *guard = value;
+        // Find an administrator by its account hash.
+        Some(self.administrative_accounts.contains(account_hash))
     }
 
     /// Get the engine config's refund ratio.

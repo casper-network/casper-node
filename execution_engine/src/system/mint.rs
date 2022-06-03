@@ -17,7 +17,6 @@ use tracing::warn;
 
 use crate::{
     core::engine_state::SystemContractRegistry,
-    shared::account::SYSTEM_ACCOUNT_ADDRESS,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
         system_provider::SystemProvider,
@@ -136,7 +135,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     contract_package_hash: _,
                     contract_hash: _,
                 }) => {
-                    if account_hash != *SYSTEM_ACCOUNT_ADDRESS {
+                    if account_hash != PublicKey::System.to_account_hash() {
                         if let Some(is_account_admin) = self.is_account_administrator(&account_hash)
                         {
                             if !is_account_admin {
@@ -154,7 +153,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                 }
 
                 Some(CallStackElement::Session { account_hash })
-                    if account_hash == *SYSTEM_ACCOUNT_ADDRESS =>
+                    if account_hash == PublicKey::System.to_account_hash() =>
                 {
                     // System calls a session code.
                 }
@@ -218,7 +217,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     contract_package_hash: _,
                     contract_hash: _,
                 }) => {
-                    if self.get_caller() != *SYSTEM_ACCOUNT_ADDRESS {
+                    if self.get_caller() != PublicKey::System.to_account_hash() {
                         if let Some(is_account_admin) =
                             self.is_account_administrator(&self.get_caller())
                         {
@@ -252,7 +251,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if self.read_balance(target)?.is_none() {
             return Err(Error::DestNotFound);
         }
-        if self.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
+        if self.get_caller() != PublicKey::System.to_account_hash()
             && self.get_main_purse().addr() == source.addr()
         {
             if amount > self.get_approved_spending_limit() {

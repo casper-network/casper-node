@@ -162,16 +162,6 @@ impl Config {
             chainspec_raw_bytes.chainspec_bytes(),
             chainspec_raw_bytes.maybe_global_state_bytes(),
         );
-        let administrative_accounts = if self
-            .chainspec
-            .core_config
-            .administrative_accounts
-            .is_empty()
-        {
-            None
-        } else {
-            Some(self.chainspec.core_config.administrative_accounts.clone())
-        };
 
         let upgrade_config = UpgradeConfig::new(
             *upgrade_block_header.state_root_hash(),
@@ -185,7 +175,6 @@ impl Config {
             Some(self.chainspec.core_config.unbonding_delay),
             global_state_update,
             chainspec_registry,
-            administrative_accounts,
         );
         Ok(Box::new(upgrade_config))
     }

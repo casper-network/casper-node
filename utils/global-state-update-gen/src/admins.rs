@@ -1,8 +1,7 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::shared::account;
 use casper_types::{
-    bytesrepr::ToBytes, system::mint, AccessRights, AsymmetricType, CLTyped, CLValue, Key,
-    PublicKey, StoredValue, URef, U512,
+    account::Account, bytesrepr::ToBytes, contracts::NamedKeys, system::mint, AccessRights,
+    AsymmetricType, CLTyped, CLValue, Key, PublicKey, StoredValue, URef, U512,
 };
 use clap::ArgMatches;
 use rand::Rng;
@@ -55,7 +54,11 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
 
         let account_key = Key::Account(pub_key.to_account_hash());
         let account_value = {
-            let account = account::create_account(pub_key.to_account_hash(), main_purse);
+            let account = {
+                let account_hash = pub_key.to_account_hash();
+                let named_keys = NamedKeys::default();
+                Account::create(account_hash, named_keys, main_purse)
+            };
             StoredValue::Account(account)
         };
         print_entry(&account_key, &account_value);

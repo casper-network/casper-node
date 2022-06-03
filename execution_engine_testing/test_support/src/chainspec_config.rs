@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     convert::TryFrom,
     fs, io,
     path::{Path, PathBuf},
@@ -11,13 +12,12 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::{
     core::engine_state::{
         engine_config::{FeeHandling, RefundHandling},
-        genesis::AdministratorAccount,
         run_genesis_request::RunGenesisRequest,
         ExecConfig, GenesisAccount,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::ProtocolVersion;
+use casper_types::{account::AccountHash, ProtocolVersion};
 
 use crate::{
     DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
@@ -118,7 +118,7 @@ pub struct CoreConfig {
     pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default)]
-    pub(crate) administrative_accounts: Vec<AdministratorAccount>,
+    pub(crate) administrators: BTreeSet<AccountHash>,
     // Refund handling.
     pub(crate) refund_handling: RefundHandlingConfig,
     // Fee handling.
