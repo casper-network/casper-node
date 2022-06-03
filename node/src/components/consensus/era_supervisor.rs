@@ -60,6 +60,8 @@ use crate::{
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
 
+use super::consensus_protocol::CouldntConstructConsensusProtocol;
+
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
@@ -85,10 +87,14 @@ type ConsensusConstructor = dyn Fn(
         Timestamp,           // start time for this era
         u64,                 // random seed
         Timestamp,           // now timestamp
-    ) -> (
-        Box<dyn ConsensusProtocol<ClContext>>,
-        Vec<ProtocolOutcome<ClContext>>,
-    ) + Send;
+        PathBuf,
+    ) -> Result<
+        (
+            Box<dyn ConsensusProtocol<ClContext>>,
+            Vec<ProtocolOutcome<ClContext>>,
+        ),
+        CouldntConstructConsensusProtocol,
+    > + Send;
 
 #[derive(DataSize)]
 pub struct EraSupervisor {
@@ -461,7 +467,9 @@ impl EraSupervisor {
             start_time,
             seed,
             now,
-        );
+            self.unit_file(&instance_id),
+        )
+        .map_err(|_| CreateNewEraError::FailedToConstructConsensusInstance { era_id })?;
         let era = Era::new(
             consensus,
             start_time,

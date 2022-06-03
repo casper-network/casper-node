@@ -5,6 +5,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
 
@@ -54,7 +55,9 @@ impl<M: Clone + Debug> TargetedMessage<M> {
     }
 }
 
-#[derive(Debug, Clone, DataSize, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(
+    Debug, Clone, DataSize, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Deserialize, Serialize,
+)]
 pub(crate) struct ValidatorId(pub(crate) u64);
 
 impl Display for ValidatorId {
