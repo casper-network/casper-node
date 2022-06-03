@@ -4,6 +4,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use casper_types::{PublicKey, SecretKey, Timestamp, U512};
 use tempfile::{tempdir, TempDir};
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -38,7 +39,7 @@ where
     T: Into<U512>,
 {
     let dir = tempdir().unwrap();
-    let write_wal = WriteWAL::new(&dir.path().join("wal")).unwrap();
+    let write_wal = WriteWal::new(&dir.path().join("wal")).unwrap();
     let weights = weights
         .into_iter()
         .map(|(pk, w)| (pk, w.into()))
@@ -553,6 +554,8 @@ fn simple_consensus_no_fault() {
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
 
+    info!("restoring protocol now");
+
     let (mut protocol, outcomes) = SimpleConsensus::<ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
@@ -563,7 +566,7 @@ fn simple_consensus_no_fault() {
         None,
         start_timestamp,
         seed,
-        start_timestamp,
+        timestamp,
         dir.path().join("wal"),
     )
     .unwrap();
@@ -571,12 +574,20 @@ fn simple_consensus_no_fault() {
     assert_eq!(outcomes, vec![]);
 
     let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    info!("{:?}", outcomes);
 
-    assert_eq!(outcomes.len(), 1);
+    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    info!("{:?}", outcomes);
 
-    let sc_c: &SimpleConsensus<ClContext> = protocol.as_any().downcast_ref().unwrap();
+    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    info!("{:?}", outcomes);
 
-    assert!(sc_c.finalized_switch_block());
+    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    info!("{:?}", outcomes);
+
+    let sc_c_recovered: &SimpleConsensus<ClContext> = protocol.as_any().downcast_ref().unwrap();
+
+    assert!(sc_c_recovered.finalized_switch_block());
 }
 
 /// Tests that a faulty validator counts towards every quorum.

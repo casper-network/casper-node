@@ -99,7 +99,7 @@ use message::{Content, Message, Proposal, SignedMessage, SyncState};
 use params::Params;
 use participation::{Participation, ParticipationStatus};
 use round::Round;
-use wal::{Entry, ReadWAL, WriteWAL};
+use wal::{Entry, ReadWal, WriteWal};
 
 /// The timer for syncing with a random peer.
 const TIMER_ID_SYNC_PEER: TimerId = TimerId(0);
@@ -192,7 +192,7 @@ where
     /// `update`.
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
-    write_wal: WriteWAL<C>,
+    write_wal: WriteWal<C>,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -209,7 +209,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         era_start_time: Timestamp,
         seed: u64,
         _now: Timestamp,
-        write_wal: WriteWAL<C>,
+        write_wal: WriteWal<C>,
     ) -> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
@@ -291,15 +291,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>),
         CouldntConstructConsensusProtocol,
     > {
-        let write_wal = match WriteWAL::new(&wal_file) {
+        let write_wal = match WriteWal::new(&wal_file) {
             Ok(write_wal) => write_wal,
             Err(err) => {
                 // TODO We have to handle this case, but this means either moving the handling of
-                // the WriteWAL one layer up (which is unnecessary for highway) or making this
+                // the WriteWal one layer up (which is unnecessary for highway) or making this
                 // function return a Result, which would have a similar effect of dealing with an
                 // error case we didn't have to for highway. I'm leaning towards the latter,
                 // but its simplest to leave it unhandled for now.
-                error!(?err, "could not create a WriteWAL using this file");
+                error!(?err, "could not create a WAL using this file");
                 return Err(CouldntConstructConsensusProtocol);
             }
         };
@@ -318,11 +318,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             write_wal,
         );
 
-        let read_wal = match ReadWAL::<C>::new(&wal_file) {
+        let read_wal = match ReadWal::<C>::new(&wal_file) {
             Ok(read_wal) => read_wal,
             Err(err) => {
-                // TODO Same type of deal as the WriteWAL problem.
-                error!(?err, "could not create a ReadWAL using this file");
+                // TODO Same type of deal as the WriteWal problem.
+                error!(?err, "could not create a ReadWal using this file");
                 unimplemented!()
             }
         };
@@ -663,7 +663,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             let message = Message::Signed(signed_msg);
             vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
         } else {
-            error!("create_message WAL");
             vec![]
         }
     }
@@ -1174,9 +1173,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Consumes all of the signed messages we've previously recorded in our write ahead log.
-    pub(crate) fn consume_read_wal(&mut self, mut read_wal: ReadWAL<C>, now: Timestamp) {
+    pub(crate) fn consume_read_wal(&mut self, mut read_wal: ReadWal<C>, now: Timestamp) {
         loop {
-            use wal::ReadWALError;
+            use wal::ReadWalError;
 
             match read_wal.read_next_entry() {
                 Ok(next_entry) => match next_entry {
@@ -1227,10 +1226,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         ()
                     }
                 },
-                Err(ReadWALError::NoMoreEntries) => {
+                Err(ReadWalError::NoMoreEntries) => {
                     break;
                 }
-                Err(ReadWALError::CouldntReadMessage) => {
+                Err(ReadWalError::CouldntReadMessage) => {
                     // TODO Single corrupt message, rest of wal is useless. Happy case is that the
                     // machine shut down while flushing to disk, corruption is expected and there
                     // will be one corrupt record that was never broadcast to anyone. Sad case is
