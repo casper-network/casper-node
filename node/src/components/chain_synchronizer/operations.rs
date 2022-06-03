@@ -1232,7 +1232,7 @@ async fn fetch_block_worker(
             .effect_builder
             .get_block_hash_by_height_from_storage(next_block_height)
             .await
-            .ok_or_else(|| Error::NoSuchBlockHeight(next_block_height))?;
+            .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
 
         info!(
             worker_id,
