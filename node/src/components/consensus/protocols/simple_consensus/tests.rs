@@ -29,6 +29,7 @@ pub(crate) fn new_test_simple_consensus<I1, I2, T>(
     weights: I1,
     init_faulty: I2,
     seq: &[ValidatorIndex],
+    write_wal: WriteWAL<ClContext>,
 ) -> SimpleConsensus<ClContext>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
@@ -64,6 +65,7 @@ where
         start_timestamp,
         seed,
         start_timestamp,
+        write_wal,
     )
 }
 
@@ -349,6 +351,8 @@ fn abc_weights(
 /// Alice's two blocks become finalized.
 #[test]
 fn simple_consensus_no_fault() {
+    let write_wal = WriteWAL::new_test_wal().unwrap();
+
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 30, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -357,7 +361,7 @@ fn simple_consensus_no_fault() {
 
     // The first round leaders are Bob, Alice, Alice, Carol, Carol.
     let leader_seq = &[bob_idx, alice_idx, alice_idx, carol_idx, carol_idx];
-    let mut sc_c = new_test_simple_consensus(weights, vec![], leader_seq);
+    let mut sc_c = new_test_simple_consensus(weights, vec![], leader_seq, write_wal);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -538,8 +542,15 @@ fn simple_consensus_faults() {
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
+    let write_wal = WriteWAL::new_test_wal().unwrap();
+
     // The first round leaders are Carol, Alice, Alice.
-    let mut sc = new_test_simple_consensus(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
+    let mut sc = new_test_simple_consensus(
+        weights,
+        vec![],
+        &[carol_idx, alice_idx, alice_idx],
+        write_wal,
+    );
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -607,8 +618,10 @@ fn simple_consensus_standstill_alert() {
     let (weights, validators) = abc_weights(60, 30, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
 
+    let write_wal = WriteWAL::new_test_wal().unwrap();
+
     // The first round leader is Alice.
-    let mut sc_c = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc_c = new_test_simple_consensus(weights, vec![], &[alice_idx], write_wal);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
@@ -679,8 +692,10 @@ fn simple_consensus_sends_sync_state() {
     let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
+    let write_wal = WriteWAL::new_test_wal().unwrap();
+
     // The first round leader is Alice.
-    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx], write_wal);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -788,8 +803,10 @@ fn simple_consensus_handles_sync_state() {
     let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
+    let write_wal = WriteWAL::new_test_wal().unwrap();
+
     // The first round leader is Alice.
-    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx], write_wal);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -933,8 +950,11 @@ fn test_validator_bit_field() {
         })
         .collect();
 
-    let sc100 = new_test_simple_consensus(weights100, vec![], &[]);
-    let sc250 = new_test_simple_consensus(weights250, vec![], &[]);
+    let write_wal100 = WriteWAL::new_test_wal().unwrap();
+    let write_wal250 = WriteWAL::new_test_wal().unwrap();
+
+    let sc100 = new_test_simple_consensus(weights100, vec![], &[], write_wal100);
+    let sc250 = new_test_simple_consensus(weights250, vec![], &[], write_wal250);
 
     test_roundtrip(&sc100, 50, vec![], vec![]);
     test_roundtrip(&sc250, 50, vec![], vec![]);
@@ -963,7 +983,9 @@ fn test_quorum() {
         let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
         let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
-        let mut sc = new_test_simple_consensus(weights, vec![], &[]);
+        let write_wal = WriteWAL::new_test_wal().unwrap();
+
+        let mut sc = new_test_simple_consensus(weights, vec![], &[], write_wal);
 
         // The threshold is the highest number that's below 2/3 of the weight.
         assert_eq!(a, sc.quorum_threshold().0);

@@ -120,7 +120,8 @@ pub(crate) type RoundId = u32;
 type ProposalsAwaitingParent = HashSet<(RoundId, NodeId)>;
 type ProposalsAwaitingValidation<C> = HashSet<(RoundId, Proposal<C>, NodeId)>;
 
-/// Contains the portion of the state required for an active validator to participate in the protocol.
+/// Contains the portion of the state required for an active validator to participate in the
+/// protocol.
 #[derive(DataSize)]
 pub(crate) struct ActiveValidator<C>
 where
@@ -128,7 +129,6 @@ where
 {
     idx: ValidatorIndex,
     secret: C::ValidatorSecret,
-    write_wal: WriteWAL<C>,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -137,7 +137,6 @@ impl<C: Context> Debug for ActiveValidator<C> {
             .debug_struct("ActiveValidator")
             .field("idx", &self.idx)
             .field("secret", &"<REDACTED>")
-            .field("write_wal", &"<NOT-PICTURED>")
             .finish()
     }
 }
@@ -192,6 +191,8 @@ where
     /// The next update we have set a timer for. This helps deduplicate redundant calls to
     /// `update`.
     next_scheduled_update: Timestamp,
+    /// The write-ahead log to prevent honest nodes from double-signing upon restart.
+    write_wal: WriteWAL<C>,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -208,6 +209,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         era_start_time: Timestamp,
         seed: u64,
         _now: Timestamp,
+        write_wal: WriteWAL<C>,
     ) -> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
@@ -266,6 +268,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             progress_detected: false,
             paused: false,
             next_scheduled_update: Timestamp::MAX,
+            write_wal,
         }
     }
 
@@ -282,8 +285,22 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         era_start_time: Timestamp,
         seed: u64,
         now: Timestamp,
+        wal_file: PathBuf,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
-        let sc = Self::new(
+        let write_wal = match WriteWAL::new(&wal_file) {
+            Ok(write_wal) => write_wal,
+            Err(err) => {
+                // TODO We have to handle this case, but this means either moving the handling of
+                // the WriteWAL one layer up (which is unnecessary for highway) or making this
+                // function return a Result, which would have a similar effect of dealing with an
+                // error case we didn't have to for highway. I'm leaning towards the latter,
+                // but its simplest to leave it unhandled for now.
+                error!(?err, "could not create a WriteWAL using this file");
+                unimplemented!()
+            }
+        };
+
+        let mut sc = Self::new(
             instance_id,
             validator_stakes,
             faulty,
@@ -294,7 +311,23 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             era_start_time,
             seed,
             now,
+            write_wal,
         );
+
+        let read_wal = match ReadWAL::<C>::new(&wal_file) {
+            Ok(read_wal) => read_wal,
+            Err(err) => {
+                // TODO Same type of deal as the WriteWAL problem.
+                error!(?err, "could not create a ReadWAL using this file");
+                unimplemented!()
+            }
+        };
+
+        let mut outcomes = vec![];
+
+        outcomes.append(&mut sc.consume_read_wal(read_wal, now));
+
+        sc.schedule_update(sc.params.start_timestamp().max(now));
         (Box::new(sc), vec![])
     }
 
@@ -1119,23 +1152,20 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         false
     }
 
-    /// Adds a signed message to the WAL such that we can avoid double signing upon recovery if the node shuts down.
+    /// Adds a signed message to the WAL such that we can avoid double signing upon recovery if the
+    /// node shuts down.
     fn record_entry(&mut self, entry: &Entry<C>) -> bool {
-        if let Some(active_validator) = &mut self.active_validator {
-            match active_validator.write_wal.record_entry(entry) {
-                Ok(()) => {
-                    return true;
-                }
-                Err(err) => {
-                    // TODO This really should be fatal for the node, it at least cannot
-                    // participate in consensus while this is happening. Handle this case properly.
-                    error!(?err, "could not record a signed message before sending it");
-                    return false;
-                }
+        match self.write_wal.record_entry(entry) {
+            Ok(()) => {
+                return true;
+            }
+            Err(err) => {
+                // TODO This really should be fatal for the node, it at least cannot
+                // participate in consensus while this is happening. Handle this case properly.
+                error!(?err, "could not record a signed message before sending it");
+                return false;
             }
         }
-        error!("trying to record signed message as a non-active validator");
-        false
     }
 
     /// Consumes all of the signed messages we've previously recorded in our write ahead log.
@@ -1939,69 +1969,22 @@ where
         &mut self,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        now: Timestamp,
-        wal_file: Option<PathBuf>,
+        _now: Timestamp,
+        _wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
-        let wal_file = {
-            if let Some(wal_file) = wal_file {
-                wal_file
-            } else {
-                error!("didn't pass in a wal_file to activate_validator");
-                return vec![];
-            }
-        };
-        // TODO: Use the unit hash file to remember at least all our own messages from at least all
-        // rounds that aren't finalized (ideally with finality signatures) yet. To support the whole
-        // internet restarting, we'd need to store all our own messages.
         if let Some(our_idx) = self.validators.get_index(&our_id) {
             info!(our_idx = our_idx.0, "start voting");
-            // TODO Consume a ReadWAL to reproduce the state of the protocol, then create a WriteWAL
-            // pointed at the end of that ReadWAL to write the future network messages.
-            // TODO Think of a sensible way to handle WAL corruption, in case the writes to disk
-            // weren't done atomically. Thankfully, we have signed messages stored in the WAL, so
-            // corruption won't go unnoticed, but we need to do _something_, such as taking
-            // everything that does decode and relying on the sync system to provide us with the
-            // rest. Either way, when we restart using the WAL it has to be purged of corrupted
-            // entries. My thought is that there _should_ only be one that is corrupt, it should be
-            // the last, and the fact that it is corrupt means we didn't flush it to disk and thus
-            // we didn't complete the function call and send it out to the network, so dropping it
-            // on the floor should be safe. Disk corruption which is independent of our program
-            // could easily cause the bad type of error though, where you can't understand a
-            // message that you actually sent. In this case, we have to be careful as we might get
-            // ourselves kicked out of the protocol. My advice is to use a sort of drive which has measures
-            // in place to avoid disk corruption.
-
-            let read_wal = match ReadWAL::<C>::new(&wal_file) {
-                Ok(read_wal) => read_wal,
-                Err(err) => {
-                    error!(?err, "could not create a ReadWAL using this file");
-                    return vec![];
-                }
-            };
-
-            let mut outcomes = vec![];
-
-            outcomes.append(&mut self.consume_read_wal(read_wal, now));
-
-            let write_wal = match WriteWAL::new(&wal_file) {
-                Ok(write_wal) => write_wal,
-                Err(err) => {
-                    error!(?err, "could not create a WriteWAL using this file");
-                    return vec![];
-                }
-            };
-
             self.active_validator = Some(ActiveValidator {
                 idx: our_idx,
                 secret,
-                write_wal,
             });
-            self.schedule_update(self.params.start_timestamp().max(now))
+            return vec![];
         } else {
-            warn!(
+            error!(
                 ?our_id,
                 "we are not a validator in this era; not activating"
             );
+            // TODO Something horrible has gone wrong -- is there a corresponding protocol outcome?
             vec![]
         }
     }

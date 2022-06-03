@@ -103,6 +103,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         era_start_time: Timestamp,
         seed: u64,
         now: Timestamp,
+        _unit_file: PathBuf,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);

@@ -7,7 +7,6 @@ use std::{
 };
 
 use datasize::DataSize;
-
 use serde::{Deserialize, Serialize};
 
 use crate::components::consensus::{
@@ -22,7 +21,7 @@ use super::RoundId;
     serialize = "C::Hash: Serialize, C::ValidatorId: Serialize",
     deserialize = "C::Hash: Deserialize<'de>, C::ValidatorId: Deserialize<'de>",
 ))]
-pub(super) enum Entry<C: Context> {
+pub(crate) enum Entry<C: Context> {
     SignedMessage(SignedMessage<C>),
     Proposal(Proposal<C>, RoundId),
     Evidence(SignedMessage<C>, Content<C>, C::Signature),
@@ -30,7 +29,7 @@ pub(super) enum Entry<C: Context> {
 
 /// The messages are written to disk like:
 #[derive(Debug)]
-pub(super) struct WriteWAL<C: Context> {
+pub(crate) struct WriteWAL<C: Context> {
     writer: BufWriter<File>,
     phantom_context: PhantomData<C>,
 }
@@ -49,38 +48,72 @@ impl<C: Context> DataSize for WriteWAL<C> {
 /// underlying causes for failure, right now they're more of an enumeration of
 /// the places where errors take place
 #[derive(Debug)]
-pub(super) enum WriteWALError {
-    PathDoesntExist,
+pub(crate) enum WriteWALError {
     CouldntGetSerializedSize,
     CouldntSerializeSizeIntoWriter,
     CouldntSerializeMessageIntoWriter,
     FileCouldntOpen,
     PathIsntFile,
     CouldntFlushMessageToDisk,
+    FileCouldntBeCreated(std::io::Error),
+    CouldntCreateParentDirectory(PathBuf, std::io::Error),
+    OtherIOError(std::io::Error),
 }
 
 impl<C: Context> WriteWAL<C>
 where
     C::ValidatorId: Serialize,
 {
-    pub(super) fn new(wal_path: &PathBuf) -> Result<Self, WriteWALError> {
-        let meta = std::fs::metadata(&wal_path).map_err(|_| WriteWALError::PathDoesntExist)?;
-        if meta.is_file() {
-            let file = OpenOptions::new()
-                .append(true)
-                .open(&wal_path)
-                .map_err(|_| WriteWALError::FileCouldntOpen)?;
-            let writer = BufWriter::new(file);
-            Ok(WriteWAL {
-                writer,
-                phantom_context: PhantomData,
-            })
-        } else {
-            Err(WriteWALError::PathIsntFile)
-        }
+    #[cfg(test)]
+    pub(crate) fn new_test_wal() -> Result<Self, WriteWALError> {
+        let file = tempfile().map_err(WriteWALError::OtherIOError)?;
+        Ok(WriteWAL {
+            writer: BufWriter::new(file),
+            phantom_context: PhantomData,
+        })
     }
 
-    pub(super) fn record_entry(&mut self, entry: &Entry<C>) -> Result<(), WriteWALError> {
+    pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, WriteWALError> {
+        let file = match std::fs::metadata(&wal_path) {
+            Ok(meta) => {
+                if meta.is_file() {
+                    let file = OpenOptions::new()
+                        .append(true)
+                        .open(&wal_path)
+                        .map_err(|_| WriteWALError::FileCouldntOpen)?;
+                    Ok(file)
+                } else {
+                    Err(WriteWALError::PathIsntFile)
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                if let Some(parent_directory) = wal_path.parent() {
+                    std::fs::create_dir_all(parent_directory).map_err(|err| {
+                        WriteWALError::CouldntCreateParentDirectory(
+                            parent_directory.to_owned(),
+                            err,
+                        )
+                    })?;
+                }
+
+                OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&wal_path)
+                    .map_err(|err| WriteWALError::FileCouldntBeCreated(err))
+            }
+            Err(err) => Err(WriteWALError::OtherIOError(err)),
+        }?;
+
+        let writer = BufWriter::new(file);
+
+        Ok(WriteWAL {
+            writer,
+            phantom_context: PhantomData,
+        })
+    }
+
+    pub(crate) fn record_entry(&mut self, entry: &Entry<C>) -> Result<(), WriteWALError> {
         let entry_size =
             bincode::serialized_size(entry).map_err(|_| WriteWALError::CouldntGetSerializedSize)?;
         self.writer
@@ -95,42 +128,50 @@ where
     }
 }
 
-// TODO add a unit variant for the case where the file doesn't exist
 #[derive(Debug)]
-pub(super) struct ReadWAL<C: Context> {
-    pub(super) bytes_left: usize,
-    pub(super) reader: BufReader<File>,
-    pub(super) phantom_context: PhantomData<C>,
+pub(crate) struct ReadWAL<C: Context> {
+    pub(crate) bytes_left: usize,
+    pub(crate) total_bytes: usize,
+    pub(crate) reader: BufReader<File>,
+    pub(crate) phantom_context: PhantomData<C>,
 }
 
 /// TODO These cases must be expanded or shrunk based on a case analysis of the
 /// underlying causes for failure, right now they're more of an enumeration of
 /// the places where errors take place
 #[derive(Debug)]
-pub(super) enum ReadWALError {
+pub(crate) enum ReadWALError {
     FileCouldntOpen(PathBuf),
     PathIsntFile(PathBuf),
-    NotEnoughBytesForEntry,
-    CouldntReadMessageSize,
     CouldntReadMessage,
-    CouldntDeserializeMessage,
     NoMoreEntries,
     FileCouldntBeCreated(PathBuf, std::io::Error),
     CouldntGetMeta,
     OtherIOError(std::io::Error),
     CouldntCreateParentDirectory(PathBuf, std::io::Error),
+    EndedOnCorruption(WALCorruptionType),
+}
+
+/// Reasons why the WAL might be corrupt
+#[derive(Debug)]
+pub(crate) enum WALCorruptionType {
+    /// Normal case of corruption, likely caused by abruptly shutting the node down.
+    NotEnoughInput,
+    /// Abnormal case of corruption, likely caused by operator error.
+    ImproperFormatting,
 }
 
 impl<C: Context> ReadWAL<C>
 where
     C::ValidatorId: for<'de> Deserialize<'de>,
 {
-    pub(super) fn new(wal_path: &PathBuf) -> Result<Self, ReadWALError> {
+    pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, ReadWALError> {
         let (file, bytes_left) = match std::fs::metadata(&wal_path) {
             Ok(meta) => {
                 if meta.is_file() {
                     let file = OpenOptions::new()
                         .read(true)
+                        .write(true)
                         .open(&wal_path)
                         .map_err(|_| ReadWALError::FileCouldntOpen(wal_path.clone()))?;
                     (file, meta.size() as usize)
@@ -149,7 +190,6 @@ where
                     .create(true)
                     .read(true)
                     .write(true)
-                    .append(true)
                     .open(&wal_path)
                     .map_err(|err| ReadWALError::FileCouldntBeCreated(wal_path.clone(), err))?;
                 let meta =
@@ -163,6 +203,7 @@ where
         let reader = BufReader::new(file);
         Ok(ReadWAL {
             bytes_left,
+            total_bytes: bytes_left,
             reader,
             phantom_context: PhantomData,
         })
@@ -173,20 +214,40 @@ impl<C: Context> ReadWAL<C>
 where
     C::ValidatorId: for<'de> Deserialize<'de>,
 {
-    pub(super) fn read_next_entry(&mut self) -> Result<Entry<C>, ReadWALError> {
+    pub(crate) fn read_next_entry(&mut self) -> Result<Entry<C>, ReadWALError> {
         if self.bytes_left == 0 {
             return Err(ReadWALError::NoMoreEntries);
         }
-        let entry_size = {
-            let mut entry_size_buf = [0u8; 8];
+        if self.bytes_left < 8 {
             self.reader
-                .read_exact(&mut entry_size_buf)
-                .map_err(|_| ReadWALError::CouldntReadMessageSize)?;
-            self.bytes_left -= 8;
-            std::primitive::u64::from_be_bytes(entry_size_buf)
-        } as usize;
+                .get_mut()
+                .set_len((self.total_bytes - self.bytes_left) as u64)
+                .map_err(ReadWALError::OtherIOError)?;
+            return Err(ReadWALError::EndedOnCorruption(
+                WALCorruptionType::NotEnoughInput,
+            ));
+        }
+        let mut entry_size_buf = [0u8; 8];
+        match self.reader.read_exact(&mut entry_size_buf) {
+            Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+                // TODO Should we keep this? Mostly keeping it here as a sanity check for now.
+                unreachable!()
+            }
+            Err(err) => {
+                return Err(ReadWALError::OtherIOError(err));
+            }
+            Ok(()) => {}
+        }
+        self.bytes_left -= 8;
+        let entry_size = std::primitive::u64::from_be_bytes(entry_size_buf) as usize;
         if entry_size < self.bytes_left {
-            return Err(ReadWALError::NotEnoughBytesForEntry);
+            self.reader
+                .get_mut()
+                .set_len((self.total_bytes - self.bytes_left - 8) as u64)
+                .map_err(ReadWALError::OtherIOError)?;
+            return Err(ReadWALError::EndedOnCorruption(
+                WALCorruptionType::NotEnoughInput,
+            ));
         }
         let entry = {
             let mut entry_buf = vec![0; entry_size];
@@ -194,7 +255,9 @@ where
                 .read_exact(&mut entry_buf)
                 .map_err(|_| ReadWALError::CouldntReadMessage)?;
             self.bytes_left -= entry_size;
-            bincode::deserialize(&entry_buf).map_err(|_| ReadWALError::CouldntDeserializeMessage)?
+            bincode::deserialize(&entry_buf).map_err(|_| {
+                ReadWALError::EndedOnCorruption(WALCorruptionType::ImproperFormatting)
+            })?
         };
         Ok(entry)
     }

@@ -86,6 +86,7 @@ type ConsensusConstructor = dyn Fn(
         Timestamp,           // start time for this era
         u64,                 // random seed
         Timestamp,           // now timestamp
+        PathBuf,
     ) -> (
         Box<dyn ConsensusProtocol<ClContext>>,
         Vec<ProtocolOutcome<ClContext>>,
@@ -464,6 +465,7 @@ impl EraSupervisor {
             start_time,
             seed,
             now,
+            self.unit_file(&instance_id),
         );
         let era = Era::new(
             consensus,
