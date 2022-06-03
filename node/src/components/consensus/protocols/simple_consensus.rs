@@ -83,8 +83,8 @@ use crate::{
     components::consensus::{
         config::Config,
         consensus_protocol::{
-            BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
-            ProtocolOutcomes, TerminalBlockData,
+            BlockContext, ConsensusProtocol, CouldntConstructConsensusProtocol, FinalizedBlock,
+            ProposedBlock, ProtocolOutcome, ProtocolOutcomes, TerminalBlockData,
         },
         protocols,
         traits::{ConsensusValueT, Context},
@@ -273,6 +273,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Creates a new boxed [`SimpleConsensus`] instance.
+    // TODO return a result or option
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
@@ -286,7 +287,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         seed: u64,
         now: Timestamp,
         wal_file: PathBuf,
-    ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
+    ) -> Result<
+        (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>),
+        CouldntConstructConsensusProtocol,
+    > {
         let write_wal = match WriteWAL::new(&wal_file) {
             Ok(write_wal) => write_wal,
             Err(err) => {
@@ -296,7 +300,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 // error case we didn't have to for highway. I'm leaning towards the latter,
                 // but its simplest to leave it unhandled for now.
                 error!(?err, "could not create a WriteWAL using this file");
-                unimplemented!()
+                return Err(CouldntConstructConsensusProtocol);
             }
         };
 
@@ -323,12 +327,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             }
         };
 
-        let mut outcomes = vec![];
+        sc.consume_read_wal(read_wal, now);
 
-        outcomes.append(&mut sc.consume_read_wal(read_wal, now));
-
-        sc.schedule_update(sc.params.start_timestamp().max(now));
-        (Box::new(sc), vec![])
+        Ok((Box::new(sc), vec![]))
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
@@ -662,6 +663,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             let message = Message::Signed(signed_msg);
             vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
         } else {
+            error!("create_message WAL");
             vec![]
         }
     }
@@ -1162,18 +1164,17 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             Err(err) => {
                 // TODO This really should be fatal for the node, it at least cannot
                 // participate in consensus while this is happening. Handle this case properly.
-                error!(?err, "could not record a signed message before sending it");
+                error!(
+                    ?err,
+                    "could not record a signed message to the WAL before sending it"
+                );
                 return false;
             }
         }
     }
 
     /// Consumes all of the signed messages we've previously recorded in our write ahead log.
-    fn consume_read_wal(
-        &mut self,
-        mut read_wal: ReadWAL<C>,
-        now: Timestamp,
-    ) -> ProtocolOutcomes<C> {
+    pub(crate) fn consume_read_wal(&mut self, mut read_wal: ReadWAL<C>, now: Timestamp) {
         loop {
             use wal::ReadWALError;
 
@@ -1248,7 +1249,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
             }
         }
-        self.update(now)
     }
 
     /// Adds a signed message content to the state, but does not call `update` and does not detect
@@ -1256,7 +1256,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// message is sent from a known faulty validator.
     fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.faults.contains_key(&signed_msg.validator_idx) {
-            debug!(?signed_msg, "dropping message from faulty validator");
+            // TODO debug!
+            error!(?signed_msg, "dropping message from faulty validator");
             return false;
         }
         if !self.record_entry(&Entry::SignedMessage(signed_msg.clone())) {
@@ -1969,7 +1970,7 @@ where
         &mut self,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        _now: Timestamp,
+        now: Timestamp,
         _wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
         if let Some(our_idx) = self.validators.get_index(&our_id) {
@@ -1978,7 +1979,7 @@ where
                 idx: our_idx,
                 secret,
             });
-            return vec![];
+            return self.schedule_update(self.params.start_timestamp().max(now));
         } else {
             error!(
                 ?our_id,

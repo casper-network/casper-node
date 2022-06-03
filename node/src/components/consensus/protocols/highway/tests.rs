@@ -96,7 +96,8 @@ where
         0,
         start_timestamp,
         wal_file,
-    );
+    )
+    .unwrap();
     // We expect five messages:
     // * log participation timer,
     // * log synchronizer queue length timer,

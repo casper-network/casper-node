@@ -24,7 +24,8 @@ use crate::{
     components::consensus::{
         config::Config,
         consensus_protocol::{
-            BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
+            BlockContext, ConsensusProtocol, CouldntConstructConsensusProtocol, ProposedBlock,
+            ProtocolOutcome, ProtocolOutcomes,
         },
         highway_core::{
             active_validator::Effect as AvEffect,
@@ -104,7 +105,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         seed: u64,
         now: Timestamp,
         _unit_file: PathBuf,
-    ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
+    ) -> Result<
+        (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>),
+        CouldntConstructConsensusProtocol,
+    > {
         let validators_count = validator_stakes.len();
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let highway_config = &chainspec.highway_config;
@@ -183,7 +187,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             config: config.highway.clone(),
         });
 
-        (hw_proto, outcomes)
+        Ok((hw_proto, outcomes))
     }
 
     fn initialize_timers(

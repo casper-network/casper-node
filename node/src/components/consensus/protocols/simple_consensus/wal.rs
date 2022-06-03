@@ -9,6 +9,9 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use tempfile::tempfile;
+
 use crate::components::consensus::{
     protocols::simple_consensus::message::{Content, Proposal, SignedMessage},
     traits::Context,
