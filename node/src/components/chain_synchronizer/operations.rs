@@ -1228,14 +1228,11 @@ async fn fetch_block_worker(
             return Ok(());
         }
 
-        let block_hash = match ctx
+        let block_hash = ctx
             .effect_builder
             .get_block_hash_by_height_from_storage(next_block_height)
             .await
-        {
-            Some(hash) => hash,
-            None => return Err(Error::NoSuchBlockHeight(next_block_height)),
-        };
+            .ok_or_else(|| Error::NoSuchBlockHeight(next_block_height))?;
 
         info!(
             worker_id,
