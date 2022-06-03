@@ -1,9 +1,9 @@
 pub mod backpressured;
 pub mod chunked;
 pub mod error;
+pub mod frame_reader;
 pub mod length_prefixed;
 pub mod mux;
-pub mod reader;
 
 use bytes::Buf;
 
@@ -74,11 +74,11 @@ pub(crate) mod tests {
     use futures::{future, stream, FutureExt, SinkExt, StreamExt};
 
     use crate::{
-        chunked::Dechunker,
+        chunked::Defragmentizer,
         chunked::{chunk_frame, SingleChunk},
         error::Error,
+        frame_reader::FrameReader,
         length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
-        reader::Reader,
     };
 
     /// Collects everything inside a `Buf` into a `Vec`.
@@ -129,7 +129,7 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
         let expected = "ABCDEFGHIJKL";
 
-        let dechunker = Dechunker::new(Reader::new(stream));
+        let dechunker = Defragmentizer::new(FrameReader::new(stream));
 
         let messages: Vec<_> = dechunker.collect().now_or_never().unwrap();
         assert_eq!(
@@ -143,7 +143,7 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
         let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
 
-        let dechunker = Dechunker::new(Reader::new(stream));
+        let dechunker = Defragmentizer::new(FrameReader::new(stream));
 
         let messages: Vec<_> = dechunker.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);

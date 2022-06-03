@@ -19,12 +19,12 @@ const MORE_CHUNKS: u8 = 0x00;
 /// Final chunk indicator.
 pub const FINAL_CHUNK: u8 = 0xFF;
 
-pub(crate) struct Dechunker<R: Stream> {
-    stream: R,
+pub(crate) struct Defragmentizer<S: Stream> {
+    stream: S,
     buffer: Vec<Bytes>,
 }
 
-impl<R: Stream> Dechunker<R> {
+impl<R: Stream> Defragmentizer<R> {
     #[cfg(test)]
     pub(crate) fn new(stream: R) -> Self {
         Self {
@@ -60,10 +60,10 @@ impl<R: Stream> Dechunker<R> {
     }
 }
 
-impl<R> Stream for Dechunker<R>
+impl<S> Stream for Defragmentizer<S>
 where
-    R: Stream + Unpin,
-    R: Stream<Item = Bytes>,
+    S: Stream + Unpin,
+    S: Stream<Item = Bytes>,
 {
     type Item = Bytes;
 
