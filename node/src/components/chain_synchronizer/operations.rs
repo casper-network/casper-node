@@ -1203,7 +1203,16 @@ async fn fetch_block_headers_batch(
 async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     info!("syncing blocks and deploys and state since Genesis");
 
-    // TODO: We could read the highest full block from store.
+    // NOTE: Currently there's no good way to read the known, highest *FULL* block.
+    // Full means that we have:
+    //  * the block header
+    //  * the block body
+    //  * the trie
+    // Since we fetch and store each of these independently, we might crash midway through the
+    // process and have partial data. We could reindex storages on startup but that had proven to
+    // take 30min+ in the past. We need to prioritize correctness over performance so we
+    // choose to "re-sync" from Genesis, even if it means we will go through thousands of blocks
+    // that we already have. Hopefully, local checks will be fast enough.
     let latest_height_requested: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
     let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_block_fetches())
