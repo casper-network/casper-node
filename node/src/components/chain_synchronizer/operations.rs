@@ -1123,7 +1123,9 @@ async fn fetch_headers_till_genesis(
     loop {
         match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
             Ok(new_lowest) => {
-                info!(?new_lowest, "new lowest trusted block header stored");
+                if new_lowest.height() % 1_000 == 0 {
+                    info!(?new_lowest, "new lowest trusted block header stored");
+                }
                 lowest_trusted_block_header = new_lowest;
             }
             Err(err) => {
@@ -1234,12 +1236,14 @@ async fn fetch_block_worker(
             .await
             .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
 
-        info!(
-            worker_id,
-            ?block_hash,
-            ?next_block_height,
-            "syncing block and deploys"
-        );
+        if next_block_height % 1_000 == 0 {
+            info!(
+                worker_id,
+                ?block_hash,
+                ?next_block_height,
+                "syncing block and deploys"
+            );
+        }
         match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
             Ok(fetched_block) => {
                 trace!(?block_hash, "downloaded block and deploys");
