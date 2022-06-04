@@ -752,7 +752,7 @@ impl ExecConfig {
         self.accounts.iter()
     }
 
-    /// Returns all genesis accounts.
+    /// Returns all administrative accounts.
     pub(crate) fn administrative_accounts(&self) -> impl Iterator<Item = &AdministratorAccount> {
         self.accounts
             .iter()
@@ -1163,26 +1163,7 @@ where
             );
 
             // This purse is used only in FeeHandling::Accumulate setting.
-            let rewards_purse_uref =
-                {
-                    let rewards_purse_uref = self
-                        .address_generator
-                        .borrow_mut()
-                        .new_uref(AccessRights::READ_ADD_WRITE);
-
-                    self.tracking_copy.borrow_mut().write(
-                        Key::Balance(rewards_purse_uref.addr()),
-                        StoredValue::CLValue(CLValue::from_t(U512::zero()).map_err(|_| {
-                            GenesisError::CLValue(ACCUMULATION_PURSE_KEY.to_string())
-                        })?),
-                    );
-
-                    self.tracking_copy.borrow_mut().write(
-                        rewards_purse_uref.into(),
-                        StoredValue::CLValue(CLValue::unit()),
-                    );
-                    rewards_purse_uref
-                };
+            let rewards_purse_uref = self.create_purse(U512::zero())?;
 
             named_keys.insert(
                 ACCUMULATION_PURSE_KEY.to_string(),

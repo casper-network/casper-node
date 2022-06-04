@@ -30,7 +30,7 @@ pub trait RuntimeProvider {
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
 
     /// Check if auction bids are allowed.
-    fn auction_bids_allowed(&self) -> bool;
+    fn allow_auction_bids(&self) -> bool;
 
     /// Returns [`FeeHandling`] setting.
     fn fee_handling(&self) -> FeeHandling;

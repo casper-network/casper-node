@@ -1,4 +1,4 @@
-/// Configuration options of refund handling that is executed as part of handle payment
+/// Configuration options of refund handling that are executed as part of handle payment
 /// finalization.
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};

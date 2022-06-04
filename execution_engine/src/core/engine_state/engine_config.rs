@@ -26,7 +26,7 @@ pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
-/// Default value for allowing unrestricted transfers
+/// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
 pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
@@ -148,7 +148,7 @@ impl EngineConfig {
         self.strict_argument_checking
     }
 
-    /// Get the engine config's administrative accouAnts.
+    /// Get the engine config's administrative accounts.
     #[must_use]
     pub fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
         &self.administrative_accounts

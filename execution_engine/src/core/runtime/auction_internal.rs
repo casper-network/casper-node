@@ -139,7 +139,7 @@ where
         crypto::blake2b(data)
     }
 
-    fn auction_bids_allowed(&self) -> bool {
+    fn allow_auction_bids(&self) -> bool {
         self.config.allow_auction_bids()
     }
 

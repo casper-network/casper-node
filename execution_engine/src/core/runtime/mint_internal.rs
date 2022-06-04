@@ -72,7 +72,7 @@ where
         self.config.is_account_administrator(account_hash)
     }
 
-    fn can_perform_unrestricted_transfer(&self) -> bool {
+    fn allow_unrestricted_transfers(&self) -> bool {
         self.config.allow_unrestricted_transfers()
     }
 

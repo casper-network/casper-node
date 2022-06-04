@@ -49,5 +49,5 @@ pub trait RuntimeProvider {
     fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool>;
     /// Checks if users can perform unrestricted transfers. This option is valid only for private
     /// chains.
-    fn can_perform_unrestricted_transfer(&self) -> bool;
+    fn allow_unrestricted_transfers(&self) -> bool;
 }

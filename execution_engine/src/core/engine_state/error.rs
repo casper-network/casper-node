@@ -97,6 +97,9 @@ pub enum Error {
     /// Failed to retrieve the current EraId from the auction state.
     #[error("Failed to retrieve the era_id from the auction state")]
     FailedToRetrieveEraId,
+    /// Failed to retrieve accumulation purse from handle payment system contract.
+    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
+    FailedToRetrieveAccumulationPurse,
 }
 
 impl Error {

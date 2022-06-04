@@ -68,7 +68,7 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512, ApiError> {
-        if !self.auction_bids_allowed() {
+        if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
             // allow new bids to come in.
             return Err(Error::AuctionBidsDisabled.into());
@@ -219,7 +219,7 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
-        if !self.auction_bids_allowed() {
+        if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
             // allow new bids to come in.
             return Err(Error::AuctionBidsDisabled.into());

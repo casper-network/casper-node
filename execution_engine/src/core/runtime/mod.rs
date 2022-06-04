@@ -358,13 +358,8 @@ where
     }
 
     /// Gets the immediate caller of the current execution
-    fn get_immediate_stack_frame(&self) -> Option<&RuntimeStackFrame> {
-        self.stack.as_ref().and_then(|stack| stack.previous_frame())
-    }
-
-    /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&RuntimeStackFrame> {
-        self.get_immediate_stack_frame()
+        self.stack.as_ref().and_then(|stack| stack.previous_frame())
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account

@@ -682,41 +682,11 @@ where
             }
         };
 
-        let rewards_target_purse = {
-            let proposer_account: Account = match tracking_copy
-                .borrow_mut()
-                .get_account(correlation_id, AccountHash::from(&proposer))
-            {
-                Ok(account) => account,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
+        let rewards_target_purse =
+            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
-
-            match self.config.fee_handling() {
-                FeeHandling::PayToProposer { .. } => {
-                    // the proposer of the block this deploy is in receives the gas from this deploy
-                    // execution
-                    proposer_account.main_purse()
-                }
-                FeeHandling::Accumulate => {
-                    let handle_payment_hash =
-                        self.get_handle_payment_hash(correlation_id, prestate_hash)?;
-
-                    let handle_payment_contract = tracking_copy
-                        .borrow_mut()
-                        .get_contract(correlation_id, handle_payment_hash)?;
-
-                    let rewards_purse_uref = handle_payment_contract.named_keys().get(ACCUMULATION_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
-                        error!("fee elimination is configured to accumulate but mint does not have rewards purse; defaulting to a proposer");
-                        proposer_account.main_purse()
-                    });
-
-                    rewards_purse_uref
-                }
-                FeeHandling::Burn => URef::default(),
-            }
-        };
 
         let proposer_main_purse_balance_key = {
             match tracking_copy
@@ -1426,41 +1396,11 @@ where
             }
         };
 
-        let rewards_target_purse = {
-            let proposer_account: Account = match tracking_copy
-                .borrow_mut()
-                .get_account(correlation_id, AccountHash::from(&proposer))
-            {
-                Ok(account) => account,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
+        let rewards_target_purse =
+            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
-
-            match self.config.fee_handling() {
-                FeeHandling::PayToProposer => {
-                    // the proposer of the block this deploy is in receives the gas from this deploy
-                    // execution
-                    proposer_account.main_purse()
-                }
-                FeeHandling::Accumulate => {
-                    let handle_payment_hash =
-                        self.get_handle_payment_hash(correlation_id, prestate_hash)?;
-
-                    let handle_payment_contract = tracking_copy
-                        .borrow_mut()
-                        .get_contract(correlation_id, handle_payment_hash)?;
-
-                    let rewards_purse_uref = handle_payment_contract.named_keys().get(ACCUMULATION_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
-                        error!("fee elimination is configured to accumulate but handle payment does not have rewards purse; defaulting to a proposer");
-                        proposer_account.main_purse()
-                    });
-
-                    rewards_purse_uref
-                }
-                FeeHandling::Burn => URef::default(),
-            }
-        };
 
         let proposer_main_purse_balance_key = {
             // Get reward purse Key from handle payment contract
@@ -1712,6 +1652,56 @@ where
         // payment_code_spec_6: return properly combined set of transforms and
         // appropriate error
         Ok(ret)
+    }
+
+    fn get_rewards_purse(
+        &self,
+        correlation_id: CorrelationId,
+        proposer: PublicKey,
+        prestate_hash: Digest,
+    ) -> Result<URef, Error> {
+        let tracking_copy = match self.tracking_copy(prestate_hash) {
+            Err(error) => return Err(error),
+            Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        };
+        match self.config.fee_handling() {
+            FeeHandling::PayToProposer => {
+                // the proposer of the block this deploy is in receives the gas from this deploy
+                // execution
+                let proposer_account: Account = match tracking_copy
+                    .borrow_mut()
+                    .get_account(correlation_id, AccountHash::from(&proposer))
+                {
+                    Ok(account) => account,
+                    Err(error) => return Err(error.into()),
+                };
+
+                Ok(proposer_account.main_purse())
+            }
+            FeeHandling::Accumulate => {
+                let handle_payment_hash =
+                    self.get_handle_payment_hash(correlation_id, prestate_hash)?;
+
+                let handle_payment_contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, handle_payment_hash)?;
+
+                let accumulation_purse_uref = match handle_payment_contract
+                    .named_keys()
+                    .get(ACCUMULATION_PURSE_KEY)
+                {
+                    Some(Key::URef(accumulation_purse)) => accumulation_purse,
+                    Some(_) | None => {
+                        error!("fee elimination is configured to accumulate but handle payment does not have rewards purse; defaulting to a proposer");
+                        return Err(Error::FailedToRetrieveAccumulationPurse);
+                    }
+                };
+
+                Ok(*accumulation_purse_uref)
+            }
+            FeeHandling::Burn => Ok(URef::default()),
+        }
     }
 
     /// Apply effects of the execution.

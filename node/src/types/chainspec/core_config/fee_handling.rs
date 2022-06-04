@@ -6,6 +6,7 @@ use casper_types::bytesrepr::{self, Error, FromBytes, ToBytes};
 
 const FEE_HANDLING_PROPOSER_TAG: u8 = 0;
 const FEE_HANDLING_ACCUMULATE_TAG: u8 = 1;
+const FEE_HANDLING_BURN_TAG: u8 = 2;
 
 /// Fee handling config
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -15,10 +16,14 @@ pub enum FeeHandlingConfig {
     ///
     /// This is the default option for public chains.
     PayToProposer,
-    /// Transaction fees are accumulated in a special rewards purse.
+    /// Transaction fees are accumulated in an accumulation purse which is owned by the handle
+    /// payment system contract. All the accumulated fees are later distributed among all the
+    /// administrators in the system at the end of switch block.
     ///
     /// This setting makes sense for some private chains.
     Accumulate,
+    /// Fees are burned.
+    Burn,
 }
 
 impl DataSize for FeeHandlingConfig {
@@ -36,6 +41,7 @@ impl From<FeeHandlingConfig> for engine_config::FeeHandling {
         match v {
             FeeHandlingConfig::PayToProposer => engine_config::FeeHandling::PayToProposer,
             FeeHandlingConfig::Accumulate => engine_config::FeeHandling::Accumulate,
+            FeeHandlingConfig::Burn => engine_config::FeeHandling::Burn,
         }
     }
 }
@@ -46,6 +52,7 @@ impl FromBytes for FeeHandlingConfig {
         match tag {
             FEE_HANDLING_PROPOSER_TAG => Ok((FeeHandlingConfig::PayToProposer, rem)),
             FEE_HANDLING_ACCUMULATE_TAG => Ok((FeeHandlingConfig::Accumulate, rem)),
+            FEE_HANDLING_BURN_TAG => Ok((FeeHandlingConfig::Burn, rem)),
             _ => Err(Error::Formatting),
         }
     }
@@ -61,6 +68,9 @@ impl ToBytes for FeeHandlingConfig {
             }
             FeeHandlingConfig::Accumulate => {
                 buffer.push(FEE_HANDLING_ACCUMULATE_TAG);
+            }
+            FeeHandlingConfig::Burn => {
+                buffer.push(FEE_HANDLING_BURN_TAG);
             }
         }
 
@@ -91,8 +101,8 @@ mod tests {
     }
 
     #[test]
-    fn does_it_inline() {
-        let f = FeeHandlingConfig::PayToProposer;
-        eprintln!("{}", toml::to_string(&f).unwrap());
+    fn bytesrepr_roundtrip_for_burn() {
+        let fee_config = FeeHandlingConfig::Burn;
+        bytesrepr::test_serialization_roundtrip(&fee_config);
     }
 }
