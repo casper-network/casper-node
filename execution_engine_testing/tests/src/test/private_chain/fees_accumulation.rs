@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::{engine_config::RefundHandling, RewardItem};
+use casper_execution_engine::core::engine_state::RewardItem;
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
@@ -21,12 +21,6 @@ const VALIDATOR_1_REWARD_FACTOR: u64 = 0;
 #[ignore]
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
-    let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
-    assert!(matches!(
-        genesis_request.ee_config().refund_handling(),
-        RefundHandling::Refund { .. }
-    ));
-
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 

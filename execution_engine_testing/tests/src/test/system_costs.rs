@@ -2,7 +2,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
@@ -11,7 +11,7 @@ use casper_execution_engine::{
     core::engine_state::{
         engine_config::{DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
         genesis::GenesisValidator,
-        GenesisAccount,
+        EngineConfigBuilder, GenesisAccount,
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -220,7 +220,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -536,7 +536,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1002,7 +1002,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

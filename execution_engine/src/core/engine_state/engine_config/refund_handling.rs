@@ -1,9 +1,11 @@
 /// Configuration options of refund handling that is executed as part of handle payment
 /// finalization.
 use num_rational::Ratio;
+use serde::{Deserialize, Serialize};
 
 /// Defines how refunds are calculated.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum RefundHandling {
     /// Refund of excess payment amount goes to either a pre-defined purse, or back to the sender
     /// and the rest of the payment amount goes to the block proposer.

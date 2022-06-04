@@ -29,16 +29,6 @@ impl AssociatedKeys {
         AssociatedKeys(bt)
     }
 
-    /// Constructs a new [`AssociatedKeys`] with an identity key and default weight.
-    pub fn identity(key: AccountHash) -> AssociatedKeys {
-        AssociatedKeys::new(key, Weight::new(1))
-    }
-
-    /// Adds multiple associated keys to the container.
-    pub fn extend_from_slice(&mut self, associated_keys: &[(AccountHash, Weight)]) {
-        self.0.extend(associated_keys.iter().cloned());
-    }
-
     /// Adds new AssociatedKey to the set.
     /// Returns true if added successfully, false otherwise.
     pub fn add_key(&mut self, key: AccountHash, weight: Weight) -> Result<(), AddKeyFailure> {
@@ -88,11 +78,6 @@ impl AssociatedKeys {
     /// Returns an iterator over the account hash and the weights.
     pub fn iter(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
         self.0.iter()
-    }
-
-    /// Returns an iterator over the account hashes.
-    pub fn keys(&self) -> impl Iterator<Item = &AccountHash> {
-        self.0.keys()
     }
 
     /// Returns the count of the associated keys.

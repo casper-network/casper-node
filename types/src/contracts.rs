@@ -803,29 +803,15 @@ impl ContractPackage {
     }
 
     /// Disable the contract version corresponding to the given hash (if it exists).
-    pub fn disable_contract_version(&mut self, contract_hash: &ContractHash) -> Result<(), Error> {
+    pub fn disable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
         let contract_version_key = self
-            .find_contract_version_key_by_hash(contract_hash)
+            .find_contract_version_key_by_hash(&contract_hash)
             .copied()
             .ok_or(Error::ContractNotFound)?;
 
         if !self.disabled_versions.contains(&contract_version_key) {
             self.disabled_versions.insert(contract_version_key);
         }
-
-        Ok(())
-    }
-
-    /// Enable contract version corresponding to the given hash (if it exists).
-    ///
-    /// This operation is possible only on private chains.
-    pub fn enable_contract_version(&mut self, contract_hash: &ContractHash) -> Result<(), Error> {
-        let contract_version_key = self
-            .find_contract_version_key_by_hash(contract_hash)
-            .copied()
-            .ok_or(Error::ContractNotFound)?;
-
-        self.disabled_versions.remove(&contract_version_key);
 
         Ok(())
     }
@@ -1739,7 +1725,7 @@ mod tests {
         );
 
         assert_eq!(
-            contract_package.disable_contract_version(&NEW_CONTRACT_HASH),
+            contract_package.disable_contract_version(NEW_CONTRACT_HASH),
             Err(Error::ContractNotFound),
             "should return contract not found error"
         );
@@ -1760,7 +1746,7 @@ mod tests {
         );
 
         assert_eq!(
-            contract_package.disable_contract_version(&NEW_CONTRACT_HASH),
+            contract_package.disable_contract_version(NEW_CONTRACT_HASH),
             Ok(()),
             "should be able to disable version"
         );
@@ -1818,7 +1804,7 @@ mod tests {
         );
 
         assert_eq!(
-            contract_package.disable_contract_version(&CONTRACT_HASH_V2),
+            contract_package.disable_contract_version(CONTRACT_HASH_V2),
             Ok(()),
             "should be able to disable version 2"
         );

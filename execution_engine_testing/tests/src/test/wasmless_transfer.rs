@@ -1,14 +1,14 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::DEFAULT_MAX_ASSOCIATED_KEYS, Error as CoreError,
+            engine_config::DEFAULT_MAX_ASSOCIATED_KEYS, EngineConfigBuilder, Error as CoreError,
             WASMLESS_TRANSFER_FIXED_GAS_PRICE,
         },
         execution::Error as ExecError,
@@ -1016,7 +1016,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

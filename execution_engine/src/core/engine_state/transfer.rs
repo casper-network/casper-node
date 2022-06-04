@@ -21,6 +21,18 @@ use crate::{
 /// will have to create a new account first.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TransferTargetMode {
+    /// Unknown target mode.
+    Unknown,
+    /// Native transfer arguments resolved into a transfer to a purse.
+    PurseExists(URef),
+    /// Native transfer arguments resolved into a transfer to an account.
+    CreateAccount(AccountHash),
+}
+
+/// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
+/// will have to create a new account first.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) enum NewTransferTargetMode {
     /// Native transfer arguments resolved into a transfer to an existing account.
     ExistingAccount {
         /// Existing account hash.
@@ -225,7 +237,7 @@ impl TransferRuntimeArgsBuilder {
         &mut self,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<TransferTargetMode, Error>
+    ) -> Result<NewTransferTargetMode, Error>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
@@ -241,7 +253,7 @@ impl TransferRuntimeArgsBuilder {
                     return Err(Error::reverter(ApiError::InvalidPurse));
                 }
 
-                return Ok(TransferTargetMode::PurseExists(uref));
+                return Ok(NewTransferTargetMode::PurseExists(uref));
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 let account_hash: AccountHash =
@@ -271,12 +283,12 @@ impl TransferRuntimeArgsBuilder {
         {
             Ok(account) => {
                 let main_purse_addable = account.main_purse().with_access_rights(AccessRights::ADD);
-                Ok(TransferTargetMode::ExistingAccount {
+                Ok(NewTransferTargetMode::ExistingAccount {
                     target_account_hash: account_hash,
                     main_purse: main_purse_addable,
                 })
             }
-            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
+            Err(_) => Ok(NewTransferTargetMode::CreateAccount(account_hash)),
         }
     }
 
@@ -332,12 +344,12 @@ impl TransferRuntimeArgsBuilder {
     {
         let (to, target_uref) =
             match self.resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))? {
-                TransferTargetMode::ExistingAccount {
+                NewTransferTargetMode::ExistingAccount {
                     main_purse: purse_uref,
                     target_account_hash: target_account,
                 } => (Some(target_account), purse_uref),
-                TransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
-                TransferTargetMode::CreateAccount(_) => {
+                NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
+                NewTransferTargetMode::CreateAccount(_) => {
                     // Method "build()" is called after `resolve_transfer_target` is first called
                     // and handled by creating a new account. Calling `resolve_transfer_target_mode`
                     // for the second time should never return `CreateAccount` variant.

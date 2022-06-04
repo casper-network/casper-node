@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::{
     core::engine_state::{
         engine_config::{FeeHandling, RefundHandling},
+        genesis::ExecConfigBuilder,
         run_genesis_request::RunGenesisRequest,
         ExecConfig, GenesisAccount,
     },
@@ -166,19 +167,19 @@ impl ChainspecConfig {
             humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
                 .map_err(|_| Error::FailedToCreateGenesisRequest)?
                 .as_millis() as u64;
-        let exec_config = ExecConfig::new(
-            genesis_accounts,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-            chainspec_config.core_config.validator_slots,
-            chainspec_config.core_config.auction_delay,
-            locked_funds_period_millis,
-            chainspec_config.core_config.round_seigniorage_rate,
-            chainspec_config.core_config.unbonding_delay,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-            chainspec_config.core_config.refund_handling.into(),
-            chainspec_config.core_config.fee_handling.into(),
-        );
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(genesis_accounts)
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .with_validator_slots(chainspec_config.core_config.validator_slots)
+            .with_auction_delay(chainspec_config.core_config.auction_delay)
+            .with_locked_funds_period_millis(locked_funds_period_millis)
+            .with_round_seigniorage_rate(chainspec_config.core_config.round_seigniorage_rate)
+            .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
+            .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
+            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .build();
         Ok(RunGenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             protocol_version,
@@ -208,19 +209,19 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
             humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
                 .map_err(|_| Error::FailedToCreateExecConfig)?
                 .as_millis() as u64;
-        Ok(ExecConfig::new(
-            DEFAULT_ACCOUNTS.clone(),
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-            chainspec_config.core_config.validator_slots,
-            chainspec_config.core_config.auction_delay,
-            locked_funds_period_millis,
-            chainspec_config.core_config.round_seigniorage_rate,
-            chainspec_config.core_config.unbonding_delay,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-            chainspec_config.core_config.refund_handling.into(),
-            chainspec_config.core_config.fee_handling.into(),
-        ))
+        Ok(ExecConfigBuilder::default()
+            .with_accounts(DEFAULT_ACCOUNTS.clone())
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .with_validator_slots(chainspec_config.core_config.validator_slots)
+            .with_auction_delay(chainspec_config.core_config.auction_delay)
+            .with_locked_funds_period_millis(locked_funds_period_millis)
+            .with_round_seigniorage_rate(chainspec_config.core_config.round_seigniorage_rate)
+            .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
+            .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
+            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .build())
     }
 }
 

@@ -1,12 +1,12 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::engine_state::{EngineConfig, UpgradeConfig},
+    core::engine_state::{EngineConfig, EngineConfigBuilder, UpgradeConfig},
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         system_config::{mint_costs::MintCosts, SystemConfig},
@@ -152,7 +152,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -279,7 +279,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
     );
 
     builder
-        .upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     let fund_request_3 = {
@@ -405,7 +405,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -535,7 +535,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -661,7 +661,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];

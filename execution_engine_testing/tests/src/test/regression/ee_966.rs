@@ -3,13 +3,13 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    UpgradeRequestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error, ExecuteRequest},
+        engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
         execution::Error as ExecError,
     },
     shared::{
@@ -276,7 +276,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         .with_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT)
         .build();
 
-    builder.upgrade_with_upgrade_request(Some(engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request);
 
     //
     // Now this request is working as the maximum memory limit is doubled.

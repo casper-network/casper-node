@@ -4,16 +4,19 @@ use once_cell::sync::Lazy;
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
-    EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
-use casper_execution_engine::shared::{
-    host_function_costs::{HostFunction, HostFunctionCosts},
-    opcode_costs::OpcodeCosts,
-    storage_costs::StorageCosts,
-    wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+use casper_execution_engine::{
+    core::engine_state::EngineConfigBuilder,
+    shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+    },
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -157,7 +160,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         .with_wasm_config(*STORAGE_COSTS_ONLY)
         .build();
 
-    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     builder
 }

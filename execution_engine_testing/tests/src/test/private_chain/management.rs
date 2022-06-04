@@ -1,15 +1,15 @@
-use std::collections::BTreeSet;
-
 use casper_engine_test_support::{
-    DeployItemBuilder, EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
-    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::{
-    engine_state::{Error, ExecConfig, ExecuteRequest, GenesisAccount, RunGenesisRequest},
+    engine_state::{
+        genesis::ExecConfigBuilder, EngineConfigBuilder, Error, ExecuteRequest, GenesisAccount,
+        RunGenesisRequest,
+    },
     execution,
 };
 use casper_types::{
@@ -21,8 +21,7 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, Key, PublicKey, RuntimeArgs,
-    U512,
+    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, Key, RuntimeArgs, U512,
 };
 
 use crate::{
@@ -64,41 +63,6 @@ const TEST_PAYMENT_STORED_CONTRACT: &str = "test_payment_stored.wasm";
 const TEST_PAYMENT_STORED_HASH_NAME: &str = "test_payment_hash";
 const PAY_ENTRYPOINT: &str = "pay";
 
-#[ignore]
-#[test]
-fn private_chain_genesis_should_have_admin_accounts() {
-    let admin_set = {
-        let mut admin_set = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
-        admin_set.insert(PublicKey::System.to_account_hash());
-        admin_set
-    };
-
-    assert_eq!(
-        super::private_chain_setup()
-            .get_engine_state()
-            .config()
-            .administrative_accounts(),
-        &admin_set,
-        "private chain genesis has administrator accounts defined"
-    );
-}
-
-#[ignore]
-#[test]
-fn public_chain_genesis_should_not_have_admin_accounts() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
-
-    assert_eq!(
-        builder
-            .get_engine_state()
-            .config()
-            .administrative_accounts(),
-        &BTreeSet::new(),
-        "private chain genesis has administrator accounts defined"
-    );
-}
-
 #[should_panic(expected = "DuplicatedAdministratorEntry")]
 #[ignore]
 #[test]
@@ -122,19 +86,19 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         accounts
     };
 
-    let genesis_config = ExecConfig::new(
-        duplicated_administrator_accounts,
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        PRIVATE_CHAIN_REFUND_HANDLING,
-        PRIVATE_CHAIN_FEE_HANDLING,
-    );
+    let genesis_config = ExecConfigBuilder::default()
+        .with_accounts(duplicated_administrator_accounts)
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(DEFAULT_VALIDATOR_SLOTS)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(PRIVATE_CHAIN_REFUND_HANDLING)
+        .with_fee_handling(PRIVATE_CHAIN_FEE_HANDLING)
+        .build();
 
     let modified_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,

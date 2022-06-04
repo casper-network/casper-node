@@ -73,7 +73,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    builder.upgrade_with_upgrade_request(None, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     builder.exec(fund_request).expect_success().commit();
 

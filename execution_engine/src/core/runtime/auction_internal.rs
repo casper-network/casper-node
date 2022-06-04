@@ -324,7 +324,7 @@ where
         match result? {
             Ok(TransferredTo::ExistingAccount) => Ok(()),
             Ok(TransferredTo::NewAccount) => Ok(()),
-            Err(_error) => Err(Error::TransferToUnbondingPurse),
+            Err(_error) => Err(Error::TransferToAdministrator),
         }
     }
 }

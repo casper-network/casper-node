@@ -22,16 +22,6 @@ pub struct ActionThresholds {
 }
 
 impl ActionThresholds {
-    /// Creates new ActionThresholsd.
-    ///
-    /// **Using instance of action thresholds created by this method is unsafe production code
-    /// should always use [`ActionThresholds::new`] to ensure thresholds are valid.**.
-    pub const fn new_raw(deployment: Weight, key_management: Weight) -> ActionThresholds {
-        ActionThresholds {
-            deployment,
-            key_management,
-        }
-    }
     /// Creates new ActionThresholds object with provided weights
     ///
     /// Requires deployment threshold to be lower than or equal to

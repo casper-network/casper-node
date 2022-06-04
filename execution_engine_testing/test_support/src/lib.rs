@@ -12,7 +12,6 @@ mod additive_map_diff;
 pub mod auction;
 mod chainspec_config;
 mod deploy_item_builder;
-mod engine_config_builder;
 mod execute_request_builder;
 mod step_request_builder;
 /// Utilities for running transfers in a test or bench context.
@@ -27,6 +26,7 @@ use once_cell::sync::Lazy;
 use casper_execution_engine::{
     core::engine_state::{
         engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+        genesis::ExecConfigBuilder,
         ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
@@ -38,7 +38,6 @@ use crate::chainspec_config::PRODUCTION_PATH;
 pub use additive_map_diff::AdditiveMapDiff;
 pub use chainspec_config::ChainspecConfig;
 pub use deploy_item_builder::DeployItemBuilder;
-pub use engine_config_builder::EngineConfigBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
@@ -68,16 +67,12 @@ pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(
     DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM,
 );
 
-/// Default round seigniorage rate represented as a fraction of U512.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE_U512: Ratio<U512> = Ratio::new_raw(
-    U512([DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER, 0, 0, 0, 0, 0, 0, 0]),
-    U512([DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM, 0, 0, 0, 0, 0, 0, 0]),
-);
-
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
+/// Default maximum number of associated keys.
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
@@ -141,19 +136,19 @@ pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::d
 
 /// Default [`ExecConfig`].
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    ExecConfig::new(
-        DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_REFUND_HANDLING,
-        DEFAULT_FEE_HANDLING,
-    )
+    ExecConfigBuilder::default()
+        .with_accounts(DEFAULT_ACCOUNTS.clone())
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(DEFAULT_VALIDATOR_SLOTS)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(DEFAULT_REFUND_HANDLING)
+        .with_fee_handling(DEFAULT_FEE_HANDLING)
+        .build()
 });
 /// Default [`GenesisConfig`].
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
@@ -197,20 +192,3 @@ pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
 });
 /// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_have_seigniorage_ratio_u512_const() {
-        let (numer_u512, denom_u512) = DEFAULT_ROUND_SEIGNIORAGE_RATE_U512.into();
-        assert_eq!(
-            (numer_u512, denom_u512),
-            (
-                U512::from(DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER),
-                U512::from(DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM)
-            )
-        );
-    }
-}

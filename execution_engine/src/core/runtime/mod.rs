@@ -138,13 +138,7 @@ where
             debug_assert!(false);
         }
 
-        if stack
-            .first_frame()
-            .unwrap()
-            .call_stack_element()
-            .contract_hash()
-            .is_some()
-        {
+        if stack.first_frame().unwrap().contract_hash().is_some() {
             error!("First element of the call stack should always represent a Session call");
             debug_assert!(false);
         }
@@ -369,9 +363,8 @@ where
     }
 
     /// Gets the immediate caller of the current execution
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+    fn get_immediate_caller(&self) -> Option<&RuntimeStackFrame> {
         self.get_immediate_stack_frame()
-            .map(|stack_frame| stack_frame.call_stack_element())
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -420,8 +413,8 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack: Vec<&CallStackElement> = match self.try_get_stack() {
-            Ok(stack) => stack.call_stack_elements().collect(),
+        let call_stack = match self.try_get_stack() {
+            Ok(stack) => stack.call_stack_elements(),
             Err(_error) => return Ok(Err(ApiError::Unhandled)),
         };
         let call_stack_len: u32 = match call_stack.len().try_into() {
@@ -1251,13 +1244,15 @@ where
             }
         }
 
-        match contract_package.is_contract_disabled(&contract_hash) {
-            Some(true) | None => {
-                if !self.context.is_system_contract(&contract_hash)? {
-                    return Err(Error::DisabledContract(contract_hash));
+        if !self.config.administrative_accounts().is_empty() {
+            match contract_package.is_contract_disabled(&contract_hash) {
+                Some(true) | None => {
+                    if !self.context.is_system_contract(&contract_hash)? {
+                        return Err(Error::DisabledContract(contract_hash));
+                    }
                 }
+                Some(false) => {}
             }
-            Some(false) => {}
         }
 
         // if session the caller's context
@@ -1298,7 +1293,7 @@ where
                     contract_hash,
                 ),
             };
-            stack.push(RuntimeStackFrame::new(call_stack_element))?;
+            stack.push(call_stack_element)?;
 
             stack
         };
@@ -1784,7 +1779,7 @@ where
             return Err(Error::LockedContract(contract_package_hash));
         }
 
-        if let Err(err) = contract_package.disable_contract_version(&contract_hash) {
+        if let Err(err) = contract_package.disable_contract_version(contract_hash) {
             return Ok(Err(err.into()));
         }
 

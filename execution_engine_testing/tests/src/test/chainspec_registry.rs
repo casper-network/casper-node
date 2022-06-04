@@ -129,7 +129,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
     let engine_config = EngineConfig::default();
 
     builder
-        .upgrade_with_upgrade_request(Some(engine_config), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     let queried_registry = builder

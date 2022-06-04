@@ -25,9 +25,9 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry,
-            UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+            BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
+            GetBidsRequest, QueryRequest, QueryResult, RewardItem, StepError,
+            SystemContractRegistry, UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -108,6 +108,8 @@ pub struct WasmTestBuilder<S> {
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<ExecutionJournal>,
+    /// Cached system account.
+    system_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Scratch global state used for in-memory execution and commit optimization.
@@ -142,6 +144,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
+            system_account: None,
             genesis_transforms: self.genesis_transforms.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
@@ -160,12 +163,13 @@ impl InMemoryWasmTestBuilder {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
+            engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            engine_state: Rc::new(engine_state),
             genesis_hash: None,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
+            system_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -189,20 +193,24 @@ impl InMemoryWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-            chainspec_config.core_config.administrators.clone(),
-            chainspec_config.core_config.allow_auction_bids,
-            chainspec_config.core_config.allow_unrestricted_transfers,
-            chainspec_config.core_config.refund_handling.into(),
-            chainspec_config.core_config.fee_handling.into(),
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .with_administrative_accounts(chainspec_config.core_config.administrators.clone())
+            .with_allow_auction_bids(chainspec_config.core_config.allow_auction_bids)
+            .with_allow_unrestricted_transfers(
+                chainspec_config.core_config.allow_unrestricted_transfers,
+            )
+            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
+            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .build();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
 
@@ -244,6 +252,7 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
+            system_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -260,20 +269,24 @@ impl LmdbWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-            chainspec_config.core_config.administrators.clone(),
-            chainspec_config.core_config.allow_auction_bids,
-            chainspec_config.core_config.allow_unrestricted_transfers,
-            chainspec_config.core_config.refund_handling.into(),
-            chainspec_config.core_config.fee_handling.into(),
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .with_administrative_accounts(chainspec_config.core_config.administrators.clone())
+            .with_allow_auction_bids(chainspec_config.core_config.allow_auction_bids)
+            .with_allow_unrestricted_transfers(
+                chainspec_config.core_config.allow_unrestricted_transfers,
+            )
+            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
+            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .build();
 
         Self::new_with_config(data_dir, engine_config)
     }
@@ -340,6 +353,7 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
+            system_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -478,6 +492,7 @@ where
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
         self.genesis_transforms = Some(transforms);
+        self.system_account = self.get_account(*SYSTEM_ADDR);
         self
     }
 
@@ -685,9 +700,18 @@ where
     }
 
     /// Upgrades the execution engine.
+    pub fn upgrade_with_upgrade_request(
+        &mut self,
+        engine_config: EngineConfig,
+        upgrade_config: &mut UpgradeConfig,
+    ) -> &mut Self {
+        self.upgrade_with_upgrade_request_and_config(Some(engine_config), upgrade_config)
+    }
+
+    /// Upgrades the execution engine.
     ///
     /// If `engine_config` is set to None, then it is defaulted to the current one.
-    pub fn upgrade_with_upgrade_request(
+    pub fn upgrade_with_upgrade_request_and_config(
         &mut self,
         engine_config: Option<EngineConfig>,
         upgrade_config: &mut UpgradeConfig,
@@ -827,6 +851,13 @@ where
     /// Gets `ExecutionJournal`s of all passed runs.
     pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
         self.transforms.clone()
+    }
+
+    /// Gets genesis account (if present)
+    pub fn get_genesis_account(&self) -> &Account {
+        self.system_account
+            .as_ref()
+            .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
     /// Returns the [`ContractHash`] of the mint, panics if it can't be found.
@@ -1354,7 +1385,7 @@ where
         };
 
         let (numer, denom) = refund_ratio.into();
-        let refund_ratio = Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom));
+        let refund_ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
 
         // amount declared to be paid in payment code MINUS gas spent in last execution.
         let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());

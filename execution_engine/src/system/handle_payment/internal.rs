@@ -71,7 +71,7 @@ fn calculate_amounts(
 
         let refund_ratio_u512 = {
             let (numer, denom) = refund_ratio.into();
-            Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom))
+            Ratio::new_raw(U512::from(numer), U512::from(denom))
         };
 
         refund_amount_raw

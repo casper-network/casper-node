@@ -300,7 +300,7 @@ where
         };
 
         contract_package
-            .disable_contract_version(&contract_hash)
+            .disable_contract_version(contract_hash)
             .map_err(|_| {
                 ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
             })?;

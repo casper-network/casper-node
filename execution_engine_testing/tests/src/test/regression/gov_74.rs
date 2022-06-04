@@ -1,11 +1,14 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{engine_state::Error, execution::Error as ExecError},
+    core::{
+        engine_state::{EngineConfigBuilder, Error},
+        execution::Error as ExecError,
+    },
     shared::wasm_config::WasmConfig,
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
@@ -118,7 +121,8 @@ fn should_observe_stack_height_limit() {
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
-        builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
+        builder
+            .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
     }
 
     // This runs out of the interpreter stack limit.

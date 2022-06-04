@@ -578,7 +578,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(None, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

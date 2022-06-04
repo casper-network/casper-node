@@ -56,7 +56,10 @@ pub use self::{
     balance::{BalanceRequest, BalanceResult},
     chainspec_registry::ChainspecRegistry,
     deploy_item::DeployItem,
-    engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
+    engine_config::{
+        EngineConfig, EngineConfigBuilder, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    },
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
     executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
@@ -93,6 +96,8 @@ use crate::{
     },
     system::auction,
 };
+
+use transfer::NewTransferTargetMode;
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -784,11 +789,11 @@ where
         ) {
             // We need to make sure that source or target has to be admin.
             match transfer_target_mode {
-                TransferTargetMode::ExistingAccount {
+                NewTransferTargetMode::ExistingAccount {
                     target_account_hash,
                     ..
                 }
-                | TransferTargetMode::CreateAccount(target_account_hash) => {
+                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
                     // SAFETY: `is_account_administrator` will always returns `Some(_)` for private
                     // chains.
                     let is_target_admin = self
@@ -803,7 +808,7 @@ where
                         ));
                     }
                 }
-                TransferTargetMode::PurseExists(_) => {
+                NewTransferTargetMode::PurseExists(_) => {
                     // We don't know who is the target and we can't simply reverse search
                     // account/contract that owns it. We also can't know if purse is owned exactly
                     // by one entity in the system.
@@ -817,10 +822,11 @@ where
         }
 
         match transfer_target_mode {
-            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists(_) => {
+            NewTransferTargetMode::ExistingAccount { .. }
+            | NewTransferTargetMode::PurseExists(_) => {
                 // Noop
             }
-            TransferTargetMode::CreateAccount(account_hash) => {
+            NewTransferTargetMode::CreateAccount(account_hash) => {
                 let create_purse_stack = self.get_new_system_call_stack();
                 let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                     .call_system_contract(
@@ -1342,7 +1348,7 @@ where
             let payment_stack = RuntimeStack::from_account_hash(
                 deploy_item.address,
                 self.config.max_runtime_call_stack_height() as usize,
-            )?;
+            );
 
             // payment_code_spec_2: execute payment code
             let payment_access_rights = account.extract_access_rights();
@@ -1515,7 +1521,7 @@ where
         let session_stack = RuntimeStack::from_account_hash(
             deploy_item.address,
             self.config.max_runtime_call_stack_height() as usize,
-        )?;
+        );
 
         let session_access_rights = account.extract_access_rights();
 
@@ -1916,8 +1922,16 @@ where
             DeployHash::new(Digest::hash(&bytes).value())
         };
 
-        let reward_factors = step_request.reward_factors();
-
+        let reward_factors = match step_request.reward_factors() {
+            Ok(reward_factors) => reward_factors,
+            Err(error) => {
+                error!(
+                    "failed to deserialize reward factors: {}",
+                    error.to_string()
+                );
+                return Err(StepError::BytesRepr(error));
+            }
+        };
         let reward_args = RuntimeArgs::try_new(|args| {
             args.insert(ARG_REWARD_FACTORS, reward_factors)?;
             Ok(())

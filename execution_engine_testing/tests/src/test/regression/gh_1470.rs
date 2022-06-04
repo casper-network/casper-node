@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    EngineConfigBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
-    engine_state::{Error, SystemContractRegistry},
+    engine_state::{EngineConfigBuilder, Error, SystemContractRegistry},
     execution,
 };
 use casper_hashing::Digest;
@@ -70,7 +70,7 @@ fn setup() -> InMemoryWasmTestBuilder {
         .build();
 
     builder
-        .upgrade_with_upgrade_request(Some(engine_config), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     builder
@@ -681,7 +681,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer_args = runtime_args! {
@@ -729,7 +729,7 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
@@ -762,7 +762,7 @@ fn should_add_bid_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -811,7 +811,7 @@ fn should_add_bid_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -857,7 +857,7 @@ fn should_wasm_transfer_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -905,7 +905,7 @@ fn should_wasm_transfer_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -953,6 +953,6 @@ fn should_upgrade_from_1_3_1_rel_fixture() {
     };
 
     builder
-        .upgrade_with_upgrade_request(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 }

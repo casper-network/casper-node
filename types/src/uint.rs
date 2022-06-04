@@ -633,27 +633,6 @@ impl AsPrimitive<U512> for U512 {
     }
 }
 
-impl U128 {
-    /// Creates new [`U128`] instance from a u64 value.
-    pub const fn from_u64(value: u64) -> U128 {
-        Self([value, 0])
-    }
-}
-
-impl U256 {
-    /// Creates new [`U256`] instance from a u64 value.
-    pub const fn from_u64(value: u64) -> U256 {
-        Self([value, 0, 0, 0])
-    }
-}
-
-impl U512 {
-    /// Creates new [`U512`] instance from a u64 value.
-    pub const fn from_u64(value: u64) -> U512 {
-        Self([value, 0, 0, 0, 0, 0, 0, 0])
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fmt::Debug;
@@ -1017,14 +996,5 @@ mod tests {
         serde_roundtrip(U128::from(1));
         serde_roundtrip(U128::from(u64::max_value()));
         serde_roundtrip(U128::max_value());
-    }
-
-    const VALUE: u64 = u64::MAX - 1;
-
-    #[test]
-    fn from_u64_constructor_works() {
-        assert_eq!(U512::from_u64(VALUE), U512::from(VALUE));
-        assert_eq!(U256::from_u64(VALUE), U256::from(VALUE));
-        assert_eq!(U128::from_u64(VALUE), U128::from(VALUE));
     }
 }

@@ -139,7 +139,7 @@ impl ValidatorsUpdateManager {
 
                 self.state_tracker.write_entry(
                     Key::Bid(account_hash),
-                    Bid::empty(pub_key.clone(), *bid.bonding_purse(), Default::default()).into(),
+                    Bid::empty(pub_key.clone(), *bid.bonding_purse()).into(),
                 );
                 // Zero the balance of the bonding purse.
                 self.state_tracker.write_entry(

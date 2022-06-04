@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 /// Defines how fees are handled in the system.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum FeeHandling {
     /// Transaction fees are paid to the block proposer.
     ///

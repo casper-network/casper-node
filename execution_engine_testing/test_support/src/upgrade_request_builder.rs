@@ -2,9 +2,7 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_execution_engine::core::engine_state::{
-    genesis::AdministratorAccount, ChainspecRegistry, UpgradeConfig,
-};
+use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
@@ -21,7 +19,6 @@ pub struct UpgradeRequestBuilder {
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
-    administrative_accounts: Option<Vec<AdministratorAccount>>,
 }
 
 impl UpgradeRequestBuilder {
@@ -114,21 +111,6 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    /// Sets the admin accounts.
-    #[must_use]
-    pub fn with_administrative_accounts(
-        mut self,
-        administrative_accounts: Vec<AdministratorAccount>,
-    ) -> Self {
-        let admins = if administrative_accounts.is_empty() {
-            None
-        } else {
-            Some(administrative_accounts)
-        };
-        self.administrative_accounts = admins;
-        self
-    }
-
     /// Consumes the `UpgradeRequestBuilder` and returns an [`UpgradeConfig`].
     pub fn build(self) -> UpgradeConfig {
         UpgradeConfig::new(
@@ -162,7 +144,6 @@ impl Default for UpgradeRequestBuilder {
             new_unbonding_delay: None,
             global_state_update: Default::default(),
             chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
-            administrative_accounts: None,
         }
     }
 }

@@ -3,23 +3,12 @@
 use casper_types::{account::AccountHash, system::CallStackElement, PublicKey};
 
 /// A runtime stack frame.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct RuntimeStackFrame {
-    call_stack_element: CallStackElement,
-}
-
-impl RuntimeStackFrame {
-    /// Creates new runtime stack frame object.
-    pub fn new(call_stack_element: CallStackElement) -> Self {
-        Self { call_stack_element }
-    }
-
-    /// Get the runtime stack frame's call stack element.
-    #[must_use]
-    pub fn call_stack_element(&self) -> &CallStackElement {
-        &self.call_stack_element
-    }
-}
+///
+/// Currently it aliases to a [`CallStackElement`].
+///
+/// NOTE: Once we need to add more data to a stack frame we should make this a newtype, rather than
+/// change [`CallStackElement`].
+pub type RuntimeStackFrame = CallStackElement;
 
 /// The runtime stack.
 #[derive(Clone)]
@@ -57,9 +46,7 @@ impl RuntimeStack {
     pub(crate) fn new_system_call_stack(max_height: usize) -> Self {
         RuntimeStack::new_with_frame(
             max_height,
-            RuntimeStackFrame::new(CallStackElement::session(
-                PublicKey::System.to_account_hash(),
-            )),
+            CallStackElement::session(PublicKey::System.to_account_hash()),
         )
     }
 
@@ -95,11 +82,6 @@ impl RuntimeStack {
         Ok(())
     }
 
-    #[cfg(test)]
-    fn capacity(&self) -> usize {
-        self.frames.capacity()
-    }
-
     /// Pushes a frame onto the stack.
     pub fn push(&mut self, frame: RuntimeStackFrame) -> Result<(), RuntimeStackOverflow> {
         if self.len() < self.max_height {
@@ -110,27 +92,18 @@ impl RuntimeStack {
         }
     }
 
-    /// A view of the stack in the format readable by Wasm.
-    pub fn call_stack_elements(&self) -> impl Iterator<Item = &CallStackElement> {
-        self.frames
-            .iter()
-            .map(|runtime_frame| runtime_frame.call_stack_element())
+    // It is here for backwards compatibility only.
+    /// A view of the stack in the previous stack format.
+    pub fn call_stack_elements(&self) -> &Vec<CallStackElement> {
+        &self.frames
     }
 
     /// Returns a stack with exactly one session element with the associated account hash.
-    pub fn from_account_hash(
-        account_hash: AccountHash,
-        max_height: usize,
-    ) -> Result<Self, RuntimeStackOverflow> {
-        let mut runtime_stack = Self::new(max_height);
-
-        let frame = {
-            let session = CallStackElement::session(account_hash);
-            RuntimeStackFrame::new(session)
-        };
-        runtime_stack.push(frame)?;
-
-        Ok(runtime_stack)
+    pub fn from_account_hash(account_hash: AccountHash, max_height: usize) -> Self {
+        RuntimeStack {
+            frames: vec![CallStackElement::session(account_hash)],
+            max_height,
+        }
     }
 }
 
@@ -142,13 +115,11 @@ mod test {
 
     use super::*;
 
-    const MAX_HEIGHT: usize = 6;
-
-    fn nth_frame(n: usize) -> RuntimeStackFrame {
+    fn nth_frame(n: usize) -> CallStackElement {
         let mut bytes = [0_u8; ACCOUNT_HASH_LENGTH];
         let n: u32 = n.try_into().unwrap();
         bytes[0..4].copy_from_slice(&n.to_le_bytes());
-        RuntimeStackFrame::new(CallStackElement::session(AccountHash::new(bytes)))
+        CallStackElement::session(AccountHash::new(bytes))
     }
 
     #[allow(clippy::redundant_clone)]
@@ -167,6 +138,8 @@ mod test {
 
     #[test]
     fn stack_should_work_as_expected() {
+        const MAX_HEIGHT: usize = 6;
+
         let mut stack = RuntimeStack::new(MAX_HEIGHT);
         assert!(stack.is_empty());
         assert_eq!(stack.len(), 0);
@@ -221,12 +194,5 @@ mod test {
         assert_eq!(stack.first_frame(), None);
 
         assert!(stack.pop().is_err());
-    }
-
-    #[test]
-    fn should_have_correct_capacity_when_created_from_account_hash() {
-        let runtime_stack =
-            RuntimeStack::from_account_hash(AccountHash::new([0; 32]), MAX_HEIGHT).unwrap();
-        assert_eq!(runtime_stack.capacity(), MAX_HEIGHT);
     }
 }

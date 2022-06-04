@@ -625,7 +625,7 @@ fn should_not_allow_direct_mint_transfer_with_system_addr_specified() {
         "mint_transfer_proxy.wasm",
         runtime_args! {
             "to" => Some(PublicKey::System.to_account_hash()),
-            "amount" => U512::from_u64(1),
+            "amount" => U512::from(1u64),
         },
     )
     .build();
@@ -653,7 +653,7 @@ fn should_not_allow_direct_mint_transfer_with_an_admin_in_to_field() {
         "mint_transfer_proxy.wasm",
         runtime_args! {
             "to" => Some(*ADMIN_1_ACCOUNT_ADDR),
-            "amount" => U512::from_u64(1),
+            "amount" => U512::from(1u64),
         },
     )
     .build();
@@ -681,7 +681,7 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
         "mint_transfer_proxy.wasm",
         runtime_args! {
             "to" => None::<AccountHash>,
-            "amount" => U512::from_u64(1),
+            "amount" => U512::from(1u64),
         },
     )
     .build();
