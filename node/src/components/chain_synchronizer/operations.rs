@@ -787,7 +787,7 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
         return Ok(());
     }
 
-    info!(?state_root_hash, "syncing trie store");
+    trace!(?state_root_hash, "syncing trie store");
     let start_instant = Timestamp::now();
 
     // Flag set by a worker when it encounters an error.
