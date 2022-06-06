@@ -2158,7 +2158,30 @@ fn is_wasm_file_ok(execution_result: &ExecutionResult) -> bool {
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack => true,
             },
-            _ => true,
+            Error::WasmSerialization(_) => false,
+            Error::RootNotFound(_)
+            | Error::InvalidProtocolVersion(_)
+            | Error::Genesis(_)
+            | Error::Storage(_)
+            | Error::Authorization
+            | Error::InsufficientPayment
+            | Error::GasConversionOverflow
+            | Error::Deploy
+            | Error::Finalization
+            | Error::Bytesrepr(_)
+            | Error::Mint(_)
+            | Error::InvalidKeyVariant
+            | Error::ProtocolUpgrade(_)
+            | Error::InvalidDeployItemVariant(_)
+            | Error::CommitError(_)
+            | Error::MissingSystemContractRegistry
+            | Error::MissingSystemContractHash(_)
+            | Error::RuntimeStackOverflow
+            | Error::FailedToGetWithdrawKeys
+            | Error::FailedToGetStoredWithdraws
+            | Error::FailedToGetWithdrawPurses
+            | Error::FailedToRetrieveUnbondingDelay
+            | Error::FailedToRetrieveEraId => true,
         },
         ExecutionResult::Success { .. } => true,
     }
