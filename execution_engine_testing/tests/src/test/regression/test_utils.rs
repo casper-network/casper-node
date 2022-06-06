@@ -1,7 +1,7 @@
 use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
 use parity_wasm::{
     builder,
-    elements::{Instruction, Instructions, Local, ValueType},
+    elements::{Instruction, Instructions, Local, Module, ValueType},
 };
 
 use casper_engine_test_support::DEFAULT_WASM_CONFIG;
@@ -109,4 +109,18 @@ pub(crate) fn make_stack_overflow() -> Vec<u8> {
         .build()
         .build();
     parity_wasm::serialize(module).expect("should serialize")
+}
+
+// Prepares a payload that don't export call function
+pub(crate) fn make_module_without_call() -> Vec<u8> {
+    let module = r#"
+            (module (memory 1)
+            (func (export "i32.add") (param i32 i32) (result i32)
+                get_local 0
+                get_local 0
+                i32.add
+                )
+            )
+    "#;
+    wabt::wat2wasm(module).expect("should parse wat")
 }
