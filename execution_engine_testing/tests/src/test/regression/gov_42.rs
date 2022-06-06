@@ -6,9 +6,15 @@ use casper_execution_engine::{
     core::engine_state::{Error, MAX_PAYMENT},
     shared::wasm_prep::{self, PreprocessingError},
 };
-use casper_types::{runtime_args, Gas, RuntimeArgs};
+use casper_types::{runtime_args, Gas, RuntimeArgs, U512};
+use num_traits::Zero;
 
-use crate::test::regression::test_utils::make_gas_counter_overflow;
+use crate::{
+    test::regression::test_utils::{
+        make_gas_counter_overflow, make_module_without_memory_section, make_stack_overflow,
+    },
+    wasm_utils,
+};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -26,11 +32,18 @@ impl<'a> TestCase<'a> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum DeployBytes {
+    Payment,
+    Session,
+}
+
 fn run_test_case(
     TestCase {
         input_wasm_bytes,
         expected_error,
     }: &TestCase,
+    deploy_bytes: DeployBytes,
 ) {
     let payment_amount = *DEFAULT_PAYMENT;
 
@@ -41,15 +54,25 @@ fn run_test_case(
         let session_args = RuntimeArgs::default();
         let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount,
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+        let deploy = match deploy_bytes {
+            DeployBytes::Payment => DeployItemBuilder::new()
+                .with_payment_bytes(
+                    input_wasm_bytes.to_vec(),
+                    runtime_args! {
+                        ARG_AMOUNT =>  U512::from(0),
+                    },
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
+            DeployBytes::Session => DeployItemBuilder::new()
+                .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
+                .with_empty_payment_bytes(runtime_args! {
+                    ARG_AMOUNT => payment_amount,
+                }),
+        }
+        .with_address(account_hash)
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
@@ -82,13 +105,19 @@ fn run_test_case(
                 PreprocessingError::OperationForbiddenByGasRules
             )),
             PreprocessingError::StackLimiter => todo!(),
-            PreprocessingError::MissingMemorySection => todo!(),
-            PreprocessingError::MissingModule => todo!(),
+            PreprocessingError::MissingMemorySection => assert!(matches!(
+                expected_error,
+                PreprocessingError::MissingMemorySection
+            )),
+            PreprocessingError::MissingModule => panic!(
+                "MissingModule can only be reported by invoking `casper_add_contract_version`"
+            ),
         }
     }
 
     let gas = builder.last_exec_gas_cost();
-    assert_eq!(gas, Gas::new(expected_transaction_fee));
+    dbg!(&gas);
+    assert_eq!(gas, Gas::zero());
 
     let account_balance_after = builder.get_purse_balance(account.main_purse());
     let proposer_balance_after = builder.get_proposer_purse_balance();
@@ -106,7 +135,7 @@ fn run_test_case(
 #[ignore]
 #[test]
 fn should_charge_session_with_incorrect_wasm_files() {
-    const WASM_BYTES_INVALID_MAGIC_NUMBER: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d
+    const WASM_BYTES_INVALID_MAGIC_NUMBER: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
     const WASM_BYTES_EMPTY: &[u8] = &[];
 
     // These are the first few bytes of the valid WASM module.
@@ -125,7 +154,11 @@ fn should_charge_session_with_incorrect_wasm_files() {
 
     let wasm_bytes_gas_overflow = make_gas_counter_overflow();
 
-    let test_cases: &[TestCase; 4] = {
+    let wasm_bytes_no_memory_section = make_module_without_memory_section();
+
+    let wasm_stack_overflow = make_stack_overflow();
+
+    let test_cases: &[TestCase; 6] = {
         &[
             TestCase::new(
                 WASM_BYTES_INVALID_MAGIC_NUMBER,
@@ -149,10 +182,22 @@ fn should_charge_session_with_incorrect_wasm_files() {
                 wasm_bytes_gas_overflow.as_slice(),
                 wasm_prep::PreprocessingError::OperationForbiddenByGasRules,
             ),
+            TestCase::new(
+                wasm_bytes_no_memory_section.as_slice(),
+                wasm_prep::PreprocessingError::MissingMemorySection,
+            ),
+            TestCase::new(
+                wasm_stack_overflow.as_slice(),
+                wasm_prep::PreprocessingError::MissingMemorySection,
+            ),
         ]
     };
 
-    test_cases
-        .into_iter()
-        .for_each(|test_case| run_test_case(test_case));
+    [DeployBytes::Payment, DeployBytes::Session]
+        .iter()
+        .for_each(|deploy_bytes| {
+            test_cases
+                .into_iter()
+                .for_each(|test_case| run_test_case(test_case, *deploy_bytes))
+        })
 }
