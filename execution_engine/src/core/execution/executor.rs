@@ -45,7 +45,7 @@ impl Executor {
 
     /// Executes a WASM module.
     ///
-    /// This method checks if a given contract hash is a system contract, and thr en short circuits
+    /// This method checks if a given contract hash is a system contract, and then short circuits
     /// to a specific native implementation of it. Otherwise, a supplied WASM module is
     /// executed.
     #[allow(clippy::too_many_arguments)]

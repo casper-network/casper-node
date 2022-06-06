@@ -305,7 +305,6 @@ where
         amount: U512,
     ) -> Result<(), Error> {
         let granted_access = self.context.grant_access(source);
-        // .access_rights_extend(&[source, target.into_add()]);
 
         let result =
             Runtime::transfer_from_purse_to_account_hash(self, source, target, amount, None)

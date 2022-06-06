@@ -1938,9 +1938,7 @@ where
                 if !is_caller_admin {
                     // If caller is not an admin check if deploy was co-signed by admin account and
                     // proceed
-                    if self.context.is_authorized_by_admin() {
-                        return true;
-                    }
+                    return self.context.is_authorized_by_admin();
                 }
                 is_caller_admin
             }
@@ -2345,7 +2343,7 @@ where
             return Ok(Ok(TransferredTo::ExistingAccount));
         }
 
-        // Upsert ADD access to caller on target allowing deposit of motes; this will be
+        // Grant ADD access to caller on target allowing deposit of motes; this will be
         // revoked after the transfer is completed if caller did not already have ADD access
         let granted_access = self.context.grant_access(target_uref);
 
