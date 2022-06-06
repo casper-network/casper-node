@@ -27,20 +27,19 @@ pub(crate) fn compute_rewards<C: Context>(
     // what everyone who has the block can already see.
     let panorama = &payout_unit.panorama;
     let mut rewards = ValidatorMap::from(vec![0u64; panorama.len()]);
+    if !should_compute_rewards {
+        return rewards;
+    }
     for proposal_hash in state.ancestor_hashes(bhash) {
         for (vidx, r) in compute_rewards_for(state, panorama, proposal_hash).enumerate() {
-            if should_compute_rewards {
-                match rewards[vidx].checked_add(*r) {
-                    Some(sum) => rewards[vidx] = sum,
-                    // Rewards should not overflow. We use one trillion for a block reward, so the
-                    // full rewards for 18 million blocks fit into a u64.
-                    None => panic!(
-                        "rewards for {:?}, {} + {}, overflow u64",
-                        vidx, rewards[vidx], r
-                    ),
-                }
-            } else {
-                rewards[vidx] = 0;
+            match rewards[vidx].checked_add(*r) {
+                Some(sum) => rewards[vidx] = sum,
+                // Rewards should not overflow. We use one trillion for a block reward, so the
+                // full rewards for 18 million blocks fit into a u64.
+                None => panic!(
+                    "rewards for {:?}, {} + {}, overflow u64",
+                    vidx, rewards[vidx], r
+                ),
             }
         }
     }
