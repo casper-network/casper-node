@@ -1,7 +1,7 @@
 use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
 use parity_wasm::{
     builder,
-    elements::{Instruction, Instructions, Local, Module, ValueType},
+    elements::{Instruction, Instructions, Local, ValueType},
 };
 
 use casper_engine_test_support::DEFAULT_WASM_CONFIG;

@@ -2,11 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::ExecError;
-use casper_execution_engine::{
-    core::engine_state::{self, Error, MAX_PAYMENT},
-    shared::wasm_prep::{self, PreprocessingError},
-};
+use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{runtime_args, Gas, RuntimeArgs, U512};
 use num_traits::Zero;
 
@@ -105,38 +101,9 @@ fn run_test_case(
     builder.exec(do_minimum_request).expect_failure().commit();
 
     let actual_error = builder.get_error().expect("should have error").to_string();
-    dbg!(&actual_error);
-
     assert!(actual_error.contains(expected_error_message));
 
-    // if let Error::WasmPreprocessing(error) = actual_error {
-    //     match error {
-    //         PreprocessingError::Deserialize(actual_message) => {
-    //             if let PreprocessingError::Deserialize(expected_message) = expected_error {
-    //                 assert_eq!(*expected_message, actual_message)
-    //             } else {
-    //                 assert!(false, "got unexpected error variant")
-    //             }
-    //         }
-    //         PreprocessingError::OperationForbiddenByGasRules => assert!(matches!(
-    //             expected_error,
-    //             PreprocessingError::OperationForbiddenByGasRules
-    //         )),
-    //         PreprocessingError::StackLimiter => {
-    //             panic!("Unable to inject stack limiter to the module bytes")
-    //         }
-    //         PreprocessingError::MissingMemorySection => assert!(matches!(
-    //             expected_error,
-    //             PreprocessingError::MissingMemorySection
-    //         )),
-    //         PreprocessingError::MissingModule => panic!(
-    //             "MissingModule can only be reported by invoking `casper_add_contract_version`"
-    //         ),
-    //     }
-    // }
-
     let gas = builder.last_exec_gas_cost();
-    dbg!(&gas);
     assert_eq!(gas, Gas::zero());
 
     let account_balance_after = builder.get_purse_balance(account.main_purse());
@@ -226,7 +193,7 @@ fn should_charge_session_with_incorrect_wasm_files() {
         .iter()
         .for_each(|deploy_bytes| {
             test_cases
-                .into_iter()
+                .iter()
                 .for_each(|test_case| run_test_case(test_case, *deploy_bytes))
         })
 }
