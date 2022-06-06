@@ -422,6 +422,7 @@ impl reactor::Reactor for Reactor {
             Ratio::new(1, 3),
             None,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
+            registry,
         )
         .unwrap();
 

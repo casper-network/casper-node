@@ -198,6 +198,10 @@ pub enum FatalStorageError {
     /// This should not happen outside of crashes.
     #[error("task semaphore was unexpectedly closed")]
     SemaphoreClosedUnexpectedly(AcquireError),
+
+    /// Prometheus error returned when creating an instance of storage Metrics.
+    #[error(transparent)]
+    PrometheusError(#[from] prometheus::Error),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
