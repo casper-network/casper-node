@@ -131,6 +131,7 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> 
 pub fn create_storage(
     chain_download_path: impl AsRef<Path>,
     verifiable_chunked_hash_activation: EraId,
+    registry: &prometheus::Registry,
 ) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
@@ -143,6 +144,7 @@ pub fn create_storage(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
+        registry,
     )?)
 }
 
@@ -166,8 +168,9 @@ mod tests {
             .clone();
 
         let dir = tempfile::tempdir().unwrap().into_path();
-        let mut storage =
-            create_storage(dir, example_block.header.height.into()).expect("should create storage");
+        let registry = prometheus::Registry::new();
+        let mut storage = create_storage(dir, example_block.header.height.into(), &registry)
+            .expect("should create storage");
 
         let example_deploy = GetDeployResult::doc_example().deploy.clone();
 

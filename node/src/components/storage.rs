@@ -37,6 +37,7 @@
 
 mod error;
 mod lmdb_ext;
+pub mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
@@ -59,6 +60,8 @@ use lmdb::{
     WriteFlags,
 };
 use num_rational::Ratio;
+use prometheus::Registry;
+use quanta::Instant;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -100,6 +103,8 @@ pub use error::FatalStorageError;
 use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
+
+use self::metrics::Metrics;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -148,6 +153,9 @@ pub struct Storage {
     storage: Arc<StorageInner>,
     /// Semaphore guarding the maximum number of storage accesses running in parallel.
     sync_task_limiter: Arc<Semaphore>,
+    /// Storage metrics.
+    #[data_size(skip)]
+    metrics: Metrics,
 }
 
 /// Groups databases used by storage.
@@ -286,6 +294,10 @@ where
         // We create an additional reference to the inner storage.
         let storage = self.storage.clone();
         let sync_task_limiter = self.sync_task_limiter.clone();
+        let sync_task_limiter_inflight_counter =
+            self.metrics.sync_task_limiter_in_flight_counter.clone();
+        let sync_task_limiter_waiting_millis =
+            self.metrics.sync_task_limiter_waiting_millis.clone();
 
         async move {
             // The actual operation can now be moved into a closure that has its own independent
@@ -317,8 +329,12 @@ where
             // number of synchronous background tasks, especially since tokio does not put
             // meaningful bounds on these by default. For this reason, we limit the maximum number
             // of blocking tasks using a semaphore.
+            let start = Instant::now();
+            sync_task_limiter_inflight_counter.inc();
             let outcome = match sync_task_limiter.acquire().await {
                 Ok(_permit) =>{
+                    sync_task_limiter_inflight_counter.inc_by(-1.0);
+                    sync_task_limiter_waiting_millis.observe(Instant::now().duration_since(start).as_millis() as f64);
                     tokio::task::spawn_blocking(perform_op).await.map_err(FatalStorageError::FailedToJoinBackgroundTask).flatten_result()
                 },
                 Err(err) => Err(
@@ -353,6 +369,7 @@ where
 
 impl Storage {
     /// Creates a new storage component.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
@@ -361,7 +378,9 @@ impl Storage {
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
         verifiable_chunked_hash_activation: EraId,
+        registry: &Registry,
     ) -> Result<Self, FatalStorageError> {
+        let metrics = Metrics::new(registry)?;
         Ok(Storage {
             storage: Arc::new(StorageInner::new(
                 cfg,
@@ -373,6 +392,7 @@ impl Storage {
                 verifiable_chunked_hash_activation,
             )?),
             sync_task_limiter: Arc::new(Semaphore::new(cfg.value().max_sync_tasks as usize)),
+            metrics,
         })
     }
 

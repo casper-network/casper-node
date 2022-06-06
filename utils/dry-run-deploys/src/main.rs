@@ -59,9 +59,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // TODO: Consider reading the proper `chainspec` in the `dry-run-deploys` tool.
     let verifiable_chunked_hash_activation = EraId::from(0u64);
 
+    let registry = prometheus::Registry::new();
+
     // Create a separate lmdb for block/deploy storage at chain_download_path.
-    let storage = create_storage(&chain_download_path, verifiable_chunked_hash_activation)
-        .expect("should create storage");
+    let storage = create_storage(
+        &chain_download_path,
+        verifiable_chunked_hash_activation,
+        &registry,
+    )
+    .expect("should create storage");
 
     let max_db_size = opts
         .max_db_size
