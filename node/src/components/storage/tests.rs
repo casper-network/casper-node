@@ -79,7 +79,7 @@ fn storage_fixture(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
-        &registry,
+        registry,
     )
     .expect("could not create storage component fixture")
 }
@@ -106,7 +106,7 @@ fn storage_fixture_with_hard_reset(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
-        &registry,
+        registry,
     )
     .expect("could not create storage component fixture")
 }
@@ -134,7 +134,7 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
-        &registry,
+        registry,
     )
     .expect("could not create storage component fixture")
 }
