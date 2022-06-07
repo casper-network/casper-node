@@ -72,6 +72,8 @@ allow_auction_bids = true
 refund_handling = { type = "Refund", refund_ratio = [0, 100] }
 # Fee handling config
 fee_handling = { type = "PayToProposer" }
+# No administrators
+administrators = []
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
