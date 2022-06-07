@@ -74,8 +74,7 @@ pub(crate) mod tests {
     use futures::{future, stream, FutureExt, SinkExt, StreamExt};
 
     use crate::{
-        chunked::Defragmentizer,
-        chunked::{chunk_frame, SingleChunk},
+        chunked::{chunk_frame, make_defragmentizer, SingleChunk},
         error::Error,
         frame_reader::FrameReader,
         length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
@@ -102,6 +101,8 @@ pub(crate) mod tests {
             let chunk_iter = chunk_frame(frame, 5.try_into().unwrap()).expect("TODO: Handle error");
             stream::iter(chunk_iter.map(Result::<_, Error>::Ok))
         });
+        // TODO: We want this instead.
+        // let mut chunked_sink = make_fragmentizer(length_prefixed_sink);
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
@@ -129,9 +130,9 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
         let expected = "ABCDEFGHIJKL";
 
-        let dechunker = Defragmentizer::new(FrameReader::new(stream));
+        let defragmentizer = make_defragmentizer(FrameReader::new(stream));
 
-        let messages: Vec<_> = dechunker.collect().now_or_never().unwrap();
+        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(
             expected,
             messages.first().expect("should have at least one message")
@@ -143,9 +144,9 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
         let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
 
-        let dechunker = Defragmentizer::new(FrameReader::new(stream));
+        let defragmentizer = make_defragmentizer(FrameReader::new(stream));
 
-        let messages: Vec<_> = dechunker.collect().now_or_never().unwrap();
+        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
     }
 }
