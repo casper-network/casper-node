@@ -137,7 +137,6 @@ impl Params {
     }
 
     /// Get the params's compute rewards.
-    #[must_use]
     pub(crate) fn compute_rewards(&self) -> bool {
         self.compute_rewards
     }

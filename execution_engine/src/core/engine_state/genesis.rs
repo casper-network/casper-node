@@ -182,7 +182,6 @@ impl AdministratorAccount {
     }
 
     /// Get a reference to the administrator account's public key.
-    #[must_use]
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
     }

@@ -149,19 +149,16 @@ impl EngineConfig {
     }
 
     /// Get the engine config's administrative accounts.
-    #[must_use]
     pub fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
         &self.administrative_accounts
     }
 
     /// Get the engine config's allow auction bids.
-    #[must_use]
     pub fn allow_auction_bids(&self) -> bool {
         self.allow_auction_bids
     }
 
     /// Get the engine config's allow unrestricted transfers.
-    #[must_use]
     pub fn allow_unrestricted_transfers(&self) -> bool {
         self.allow_unrestricted_transfers
     }
@@ -170,7 +167,6 @@ impl EngineConfig {
     ///
     /// This method returns a `None` if there is no administrators configured.
     /// Otherwise returns Some with a flag indicating if a passed account hash is an admin.
-    #[must_use]
     pub(crate) fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
         // Ensure there's at least one administrator configured.
         if self.administrative_accounts.is_empty() {
@@ -182,13 +178,11 @@ impl EngineConfig {
     }
 
     /// Get the engine config's refund ratio.
-    #[must_use]
     pub fn refund_handling(&self) -> &RefundHandling {
         &self.refund_handling
     }
 
     /// Get the engine config's fee handling.
-    #[must_use]
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
     }
