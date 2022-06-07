@@ -131,8 +131,6 @@ pub(crate) struct ComponentHarness<REv: 'static> {
     pub(crate) tmp: TempDir,
     /// The `async` runtime used to execute effects.
     pub(crate) runtime: Runtime,
-    /// Metrics registry.
-    pub(crate) registry: prometheus::Registry,
 }
 
 /// Builder for a `ComponentHarness`.
@@ -181,7 +179,6 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
         let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
-        let registry = prometheus::Registry::new();
         let runtime = runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -193,7 +190,6 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
             effect_builder,
             tmp,
             runtime,
-            registry,
         })
     }
 }

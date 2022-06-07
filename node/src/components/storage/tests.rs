@@ -68,6 +68,7 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
 fn storage_fixture(
     harness: &ComponentHarness<UnitTestEvent>,
     verifiable_chunked_hash_activation: EraId,
+    registry: &prometheus::Registry,
 ) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
@@ -78,7 +79,7 @@ fn storage_fixture(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
-        &harness.registry,
+        &registry,
     )
     .expect("could not create storage component fixture")
 }
@@ -94,6 +95,7 @@ fn storage_fixture_with_hard_reset(
     harness: &ComponentHarness<UnitTestEvent>,
     reset_era_id: EraId,
     verifiable_chunked_hash_activation: EraId,
+    registry: &prometheus::Registry,
 ) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
@@ -104,7 +106,7 @@ fn storage_fixture_with_hard_reset(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
-        &harness.registry,
+        &registry,
     )
     .expect("could not create storage component fixture")
 }
@@ -121,6 +123,7 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
     reset_era_id: EraId,
     protocol_version: ProtocolVersion,
     verifiable_chunked_hash_activation: EraId,
+    registry: &prometheus::Registry,
 ) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
@@ -131,7 +134,7 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
-        &harness.registry,
+        &registry,
     )
     .expect("could not create storage component fixture")
 }
@@ -371,11 +374,12 @@ fn put_execution_results(
 #[test]
 fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let response = get_block(&mut harness, &mut storage, block_hash);
@@ -433,8 +437,11 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     for verifiable_chunked_hash_activation in verifiable_chunked_hash_activations {
         thread::spawn(move || {
             let mut harness = ComponentHarness::default();
+            // Separate registry for each storage in the loop.
+            let registry = prometheus::Registry::new();
 
-            let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+            let mut storage =
+                storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
             // Create a random block, store and load it.
             //
@@ -604,6 +611,7 @@ fn can_retrieve_block_by_height() {
 
     for block_spec in block_specs {
         thread::spawn(move || {
+            let registry = prometheus::Registry::new();
             let mut harness = ComponentHarness::default();
 
             // Create a random blocks, load and store them.
@@ -635,8 +643,11 @@ fn can_retrieve_block_by_height() {
                 None,
             ));
 
-            let mut storage =
-                storage_fixture(&harness, block_spec.verifiable_chunked_hash_activation);
+            let mut storage = storage_fixture(
+                &harness,
+                block_spec.verifiable_chunked_hash_activation,
+                &registry,
+            );
 
             // Both block at ID and highest block should return `None` initially.
             assert!(get_block_at_height(&mut storage, 0).is_none());
@@ -756,11 +767,12 @@ fn can_retrieve_block_by_height() {
 #[should_panic(expected = "duplicate entries")]
 fn different_block_at_height_is_fatal() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     // Create two different blocks at the same height.
     let block_44_a = Box::new(Block::random_with_specifics(
@@ -795,11 +807,12 @@ fn different_block_at_height_is_fatal() {
 #[test]
 fn get_vec_of_non_existing_deploy_returns_nones() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let deploy_id = DeployHash::random(&mut harness.rng);
     let response = get_naive_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
@@ -813,11 +826,12 @@ fn get_vec_of_non_existing_deploy_returns_nones() {
 #[test]
 fn can_retrieve_store_and_load_deploys() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     // Create a random deploy, store and load it.
     let deploy = Box::new(Deploy::random(&mut harness.rng));
@@ -908,11 +922,12 @@ fn can_retrieve_store_and_load_deploys() {
 #[test]
 fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let total = 1000;
     let batch_size = 25;
@@ -938,11 +953,12 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 #[test]
 fn store_execution_results_for_two_blocks() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let deploy = Deploy::random(&mut harness.rng);
 
@@ -1001,11 +1017,12 @@ fn store_execution_results_for_two_blocks() {
 #[test]
 fn store_random_execution_results() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     // We store results for two different blocks. Each block will have five deploys executed in it,
     // with two of these deploys being shared by both blocks, while the remaining three are unique
@@ -1116,11 +1133,12 @@ fn store_random_execution_results() {
 #[test]
 fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let deploy_hash = DeployHash::random(&mut harness.rng);
@@ -1140,11 +1158,12 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
 #[test]
 fn store_identical_execution_results() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let deploy_hash = DeployHash::random(&mut harness.rng);
@@ -1168,11 +1187,12 @@ struct StateData {
 #[test]
 fn test_legacy_interface() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let deploy = Box::new(Deploy::random(&mut harness.rng));
     let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
@@ -1211,11 +1231,13 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     for block_generator in block_generators {
         thread::spawn(move || {
             let mut harness = ComponentHarness::default();
+            let registry = prometheus::Registry::new();
 
             let (block, verifiable_chunked_hash_activation) =
                 random_block_at_height(&mut harness.rng, 42, block_generator);
 
-            let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+            let mut storage =
+                storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
             // Create some sample data.
             let deploy = Deploy::random(&mut harness.rng);
@@ -1237,7 +1259,8 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
                 .on_disk(on_disk)
                 .rng(rng)
                 .build();
-            let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+            let mut storage =
+                storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
             let actual_block = get_block(&mut harness, &mut storage, *block.hash())
                 .expect("missing block we stored earlier");
@@ -1270,11 +1293,12 @@ fn should_hard_reset() {
     let blocks_count = 8_usize;
     let blocks_per_era = 3;
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // `verifiable_chunked_hash_activation` can be chosen arbitrarily
     let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let random_deploys: Vec<_> = iter::repeat_with(|| Deploy::random(&mut harness.rng))
         .take(blocks_count)
@@ -1342,12 +1366,15 @@ fn should_hard_reset() {
 
     // The closure doing the actual checks.
     let mut check = |reset_era: usize| {
+        let registry = prometheus::Registry::new();
+
         // Initialize a new storage with a hard reset to the given era, deleting blocks from that
         // era onwards.
         let mut storage = storage_fixture_with_hard_reset(
             &harness,
             EraId::from(reset_era as u64),
             verifiable_chunked_hash_activation,
+            &registry,
         );
 
         // Check highest block is the last from the previous era, or `None` if resetting to era 0.
@@ -1401,6 +1428,8 @@ fn should_hard_reset() {
 #[test]
 fn should_create_subdir_named_after_network() {
     let harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
+
     let cfg = new_config(&harness);
 
     let network_name = "test";
@@ -1412,7 +1441,7 @@ fn should_create_subdir_named_after_network() {
         Ratio::new(1, 3),
         None,
         EraId::from(0),
-        &harness.registry,
+        &registry,
     )
     .unwrap();
 
@@ -1576,7 +1605,8 @@ fn should_garbage_collect() {
     let verifiable_chunked_hash_activation = EraId::from(0);
 
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let registry = prometheus::Registry::new();
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     // Create and store 9 blocks, 0-2 in era 0, 3-5 in era 1, and 6-8 in era 2.
     let blocks: Vec<Block> = (0..blocks_count)
@@ -1609,6 +1639,8 @@ fn should_garbage_collect() {
         }
     }
 
+    let registry = prometheus::Registry::new();
+
     let check = |reset_era: usize| {
         // Initialize a new storage with a hard reset to the given era, deleting blocks from that
         // era onwards.
@@ -1618,6 +1650,7 @@ fn should_garbage_collect() {
             ProtocolVersion::from_parts(1, 5, 0), /* this is needed because blocks with later
                                                    * versions aren't removed on hard resets */
             verifiable_chunked_hash_activation,
+            &registry,
         );
 
         // Hard reset should remove headers, but not block bodies
@@ -1660,6 +1693,7 @@ fn should_garbage_collect() {
 #[test]
 fn can_put_and_get_block() {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     // This test is not restricted by the block availability index.
     let only_from_available_block_range = false;
@@ -1668,7 +1702,7 @@ fn can_put_and_get_block() {
     let (block, verifiable_chunked_hash_activation) = Block::random_v1(&mut harness.rng);
     let block = Box::new(block);
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     let was_new = put_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
@@ -1700,13 +1734,14 @@ fn can_put_and_get_block() {
 fn can_put_and_get_blocks_v2() {
     let num_blocks = 10;
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
 
     let era_id = harness.rng.gen_range(0..10).into();
 
     // Ensure the Merkle hashing algorithm is used.
     let verifiable_chunked_hash_activation = era_id;
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
     let protocol_version = ProtocolVersion::from_parts(1, 5, 0);
 
     let height = harness.rng.gen_range(0..100);
@@ -1794,10 +1829,11 @@ fn can_put_and_get_blocks_v2() {
 fn should_update_lowest_available_block_height_when_not_stored() {
     const NEW_LOW: u64 = 100;
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
         assert_eq!(
             storage
@@ -1850,7 +1886,8 @@ fn should_update_lowest_available_block_height_when_not_stored() {
     // Should have persisted the `lowest_available_block_height`, so that a new instance will be
     // initialized with the previous value.
     {
-        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let registry = prometheus::Registry::new();
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
         assert_eq!(
             storage
                 .storage
@@ -1863,6 +1900,7 @@ fn should_update_lowest_available_block_height_when_not_stored() {
 
 fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
     let mut harness = ComponentHarness::default();
+    let registry = prometheus::Registry::new();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     let era_id = EraId::new(harness.rng.gen_range(0..100));
@@ -1876,7 +1914,7 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
         None,
     );
 
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
     storage.storage.write_block(&block).unwrap();
 
     let is_switch = harness.rng.gen_bool(0.1);
@@ -1915,9 +1953,10 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
 
     let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+    let registry = prometheus::Registry::new();
 
     {
-        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
         assert_eq!(
             storage
                 .storage
@@ -1943,7 +1982,8 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
     }
 
     // Check the update was persisted.
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let registry = prometheus::Registry::new();
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
     assert_eq!(
         storage
             .storage
@@ -1964,7 +2004,8 @@ fn should_update_lowest_available_block_height_when_above_initial_range_with_gap
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let registry = prometheus::Registry::new();
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
         assert_eq!(
             storage
                 .storage
@@ -1991,7 +2032,8 @@ fn should_update_lowest_available_block_height_when_above_initial_range_with_gap
     }
 
     // Check the update was persisted.
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let registry = prometheus::Registry::new();
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
     assert_eq!(
         storage
             .storage
@@ -2012,7 +2054,8 @@ fn should_not_update_lowest_available_block_height_when_above_initial_range_with
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let registry = prometheus::Registry::new();
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
         assert_eq!(
             storage
                 .storage
@@ -2039,7 +2082,8 @@ fn should_not_update_lowest_available_block_height_when_above_initial_range_with
     }
 
     // Check the update was persisted.
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let registry = prometheus::Registry::new();
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
     assert_eq!(
         storage
             .storage
@@ -2057,7 +2101,8 @@ fn should_not_update_lowest_available_block_height_when_within_initial_range() {
     let harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let registry = prometheus::Registry::new();
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
     assert_eq!(
         storage
             .storage
@@ -2083,8 +2128,9 @@ fn should_not_update_lowest_available_block_height_when_within_initial_range() {
 fn should_restrict_returned_blocks() {
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+    let registry = prometheus::Registry::new();
 
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation, &registry);
 
     // Create the following disjoint sequences: 1-2 4-5
     [1, 2, 4, 5].iter().for_each(|height| {
@@ -2171,7 +2217,8 @@ fn should_restrict_returned_blocks() {
 #[test]
 fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness, EraId::from(u64::MAX));
+    let registry = prometheus::Registry::new();
+    let mut storage = storage_fixture(&harness, EraId::from(u64::MAX), &registry);
 
     let (block, _) = Block::random_v1(&mut harness.rng);
     let expected_header = block.header().clone();
