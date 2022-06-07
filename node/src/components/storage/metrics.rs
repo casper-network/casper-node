@@ -17,7 +17,46 @@ const EXPONENTIAL_BUCKET_FACTOR: f64 = 3.0;
 const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
 #[derive(Debug)]
-pub(crate) struct Metrics {
+pub(super) struct StorageMetrics(Option<Metrics>);
+
+impl StorageMetrics {
+    pub(super) fn new(registry: Option<&Registry>) -> Result<Self, prometheus::Error> {
+        registry.map(Metrics::new).transpose().map(StorageMetrics)
+    }
+
+    pub(super) fn inc_sync_task_limiter_in_flight_counter(&self) {
+        if let Some(metrics) = &self.0 {
+            metrics.sync_task_limiter_in_flight_counter.inc();
+        }
+    }
+
+    pub(super) fn dec_sync_task_limiter_in_flight_counter(&self) {
+        if let Some(metrics) = &self.0 {
+            metrics.sync_task_limiter_in_flight_counter.inc_by(-1.0);
+        }
+    }
+
+    pub(super) fn observe_sync_task_limiter_waiting_millis(&self, elapsed: f64) {
+        if let Some(metrics) = &self.0 {
+            metrics.sync_task_limiter_waiting_millis.observe(elapsed)
+        }
+    }
+}
+
+impl Drop for StorageMetrics {
+    fn drop(&mut self) {
+        if let Some(metrics) = &mut self.0 {
+            unregister_metric!(metrics.registry, metrics.sync_task_limiter_waiting_millis);
+            unregister_metric!(
+                metrics.registry,
+                metrics.sync_task_limiter_in_flight_counter
+            );
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Metrics {
     pub(crate) sync_task_limiter_in_flight_counter: Counter,
     pub(crate) sync_task_limiter_waiting_millis: Histogram,
     /// Reference to the registry for unregistering.
@@ -25,7 +64,7 @@ pub(crate) struct Metrics {
 }
 
 impl Metrics {
-    pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let common_buckets = prometheus::exponential_buckets(
             EXPONENTIAL_BUCKET_START,
             EXPONENTIAL_BUCKET_FACTOR,
@@ -48,12 +87,5 @@ impl Metrics {
             )?,
             registry: registry.clone(),
         })
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.sync_task_limiter_waiting_millis);
-        unregister_metric!(self.registry, self.sync_task_limiter_in_flight_counter);
     }
 }

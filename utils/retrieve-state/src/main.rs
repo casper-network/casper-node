@@ -172,8 +172,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let port_derived_from_peers = opts.port_derived_from_peers;
 
-    let registry = prometheus::Registry::new();
-
     match opts.action {
         Action::DownloadBlocks => {
             let client = ClientBuilder::new()
@@ -188,12 +186,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 fs::create_dir_all(&chain_download_path)?;
             }
 
-            let mut storage = create_storage(
-                &chain_download_path,
-                verifiable_chunked_hash_activation,
-                &registry,
-            )
-            .expect("should create storage");
+            let mut storage =
+                create_storage(&chain_download_path, verifiable_chunked_hash_activation)
+                    .expect("should create storage");
             info!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
                 &client,

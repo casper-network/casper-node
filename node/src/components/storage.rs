@@ -103,7 +103,7 @@ use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
-use self::metrics::Metrics;
+use self::metrics::StorageMetrics;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -154,7 +154,7 @@ pub struct Storage {
     sync_task_limiter: Arc<Semaphore>,
     /// Storage metrics.
     #[data_size(skip)]
-    metrics: Metrics,
+    metrics: Arc<StorageMetrics>,
 }
 
 /// Groups databases used by storage.
@@ -293,11 +293,7 @@ where
         // We create an additional reference to the inner storage.
         let storage = self.storage.clone();
         let sync_task_limiter = self.sync_task_limiter.clone();
-        let sync_task_limiter_inflight_counter =
-            self.metrics.sync_task_limiter_in_flight_counter.clone();
-        let sync_task_limiter_waiting_millis =
-            self.metrics.sync_task_limiter_waiting_millis.clone();
-
+        let metrics = self.metrics.clone();
         async move {
             // The actual operation can now be moved into a closure that has its own independent
             // storage handle.
@@ -329,16 +325,18 @@ where
             // meaningful bounds on these by default. For this reason, we limit the maximum number
             // of blocking tasks using a semaphore.
             let start = Instant::now();
-            sync_task_limiter_inflight_counter.inc();
+            metrics.inc_sync_task_limiter_in_flight_counter();
             let outcome = match sync_task_limiter.acquire().await {
                 Ok(_permit) =>{
-                    sync_task_limiter_inflight_counter.inc_by(-1.0);
-                    sync_task_limiter_waiting_millis.observe(Instant::now().duration_since(start).as_millis() as f64);
+                    metrics.dec_sync_task_limiter_in_flight_counter();
+                    metrics.observe_sync_task_limiter_waiting_millis(Instant::now().duration_since(start).as_millis() as f64);
                     tokio::task::spawn_blocking(perform_op).await.map_err(FatalStorageError::FailedToJoinBackgroundTask).flatten_result()
                 },
-                Err(err) => Err(
-                    FatalStorageError::SemaphoreClosedUnexpectedly(err),
-                ),
+                Err(err) => {
+                    metrics.dec_sync_task_limiter_in_flight_counter();
+                    metrics.observe_sync_task_limiter_waiting_millis(Instant::now().duration_since(start).as_millis() as f64);
+                    Err(FatalStorageError::SemaphoreClosedUnexpectedly(err))
+                },
             };
 
             // On success, execute the effects (we are in an async function, so we can await them
@@ -377,9 +375,9 @@ impl Storage {
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
         verifiable_chunked_hash_activation: EraId,
-        registry: &Registry,
+        registry: Option<&Registry>,
     ) -> Result<Self, FatalStorageError> {
-        let metrics = Metrics::new(registry)?;
+        let metrics = StorageMetrics::new(registry)?;
         Ok(Storage {
             storage: Arc::new(StorageInner::new(
                 cfg,
@@ -391,7 +389,7 @@ impl Storage {
                 verifiable_chunked_hash_activation,
             )?),
             sync_task_limiter: Arc::new(Semaphore::new(cfg.value().max_sync_tasks as usize)),
-            metrics,
+            metrics: Arc::new(metrics),
         })
     }
 

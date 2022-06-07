@@ -232,7 +232,7 @@ impl reactor::Reactor for Reactor {
             Ratio::new(1, 3),
             None,
             verifiable_chunked_hash_activation.into(),
-            registry,
+            Some(registry),
         )
         .unwrap();
 
