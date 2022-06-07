@@ -49,7 +49,7 @@ pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl St
     let mut buffer = vec![];
     source.filter_map(move |mut fragment| {
         let first_byte = *fragment.first().expect("missing first byte");
-        buffer.push(fragment.split_off(1));
+        buffer.push(fragment.split_off(std::mem::size_of_val(&first_byte)));
         match first_byte {
             FINAL_CHUNK => {
                 // TODO: Check the true zero-copy approach.
@@ -118,19 +118,4 @@ mod tests {
 
         assert_eq!(chunks, vec![b"\xff012345".to_vec()]);
     }
-
-    // #[test]
-    // fn defragments() {
-    //     let mut buffer = vec![
-    //         Bytes::from(&b"\x00ABCDE"[..]),
-    //         Bytes::from(&b"\x00FGHIJ"[..]),
-    //         Bytes::from(&b"\xffKL"[..]),
-    //         Bytes::from(&b"\xffM"[..]),
-    //     ];
-
-    //     let fragment = defragmentize(&mut buffer).unwrap().unwrap();
-    //     assert_eq!(fragment, &b"ABCDEFGHIJKL"[..]);
-    //     let fragment = defragmentize(&mut buffer).unwrap().unwrap();
-    //     assert_eq!(fragment, &b"M"[..]);
-    // }
 }
