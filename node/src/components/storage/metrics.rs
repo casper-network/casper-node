@@ -42,7 +42,7 @@ impl Metrics {
             sync_task_limiter_in_flight_counter,
             sync_task_limiter_waiting_millis: utils::register_histogram_metric(
                 registry,
-                "storage_sync_task_limiter",
+                "storage_sync_task_limiter_waiting_millis",
                 "time in milliseconds spent waiting on a semaphore",
                 common_buckets,
             )?,
