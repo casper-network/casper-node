@@ -34,7 +34,7 @@ impl<R: Stream> Defragmentizer<R> {
     }
 }
 
-fn buffer_size_hint(buffer: &mut Vec<Bytes>, final_fragment_index: usize) -> usize {
+fn buffer_size_hint(buffer: &mut [Bytes], final_fragment_index: usize) -> usize {
     let maybe_first_fragment = buffer.first();
     match maybe_first_fragment {
         Some(first_fragment) => first_fragment.len() * (final_fragment_index + 1),
@@ -72,7 +72,7 @@ fn defragmentize(buffer: &mut Vec<Bytes>) -> Result<Option<BytesMut>, Error> {
         .for_each(|chunk_data| intermediate_buffer.extend(chunk_data));
     buffer.drain(0..last_fragment_index + 1);
 
-    return Ok(Some(intermediate_buffer));
+    Ok(Some(intermediate_buffer))
 }
 
 impl<S> Stream for Defragmentizer<S>

@@ -144,7 +144,7 @@ impl<S> Multiplexer<S> {
     /// `channel` value.
     pub fn get_channel_handle(self: Arc<Self>, channel: u8) -> MultiplexerHandle<S> {
         MultiplexerHandle {
-            multiplexer: self.clone(),
+            multiplexer: self,
             slot: channel,
         }
     }
