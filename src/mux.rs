@@ -51,17 +51,19 @@ type BoxFusedFuture<'a, T> = Pin<Box<dyn FuseFuture<Output = T> + Send + 'a>>;
 struct MultiplexerHandle<S> {
     multiplexer: Arc<Multiplexer<S>>,
     slot: u8,
-    // TODO: We ideally want to reuse the alllocated memory here,
-    // mem::replace, then Box::Pin on it.
 
     // TODO NEW IDEA: Maybe we can create the lock future right away, but never poll it? Then use
     //                the `ReusableBoxFuture` and always create a new one right away? Need to check
-    //                source of `lock`.
-    lock_future: Box<dyn Future<Output = SinkGuard<S>> + Send + 'static>,
+    //                source of `lock`. Write a test for this?
+    // lock_future: Box<dyn Future<Output = SinkGuard<S>> + Send + 'static>,
+    lock_future: ReusableBoxFuture<'static, SinkGuard<S>>,
     guard: Option<SinkGuard<S>>,
 }
 
-impl<S> MultiplexerHandle<S> {
+impl<S> MultiplexerHandle<S>
+where
+    S: Send + 'static,
+{
     fn assume_get_sink(&mut self) -> &mut S {
         match self.guard {
             Some(ref mut guard) => {
@@ -70,6 +72,14 @@ impl<S> MultiplexerHandle<S> {
             }
             None => todo!("assumed sink, but no sink"),
         }
+    }
+
+    fn refresh_lock_future(
+        multiplexer: Arc<Multiplexer<S>>,
+        lock_future: &mut ReusableBoxFuture<'static, SinkGuard<S>>,
+    ) {
+        let lck_fut = multiplexer.sink.clone().lock_owned();
+        lock_future.set(lck_fut);
     }
 }
 
@@ -81,34 +91,23 @@ where
     type Error = <S as Sink<ChannelPrefixedFrame<F>>>::Error;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        let guard = match self.guard {
-            None => {
-                // We do not hold the lock yet. If there is no future to acquire it, create one.
-                if self.lock_fused {
-                    let new_fut = self.multiplexer.sink.clone().lock_owned();
-
-                    mem::replace(&mut self.lock_future, new_fut);
-                    let fut = self.multiplexer.sink.clone().lock_owned().fused().boxed();
-                    // TODO: mem::replace here?
-                    self.lock_future = fut;
+        if self.guard.is_none() {
+            // We do not hold the guard at the moment, so attempt to acquire it.
+            match self.lock_future.poll_unpin(cx) {
+                Poll::Ready(guard) => {
+                    // It is our turn: Save the guard and prepare another locking future for later,
+                    // which will not attempt to lock until first polled.
+                    let _ = self.guard.insert(guard);
+                    Self::refresh_lock_future(self.multiplexer.clone(), &mut self.lock_future);
                 }
-
-                let fut = &mut self.lock_future;
-
-                let guard = match fut.poll_unpin(cx) {
-                    Poll::Ready(guard) => {
-                        // Lock acquired. Store it and clear the future, so we don't poll it again.
-                        self.guard.insert(guard)
-                    }
-                    Poll::Pending => return Poll::Pending,
-                };
-
-                guard
+                Poll::Pending => {
+                    // The lock could not be acquired yet.
+                    return Poll::Pending;
+                }
             }
-            Some(ref mut guard) => guard,
-        };
+        }
 
-        // Now that we hold the lock, poll the sink.
+        // At this point we have acquired the lock, now our only job is to stuff data into the sink.
         self.assume_get_sink().poll_ready_unpin(cx)
     }
 
