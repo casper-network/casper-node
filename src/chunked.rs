@@ -129,7 +129,12 @@ pub fn chunk_frame<B: Buf>(
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::collect_buf;
+    use bytes::Bytes;
+
+    use crate::{
+        chunked::{defragmentize, Defragmentizer},
+        tests::collect_buf,
+    };
 
     use super::chunk_frame;
 
@@ -179,5 +184,20 @@ mod tests {
             .collect();
 
         assert_eq!(chunks, vec![b"\xff012345".to_vec()]);
+    }
+
+    #[test]
+    fn defragments() {
+        let mut buffer = vec![
+            Bytes::from(&b"\x00ABCDE"[..]),
+            Bytes::from(&b"\x00FGHIJ"[..]),
+            Bytes::from(&b"\xffKL"[..]),
+            Bytes::from(&b"\xffM"[..]),
+        ];
+
+        let fragment = defragmentize(&mut buffer).unwrap().unwrap();
+        assert_eq!(fragment, &b"ABCDEFGHIJKL"[..]);
+        let fragment = defragmentize(&mut buffer).unwrap().unwrap();
+        assert_eq!(fragment, &b"M"[..]);
     }
 }
