@@ -32,32 +32,47 @@ impl<R: Stream> Defragmentizer<R> {
             buffer: vec![],
         }
     }
+}
 
-    // If there's a full frame in the bufer, the index of the last chunk is returned.
-    fn have_full_message(&self) -> Option<usize> {
-        self.buffer
-            .iter()
-            .enumerate()
-            .find(|(_, chunk)| {
-                let maybe_first_byte = chunk.first();
-                match maybe_first_byte {
-                    Some(first_byte) => first_byte == &FINAL_CHUNK,
-                    None => panic!("chunk without continuation byte encountered"),
-                }
-            })
-            .map(|(index, _)| index)
+fn buffer_size_hint(buffer: &mut Vec<Bytes>, final_fragment_index: usize) -> usize {
+    let maybe_first_fragment = buffer.first();
+    match maybe_first_fragment {
+        Some(first_fragment) => first_fragment.len() * (final_fragment_index + 1),
+        None => 0,
     }
+}
 
-    // Tries to calculate the expected size of the next message.
-    // If not possible, returns 0, indicating that the caller
-    // needs to assume that the size of the next message is unknown.
-    fn buffer_size_hint(&self, final_chunk_index: usize) -> usize {
-        let maybe_first_chunk = self.buffer.first();
-        match maybe_first_chunk {
-            Some(first_chunk) => first_chunk.len() * (final_chunk_index + 1),
-            None => 0,
-        }
-    }
+fn defragmentize(buffer: &mut Vec<Bytes>) -> Result<Option<BytesMut>, Error> {
+    // TODO: We can do better (i.e. without double iteration)
+    let last_fragment_index = match buffer
+        .iter()
+        .enumerate()
+        .find(|(_, chunk)| {
+            let maybe_first_byte = chunk.first();
+            match maybe_first_byte {
+                Some(first_byte) => first_byte == &FINAL_CHUNK,
+                None => panic!("chunk without continuation byte encountered"),
+            }
+        })
+        .map(|(index, _)| index)
+    {
+        Some(last_fragment_index) => last_fragment_index,
+        None => return Ok(None),
+    };
+
+    let mut intermediate_buffer =
+        BytesMut::with_capacity(buffer_size_hint(buffer, last_fragment_index));
+    buffer
+        .iter()
+        .take(last_fragment_index + 1)
+        .map(|fragment| match fragment.split_first() {
+            Some((_, fragment_data)) => fragment_data,
+            None => panic!("encountered fragment with zero size"),
+        })
+        .for_each(|chunk_data| intermediate_buffer.extend(chunk_data));
+    buffer.drain(0..last_fragment_index + 1);
+
+    return Ok(Some(intermediate_buffer));
 }
 
 impl<S> Stream for Defragmentizer<S>
@@ -71,36 +86,22 @@ where
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        let mut dechunker_mut = self.as_mut();
-        let final_chunk_index = loop {
-            match dechunker_mut.have_full_message() {
-                Some(final_chunk_index) => {
-                    break final_chunk_index;
-                }
-                None => match Pin::new(&mut dechunker_mut.stream).poll_next(cx) {
-                    Poll::Ready(result) => match result {
-                        Some(chunk) => dechunker_mut.buffer.push(chunk),
-                        None => return Poll::Ready(None),
+        let mut defragmentizer_mut = self.as_mut();
+        loop {
+            match defragmentize(&mut defragmentizer_mut.buffer) {
+                Ok(result) => match result {
+                    Some(fragment) => return Poll::Ready(Some(fragment.freeze())),
+                    None => match Pin::new(&mut defragmentizer_mut.stream).poll_next(cx) {
+                        Poll::Ready(maybe_chunk) => match maybe_chunk {
+                            Some(chunk) => defragmentizer_mut.buffer.push(chunk),
+                            None => return Poll::Ready(None),
+                        },
+                        Poll::Pending => return Poll::Pending,
                     },
-                    Poll::Pending => return Poll::Pending,
                 },
+                Err(err) => panic!("defragmentize() failed: {}", err),
             }
-        };
-
-        let mut intermediate_buffer =
-            BytesMut::with_capacity(dechunker_mut.buffer_size_hint(final_chunk_index));
-
-        dechunker_mut
-            .buffer
-            .iter()
-            .take(final_chunk_index + 1)
-            .map(|chunk| match chunk.split_first() {
-                Some((_, chunk_data)) => chunk_data,
-                None => panic!("encountered chunk with zero size"),
-            })
-            .for_each(|chunk_data| intermediate_buffer.extend(chunk_data));
-        dechunker_mut.buffer.drain(0..final_chunk_index + 1);
-        Poll::Ready(Some(intermediate_buffer.freeze()))
+        }
     }
 }
 
