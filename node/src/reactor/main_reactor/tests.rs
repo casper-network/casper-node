@@ -326,10 +326,8 @@ async fn run_equivocator_network() {
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let timeout = Config::default()
-        .consensus
-        .simple_consensus
-        .proposal_timeout;
+    let sc_conf = Config::default().consensus.simple_consensus;
+    let timeout = sc_conf.proposal_timeout * (sc_conf.proposal_grace_period as u64 + 100) / 100;
     let mut maybe_first_message_time = None;
     net.reactors_mut()
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_public_key)

@@ -361,7 +361,7 @@ fn simple_consensus_no_fault() {
     sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
 
     let block_time = sc_c.params.min_block_time();
-    let proposal_timeout = sc_c.config.proposal_timeout;
+    let proposal_timeout = sc_c.proposal_timeout();
 
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
@@ -375,7 +375,7 @@ fn simple_consensus_no_fault() {
     let hash0 = proposal0.hash();
 
     let proposal1 = Proposal {
-        timestamp: timestamp + block_time,
+        timestamp: proposal0.timestamp + block_time,
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: None,
         inactive: None,
@@ -383,7 +383,7 @@ fn simple_consensus_no_fault() {
     let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
-        timestamp: timestamp + block_time * 2,
+        timestamp: proposal1.timestamp + block_time,
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
         inactive: Some(Default::default()),
@@ -391,7 +391,7 @@ fn simple_consensus_no_fault() {
     let hash2 = proposal2.hash();
 
     let proposal3 = Proposal {
-        timestamp: timestamp + block_time * 3,
+        timestamp: proposal2.timestamp + block_time,
         maybe_block: Some(new_payload(false)),
         maybe_parent_round_id: Some(2),
         inactive: Some(Default::default()),
@@ -399,7 +399,7 @@ fn simple_consensus_no_fault() {
     let hash3 = proposal3.hash();
 
     let proposal4 = Proposal::<ClContext> {
-        timestamp: timestamp + block_time * 4,
+        timestamp: proposal3.timestamp + block_time,
         maybe_block: None,
         maybe_parent_round_id: Some(3),
         inactive: None,
@@ -458,13 +458,15 @@ fn simple_consensus_no_fault() {
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 1, carol_idx, echo(hash1)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
-    expect_timer(&outcomes, timestamp + proposal_timeout * 2, TIMER_ID_UPDATE);
+    let timeout = timestamp + sc_c.proposal_timeout();
+    expect_timer(&outcomes, timeout, TIMER_ID_UPDATE);
 
     // Bob votes false in round 0. That's not a quorum yet.
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // On timeout, Carol votes to make round 1 skippable.
+    // TODO: Come up with a better test scenario where timestamps are in order.
     let mut outcomes =
         sc_c.handle_timer(timestamp + proposal_timeout * 2, TIMER_ID_UPDATE, &mut rng);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
