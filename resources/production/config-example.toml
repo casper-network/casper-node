@@ -233,6 +233,9 @@ qps_limit = 50
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
 
+speculative_execution_address = "0.0.0.0:7778"
+
+speculative_execution_qps_limit = 0
 
 # ==============================================
 # Configuration options for the REST HTTP server
