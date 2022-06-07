@@ -30,12 +30,11 @@ pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
 pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(0, 100),
+    refund_ratio: Ratio::new_raw(0, 1),
 };
 /// Default fee handling.
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 
-///
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -88,11 +87,14 @@ impl Default for EngineConfig {
 }
 
 impl EngineConfig {
-    /// Creates new [`EngineConfig`] instance.
+    /// Creates a new `EngineConfig` instance.
     ///
-    /// New code should use [`crate::core::engine_state::EngineConfigBuilder`] instead as some of
-    /// the newer config flags might be defaulted.
-    #[allow(clippy::too_many_arguments)]
+    /// New code should use [`EngineConfigBuilder`] instead as some config options will otherwise be
+    /// defaulted.
+    #[deprecated(
+        since = "3.0.0",
+        note = "prefer to use EngineConfigBuilder to construct an EngineConfig"
+    )]
     pub fn new(
         max_query_depth: u64,
         max_associated_keys: u32,
@@ -143,30 +145,30 @@ impl EngineConfig {
         self.minimum_delegation_amount
     }
 
-    /// Get the engine config's strict argument checking flag.
+    /// Returns true if strict argument checking is enabled.
     pub fn strict_argument_checking(&self) -> bool {
         self.strict_argument_checking
     }
 
-    /// Get the engine config's administrative accounts.
+    /// Returns the engine config's administrative accounts.
     pub fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
         &self.administrative_accounts
     }
 
-    /// Get the engine config's allow auction bids.
+    /// Returns true if auction bids are allowed.
     pub fn allow_auction_bids(&self) -> bool {
         self.allow_auction_bids
     }
 
-    /// Get the engine config's allow unrestricted transfers.
+    /// Returns true if unrestricted transfers are allowed.
     pub fn allow_unrestricted_transfers(&self) -> bool {
         self.allow_unrestricted_transfers
     }
 
     /// Checks if an account hash is an administrator.
     ///
-    /// This method returns a `None` if there is no administrators configured.
-    /// Otherwise returns Some with a flag indicating if a passed account hash is an admin.
+    /// This method returns `None` if there are no administrators configured.  Otherwise returns
+    /// `Some` with a flag indicating if the passed account hash is an admin.
     pub(crate) fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
         // Ensure there's at least one administrator configured.
         if self.administrative_accounts.is_empty() {
@@ -177,21 +179,21 @@ impl EngineConfig {
         Some(self.administrative_accounts.contains(account_hash))
     }
 
-    /// Get the engine config's refund ratio.
+    /// Returns the engine config's refund ratio.
     pub fn refund_handling(&self) -> &RefundHandling {
         &self.refund_handling
     }
 
-    /// Get the engine config's fee handling.
+    /// Returns the engine config's fee handling strategy.
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
     }
 }
 
-/// This is a builder pattern applied to the [`EngineConfig`] structure to shield any changes to the
-/// constructor, or contents of it from the rest of the system.
+/// A builder for an [`EngineConfig`].
 ///
-/// Any field that isn't specified will be defaulted.
+/// Any field that isn't specified will be defaulted.  See [the module docs](index.html) for the set
+/// of default values.
 #[derive(Default, Debug)]
 pub struct EngineConfigBuilder {
     max_query_depth: Option<u64>,
@@ -209,24 +211,24 @@ pub struct EngineConfigBuilder {
 }
 
 impl EngineConfigBuilder {
-    /// Create new `EngineConfig` builder object.
+    /// Creates a new `EngineConfig` builder.
     pub fn new() -> Self {
         EngineConfigBuilder::default()
     }
 
-    /// Set a max query depth config option.
+    /// Sets the max query depth config option.
     pub fn with_max_query_depth(mut self, max_query_depth: u64) -> Self {
         self.max_query_depth = Some(max_query_depth);
         self
     }
 
-    /// Set a max associated keys config option.
+    /// Sets the max associated keys config option.
     pub fn with_max_associated_keys(mut self, max_associated_keys: u32) -> Self {
         self.max_associated_keys = Some(max_associated_keys);
         self
     }
 
-    /// Set a max runtime call stack height option.
+    /// Sets the max runtime call stack height config option.
     pub fn with_max_runtime_call_stack_height(
         mut self,
         max_runtime_call_stack_height: u32,
@@ -235,38 +237,38 @@ impl EngineConfigBuilder {
         self
     }
 
-    /// Set a new wasm config configuration option.
+    /// Sets the wasm config options.
     pub fn with_wasm_config(mut self, wasm_config: WasmConfig) -> Self {
         self.wasm_config = Some(wasm_config);
         self
     }
 
-    /// Set a new system config configuration option.
+    /// Sets the system config options.
     pub fn with_system_config(mut self, system_config: SystemConfig) -> Self {
         self.system_config = Some(system_config);
         self
     }
 
-    /// Sets new maximum wasm memory.
+    /// Sets the maximum wasm stack height config option.
     pub fn with_wasm_max_stack_height(mut self, wasm_stack_height: u32) -> Self {
         let wasm_config = self.wasm_config.get_or_insert_with(WasmConfig::default);
         wasm_config.max_stack_height = wasm_stack_height;
         self
     }
 
-    /// Set a new system config configuration option.
+    /// Sets the minimum delegation amount config option.
     pub fn with_minimum_delegation_amount(mut self, minimum_delegation_amount: u64) -> Self {
         self.minimum_delegation_amount = Some(minimum_delegation_amount);
         self
     }
 
-    /// Sets new maximum wasm memory.
+    /// Sets the strict argument checking config option.
     pub fn with_strict_argument_checking(mut self, strict_argument_checking: bool) -> Self {
         self.strict_argument_checking = Some(strict_argument_checking);
         self
     }
 
-    /// Sets new chain kind.
+    /// Sets the administrative accounts.
     pub fn with_administrative_accounts(
         mut self,
         administrator_accounts: BTreeSet<AccountHash>,
@@ -275,19 +277,19 @@ impl EngineConfigBuilder {
         self
     }
 
-    /// Sets new disable auction bids flag.
+    /// Sets the allow auction bids config option.
     pub fn with_allow_auction_bids(mut self, allow_auction_bids: bool) -> Self {
         self.allow_auction_bids = Some(allow_auction_bids);
         self
     }
 
-    /// Set the engine config builder's allow unrestricted transfers.
+    /// Sets the allow unrestricted transfers config option.
     pub fn with_allow_unrestricted_transfers(mut self, allow_unrestricted_transfers: bool) -> Self {
         self.allow_unrestricted_transfers = Some(allow_unrestricted_transfers);
         self
     }
 
-    /// Set the engine config builder's refund handling.
+    /// Sets the refund handling config option.
     pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
         match refund_handling {
             RefundHandling::Refund { refund_ratio } => {
@@ -302,13 +304,13 @@ impl EngineConfigBuilder {
         self
     }
 
-    /// Set the engine config builder's fee handling.
+    /// Sets fee handling config option.
     pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
         self.fee_handling = Some(fee_handling);
         self
     }
 
-    /// Build a new [`EngineConfig`] object.
+    /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
         let max_associated_keys = self

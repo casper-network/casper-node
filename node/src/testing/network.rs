@@ -74,10 +74,10 @@ where
     ///
     /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
     /// generated ID collides.
-    pub(crate) async fn add_node<'a: 'b, 'b>(
-        &'a mut self,
-        rng: &'b mut TestRng,
-    ) -> Result<(NodeId, &'a mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    pub(crate) async fn add_node(
+        &mut self,
+        rng: &mut TestRng,
+    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
@@ -110,11 +110,11 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub(crate) async fn add_node_with_config<'a: 'b, 'b>(
-        &'a mut self,
+    pub(crate) async fn add_node_with_config(
+        &mut self,
         cfg: R::Config,
-        rng: &'b mut NodeRng,
-    ) -> Result<(NodeId, &'a mut Runner<ConditionCheckReactor<R>>), R::Error> {
+        rng: &mut NodeRng,
+    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
 
         let node_id = runner.reactor().node_id();

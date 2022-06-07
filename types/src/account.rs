@@ -204,7 +204,7 @@ impl Account {
         self.associated_keys.update_key(account_hash, weight)
     }
 
-    /// Sets new action threshold for a given action type for the account.
+    /// Sets a new action threshold for a given action type for the account.
     ///
     /// Returns an error if the new action threshold weight is greater than the total weight of the
     /// account's associated keys.
@@ -229,18 +229,19 @@ impl Account {
         Ok(())
     }
 
-    /// Sets action thresholds with provided total weight of keys.
-    pub fn set_action_thresholds_with_total_weight(
+    /// Sets a new action threshold for a given action type for the account without checking against
+    /// the total weight of the associated keys.
+    ///
+    /// This should only be called when authorized by an administrator account.
+    ///
+    /// Returns an error if setting the action would cause the `ActionType::Deployment` threshold to
+    /// be greater than any of the other action types.
+    pub fn set_action_threshold_unchecked(
         &mut self,
-        total_weight: Weight,
         action_type: ActionType,
-        weight: Weight,
+        threshold: Weight,
     ) -> Result<(), SetThresholdFailure> {
-        if weight > total_weight {
-            return Err(SetThresholdFailure::InsufficientTotalWeight);
-        }
-        self.action_thresholds.set_threshold(action_type, weight)?;
-        Ok(())
+        self.action_thresholds.set_threshold(action_type, threshold)
     }
 
     /// Checks whether all authorization keys are associated with this account.

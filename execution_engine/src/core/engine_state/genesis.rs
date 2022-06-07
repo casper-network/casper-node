@@ -12,6 +12,8 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
+#[cfg(any(test, feature = "test-support"))]
+use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -36,7 +38,11 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::{
-            execution_effect::ExecutionEffect, ChainspecRegistry, SystemContractRegistry,
+            engine_config::{
+                FeeHandling, RefundHandling, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+            },
+            execution_effect::ExecutionEffect,
+            ChainspecRegistry, SystemContractRegistry,
         },
         execution,
         execution::AddressGenerator,
@@ -44,12 +50,6 @@ use crate::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
-};
-#[cfg(test)]
-use casper_types::testing::TestRng;
-
-use super::engine_config::{
-    FeeHandling, RefundHandling, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -173,7 +173,6 @@ pub struct AdministratorAccount {
 
 impl AdministratorAccount {
     /// Creates new special account.
-    #[must_use]
     pub fn new(public_key: PublicKey, balance: Motes) -> Self {
         Self {
             public_key,
@@ -181,13 +180,13 @@ impl AdministratorAccount {
         }
     }
 
-    /// Get a reference to the administrator account's public key.
+    /// Gets a reference to the administrator account's public key.
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl AdministratorAccount {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
@@ -223,6 +222,7 @@ impl ToBytes for AdministratorAccount {
         public_key.serialized_length() + balance.serialized_length()
     }
 }
+
 impl FromBytes for AdministratorAccount {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (public_key, remainder) = FromBytes::from_bytes(bytes)?;
@@ -453,6 +453,7 @@ impl GenesisAccount {
             _ => None,
         }
     }
+
     /// Gets the administrator account variant.
     fn as_administrator_account(&self) -> Option<&AdministratorAccount> {
         if let Self::Administrator(v) = self {
@@ -505,13 +506,9 @@ impl ToBytes for GenesisAccount {
                 buffer.extend(balance.value().to_bytes()?);
                 buffer.extend(delegated_amount.value().to_bytes()?);
             }
-            GenesisAccount::Administrator(AdministratorAccount {
-                public_key,
-                balance,
-            }) => {
+            GenesisAccount::Administrator(administrator_account) => {
                 buffer.push(GenesisAccountTag::Administrator as u8);
-                buffer.extend(public_key.to_bytes()?);
-                buffer.extend(balance.to_bytes()?);
+                buffer.extend(administrator_account.to_bytes()?);
             }
         }
         Ok(buffer)
@@ -542,10 +539,9 @@ impl ToBytes for GenesisAccount {
                     + delegated_amount.value().serialized_length()
                     + TAG_LENGTH
             }
-            GenesisAccount::Administrator(AdministratorAccount {
-                public_key,
-                balance,
-            }) => public_key.serialized_length() + balance.serialized_length() + TAG_LENGTH,
+            GenesisAccount::Administrator(administrator_account) => {
+                administrator_account.serialized_length() + TAG_LENGTH
+            }
         }
     }
 }
@@ -579,12 +575,9 @@ impl FromBytes for GenesisAccount {
                 Ok((genesis_account, remainder))
             }
             tag if tag == GenesisAccountTag::Administrator as u8 => {
-                let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
-                let (balance, remainder) = FromBytes::from_bytes(remainder)?;
-                let genesis_account = GenesisAccount::Administrator(AdministratorAccount {
-                    public_key,
-                    balance,
-                });
+                let (administrator_account, remainder) =
+                    AdministratorAccount::from_bytes(remainder)?;
+                let genesis_account = GenesisAccount::Administrator(administrator_account);
                 Ok((genesis_account, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -688,7 +681,14 @@ pub struct ExecConfig {
 }
 
 impl ExecConfig {
-    /// Creates new genesis configuration.
+    /// Creates a new genesis configuration.
+    ///
+    /// New code should use [`ExecConfigBuilder`] instead as some config options will otherwise be
+    /// defaulted.
+    #[deprecated(
+        since = "3.0.0",
+        note = "prefer to use ExecConfigBuilder to construct an ExecConfig"
+    )]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: Vec<GenesisAccount>,
@@ -746,12 +746,12 @@ impl ExecConfig {
         self.accounts.as_slice()
     }
 
-    /// Returns an iterable over all genesis accounts.
+    /// Returns an iterator over all genesis accounts.
     pub(crate) fn accounts_iter(&self) -> impl Iterator<Item = &GenesisAccount> {
         self.accounts.iter()
     }
 
-    /// Returns all administrative accounts.
+    /// Returns an iterator over all administrative accounts.
     pub(crate) fn administrative_accounts(&self) -> impl Iterator<Item = &AdministratorAccount> {
         self.accounts
             .iter()
@@ -845,10 +845,10 @@ impl Distribution<ExecConfig> for Standard {
     }
 }
 
-/// This is a builder pattern applied to the [`ExecConfig`] structure to shield any changes to the
-/// constructor, or contents of it from the rest of the system.
+/// A builder for an [`ExecConfig`].
 ///
-/// Any field that isn't specified will be defaulted.
+/// Any field that isn't specified will be defaulted.  See [the module docs](index.html) for the set
+/// of default values.
 #[derive(Default, Debug)]
 pub struct ExecConfigBuilder {
     accounts: Option<Vec<GenesisAccount>>,
@@ -865,78 +865,78 @@ pub struct ExecConfigBuilder {
 }
 
 impl ExecConfigBuilder {
-    /// Create new `ExecConfig` builder object.
+    /// Creates a new `ExecConfig` builder.
     pub fn new() -> Self {
         ExecConfigBuilder::default()
     }
 
-    /// Set genesis accounts configuration option.
+    /// Sets the genesis accounts.
     pub fn with_accounts(mut self, accounts: Vec<GenesisAccount>) -> Self {
         self.accounts = Some(accounts);
         self
     }
 
-    /// Set wasm config.
+    /// Sets the Wasm config options.
     pub fn with_wasm_config(mut self, wasm_config: WasmConfig) -> Self {
         self.wasm_config = Some(wasm_config);
         self
     }
 
-    /// Set a system config.
+    /// Sets the system config options.
     pub fn with_system_config(mut self, system_config: SystemConfig) -> Self {
         self.system_config = Some(system_config);
         self
     }
 
-    /// Set validator slots.
+    /// Sets the validator slots config option.
     pub fn with_validator_slots(mut self, validator_slots: u32) -> Self {
         self.validator_slots = Some(validator_slots);
         self
     }
 
-    /// Set auction delay.
+    /// Sets the auction delay config option.
     pub fn with_auction_delay(mut self, auction_delay: u64) -> Self {
         self.auction_delay = Some(auction_delay);
         self
     }
 
-    /// Set locked funds period in milliseconds.
+    /// Sets the locked funds period config option.
     pub fn with_locked_funds_period_millis(mut self, locked_funds_period_millis: u64) -> Self {
         self.locked_funds_period_millis = Some(locked_funds_period_millis);
         self
     }
 
-    /// Set round seigniorage rate.
+    /// Sets the round seigniorage rate config option.
     pub fn with_round_seigniorage_rate(mut self, round_seigniorage_rate: Ratio<u64>) -> Self {
         self.round_seigniorage_rate = Some(round_seigniorage_rate);
         self
     }
 
-    /// Set unbonding delay.
+    /// Sets the unbonding delay config option.
     pub fn with_unbonding_delay(mut self, unbonding_delay: u64) -> Self {
         self.unbonding_delay = Some(unbonding_delay);
         self
     }
 
-    /// Set genesis timestamp in milliseconds.
+    /// Sets the genesis timestamp config option.
     pub fn with_genesis_timestamp_millis(mut self, genesis_timestamp_millis: u64) -> Self {
         self.genesis_timestamp_millis = Some(genesis_timestamp_millis);
         self
     }
 
-    /// Set refund handling configuration option.
+    /// Sets the refund handling config option.
     pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
         self.refund_handling = Some(refund_handling);
         self
     }
 
-    /// Set fee handling configuration option.
+    /// Sets the fee handling config option.
     pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
         self.fee_handling = Some(fee_handling);
         self
     }
 
-    /// Build a new [`ExecConfig`] object.
+    /// Builds a new [`ExecConfig`] object.
     pub fn build(self) -> ExecConfig {
         ExecConfig {
             accounts: self.accounts.unwrap_or_default(),
@@ -1701,7 +1701,7 @@ mod tests {
     }
 
     #[test]
-    fn account_bytesrepr_roundtrip() {
+    fn genesis_account_bytesrepr_roundtrip() {
         let mut rng = rand::thread_rng();
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
@@ -1740,5 +1740,12 @@ mod tests {
         );
 
         bytesrepr::test_serialization_roundtrip(&genesis_account);
+    }
+
+    #[test]
+    fn administrator_account_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let administrator_account = AdministratorAccount::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&administrator_account);
     }
 }

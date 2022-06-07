@@ -1,15 +1,15 @@
+use num::{CheckedAdd, CheckedMul, CheckedSub, One, Zero};
+use num_rational::Ratio;
+use tracing::error;
+
 use casper_types::{
     account::AccountHash,
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
-use num::{CheckedAdd, CheckedMul, CheckedSub, One, Zero};
-use num_rational::Ratio;
-use tracing::error;
-
-use crate::core::engine_state::engine_config::RefundHandling;
 
 use super::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
+use crate::core::engine_state::engine_config::RefundHandling;
 
 /// Returns the purse for accepting payment for transactions.
 pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {

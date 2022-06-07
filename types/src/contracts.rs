@@ -774,20 +774,18 @@ impl ContractPackage {
         self.versions.get(&contract_version_key)
     }
 
-    /// Checks if the given contract version exists and is available for use.
+    /// Returns `true` if the given contract version exists and is enabled.
     pub fn is_version_enabled(&self, contract_version_key: ContractVersionKey) -> bool {
         !self.disabled_versions.contains(&contract_version_key)
             && self.versions.contains_key(&contract_version_key)
     }
 
-    /// Checks if the given contract hash exists and is enabled.
-    ///
-    /// Returns Some(true) if contract is disabled, Some(false) if its enabled and None if contract
-    /// does not exists.
-    pub fn is_contract_disabled(&self, contract_hash: &ContractHash) -> Option<bool> {
-        let version_key = self.find_contract_version_key_by_hash(contract_hash)?;
-        let is_disabled = self.disabled_versions.contains(version_key);
-        Some(is_disabled)
+    /// Returns `true` if the given contract hash exists and is enabled.
+    pub fn is_contract_enabled(&self, contract_hash: &ContractHash) -> bool {
+        match self.find_contract_version_key_by_hash(contract_hash) {
+            Some(version_key) => !self.disabled_versions.contains(version_key),
+            None => false,
+        }
     }
 
     /// Insert a new contract version; the next sequential version number will be issued.
@@ -1719,10 +1717,7 @@ mod tests {
             ]),
         );
 
-        assert_eq!(
-            contract_package.is_contract_disabled(&NEW_CONTRACT_HASH),
-            None,
-        );
+        assert!(!contract_package.is_contract_enabled(&NEW_CONTRACT_HASH));
 
         assert_eq!(
             contract_package.disable_contract_version(NEW_CONTRACT_HASH),
@@ -1730,30 +1725,21 @@ mod tests {
             "should return contract not found error"
         );
 
-        assert_eq!(
-            contract_package.is_contract_disabled(&NEW_CONTRACT_HASH),
-            None,
-        );
+        assert!(!contract_package.is_contract_enabled(&NEW_CONTRACT_HASH));
 
         let next_version = contract_package.insert_contract_version(1, NEW_CONTRACT_HASH);
         assert!(
             contract_package.is_version_enabled(next_version),
             "version should exist and be enabled"
         );
-        assert_eq!(
-            contract_package.is_contract_disabled(&NEW_CONTRACT_HASH),
-            Some(false),
-        );
+        assert!(contract_package.is_contract_enabled(&NEW_CONTRACT_HASH));
 
         assert_eq!(
             contract_package.disable_contract_version(NEW_CONTRACT_HASH),
             Ok(()),
             "should be able to disable version"
         );
-        assert_eq!(
-            contract_package.is_contract_disabled(&NEW_CONTRACT_HASH),
-            Some(true),
-        );
+        assert!(!contract_package.is_contract_enabled(&NEW_CONTRACT_HASH));
 
         assert_eq!(
             contract_package.lookup_contract_hash(next_version),

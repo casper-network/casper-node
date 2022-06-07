@@ -208,8 +208,8 @@ impl InMemoryWasmTestBuilder {
             .with_allow_unrestricted_transfers(
                 chainspec_config.core_config.allow_unrestricted_transfers,
             )
-            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
-            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .with_refund_handling(chainspec_config.core_config.refund_handling)
+            .with_fee_handling(chainspec_config.core_config.fee_handling)
             .build();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
@@ -284,8 +284,8 @@ impl LmdbWasmTestBuilder {
             .with_allow_unrestricted_transfers(
                 chainspec_config.core_config.allow_unrestricted_transfers,
             )
-            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
-            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .with_refund_handling(chainspec_config.core_config.refund_handling)
+            .with_fee_handling(chainspec_config.core_config.fee_handling)
             .build();
 
         Self::new_with_config(data_dir, engine_config)

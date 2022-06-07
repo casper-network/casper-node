@@ -4,10 +4,10 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
-use serde::{Deserialize, Serialize};
 
 use super::{genesis::ExecConfig, ChainspecRegistry};
 

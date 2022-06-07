@@ -15,11 +15,10 @@ use casper_types::{
     ApiError, EraId, PublicKey, U512,
 };
 
-use crate::core::engine_state::engine_config::FeeHandling;
-
 use self::providers::{
     AccountProvider, HandlePaymentProvider, MintProvider, RuntimeProvider, StorageProvider,
 };
+use crate::core::engine_state::engine_config::FeeHandling;
 
 /// Bonding auction contract interface
 pub trait Auction:

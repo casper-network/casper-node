@@ -63,11 +63,23 @@ strict_argument_checking = false
 allow_auction_bids = false
 # Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
 allow_unrestricted_transfers = false
-# Refund handling config for finalization of an execution.
-refund_handling = { type = "Refund", refund_ratio = [1, 1] }
-# How fees are paid
-fee_handling = { type = "Accumulate" }
-# System account is an administrator
+# Defines how refunds of the unused portion of payment amounts are calculated and handled.
+#
+# The only valid value for 'type' is currently 'refund'.  This causes excess payment amounts to be sent to either a
+# pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
+# minus the execution costs.
+refund_handling = { type = 'refund', refund_ratio = [1, 1] }
+# Defines how fees are handled.
+#
+# Valid options are:
+#   'pay_to_proposer': fees are paid to the block proposer
+#   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
+#                 administrator accounts
+#   'burn': fees are burned
+fee_handling = { type = 'accumulate' }
+# Administrator accounts as an array of hex-formatted account hashes.
+#
+# The system account is an administrator account.
 administrators = ["account-hash-6174cf2e6f8fed1715c9a3bace9c50bfe572eecb763b0ed3f644532616452008"]
 
 [highway]
@@ -86,6 +98,7 @@ maximum_round_exponent = 19
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
+# If set to false, then consensus doesn't compute rewards and always uses 0.
 compute_rewards = false
 
 [deploys]
@@ -185,6 +198,7 @@ has_key = { cost = 1_500, arguments = [0, 840] }
 is_valid_uref = { cost = 760, arguments = [0, 0] }
 load_named_keys = { cost = 42_000, arguments = [0, 0] }
 new_uref = { cost = 17_000, arguments = [0, 0, 590] }
+random_bytes = { cost = 200, arguments = [0, 0] }
 print = { cost = 20_000, arguments = [0, 4_600] }
 provision_contract_user_group_uref = { cost = 200, arguments = [0, 0, 0, 0, 0] }
 put_key = { cost = 38_000, arguments = [0, 1_100, 0, 0] }
@@ -204,7 +218,6 @@ transfer_to_account = { cost = 2_500_000_000, arguments = [0, 0, 0, 0, 0, 0, 0] 
 update_associated_key = { cost = 4_200, arguments = [0, 0, 0] }
 write = { cost = 14_000, arguments = [0, 0, 0, 980] }
 write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
-random_bytes = { cost = 200, arguments = [0, 0] }
 
 [system_costs]
 wasmless_transfer_cost = 100_000_000

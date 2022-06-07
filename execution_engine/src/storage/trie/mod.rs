@@ -59,7 +59,6 @@ impl Pointer {
     }
 
     /// Creates a new owned `Pointer` with a new `Digest`.
-    #[must_use]
     pub fn update(&self, hash: Digest) -> Self {
         match self {
             Pointer::LeafPointer(_) => Pointer::LeafPointer(hash),

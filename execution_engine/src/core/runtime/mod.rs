@@ -1239,15 +1239,11 @@ where
             }
         }
 
-        if !self.config.administrative_accounts().is_empty() {
-            match contract_package.is_contract_disabled(&contract_hash) {
-                Some(true) | None => {
-                    if !self.context.is_system_contract(&contract_hash)? {
-                        return Err(Error::DisabledContract(contract_hash));
-                    }
-                }
-                Some(false) => {}
-            }
+        if !self.config.administrative_accounts().is_empty()
+            && !contract_package.is_contract_enabled(&contract_hash)
+            && !self.context.is_system_contract(&contract_hash)?
+        {
+            return Err(Error::DisabledContract(contract_hash));
         }
 
         // if session the caller's context

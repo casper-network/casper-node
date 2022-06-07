@@ -6,7 +6,6 @@ pub(crate) mod ds;
 mod external;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
-pub(crate) mod serde_helpers;
 pub(crate) mod umask;
 pub mod work_queue;
 

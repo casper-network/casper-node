@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
 
+use tracing::error;
+
+use casper_execution_engine::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
@@ -13,11 +16,6 @@ use num::rational::Ratio;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-
-use self::{fee_handling::FeeHandlingConfig, refund_handling::RefundHandlingConfig};
-
-mod fee_handling;
-mod refund_handling;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -55,9 +53,23 @@ pub struct CoreConfig {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub(crate) administrators: BTreeSet<AccountHash>, // todo: PublicKey
     /// Refund handling.
-    pub(crate) refund_handling: RefundHandlingConfig,
+    #[data_size(skip)]
+    pub(crate) refund_handling: RefundHandling,
     /// Fee handling.
-    pub(crate) fee_handling: FeeHandlingConfig,
+    pub(crate) fee_handling: FeeHandling,
+}
+
+impl CoreConfig {
+    /// Checks whether the values set in the config make sense and returns `false` if they don't.
+    pub(super) fn is_valid(&self) -> bool {
+        let RefundHandling::Refund { refund_ratio } = &self.refund_handling;
+        if *refund_ratio > Ratio::new(1, 1) {
+            error!(%refund_ratio, "refund_ratio is not in the range [0, 1]");
+            return false;
+        }
+
+        true
+    }
 }
 
 #[cfg(test)]
@@ -86,13 +98,13 @@ impl CoreConfig {
         let refund_handling = {
             let numer = rng.gen_range(0..=100);
             let refund_ratio = Ratio::new(numer, 100);
-            RefundHandlingConfig::Refund { refund_ratio }
+            RefundHandling::Refund { refund_ratio }
         };
 
         let fee_handling = if rng.gen() {
-            FeeHandlingConfig::PayToProposer
+            FeeHandling::PayToProposer
         } else {
-            FeeHandlingConfig::Accumulate
+            FeeHandling::Accumulate
         };
 
         CoreConfig {

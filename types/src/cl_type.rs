@@ -773,7 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn should_have_valid_cltype_with_nested_containers() {
+    fn should_have_cltype_of_ref_to_cltyped() {
         assert_eq!(<Vec<&u64>>::cl_type(), <Vec<u64>>::cl_type())
     }
 }

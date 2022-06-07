@@ -502,6 +502,6 @@ fn should_transfer_total_amount() {
     assert_eq!(
         account_1_balance,
         builder.calculate_refund_amount(*DEFAULT_PAYMENT),
-        "account 1 should only have refunded amount after trasnferring full amount"
+        "account 1 should only have refunded amount after transferring full amount"
     );
 }

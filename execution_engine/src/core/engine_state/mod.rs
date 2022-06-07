@@ -51,7 +51,6 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use self::engine_config::FeeHandling;
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     chainspec_registry::ChainspecRegistry,
@@ -66,7 +65,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
+    genesis::{AdministratorAccount, ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
     run_genesis_request::RunGenesisRequest,
@@ -75,6 +74,7 @@ pub use self::{
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
+use self::{engine_config::FeeHandling, transfer::NewTransferTargetMode};
 use crate::{
     core::{
         engine_state::{
@@ -96,8 +96,6 @@ use crate::{
     },
     system::auction,
 };
-
-use transfer::NewTransferTargetMode;
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
