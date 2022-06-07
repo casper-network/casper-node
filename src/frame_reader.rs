@@ -67,32 +67,29 @@ where
         } = self.get_mut();
         loop {
             match length_delimited_frame(buffer) {
-                Ok(result) => match result {
-                    Some(frame) => return Poll::Ready(Some(frame.freeze())),
-                    None => {
-                        let start = buffer.len();
-                        let end = start + BUFFER_SIZE;
-                        buffer.resize(end, 0xBA);
+                Ok(Some(frame)) => return Poll::Ready(Some(frame.freeze())),
+                Ok(None) => {
+                    let start = buffer.len();
+                    let end = start + BUFFER_SIZE;
+                    buffer.resize(end, 0xBA);
 
-                        match Pin::new(&mut *stream).poll_read(cx, &mut buffer[start..end]) {
-                            Poll::Ready(result) => match result {
-                                Ok(bytes_read) => {
-                                    buffer.truncate(start + bytes_read);
+                    match Pin::new(&mut *stream).poll_read(cx, &mut buffer[start..end]) {
+                        Poll::Ready(Ok(bytes_read)) => {
+                            buffer.truncate(start + bytes_read);
 
-                                    // For testing purposes assume that when the stream is empty
-                                    // we finish processing. In production, we'll keep waiting
-                                    // for more data to arrive.
-                                    #[cfg(test)]
-                                    if bytes_read == 0 {
-                                        return Poll::Ready(None);
-                                    }
-                                }
-                                Err(err) => panic!("poll_read() failed: {}", err),
-                            },
-                            Poll::Pending => return Poll::Pending,
+                            // For testing purposes assume that when the stream is empty
+                            // we finish processing. In production, we'll keep waiting
+                            // for more data to arrive.
+                            #[cfg(test)]
+                            if bytes_read == 0 {
+                                return Poll::Ready(None);
+                            }
                         }
+                        Poll::Ready(Err(err)) => panic!("poll_read() failed: {}", err),
+                        Poll::Pending => return Poll::Pending,
                     }
-                },
+                }
+
                 Err(err) => panic!("length_delimited_frame() failed: {}", err),
             }
         }

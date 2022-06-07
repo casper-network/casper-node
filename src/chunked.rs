@@ -89,15 +89,11 @@ where
         let mut defragmentizer_mut = self.as_mut();
         loop {
             match defragmentize(&mut defragmentizer_mut.buffer) {
-                Ok(result) => match result {
-                    Some(fragment) => return Poll::Ready(Some(fragment.freeze())),
-                    None => match Pin::new(&mut defragmentizer_mut.stream).poll_next(cx) {
-                        Poll::Ready(maybe_chunk) => match maybe_chunk {
-                            Some(chunk) => defragmentizer_mut.buffer.push(chunk),
-                            None => return Poll::Ready(None),
-                        },
-                        Poll::Pending => return Poll::Pending,
-                    },
+                Ok(Some(fragment)) => return Poll::Ready(Some(fragment.freeze())),
+                Ok(None) => match Pin::new(&mut defragmentizer_mut.stream).poll_next(cx) {
+                    Poll::Ready(Some(chunk)) => defragmentizer_mut.buffer.push(chunk),
+                    Poll::Ready(None) => return Poll::Ready(None),
+                    Poll::Pending => return Poll::Pending,
                 },
                 Err(err) => panic!("defragmentize() failed: {}", err),
             }
