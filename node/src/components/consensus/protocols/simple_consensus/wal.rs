@@ -1,13 +1,14 @@
 use std::{
     fs::{File, OpenOptions},
-    io::{BufReader, BufWriter, Read, Write},
+    io::{self, BufReader, BufWriter, Read, Seek, Write},
     marker::PhantomData,
-    os::unix::fs::MetadataExt,
+    mem,
     path::PathBuf,
 };
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::components::consensus::{
     protocols::simple_consensus::message::{Content, Proposal, SignedMessage},
@@ -44,56 +45,29 @@ impl<C: Context> DataSize for WriteWal<C> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub(crate) enum WriteWalError {
+    #[error("Could not get serialized message size")]
     CouldntGetSerializedSize,
+    #[error("Could not serialize size")]
     CouldntSerializeSizeIntoWriter,
+    #[error("Could not serialize message")]
     CouldntSerializeMessageIntoWriter,
-    FileCouldntOpen,
-    PathIsntFile,
+    #[error("Could not flush message to disk")]
     CouldntFlushMessageToDisk,
-    FileCouldntBeCreated(std::io::Error),
-    CouldntCreateParentDirectory(PathBuf, std::io::Error),
-    OtherIOError(std::io::Error),
+    #[error("Could not open file: {0}")]
+    FileCouldntBeOpened(io::Error),
 }
 
 impl<C: Context> WriteWal<C> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, WriteWalError> {
-        let file = match std::fs::metadata(&wal_path) {
-            Ok(meta) => {
-                if meta.is_file() {
-                    let file = OpenOptions::new()
-                        .append(true)
-                        .open(&wal_path)
-                        .map_err(|_| WriteWalError::FileCouldntOpen)?;
-                    Ok(file)
-                } else {
-                    Err(WriteWalError::PathIsntFile)
-                }
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                if let Some(parent_directory) = wal_path.parent() {
-                    std::fs::create_dir_all(parent_directory).map_err(|err| {
-                        WriteWalError::CouldntCreateParentDirectory(
-                            parent_directory.to_owned(),
-                            err,
-                        )
-                    })?;
-                }
-
-                OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .open(&wal_path)
-                    .map_err(WriteWalError::FileCouldntBeCreated)
-            }
-            Err(err) => Err(WriteWalError::OtherIOError(err)),
-        }?;
-
-        let writer = BufWriter::new(file);
-
+        let file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&wal_path)
+            .map_err(WriteWalError::FileCouldntBeOpened)?;
         Ok(WriteWal {
-            writer,
+            writer: BufWriter::new(file),
             phantom_context: PhantomData,
         })
     }
@@ -115,22 +89,19 @@ impl<C: Context> WriteWal<C> {
 
 #[derive(Debug)]
 pub(crate) struct ReadWal<C: Context> {
-    pub(crate) bytes_left: usize,
-    pub(crate) total_bytes: usize,
     pub(crate) reader: BufReader<File>,
     pub(crate) phantom_context: PhantomData<C>,
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub(crate) enum ReadWalError {
-    FileCouldntOpen(PathBuf),
-    PathIsntFile(PathBuf),
-    CouldntReadMessage,
+    #[error("No more entries; reached end of file")]
     NoMoreEntries,
-    FileCouldntBeCreated(PathBuf, std::io::Error),
-    CouldntGetMeta,
-    OtherIOError(std::io::Error),
-    CouldntCreateParentDirectory(PathBuf, std::io::Error),
+    #[error("Could not create file at {0}: {1}")]
+    FileCouldntBeCreated(PathBuf, io::Error),
+    #[error(transparent)]
+    OtherIOError(#[from] io::Error),
+    #[error("WAL file corruption: {:?}", .0)]
     EndedOnCorruption(WalCorruptionType),
 }
 
@@ -144,98 +115,49 @@ pub(crate) enum WalCorruptionType {
 
 impl<C: Context> ReadWal<C> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, ReadWalError> {
-        let (file, bytes_left) = match std::fs::metadata(&wal_path) {
-            Ok(meta) => {
-                if meta.is_file() {
-                    let file = OpenOptions::new()
-                        .read(true)
-                        .write(true)
-                        .open(&wal_path)
-                        .map_err(|_| ReadWalError::FileCouldntOpen(wal_path.clone()))?;
-                    (file, meta.size() as usize)
-                } else {
-                    return Err(ReadWalError::PathIsntFile(wal_path.clone()));
-                }
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                if let Some(parent_directory) = wal_path.parent() {
-                    std::fs::create_dir_all(parent_directory).map_err(|err| {
-                        ReadWalError::CouldntCreateParentDirectory(parent_directory.to_owned(), err)
-                    })?;
-                }
-
-                let file = OpenOptions::new()
-                    .create(true)
-                    .read(true)
-                    .write(true)
-                    .open(&wal_path)
-                    .map_err(|err| ReadWalError::FileCouldntBeCreated(wal_path.clone(), err))?;
-                let meta =
-                    std::fs::metadata(&wal_path).map_err(|_| ReadWalError::CouldntGetMeta)?;
-                (file, meta.size() as usize)
-            }
-            Err(err) => {
-                return Err(ReadWalError::OtherIOError(err));
-            }
-        };
-        let reader = BufReader::new(file);
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&wal_path)
+            .map_err(|err| ReadWalError::FileCouldntBeCreated(wal_path.clone(), err))?;
         Ok(ReadWal {
-            bytes_left,
-            total_bytes: bytes_left,
-            reader,
+            reader: BufReader::new(file),
             phantom_context: PhantomData,
         })
     }
 }
 
 impl<C: Context> ReadWal<C> {
-    #[allow(clippy::integer_arithmetic)] // TODO
     pub(crate) fn read_next_entry(&mut self) -> Result<Entry<C>, ReadWalError> {
-        if self.bytes_left == 0 {
-            return Err(ReadWalError::NoMoreEntries);
-        }
-        if self.bytes_left < 8 {
-            self.reader
-                .get_mut()
-                .set_len((self.total_bytes - self.bytes_left) as u64)
-                .map_err(ReadWalError::OtherIOError)?;
-            return Err(ReadWalError::EndedOnCorruption(
-                WalCorruptionType::NotEnoughInput,
-            ));
-        }
-        let mut entry_size_buf = [0u8; 8];
-        match self.reader.read_exact(&mut entry_size_buf) {
-            Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
-                // TODO Should we keep this? Mostly keeping it here as a sanity check for now.
-                unreachable!()
-            }
-            Err(err) => {
+        let position = self.reader.stream_position()?;
+
+        let mut entry_size_buf = [0u8; mem::size_of::<u64>()];
+        if let Err(err) = self.reader.read_exact(&mut entry_size_buf) {
+            if err.kind() != io::ErrorKind::UnexpectedEof {
                 return Err(ReadWalError::OtherIOError(err));
             }
-            Ok(()) => {}
-        }
-        self.bytes_left -= 8;
-        let entry_size = std::primitive::u64::from_be_bytes(entry_size_buf) as usize;
-        if entry_size > self.bytes_left {
-            self.reader
-                .get_mut()
-                .set_len((self.total_bytes - self.bytes_left - 8) as u64)
-                .map_err(ReadWalError::OtherIOError)?;
-            return Err(ReadWalError::EndedOnCorruption(
-                WalCorruptionType::NotEnoughInput,
-            ));
-        }
-        let entry = {
+        } else {
+            let entry_size = std::primitive::u64::from_be_bytes(entry_size_buf) as usize;
             let mut entry_buf = vec![0; entry_size];
-            self.reader
-                .read_exact(&mut entry_buf)
-                .map_err(|_| ReadWalError::CouldntReadMessage)?;
-            self.bytes_left -= entry_size;
-            bincode::deserialize(&entry_buf).map_err(|_| {
-                ReadWalError::EndedOnCorruption(WalCorruptionType::ImproperFormatting)
-            })?
-        };
-        Ok(entry)
+            if let Err(err) = self.reader.read_exact(&mut entry_buf) {
+                if err.kind() != io::ErrorKind::UnexpectedEof {
+                    return Err(ReadWalError::OtherIOError(err));
+                }
+            } else {
+                return bincode::deserialize(&entry_buf).map_err(|_| {
+                    ReadWalError::EndedOnCorruption(WalCorruptionType::ImproperFormatting)
+                });
+            }
+        }
+
+        if self.reader.stream_position()? == position {
+            return Err(ReadWalError::NoMoreEntries);
+        }
+        self.reader.get_mut().set_len(position)?;
+        Err(ReadWalError::EndedOnCorruption(
+            WalCorruptionType::NotEnoughInput,
+        ))
     }
 }
 
