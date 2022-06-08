@@ -80,7 +80,7 @@ impl Metrics {
         registry.register(Box::new(sync_task_limiter_started_counter.clone()))?;
 
         let sync_task_limiter_completed_counter = Counter::new(
-            "storage_sync_task_limiter_completed_counter",
+            "storage_sync_task_limiter_completed_count",
             "number completed tasks",
         )?;
         registry.register(Box::new(sync_task_limiter_completed_counter.clone()))?;
