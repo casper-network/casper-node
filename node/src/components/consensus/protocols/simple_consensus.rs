@@ -1931,11 +1931,16 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         now: Timestamp,
-        _wal_file: Option<PathBuf>,
+        wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
         if self.write_wal.is_none() {
-            error!(?our_id, "missing WAL file; not activating");
-            return vec![];
+            if let Some(wal_file) = wal_file {
+                self.open_wal(wal_file, now);
+            }
+            if self.write_wal.is_none() {
+                error!(?our_id, "missing WAL file; not activating");
+                return vec![];
+            }
         }
         if let Some(idx) = self.validators.get_index(&our_id) {
             info!(our_idx = idx.0, "start voting");
