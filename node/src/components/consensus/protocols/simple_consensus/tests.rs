@@ -564,16 +564,10 @@ fn simple_consensus_no_fault() {
     assert_eq!(outcomes, vec![]);
 
     let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
-    info!("{:?}", outcomes);
-
-    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
-    info!("{:?}", outcomes);
-
-    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
-    info!("{:?}", outcomes);
-
-    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
-    info!("{:?}", outcomes);
+    expect_finalized(
+        &outcomes,
+        &[(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)],
+    );
 
     let sc_c_recovered: &SimpleConsensus<ClContext> = protocol.as_any().downcast_ref().unwrap();
 
