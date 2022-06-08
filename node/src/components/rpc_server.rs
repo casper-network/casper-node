@@ -109,14 +109,17 @@ impl RpcServer {
             config.max_body_bytes,
         ));
 
-        let builder = utils::start_listening(&config.speculative_execution_address)?;
-        tokio::spawn(speculative_exec_server::run(
-            builder,
-            effect_builder,
-            api_version,
-            config.speculative_execution_qps_limit,
-            config.max_body_bytes,
-        ));
+        // QPS limit set to 0 disables the server.
+        if config.speculative_execution_qps_limit > 0 {
+            let builder = utils::start_listening(&config.speculative_execution_address)?;
+            tokio::spawn(speculative_exec_server::run(
+                builder,
+                effect_builder,
+                api_version,
+                config.speculative_execution_qps_limit,
+                config.max_body_bytes,
+            ));
+        }
 
         Ok(RpcServer {
             node_startup_instant,
