@@ -22,9 +22,12 @@ use super::{
         },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     },
-    ReactorEventT, RPC_API_PATH,
+    ReactorEventT,
 };
 use crate::effect::EffectBuilder;
+
+/// The URL path for all JSON-RPC requests.
+pub const RPC_API_PATH: &str = "rpc";
 
 /// Run the JSON-RPC server.
 pub(super) async fn run<REv: ReactorEventT>(

@@ -18,6 +18,7 @@ mod config;
 mod event;
 mod http_server;
 pub mod rpcs;
+mod speculative_exec_server;
 
 use std::{convert::Infallible, fmt::Debug, time::Instant};
 
@@ -49,9 +50,6 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use event::Event;
-
-/// The URL path for all JSON-RPC requests.
-pub const RPC_API_PATH: &str = "rpc";
 
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
@@ -108,6 +106,15 @@ impl RpcServer {
             effect_builder,
             api_version,
             config.qps_limit,
+            config.max_body_bytes,
+        ));
+
+        let builder = utils::start_listening(&config.speculative_execution_address)?;
+        tokio::spawn(speculative_exec_server::run(
+            builder,
+            effect_builder,
+            api_version,
+            config.speculative_execution_qps_limit,
             config.max_body_bytes,
         ));
 
