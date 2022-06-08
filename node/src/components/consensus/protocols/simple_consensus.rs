@@ -1219,17 +1219,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 Err(ReadWalError::NoMoreEntries) => {
                     break;
                 }
-                Err(ReadWalError::CouldntReadMessage) => {
-                    // TODO Single corrupt message, rest of wal is useless. Happy case is that the
-                    // machine shut down while flushing to disk, corruption is expected and there
-                    // will be one corrupt record that was never broadcast to anyone. Sad case is
-                    // that due to a bug or some human or divine intervention, the file is messed
-                    // up in some way.
-                    error!("couldn't read a message from the WAL: was this validator recently shut down?");
-                    // TODO Kill the node, request human intervention. Possibly manage the happy
-                    // case, but maybe we want human intervention for that too.
-                    break;
-                }
                 Err(err) => {
                     // TODO Handle other cases, despite some being impossible. Perhaps refine error
                     // type to only give possible cases.
