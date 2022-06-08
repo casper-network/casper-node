@@ -11,7 +11,8 @@ use crate::{
     },
     storage::global_state::StateReader,
     system::handle_payment::{
-        mint_provider::MintProvider, runtime_provider::RuntimeProvider, HandlePayment,
+        mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+        storage_provider::StorageProvider, HandlePayment,
     },
 };
 
@@ -131,7 +132,13 @@ where
     fn fee_handling(&self) -> FeeHandling {
         self.config.fee_handling()
     }
+}
 
+impl<'a, R> StorageProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
     fn write_balance(&mut self, purse_uref: URef, amount: U512) -> Result<(), Error> {
         let cl_amount = CLValue::from_t(amount).map_err(|_| Error::Storage)?;
         self.context

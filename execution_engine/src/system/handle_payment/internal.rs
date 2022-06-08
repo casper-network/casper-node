@@ -9,7 +9,10 @@ use tracing::error;
 
 use crate::core::engine_state::engine_config::RefundHandling;
 
-use super::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
+use super::{
+    mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider,
+};
 
 /// Returns the purse for accepting payment for transactions.
 pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
@@ -117,7 +120,7 @@ fn calculate_amounts(
 /// refund purse, depending on how much was spent on the computation. This function maintains
 /// the invariant that the balance of the payment purse is zero at the beginning and end of each
 /// deploy and that the refund purse is unset at the beginning and end of each deploy.
-pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider>(
+pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
     gas_spent: U512,
     account: AccountHash,

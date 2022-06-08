@@ -2,7 +2,7 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::fmt::Debug;
+use std::{collections::BTreeSet, fmt::Debug};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -300,10 +300,14 @@ impl DeployAcceptor {
                     .map(|approval| approval.signer().to_account_hash())
                     .collect();
 
-                let admin_set = &self.core_config.administrators;
-                if !admin_set.is_empty()
-                    && admin_set.intersection(&authorization_keys).next().is_some()
-                {
+                let admin_set: BTreeSet<AccountHash> = {
+                    self.core_config
+                        .administrators
+                        .iter()
+                        .map(|public_key| public_key.to_account_hash())
+                        .collect()
+                };
+                if admin_set.intersection(&authorization_keys).next().is_some() {
                     return effect_builder
                         .check_purse_balance(prestate_hash, account.main_purse())
                         .event(move |maybe_balance_value| Event::GetBalanceResult {
@@ -329,7 +333,6 @@ impl DeployAcceptor {
                     );
                 }
 
-                // todo include admins
                 if !account.can_deploy_with(&authorization_keys) {
                     let error = Error::InvalidDeployParameters {
                         prestate_hash,

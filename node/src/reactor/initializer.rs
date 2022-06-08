@@ -213,7 +213,7 @@ impl Reactor {
             .administrators()
             .iter()
             .cloned()
-            .map(|admin| admin.public_key().to_account_hash())
+            .map(|admin| admin.public_key())
             .collect();
 
         let contract_runtime = ContractRuntime::new(
