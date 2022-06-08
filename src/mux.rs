@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::Buf;
-use futures::{FutureExt, Sink, SinkExt};
+use futures::{ready, FutureExt, Sink, SinkExt};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::sync::ReusableBoxFuture;
 
@@ -115,6 +115,11 @@ pub struct MultiplexerHandle<S> {
     //       `mk_lock_future`) will not do anything before the first poll (TODO: write test).
     lock_future: ReusableBoxFuture<'static, SinkGuard<S>>,
     /// A potential acquired guard for the underlying sink.
+    ///
+    /// Proper acquisition and dropping of the guard is dependent on callers obeying the sink
+    /// protocol. A call to `poll_ready` will commence and ultimately complete guard acquisition.
+    ///
+    /// A [`Poll::Ready`] return value from either `poll_flush` or `poll_close` will release it.
     guard: Option<SinkGuard<S>>,
 }
 
@@ -190,15 +195,20 @@ where
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        try_ready!(self.assume_get_sink())
-            .poll_flush_unpin(cx)
-            .map_err(Error::Sink)
+        let sink = try_ready!(self.assume_get_sink());
+
+        let outcome = ready!(sink.poll_flush_unpin(cx));
+        self.guard = None;
+        Poll::Ready(outcome.map_err(Error::Sink))
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        try_ready!(self.assume_get_sink())
-            .poll_close_unpin(cx)
-            .map_err(Error::Sink)
+        let sink = try_ready!(self.assume_get_sink());
+
+        let outcome = ready!(sink.poll_close_unpin(cx));
+        self.guard = None;
+
+        Poll::Ready(outcome.map_err(Error::Sink))
     }
 }
 
