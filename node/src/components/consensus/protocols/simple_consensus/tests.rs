@@ -358,7 +358,6 @@ fn abc_weights(
 /// Alice's two blocks become finalized.
 #[test]
 fn simple_consensus_no_fault() {
-    logging::init().unwrap();
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 30, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
