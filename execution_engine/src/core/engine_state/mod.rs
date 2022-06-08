@@ -751,10 +751,9 @@ where
         // At this point we know target refers to either a purse on an existing account or an
         // account which has to be created.
 
-        if let (false, Some(is_source_admin)) = (
-            self.config.allow_unrestricted_transfers(),
-            self.config.is_account_administrator(&account_hash),
-        ) {
+        if !self.config.allow_unrestricted_transfers()
+            && !self.config.is_administrator(&account_hash)
+        {
             // We need to make sure that source or target has to be admin.
             match transfer_target_mode {
                 NewTransferTargetMode::ExistingAccount {
@@ -762,14 +761,7 @@ where
                     ..
                 }
                 | NewTransferTargetMode::CreateAccount(target_account_hash) => {
-                    // SAFETY: `is_account_administrator` will always returns `Some(_)` for private
-                    // chains.
-                    let is_target_admin = self
-                        .config
-                        .is_account_administrator(&target_account_hash)
-                        .expect("is_account_administrator() returned Some(_) earlier in the flow");
-
-                    if !is_source_admin && !is_target_admin {
+                    if !self.config.is_administrator(&target_account_hash) {
                         // Transferring from normal account to a purse doesn't work.
                         return Ok(make_charged_execution_failure(
                             execution::Error::DisabledUnrestrictedTransfers.into(),
@@ -780,11 +772,9 @@ where
                     // We don't know who is the target and we can't simply reverse search
                     // account/contract that owns it. We also can't know if purse is owned exactly
                     // by one entity in the system.
-                    if !is_source_admin {
-                        return Ok(make_charged_execution_failure(
-                            execution::Error::DisabledUnrestrictedTransfers.into(),
-                        ));
-                    }
+                    return Ok(make_charged_execution_failure(
+                        execution::Error::DisabledUnrestrictedTransfers.into(),
+                    ));
                 }
             }
         }

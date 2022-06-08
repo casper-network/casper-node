@@ -166,17 +166,8 @@ impl EngineConfig {
     }
 
     /// Checks if an account hash is an administrator.
-    ///
-    /// This method returns `None` if there are no administrators configured.  Otherwise returns
-    /// `Some` with a flag indicating if the passed account hash is an admin.
-    pub(crate) fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
-        // Ensure there's at least one administrator configured.
-        if self.administrative_accounts.is_empty() {
-            return None;
-        }
-
-        // Find an administrator by its account hash.
-        Some(self.administrative_accounts.contains(account_hash))
+    pub(crate) fn is_administrator(&self, account_hash: &AccountHash) -> bool {
+        self.administrative_accounts.contains(account_hash)
     }
 
     /// Returns the engine config's refund ratio.

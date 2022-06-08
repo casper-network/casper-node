@@ -68,8 +68,8 @@ where
         self.context.account().main_purse()
     }
 
-    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
-        self.config.is_account_administrator(account_hash)
+    fn is_administrator(&self, account_hash: &AccountHash) -> bool {
+        self.config.is_administrator(account_hash)
     }
 
     fn allow_unrestricted_transfers(&self) -> bool {

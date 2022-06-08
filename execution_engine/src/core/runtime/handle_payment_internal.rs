@@ -124,10 +124,6 @@ where
         self.config.refund_handling()
     }
 
-    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
-        self.config.is_account_administrator(account_hash)
-    }
-
     fn fee_handling(&self) -> FeeHandling {
         self.config.fee_handling()
     }

@@ -1086,13 +1086,11 @@ where
     }
 
     pub(crate) fn is_authorized_by_admin(&self) -> bool {
-        let admin_set = self.engine_config.administrative_accounts();
-
-        !admin_set.is_empty()
-            && admin_set
-                .intersection(&self.authorization_keys)
-                .next()
-                .is_some()
+        self.engine_config
+            .administrative_accounts()
+            .intersection(&self.authorization_keys)
+            .next()
+            .is_some()
     }
 
     /// Set threshold of an associated key.

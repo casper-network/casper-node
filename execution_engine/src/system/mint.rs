@@ -135,13 +135,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     contract_package_hash: _,
                     contract_hash: _,
                 }) => {
-                    if account_hash != PublicKey::System.to_account_hash() {
-                        if let Some(is_account_admin) = self.is_account_administrator(&account_hash)
-                        {
-                            if !is_account_admin {
-                                return Err(Error::DisabledUnrestrictedTransfers);
-                            }
-                        }
+                    if account_hash != PublicKey::System.to_account_hash()
+                        && !self.is_administrator(&account_hash)
+                    {
+                        return Err(Error::DisabledUnrestrictedTransfers);
                     }
                 }
 
@@ -162,52 +159,46 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     // For example: a session using transfer host functions, or calling the mint's
                     // entrypoint directly
 
-                    if let Some(is_source_admin) = self.is_account_administrator(&account_hash) {
-                        match maybe_to {
-                            Some(to) => {
-                                let maybe_account = self.read_account(&to);
+                    let is_source_admin = self.is_administrator(&account_hash);
+                    match maybe_to {
+                        Some(to) => {
+                            let maybe_account = self.read_account(&to);
 
-                                match maybe_account {
-                                    Ok(Some(StoredValue::Account(account))) => {
-                                        // This can happen when user tries to transfer funds by
-                                        // calling mint
-                                        // directly but tries to specify wrong account hash.
-                                        if account.main_purse().addr() != target.addr() {
-                                            return Err(Error::DisabledUnrestrictedTransfers);
-                                        }
-                                        // SAFETY: is_account_administrator returns Some earlier
-                                        // in the flow.
-                                        let is_target_admin = self
-                                            .is_account_administrator(&account.account_hash())
-                                            .expect(
-                                                "is_account_administrator return Some in earlier call",
-                                            );
-                                        if !is_source_admin && !is_target_admin {
-                                            return Err(Error::DisabledUnrestrictedTransfers);
-                                        }
-                                    }
-                                    Ok(Some(_stored_value)) => {
+                            match maybe_account {
+                                Ok(Some(StoredValue::Account(account))) => {
+                                    // This can happen when user tries to transfer funds by
+                                    // calling mint
+                                    // directly but tries to specify wrong account hash.
+                                    if account.main_purse().addr() != target.addr() {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
-                                    Ok(None) => {
-                                        // `to` is specified, but no new account is persisted
-                                        // yet. Only
-                                        // administrators can do that and it is also validated
-                                        // at the host function level.
-                                        if !is_source_admin {
-                                            return Err(Error::DisabledUnrestrictedTransfers);
-                                        }
-                                    }
-                                    Err(error) => {
-                                        warn!(%error, "error while reading account");
-                                        return Err(Error::Storage);
+                                    if !is_source_admin
+                                        && !self.is_administrator(&account.account_hash())
+                                    {
+                                        return Err(Error::DisabledUnrestrictedTransfers);
                                     }
                                 }
-                            }
-                            None => {
-                                if !is_source_admin {
+                                Ok(Some(_stored_value)) => {
                                     return Err(Error::DisabledUnrestrictedTransfers);
                                 }
+                                Ok(None) => {
+                                    // `to` is specified, but no new account is persisted
+                                    // yet. Only
+                                    // administrators can do that and it is also validated
+                                    // at the host function level.
+                                    if !is_source_admin {
+                                        return Err(Error::DisabledUnrestrictedTransfers);
+                                    }
+                                }
+                                Err(error) => {
+                                    warn!(%error, "error while reading account");
+                                    return Err(Error::Storage);
+                                }
+                            }
+                        }
+                        None => {
+                            if !is_source_admin {
+                                return Err(Error::DisabledUnrestrictedTransfers);
                             }
                         }
                     }
@@ -217,14 +208,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     contract_package_hash: _,
                     contract_hash: _,
                 }) => {
-                    if self.get_caller() != PublicKey::System.to_account_hash() {
-                        if let Some(is_account_admin) =
-                            self.is_account_administrator(&self.get_caller())
-                        {
-                            if !is_account_admin {
-                                return Err(Error::DisabledUnrestrictedTransfers);
-                            }
-                        }
+                    if self.get_caller() != PublicKey::System.to_account_hash()
+                        && !self.is_administrator(&self.get_caller())
+                    {
+                        return Err(Error::DisabledUnrestrictedTransfers);
                     }
                 }
 
