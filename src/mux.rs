@@ -4,38 +4,37 @@
 //! each to avoid starvation or flooding.
 
 use std::{
-    mem,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
 use bytes::Buf;
-use futures::{
-    future::{BoxFuture, Fuse, FusedFuture},
-    Future, FutureExt, Sink, SinkExt,
-};
+use futures::{future::FusedFuture, Future, FutureExt, Sink, SinkExt};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::sync::ReusableBoxFuture;
 
-use crate::{error::Error, ImmediateFrame};
+use crate::ImmediateFrame;
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
 
 /// A frame multiplexer.
 ///
 /// Typically the multiplexer is not used directly, but used to spawn multiplexing handles.
-struct Multiplexer<S> {
+pub struct Multiplexer<S> {
     sink: Arc<Mutex<Option<S>>>,
 }
 
-impl<S> Multiplexer<S> {
+impl<S> Multiplexer<S>
+where
+    S: Send + 'static,
+{
     /// Create a handle for a specific multiplexer channel on this multiplexer.
     pub fn get_channel_handle(self: Arc<Self>, channel: u8) -> MultiplexerHandle<S> {
         MultiplexerHandle {
             multiplexer: self.clone(),
             slot: channel,
-            lock_future: todo!(),
+            lock_future: ReusableBoxFuture::new(mk_lock_future(self)),
             guard: None,
         }
     }
@@ -46,9 +45,13 @@ type SinkGuard<S> = OwnedMutexGuard<Option<S>>;
 trait FuseFuture: Future + FusedFuture + Send {}
 impl<T> FuseFuture for T where T: Future + FusedFuture + Send {}
 
-type BoxFusedFuture<'a, T> = Pin<Box<dyn FuseFuture<Output = T> + Send + 'a>>;
+fn mk_lock_future<S>(
+    multiplexer: Arc<Multiplexer<S>>,
+) -> impl futures::Future<Output = tokio::sync::OwnedMutexGuard<std::option::Option<S>>> {
+    multiplexer.sink.clone().lock_owned()
+}
 
-struct MultiplexerHandle<S> {
+pub struct MultiplexerHandle<S> {
     multiplexer: Arc<Multiplexer<S>>,
     slot: u8,
 
@@ -73,14 +76,6 @@ where
             None => todo!("assumed sink, but no sink"),
         }
     }
-
-    fn refresh_lock_future(
-        multiplexer: Arc<Multiplexer<S>>,
-        lock_future: &mut ReusableBoxFuture<'static, SinkGuard<S>>,
-    ) {
-        let lck_fut = multiplexer.sink.clone().lock_owned();
-        lock_future.set(lck_fut);
-    }
 }
 
 impl<F, S> Sink<F> for MultiplexerHandle<S>
@@ -98,7 +93,8 @@ where
                     // It is our turn: Save the guard and prepare another locking future for later,
                     // which will not attempt to lock until first polled.
                     let _ = self.guard.insert(guard);
-                    Self::refresh_lock_future(self.multiplexer.clone(), &mut self.lock_future);
+                    let multiplexer = self.multiplexer.clone();
+                    self.lock_future.set(mk_lock_future(multiplexer));
                 }
                 Poll::Pending => {
                     // The lock could not be acquired yet.
@@ -131,7 +127,7 @@ where
         }
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         // Simply close? Note invariants, possibly checking them in debug mode.
         todo!()
     }
