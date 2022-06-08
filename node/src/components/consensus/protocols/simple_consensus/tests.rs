@@ -19,7 +19,6 @@ use crate::{
         },
         traits::Context,
     },
-    logging,
     types::BlockPayload,
 };
 

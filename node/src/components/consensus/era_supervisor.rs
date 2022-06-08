@@ -9,7 +9,7 @@ pub(super) mod debug;
 mod era;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     fs, io,
@@ -27,7 +27,7 @@ use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp, U512};
+use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -61,8 +61,6 @@ use crate::{
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
 
-use super::consensus_protocol::CouldntConstructConsensusProtocol;
-
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
@@ -75,27 +73,6 @@ const PAST_EVIDENCE_ERAS: u64 = 1;
 /// The more recent half of these is active: it contains units and can still accept further units.
 /// The older half is in evidence-only state, and only used to validate cited evidence.
 pub(super) const PAST_OPEN_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
-
-type ConsensusConstructor = dyn Fn(
-        Digest,                    // the era's unique instance ID
-        BTreeMap<PublicKey, U512>, // validator weights
-        &HashSet<PublicKey>,       /* faulty validators that are banned in
-                                    * this era */
-        &HashSet<PublicKey>, // inactive validators that can't be leaders
-        &Chainspec,          // the network's chainspec
-        &Config,             // The consensus part of the node config.
-        Option<&dyn ConsensusProtocol<ClContext>>, // previous era's consensus instance
-        Timestamp,           // start time for this era
-        u64,                 // random seed
-        Timestamp,           // now timestamp
-        PathBuf,
-    ) -> Result<
-        (
-            Box<dyn ConsensusProtocol<ClContext>>,
-            Vec<ProtocolOutcome<ClContext>>,
-        ),
-        CouldntConstructConsensusProtocol,
-    > + Send;
 
 #[derive(DataSize)]
 pub struct EraSupervisor {
@@ -452,27 +429,36 @@ impl EraSupervisor {
             .cloned()
             .collect();
 
-        let new_consensus: &ConsensusConstructor =
-            match self.chainspec.core_config.consensus_protocol {
-                ConsensusProtocolName::Highway => &HighwayProtocol::new_boxed,
-                ConsensusProtocolName::Zug => &SimpleConsensus::new_boxed,
-            };
-
         // Create and insert the new era instance.
-        let (consensus, mut outcomes) = new_consensus(
-            instance_id,
-            validators.clone(),
-            &faulty,
-            &inactive,
-            self.chainspec.as_ref(),
-            &self.config,
-            maybe_prev_era.map(|era| &*era.consensus),
-            start_time,
-            seed,
-            now,
-            self.unit_file(&instance_id),
-        )
-        .map_err(|_| CreateNewEraError::FailedToConstructConsensusInstance { era_id })?;
+        let (consensus, mut outcomes) = match self.chainspec.core_config.consensus_protocol {
+            ConsensusProtocolName::Highway => HighwayProtocol::new_boxed(
+                instance_id,
+                validators.clone(),
+                &faulty,
+                &inactive,
+                self.chainspec.as_ref(),
+                &self.config,
+                maybe_prev_era.map(|era| &*era.consensus),
+                start_time,
+                seed,
+                now,
+            ),
+            ConsensusProtocolName::Zug => SimpleConsensus::new_boxed(
+                instance_id,
+                validators.clone(),
+                &faulty,
+                &inactive,
+                self.chainspec.as_ref(),
+                &self.config,
+                maybe_prev_era.map(|era| &*era.consensus),
+                start_time,
+                seed,
+                now,
+                self.unit_file(&instance_id),
+            )
+            .map_err(|_| CreateNewEraError::FailedToConstructConsensusInstance { era_id })?,
+        };
+
         let era = Era::new(
             consensus,
             start_time,

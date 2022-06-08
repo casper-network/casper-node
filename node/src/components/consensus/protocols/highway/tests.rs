@@ -1,6 +1,4 @@
-use std::{collections::BTreeSet, env::temp_dir, sync::Arc};
-
-use rand::RngCore;
+use std::{collections::BTreeSet, sync::Arc};
 
 use casper_types::{testing::TestRng, PublicKey, TimeDiff, Timestamp, U512};
 
@@ -56,7 +54,6 @@ const STANDSTILL_TIMEOUT: &str = "1min";
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
     init_faulty: I2,
-    rng: &mut TestRng,
 ) -> Box<dyn ConsensusProtocol<ClContext>>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
@@ -78,9 +75,6 @@ where
         },
         ..Default::default()
     };
-
-    let wal_file = temp_dir().join(format!("wal{}", rng.next_u64()));
-
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
     let (hw_proto, outcomes) = HighwayProtocol::<ClContext>::new_boxed(
@@ -94,9 +88,7 @@ where
         start_timestamp,
         0,
         start_timestamp,
-        wal_file,
-    )
-    .unwrap();
+    );
     // We expect five messages:
     // * log participation timer,
     // * log synchronizer queue length timer,
@@ -111,10 +103,10 @@ where
 #[test]
 fn test_highway_protocol_handle_message_parse_error() {
     // Build a highway_protocol for instrumentation
-    let mut rng = TestRng::new();
     let mut highway_protocol: Box<dyn ConsensusProtocol<ClContext>> =
-        new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![], &mut rng);
+        new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![]);
 
+    let mut rng = TestRng::new();
     let now = Timestamp::zero();
     let sender = *ALICE_NODE_ID;
     let msg = vec![];
@@ -147,7 +139,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
-    let mut highway_protocol = new_test_highway_protocol(validators, vec![], &mut rng);
+    let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = *ALICE_NODE_ID;
     let msg = bincode::serialize(&highway_message).unwrap();
     let outcomes = highway_protocol.handle_message(&mut rng, sender.to_owned(), msg, now);
@@ -179,7 +171,7 @@ fn send_a_valid_wire_unit() {
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
 
-    let mut highway_protocol = new_test_highway_protocol(validators, vec![], &mut rng);
+    let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = *ALICE_NODE_ID;
     let msg = bincode::serialize(&highway_message).unwrap();
 
@@ -236,7 +228,7 @@ fn detect_doppelganger() {
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
-    let mut highway_protocol = new_test_highway_protocol(validators, vec![], &mut rng);
+    let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert!(highway_protocol.is_active());
