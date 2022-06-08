@@ -201,3 +201,31 @@ where
             .map_err(Error::Sink)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use futures::{FutureExt, SinkExt};
+
+    use super::{ChannelPrefixedFrame, Multiplexer};
+
+    // TODO: Test lock future assertions.
+
+    #[test]
+    fn mux_lifecycle() {
+        let output: Vec<ChannelPrefixedFrame<Bytes>> = Vec::new();
+        let muxer = Multiplexer::new(output);
+
+        let mut chan_0 = muxer.create_channel_handle(0);
+        let mut chan_1 = muxer.create_channel_handle(1);
+
+        assert!(chan_1
+            .send(Bytes::from(&b"Hello"[..]))
+            .now_or_never()
+            .is_some());
+        assert!(chan_0
+            .send(Bytes::from(&b"World"[..]))
+            .now_or_never()
+            .is_some());
+    }
+}
