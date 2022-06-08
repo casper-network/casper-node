@@ -1127,7 +1127,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// node shuts down.
     fn record_entry(&mut self, entry: &Entry<C>) -> bool {
         match self.write_wal.as_mut().map(|ww| ww.record_entry(entry)) {
-            None | Some(Ok(())) => true,
+            None => false,
+            Some(Ok(())) => true,
             Some(Err(err)) => {
                 self.active_validator = None;
                 self.write_wal = None;
