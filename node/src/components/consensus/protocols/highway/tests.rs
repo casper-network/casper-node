@@ -1,7 +1,6 @@
 use std::{collections::BTreeSet, env::temp_dir, sync::Arc};
 
 use rand::RngCore;
-use tempfile::tempfile;
 
 use casper_types::{testing::TestRng, PublicKey, TimeDiff, Timestamp, U512};
 

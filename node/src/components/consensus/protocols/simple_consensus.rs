@@ -143,7 +143,6 @@ impl<C: Context> Debug for ActiveValidator<C> {
 
 /// Contains the state required for the protocol.
 #[derive(Debug, DataSize)]
-#[allow(clippy::type_complexity)] // TODO
 pub(crate) struct SimpleConsensus<C>
 where
     C: Context,
@@ -273,8 +272,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Creates a new boxed [`SimpleConsensus`] instance.
-    // TODO return a result or option
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
@@ -666,6 +664,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             vec![]
         }
     }
+
     /// When we receive evidence for a fault, we must notify the rest of the network of this
     /// evidence. Beyond that, we can remove all of the faulty validator's previous information
     /// from the protocol state.
@@ -680,7 +679,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         if !self.record_entry(&Entry::Evidence(
             signed_msg.clone(),
             content2.clone(),
-            signature2.clone(),
+            signature2,
         )) {
             error!("could not record evidence in WAL");
             // TODO Kill the node
@@ -1157,9 +1156,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// node shuts down.
     fn record_entry(&mut self, entry: &Entry<C>) -> bool {
         match self.write_wal.record_entry(entry) {
-            Ok(()) => {
-                return true;
-            }
+            Ok(()) => true,
             Err(err) => {
                 // TODO This really should be fatal for the node, it at least cannot
                 // participate in consensus while this is happening. Handle this case properly.
@@ -1167,7 +1164,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     ?err,
                     "could not record a signed message to the WAL before sending it"
                 );
-                return false;
+                false
             }
         }
     }
@@ -1180,14 +1177,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             match read_wal.read_next_entry() {
                 Ok(next_entry) => match next_entry {
                     Entry::SignedMessage(next_message) => {
-                        // TODO wrote this in this way to highlight that I think I should ignore
-                        // the boolean, looking for feedback on this. By the same token, this
-                        // should never happen because we shouldn't write redundant entries in the
-                        // wal.
-                        if self.add_content_no_wal(next_message) {
-                            ()
-                        } else {
-                            ()
+                        if !self.add_content_no_wal(next_message) {
+                            error!("Could not add content from WAL.");
                         }
                     }
                     Entry::Proposal(next_proposal, corresponding_round_id) => {
@@ -1223,7 +1214,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                             conflicting_signature,
                             now,
                         );
-                        ()
                     }
                 },
                 Err(ReadWalError::NoMoreEntries) => {
@@ -1972,19 +1962,15 @@ where
         now: Timestamp,
         _wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
-        if let Some(our_idx) = self.validators.get_index(&our_id) {
-            info!(our_idx = our_idx.0, "start voting");
-            self.active_validator = Some(ActiveValidator {
-                idx: our_idx,
-                secret,
-            });
-            return self.schedule_update(self.params.start_timestamp().max(now));
+        if let Some(idx) = self.validators.get_index(&our_id) {
+            info!(our_idx = idx.0, "start voting");
+            self.active_validator = Some(ActiveValidator { idx, secret });
+            self.schedule_update(self.params.start_timestamp().max(now))
         } else {
             error!(
                 ?our_id,
                 "we are not a validator in this era; not activating"
             );
-            // TODO Something horrible has gone wrong -- is there a corresponding protocol outcome?
             vec![]
         }
     }

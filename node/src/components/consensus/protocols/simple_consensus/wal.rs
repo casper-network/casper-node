@@ -18,8 +18,8 @@ use super::RoundId;
 
 #[derive(Deserialize, Serialize)]
 #[serde(bound(
-    serialize = "C::Hash: Serialize, C::ValidatorId: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>, C::ValidatorId: Deserialize<'de>",
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Entry<C: Context> {
     SignedMessage(SignedMessage<C>),
@@ -57,10 +57,7 @@ pub(crate) enum WriteWalError {
     OtherIOError(std::io::Error),
 }
 
-impl<C: Context> WriteWal<C>
-where
-    C::ValidatorId: Serialize,
-{
+impl<C: Context> WriteWal<C> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, WriteWalError> {
         let file = match std::fs::metadata(&wal_path) {
             Ok(meta) => {
@@ -88,7 +85,7 @@ where
                     .append(true)
                     .create(true)
                     .open(&wal_path)
-                    .map_err(|err| WriteWalError::FileCouldntBeCreated(err))
+                    .map_err(WriteWalError::FileCouldntBeCreated)
             }
             Err(err) => Err(WriteWalError::OtherIOError(err)),
         }?;
@@ -145,10 +142,7 @@ pub(crate) enum WalCorruptionType {
     ImproperFormatting,
 }
 
-impl<C: Context> ReadWal<C>
-where
-    C::ValidatorId: for<'de> Deserialize<'de>,
-{
+impl<C: Context> ReadWal<C> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, ReadWalError> {
         let (file, bytes_left) = match std::fs::metadata(&wal_path) {
             Ok(meta) => {
@@ -194,10 +188,8 @@ where
     }
 }
 
-impl<C: Context> ReadWal<C>
-where
-    C::ValidatorId: for<'de> Deserialize<'de>,
-{
+impl<C: Context> ReadWal<C> {
+    #[allow(clippy::integer_arithmetic)] // TODO
     pub(crate) fn read_next_entry(&mut self) -> Result<Entry<C>, ReadWalError> {
         if self.bytes_left == 0 {
             return Err(ReadWalError::NoMoreEntries);

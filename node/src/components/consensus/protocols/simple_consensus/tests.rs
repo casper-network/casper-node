@@ -535,10 +535,6 @@ fn simple_consensus_no_fault() {
     expect_finalized(&outcomes, &[(&proposal3, 2)]);
     assert!(sc_c.finalized_switch_block());
 
-    let weights = weights
-        .into_iter()
-        .map(|(pk, w)| (pk, w.into()))
-        .collect::<Vec<_>>();
     let mut chainspec = new_test_chainspec(weights.clone());
     chainspec.core_config.minimum_era_height = 3;
     let mut config = Config::default();
