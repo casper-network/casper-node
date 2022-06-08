@@ -8,6 +8,7 @@ mod common;
 pub mod docs;
 mod error_code;
 pub mod info;
+pub mod speculative_exec;
 pub mod state;
 
 use std::{str, sync::Arc};

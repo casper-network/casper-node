@@ -11,7 +11,10 @@ use casper_types::ProtocolVersion;
 use warp::Filter;
 
 use super::ReactorEventT;
-use crate::effect::EffectBuilder;
+use crate::{
+    effect::EffectBuilder,
+    rpcs::{speculative_exec::SpeculativeExec, RpcWithParams},
+};
 
 /// The URL path for all JSON-RPC requests.
 pub const SPECULATIVE_EXEC_API_PATH: &str = "rpc";
@@ -25,6 +28,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     max_body_bytes: u32,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
+    SpeculativeExec::register_as_handler(effect_builder, api_version, &mut handlers);
     let handlers = handlers.build();
 
     let make_svc = hyper::service::make_service_fn(move |_| {

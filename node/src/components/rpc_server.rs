@@ -30,12 +30,13 @@ use casper_execution_engine::core::engine_state::{
     QueryResult,
 };
 use casper_hashing::Digest;
-use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
+use casper_types::{system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::contract_runtime::EraValidatorsRequest,
+    contract_runtime::SpeculativeExecutionState,
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
@@ -44,7 +45,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeState, StatusFeed},
+    types::{BlockHash, BlockHeader, Deploy, NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -180,6 +181,40 @@ impl RpcServer {
                 result,
                 main_responder: responder,
             })
+    }
+
+    fn handle_execute_deploy<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block_hash: BlockHash,
+        deploy: Deploy,
+        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
+    ) -> Effects<Event> {
+        async move {
+            let block_header: BlockHeader = {
+                let maybe_block_header = effect_builder
+                    .get_block_header_from_storage(block_hash, false)
+                    .await;
+                match maybe_block_header {
+                    None => {
+                        // Block not found, we could return an error here,
+                        // but we will do that in the RPC layer.
+                        return responder.respond(Ok(None)).await;
+                    }
+                    Some(block_header) => block_header,
+                }
+            };
+            let execution_prestate = SpeculativeExecutionState {
+                state_root_hash: *block_header.state_root_hash(),
+                block_time: block_header.timestamp(),
+                protocol_version: block_header.protocol_version(),
+            };
+            let result = effect_builder
+                .speculative_execute_deploy(execution_prestate, deploy)
+                .await;
+            responder.respond(result).await
+        }
+        .ignore()
     }
 }
 
@@ -340,6 +375,11 @@ where
                     .await
             }
             .ignore(),
+            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
+                block_hash,
+                deploy,
+                responder,
+            }) => self.handle_execute_deploy(effect_builder, block_hash, *deploy, responder),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
