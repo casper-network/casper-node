@@ -70,7 +70,7 @@ pub(crate) fn make_module_without_memory_section() -> Vec<u8> {
     parity_wasm::serialize(module).expect("should serialize")
 }
 
-/// Prepare malicious payload in a form of a wasm module without memory section.
+/// Prepare malicious payload that causes the stack overflow.
 pub(crate) fn make_stack_overflow() -> Vec<u8> {
     let instructions = {
         let mut instructions = vec![];
