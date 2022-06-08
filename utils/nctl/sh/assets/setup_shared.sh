@@ -417,6 +417,7 @@ function setup_asset_node_configs()
             "cfg['storage']['path']='../../storage';"
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$IDX")';"
             "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
+            "cfg['rpc_server']['speculative_execution_address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
             "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$IDX")';"
             "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
         )
