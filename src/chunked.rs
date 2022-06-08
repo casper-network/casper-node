@@ -71,9 +71,9 @@ pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl St
                 for fragment in buffer.drain(..) {
                     buf.put_slice(&fragment);
                 }
-                return future::ready(Some(buf.freeze()));
+                future::ready(Some(buf.freeze()))
             }
-            MORE_CHUNKS => return future::ready(None),
+            MORE_CHUNKS => future::ready(None),
             _ => panic!("garbage found where continuation byte was expected"),
         }
     })
