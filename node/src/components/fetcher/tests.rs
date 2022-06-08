@@ -91,7 +91,6 @@ reactor!(Reactor {
                 .chainspec()
                 .protocol_config
                 .verifiable_chunked_hash_activation,
-            Some(registry),
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(
