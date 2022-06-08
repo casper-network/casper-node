@@ -310,6 +310,3 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     // TODO: Make this less Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }
-
-#[derive(Debug)]
-pub(crate) struct CouldntConstructConsensusProtocol;

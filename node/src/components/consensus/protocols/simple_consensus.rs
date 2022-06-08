@@ -83,8 +83,8 @@ use crate::{
     components::consensus::{
         config::Config,
         consensus_protocol::{
-            BlockContext, ConsensusProtocol, CouldntConstructConsensusProtocol, FinalizedBlock,
-            ProposedBlock, ProtocolOutcome, ProtocolOutcomes, TerminalBlockData,
+            BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
+            ProtocolOutcomes, TerminalBlockData,
         },
         protocols,
         traits::{ConsensusValueT, Context},
@@ -191,7 +191,7 @@ where
     /// `update`.
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
-    write_wal: WriteWal<C>,
+    write_wal: Option<WriteWal<C>>,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -208,7 +208,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         era_start_time: Timestamp,
         seed: u64,
         _now: Timestamp,
-        write_wal: WriteWal<C>,
     ) -> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
@@ -267,7 +266,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             progress_detected: false,
             paused: false,
             next_scheduled_update: Timestamp::MAX,
-            write_wal,
+            write_wal: None,
         }
     }
 
@@ -285,23 +284,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         seed: u64,
         now: Timestamp,
         wal_file: PathBuf,
-    ) -> Result<
-        (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>),
-        CouldntConstructConsensusProtocol,
-    > {
-        let write_wal = match WriteWal::new(&wal_file) {
-            Ok(write_wal) => write_wal,
-            Err(err) => {
-                // TODO We have to handle this case, but this means either moving the handling of
-                // the WriteWal one layer up (which is unnecessary for highway) or making this
-                // function return a Result, which would have a similar effect of dealing with an
-                // error case we didn't have to for highway. I'm leaning towards the latter,
-                // but its simplest to leave it unhandled for now.
-                error!(?err, "could not create a WAL using this file");
-                return Err(CouldntConstructConsensusProtocol);
-            }
-        };
-
+    ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let mut sc = Self::new(
             instance_id,
             validator_stakes,
@@ -313,21 +296,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             era_start_time,
             seed,
             now,
-            write_wal,
         );
 
-        let read_wal = match ReadWal::<C>::new(&wal_file) {
-            Ok(read_wal) => read_wal,
-            Err(err) => {
-                // TODO Same type of deal as the WriteWal problem.
-                error!(?err, "could not create a ReadWal using this file");
-                unimplemented!()
-            }
-        };
+        sc.open_wal(wal_file, now);
 
-        sc.consume_read_wal(read_wal, now);
-
-        Ok((Box::new(sc), vec![]))
+        (Box::new(sc), vec![])
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
@@ -657,7 +630,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             secret_key,
         );
-        if self.add_content(signed_msg.clone()) {
+        if self.record_entry(&Entry::SignedMessage(signed_msg.clone()))
+            && self.add_content_no_wal(signed_msg.clone())
+        {
             let message = Message::Signed(signed_msg);
             vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
         } else {
@@ -676,15 +651,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         signature2: C::Signature,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        if !self.record_entry(&Entry::Evidence(
+        self.record_entry(&Entry::Evidence(
             signed_msg.clone(),
             content2.clone(),
             signature2,
-        )) {
-            error!("could not record evidence in WAL");
-            // TODO Kill the node
-            return vec![];
-        }
+        ));
         self.handle_fault_no_wal(signed_msg, validator_id, content2, signature2, now)
     }
 
@@ -1155,14 +1126,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// Adds a signed message to the WAL such that we can avoid double signing upon recovery if the
     /// node shuts down.
     fn record_entry(&mut self, entry: &Entry<C>) -> bool {
-        match self.write_wal.record_entry(entry) {
-            Ok(()) => true,
-            Err(err) => {
-                // TODO This really should be fatal for the node, it at least cannot
-                // participate in consensus while this is happening. Handle this case properly.
+        match self.write_wal.as_mut().map(|ww| ww.record_entry(entry)) {
+            None | Some(Ok(())) => true,
+            Some(Err(err)) => {
+                self.active_validator = None;
+                self.write_wal = None;
                 error!(
                     ?err,
-                    "could not record a signed message to the WAL before sending it"
+                    "could not record a signed message to the WAL; deactivating"
                 );
                 false
             }
@@ -1170,7 +1141,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Consumes all of the signed messages we've previously recorded in our write ahead log.
-    pub(crate) fn consume_read_wal(&mut self, mut read_wal: ReadWal<C>, now: Timestamp) {
+    pub(crate) fn open_wal(&mut self, wal_file: PathBuf, now: Timestamp) {
+        let mut read_wal = match ReadWal::<C>::new(&wal_file) {
+            Ok(read_wal) => read_wal,
+            Err(err) => {
+                error!(?err, "could not create a ReadWal using this file");
+                return;
+            }
+        };
         loop {
             use wal::ReadWalError;
 
@@ -1200,7 +1178,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                             {
                                 validator_id.clone()
                             } else {
-                                warn!(?conflicting_message.validator_idx, "No validator present at this index, despite holding conflicting messages for it in the WAL");
+                                warn!(
+                                    ?conflicting_message.validator_idx,
+                                    "No validator present at this index, despite holding \
+                                    conflicting messages for it in the WAL"
+                                );
                                 continue;
                             }
                         };
@@ -1220,12 +1202,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     break;
                 }
                 Err(err) => {
-                    // TODO Handle other cases, despite some being impossible. Perhaps refine error
-                    // type to only give possible cases.
-                    warn!(?err, "couldn't read a message from the WAL");
-                    break;
+                    error!(?err, "couldn't read a message from the WAL: was this validator recently shut down?");
+                    return; // Not setting WAL file; won't actively participate.
                 }
             }
+        }
+        match WriteWal::new(&wal_file) {
+            Ok(write_wal) => self.write_wal = Some(write_wal),
+            Err(err) => error!(?err, ?wal_file, "could not create a WAL using this file"),
         }
     }
 
@@ -1234,15 +1218,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// message is sent from a known faulty validator.
     fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.faults.contains_key(&signed_msg.validator_idx) {
-            // TODO debug!
-            error!(?signed_msg, "dropping message from faulty validator");
+            debug!(?signed_msg, "dropping message from faulty validator");
             return false;
         }
-        if !self.record_entry(&Entry::SignedMessage(signed_msg.clone())) {
-            error!(?signed_msg, "dropping message we couldn't write to WAL");
-            // TODO Kill the node? Or at least stop being an active validator?
-            return false;
-        }
+        self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
         self.add_content_no_wal(signed_msg)
     }
 
@@ -1519,9 +1498,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 return vec![];
             }
             self.log_proposal(&proposal, round_id, "proposal does not need validation");
-            if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
-                error!("could not record proposal in WAL");
-            } else if self.round_mut(round_id).insert_proposal(proposal) {
+            if self.round_mut(round_id).insert_proposal(proposal.clone()) {
+                self.record_entry(&Entry::Proposal(proposal, round_id));
                 self.progress_detected = true;
                 self.mark_dirty(round_id);
             }
@@ -1645,6 +1623,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             instance_id: *self.instance_id(),
         };
         let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
+        if outcomes.is_empty() {
+            return outcomes; // Failed to create an echo message.
+        }
         if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
             error!("could not record own proposal in WAL");
         } else if self.round_mut(round_id).insert_proposal(proposal) {
@@ -1926,9 +1907,8 @@ where
         if valid {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(?proposal, "handling valid proposal");
-                if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
-                    error!("could not record proposal in WAL");
-                } else if self.round_mut(round_id).insert_proposal(proposal) {
+                if self.round_mut(round_id).insert_proposal(proposal.clone()) {
+                    self.record_entry(&Entry::Proposal(proposal, round_id));
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
                 }
@@ -1953,6 +1933,10 @@ where
         now: Timestamp,
         _wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
+        if self.write_wal.is_none() {
+            error!(?our_id, "missing WAL file; not activating");
+            return vec![];
+        }
         if let Some(idx) = self.validators.get_index(&our_id) {
             info!(our_idx = idx.0, "start voting");
             self.active_validator = Some(ActiveValidator { idx, secret });

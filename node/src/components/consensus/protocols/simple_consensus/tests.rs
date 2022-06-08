@@ -3,7 +3,7 @@ use super::*;
 use std::{collections::BTreeSet, sync::Arc};
 
 use casper_types::{PublicKey, SecretKey, Timestamp, U512};
-use tempfile::{tempdir, TempDir};
+use tempfile::tempdir;
 use tracing::info;
 
 use crate::{
@@ -31,14 +31,12 @@ pub(crate) fn new_test_simple_consensus<I1, I2, T>(
     weights: I1,
     init_faulty: I2,
     seq: &[ValidatorIndex],
-) -> (TempDir, SimpleConsensus<ClContext>)
+) -> SimpleConsensus<ClContext>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
     I2: IntoIterator<Item = PublicKey>,
     T: Into<U512>,
 {
-    let dir = tempdir().unwrap();
-    let write_wal = WriteWal::new(&dir.path().join("wal")).unwrap();
     let weights = weights
         .into_iter()
         .map(|(pk, w)| (pk, w.into()))
@@ -57,21 +55,17 @@ where
     let seed = leader_sequence::find_seed(seq, &weights_vmap, &leaders);
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
-    (
-        dir,
-        SimpleConsensus::<ClContext>::new(
-            ClContext::hash(INSTANCE_ID_DATA),
-            weights.into_iter().collect(),
-            &init_faulty.into_iter().collect(),
-            &None.into_iter().collect(),
-            &chainspec,
-            &config,
-            None,
-            start_timestamp,
-            seed,
-            start_timestamp,
-            write_wal,
-        ),
+    SimpleConsensus::<ClContext>::new(
+        ClContext::hash(INSTANCE_ID_DATA),
+        weights.into_iter().collect(),
+        &init_faulty.into_iter().collect(),
+        &None.into_iter().collect(),
+        &chainspec,
+        &config,
+        None,
+        start_timestamp,
+        seed,
+        start_timestamp,
     )
 }
 
@@ -362,10 +356,15 @@ fn simple_consensus_no_fault() {
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
     let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
+    let sender = *ALICE_NODE_ID;
+
+    let mut timestamp = Timestamp::from(100000);
 
     // The first round leaders are Bob, Alice, Alice, Carol, Carol.
     let leader_seq = &[bob_idx, alice_idx, alice_idx, carol_idx, carol_idx];
-    let (dir, mut sc_c) = new_test_simple_consensus(weights.clone(), vec![], leader_seq);
+    let mut sc_c = new_test_simple_consensus(weights.clone(), vec![], leader_seq);
+    let dir = tempdir().unwrap();
+    sc_c.open_wal(dir.path().join("wal"), timestamp);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -375,9 +374,6 @@ fn simple_consensus_no_fault() {
 
     let block_time = sc_c.params.min_block_time();
     let proposal_timeout = sc_c.config.proposal_timeout;
-
-    let sender = *ALICE_NODE_ID;
-    let mut timestamp = Timestamp::from(100000);
 
     let proposal0 = Proposal::<ClContext> {
         timestamp,
@@ -562,8 +558,7 @@ fn simple_consensus_no_fault() {
         seed,
         timestamp,
         dir.path().join("wal"),
-    )
-    .unwrap();
+    );
 
     assert_eq!(outcomes, vec![]);
 
@@ -591,8 +586,7 @@ fn simple_consensus_faults() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leaders are Carol, Alice, Alice.
-    let (_dir, mut sc) =
-        new_test_simple_consensus(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
+    let mut sc = new_test_simple_consensus(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -659,18 +653,20 @@ fn simple_consensus_standstill_alert() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 30, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let mut timestamp = Timestamp::from(100000);
 
     // The first round leader is Alice.
-    let (_dir, mut sc_c) = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc_c = new_test_simple_consensus(weights, vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
 
+    let dir = tempdir().unwrap();
+    sc_c.open_wal(dir.path().join("wal"), timestamp);
     sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
 
     let timeout = sc_c.config.standstill_timeout.expect("standstill timeout");
     let sender = *ALICE_NODE_ID;
-    let mut timestamp = Timestamp::from(100000);
 
     let proposal0 = Proposal::<ClContext> {
         timestamp,
@@ -733,7 +729,7 @@ fn simple_consensus_sends_sync_state() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let (_dir, mut sc) = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -842,7 +838,7 @@ fn simple_consensus_handles_sync_state() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let (_dir, mut sc) = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -986,8 +982,8 @@ fn test_validator_bit_field() {
         })
         .collect();
 
-    let (_dir, sc100) = new_test_simple_consensus(weights100, vec![], &[]);
-    let (_dir, sc250) = new_test_simple_consensus(weights250, vec![], &[]);
+    let sc100 = new_test_simple_consensus(weights100, vec![], &[]);
+    let sc250 = new_test_simple_consensus(weights250, vec![], &[]);
 
     test_roundtrip(&sc100, 50, vec![], vec![]);
     test_roundtrip(&sc250, 50, vec![], vec![]);
@@ -1016,7 +1012,7 @@ fn test_quorum() {
         let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
         let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
-        let (_dir, mut sc) = new_test_simple_consensus(weights, vec![], &[]);
+        let mut sc = new_test_simple_consensus(weights, vec![], &[]);
 
         // The threshold is the highest number that's below 2/3 of the weight.
         assert_eq!(a, sc.quorum_threshold().0);
