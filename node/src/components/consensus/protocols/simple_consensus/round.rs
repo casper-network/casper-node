@@ -18,7 +18,7 @@ use crate::{
 /// The protocol proceeds in rounds, for each of which we must
 /// keep track of proposals, echoes, votes, and the current outcome
 /// of the round.
-#[derive(Debug, DataSize, PartialEq, Eq)]
+#[derive(Debug, DataSize)]
 pub(crate) struct Round<C>
 where
     C: Context,
