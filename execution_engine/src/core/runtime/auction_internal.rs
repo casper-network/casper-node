@@ -298,19 +298,24 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))
     }
 
-    fn mint_transfer_from_purse_to_account(
+    fn mint_transfer_from_accumulation_purse_to_account(
         &mut self,
-        source: URef,
         target: AccountHash,
         amount: U512,
     ) -> Result<(), Error> {
-        let granted_access = self.context.grant_access(source);
+        let accumulation_purse = self.get_accumulation_purse()?;
+        let granted_access = self.context.grant_access(accumulation_purse);
 
-        let result =
-            Runtime::transfer_from_purse_to_account_hash(self, source, target, amount, None)
-                .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
+        let result = Runtime::transfer_from_purse_to_account_hash(
+            self,
+            accumulation_purse,
+            target,
+            amount,
+            None,
+        )
+        .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
 
-        // Remove from caller temporarily granted ADD access on target.
+        // Remove from caller temporarily granted ADD access on source.
         if let GrantedAccess::Granted {
             uref_addr,
             newly_granted_access_rights,

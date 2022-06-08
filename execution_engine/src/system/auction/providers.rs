@@ -83,9 +83,8 @@ pub trait MintProvider {
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error>;
 
-    fn mint_transfer_from_purse_to_account(
+    fn mint_transfer_from_accumulation_purse_to_account(
         &mut self,
-        source: URef,
         target: AccountHash,
         amount: U512,
     ) -> Result<(), Error>;

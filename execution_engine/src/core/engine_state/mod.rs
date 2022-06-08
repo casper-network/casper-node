@@ -1681,7 +1681,10 @@ where
                 {
                     Some(Key::URef(accumulation_purse)) => accumulation_purse,
                     Some(_) | None => {
-                        error!("fee elimination is configured to accumulate but handle payment does not have rewards purse; defaulting to a proposer");
+                        error!(
+                            "fee handling is configured to accumulate but handle payment does not \
+                            have accumulation purse"
+                        );
                         return Err(Error::FailedToRetrieveAccumulationPurse);
                     }
                 };

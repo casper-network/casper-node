@@ -552,8 +552,7 @@ pub trait Auction:
                     for target in administrative_accounts {
                         // Round the amounts down and leave the dust amount in the accumulation
                         // purse.
-                        self.mint_transfer_from_purse_to_account(
-                            accumulation_purse,
+                        self.mint_transfer_from_accumulation_purse_to_account(
                             target,
                             reward_amount,
                         )?;
