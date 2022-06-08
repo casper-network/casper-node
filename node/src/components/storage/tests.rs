@@ -78,6 +78,7 @@ fn storage_fixture(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -103,6 +104,7 @@ fn storage_fixture_with_hard_reset(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -129,6 +131,7 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -430,6 +433,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     for verifiable_chunked_hash_activation in verifiable_chunked_hash_activations {
         thread::spawn(move || {
             let mut harness = ComponentHarness::default();
+            // Separate registry for each storage in the loop.
 
             let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
@@ -1398,6 +1402,7 @@ fn should_hard_reset() {
 #[test]
 fn should_create_subdir_named_after_network() {
     let harness = ComponentHarness::default();
+
     let cfg = new_config(&harness);
 
     let network_name = "test";
@@ -1409,6 +1414,7 @@ fn should_create_subdir_named_after_network() {
         Ratio::new(1, 3),
         None,
         EraId::from(0),
+        None,
     )
     .unwrap();
 

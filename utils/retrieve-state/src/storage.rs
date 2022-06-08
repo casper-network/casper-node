@@ -143,6 +143,7 @@ pub fn create_storage(
         Ratio::new(1, 3),
         None,
         verifiable_chunked_hash_activation,
+        None,
     )?)
 }
 
