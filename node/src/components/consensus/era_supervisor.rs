@@ -126,6 +126,7 @@ impl EraSupervisor {
         registry: &Registry,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
+        std::fs::create_dir_all(&unit_files_folder)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 
@@ -453,8 +454,7 @@ impl EraSupervisor {
                 seed,
                 now,
                 self.unit_file(&instance_id),
-            )
-            .map_err(|_| CreateNewEraError::FailedToConstructConsensusInstance { era_id })?,
+            ),
         };
 
         let era = Era::new(

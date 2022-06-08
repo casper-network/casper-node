@@ -25,6 +25,4 @@ pub enum CreateNewEraError {
         era_id: EraId,
         switch_blocks: Vec<BlockHeader>,
     },
-    #[error("Failed to construct a consensus instance")]
-    FailedToConstructConsensusInstance { era_id: EraId },
 }

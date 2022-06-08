@@ -160,7 +160,3 @@ impl<C: Context> ReadWal<C> {
         ))
     }
 }
-
-// TODO Write a test ensuring that the WAL encoding works
-#[test]
-fn test_roundtrip_wals() {}
