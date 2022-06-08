@@ -1518,7 +1518,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 return vec![];
             }
             self.log_proposal(&proposal, round_id, "proposal does not need validation");
-            if self.round_mut(round_id).insert_proposal(proposal) {
+            if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
+                error!("could not record proposal in WAL");
+            } else if self.round_mut(round_id).insert_proposal(proposal) {
                 self.progress_detected = true;
                 self.mark_dirty(round_id);
             }
@@ -1642,7 +1644,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             instance_id: *self.instance_id(),
         };
         let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
-        if self.round_mut(round_id).insert_proposal(proposal) {
+        if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
+            error!("could not record own proposal in WAL");
+        } else if self.round_mut(round_id).insert_proposal(proposal) {
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
         }
         self.mark_dirty(round_id);
@@ -1942,9 +1946,7 @@ where
                 info!(?proposal, "handling valid proposal");
                 if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
                     error!("could not record proposal in WAL");
-                    continue;
-                }
-                if self.round_mut(round_id).insert_proposal(proposal) {
+                } else if self.round_mut(round_id).insert_proposal(proposal) {
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
                 }
