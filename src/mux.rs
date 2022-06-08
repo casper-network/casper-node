@@ -20,21 +20,27 @@ pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>
 
 /// A frame multiplexer.
 ///
-/// Typically the multiplexer is not used directly, but used to spawn multiplexing handles.
+/// A multiplexer is not used directly, but used to spawn multiplexing handles.
 pub struct Multiplexer<S> {
     sink: Arc<Mutex<Option<S>>>,
 }
+impl<S> Multiplexer<S> {
+    /// Creates a new multiplexer with the given sink.
+    pub fn new(sink: S) -> Self {
+        Self {
+            sink: Arc::new(Mutex::new(Some(sink))),
+        }
+    }
 
-impl<S> Multiplexer<S>
-where
-    S: Send + 'static,
-{
     /// Create a handle for a specific multiplexer channel on this multiplexer.
-    pub fn get_channel_handle(self: Arc<Self>, channel: u8) -> MultiplexerHandle<S> {
+    pub fn get_channel_handle(&self, channel: u8) -> MultiplexerHandle<S>
+    where
+        S: Send + 'static,
+    {
         MultiplexerHandle {
-            multiplexer: self.clone(),
+            sink: self.sink.clone(),
             slot: channel,
-            lock_future: ReusableBoxFuture::new(mk_lock_future(self)),
+            lock_future: ReusableBoxFuture::new(mk_lock_future(self.sink.clone())),
             guard: None,
         }
     }
@@ -46,13 +52,13 @@ trait FuseFuture: Future + FusedFuture + Send {}
 impl<T> FuseFuture for T where T: Future + FusedFuture + Send {}
 
 fn mk_lock_future<S>(
-    multiplexer: Arc<Multiplexer<S>>,
-) -> impl futures::Future<Output = tokio::sync::OwnedMutexGuard<std::option::Option<S>>> {
-    multiplexer.sink.clone().lock_owned()
+    sink: Arc<Mutex<Option<S>>>,
+) -> impl futures::Future<Output = tokio::sync::OwnedMutexGuard<Option<S>>> {
+    sink.lock_owned()
 }
 
 pub struct MultiplexerHandle<S> {
-    multiplexer: Arc<Multiplexer<S>>,
+    sink: Arc<Mutex<Option<S>>>,
     slot: u8,
 
     // TODO NEW IDEA: Maybe we can create the lock future right away, but never poll it? Then use
@@ -73,7 +79,9 @@ where
                 let mref = guard.as_mut().expect("TODO: guard disappeard");
                 mref
             }
-            None => todo!("assumed sink, but no sink"),
+            None => {
+                todo!("TODO: assumed sink, but no sink -- this could actually be a removed sink")
+            }
         }
     }
 }
@@ -93,8 +101,8 @@ where
                     // It is our turn: Save the guard and prepare another locking future for later,
                     // which will not attempt to lock until first polled.
                     let _ = self.guard.insert(guard);
-                    let multiplexer = self.multiplexer.clone();
-                    self.lock_future.set(mk_lock_future(multiplexer));
+                    let sink = self.sink.clone();
+                    self.lock_future.set(mk_lock_future(sink));
                 }
                 Poll::Pending => {
                     // The lock could not be acquired yet.
