@@ -13,7 +13,7 @@ use std::{
 use bytes::Buf;
 use futures::{Sink, SinkExt};
 
-use crate::{error::Error, ImmediateFrame};
+use crate::ImmediateFrame;
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
 

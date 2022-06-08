@@ -71,11 +71,11 @@ pub(crate) mod tests {
     use std::io::Read;
 
     use bytes::{Buf, Bytes};
-    use futures::{future, stream, FutureExt, SinkExt, StreamExt};
+    use futures::{future, FutureExt, SinkExt, StreamExt};
+    use tokio_util::sync::PollSender;
 
     use crate::{
-        chunked::{chunk_frame, make_defragmentizer, SingleChunk},
-        error::Error,
+        chunked::{make_defragmentizer, make_fragmentizer, SingleChunk},
         frame_reader::FrameReader,
         length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
     };
@@ -92,17 +92,12 @@ pub(crate) mod tests {
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
     fn chunked_length_prefixed_sink() {
-        let base_sink: Vec<LengthPrefixedFrame<SingleChunk>> = Vec::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<LengthPrefixedFrame<SingleChunk>>(10);
+        let poll_sender = PollSender::new(tx);
 
-        let length_prefixed_sink =
-            base_sink.with(|frame| future::ready(frame_add_length_prefix(frame)));
-
-        let mut chunked_sink = length_prefixed_sink.with_flat_map(|frame| {
-            let chunk_iter = chunk_frame(frame, 5.try_into().unwrap()).expect("TODO: Handle error");
-            stream::iter(chunk_iter.map(Result::<_, Error>::Ok))
-        });
-        // TODO: We want this instead.
-        // let mut chunked_sink = make_fragmentizer(length_prefixed_sink);
+        let mut chunked_sink = make_fragmentizer(
+            poll_sender.with(|frame| future::ready(frame_add_length_prefix(frame))),
+        );
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
@@ -112,10 +107,9 @@ pub(crate) mod tests {
             .unwrap()
             .expect("send failed");
 
-        let chunks: Vec<_> = chunked_sink
-            .into_inner()
-            .into_inner()
-            .into_iter()
+        drop(chunked_sink);
+
+        let chunks: Vec<_> = std::iter::from_fn(move || rx.blocking_recv())
             .map(collect_buf)
             .collect();
 

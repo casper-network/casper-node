@@ -7,7 +7,10 @@
 use std::{future, num::NonZeroUsize};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{Stream, StreamExt};
+use futures::{
+    stream::{self},
+    Sink, SinkExt, Stream, StreamExt,
+};
 
 use crate::{error::Error, ImmediateFrame};
 
@@ -43,6 +46,17 @@ pub fn chunk_frame<B: Buf>(
         };
         ImmediateFrame::from(continuation_byte).chain(chunk_data)
     }))
+}
+
+pub(crate) fn make_fragmentizer<S, E>(source: S) -> impl Sink<Bytes, Error = Error<E>>
+where
+    E: std::error::Error,
+    S: Sink<SingleChunk, Error = Error<E>>,
+{
+    source.with_flat_map(|frame: Bytes| {
+        let chunk_iter = chunk_frame(frame, 5.try_into().unwrap()).expect("TODO: Handle error");
+        stream::iter(chunk_iter.map(Result::<_, Error<E>>::Ok))
+    })
 }
 
 pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl Stream<Item = Bytes> {
