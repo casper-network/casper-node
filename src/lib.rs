@@ -92,7 +92,7 @@ pub(crate) mod tests {
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
     fn chunked_length_prefixed_sink() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<LengthPrefixedFrame<SingleChunk>>(10);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
         let poll_sender = PollSender::new(tx);
 
         let mut chunked_sink = make_fragmentizer(
