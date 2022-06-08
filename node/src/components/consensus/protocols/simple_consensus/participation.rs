@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use serde::{Deserialize, Serialize};
-
 use crate::components::consensus::{
     highway_core::validators::ValidatorIndex,
     protocols::simple_consensus::{Fault, RoundId, SimpleConsensus},
@@ -37,11 +35,7 @@ impl ParticipationStatus {
     pub(super) fn for_index<C: Context + 'static>(
         idx: ValidatorIndex,
         sc: &SimpleConsensus<C>,
-    ) -> Option<ParticipationStatus>
-    where
-        C::ValidatorId: Serialize,
-        C::ValidatorId: for<'de> Deserialize<'de>,
-    {
+    ) -> Option<ParticipationStatus> {
         if let Some(fault) = sc.faults.get(&idx) {
             return Some(match fault {
                 Fault::Banned | Fault::Indirect => ParticipationStatus::EquivocatedInOtherEra,
