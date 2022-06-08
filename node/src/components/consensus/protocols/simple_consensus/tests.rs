@@ -529,48 +529,14 @@ fn simple_consensus_no_fault() {
     expect_finalized(&outcomes, &[(&proposal3, 2)]);
     assert!(sc_c.finalized_switch_block());
 
-    let mut chainspec = new_test_chainspec(weights.clone());
-    chainspec.core_config.minimum_era_height = 3;
-    let mut config = Config::default();
-    config.simple_consensus.standstill_timeout = Some("1sec".parse().unwrap());
-    let validators = common::validators::<ClContext>(
-        &Default::default(),
-        &Default::default(),
-        weights.iter().cloned().collect(),
-    );
-    let weights_vmap = common::validator_weights::<ClContext>(&validators);
-    let leaders = weights.iter().map(|_| true).collect();
-    let seed = leader_sequence::find_seed(leader_seq, &weights_vmap, &leaders);
-    // Timestamp of the genesis era start and test start.
-    let start_timestamp: Timestamp = 0.into();
-
     info!("restoring protocol now");
 
-    let (mut protocol, outcomes) = SimpleConsensus::<ClContext>::new_boxed(
-        ClContext::hash(INSTANCE_ID_DATA),
-        weights.into_iter().collect(),
-        &HashSet::new(),
-        &None.into_iter().collect(),
-        &chainspec,
-        &config,
-        None,
-        start_timestamp,
-        seed,
-        timestamp,
-        dir.path().join("wal"),
-    );
-
-    assert_eq!(outcomes, vec![]);
-
-    let outcomes = protocol.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
-    expect_finalized(
-        &outcomes,
-        &[(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)],
-    );
-
-    let sc_c_recovered: &SimpleConsensus<ClContext> = protocol.as_any().downcast_ref().unwrap();
-
-    assert!(sc_c_recovered.finalized_switch_block());
+    let mut sc = new_test_simple_consensus(weights, vec![], leader_seq);
+    sc.open_wal(dir.path().join("wal"), timestamp);
+    let outcomes = sc.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    let proposals123 = [(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)];
+    expect_finalized(&outcomes, &proposals123);
+    assert!(sc.finalized_switch_block());
 }
 
 /// Tests that a faulty validator counts towards every quorum.
