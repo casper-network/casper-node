@@ -18,7 +18,7 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{account::AccountHash, ProtocolVersion};
+use casper_types::{ProtocolVersion, PublicKey};
 
 use crate::{
     DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
@@ -80,7 +80,7 @@ pub struct CoreConfig {
     pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are a valid option for for a private chain only.
     #[serde(default)]
-    pub(crate) administrators: BTreeSet<AccountHash>,
+    pub(crate) administrators: BTreeSet<PublicKey>,
     /// Refund handling.
     pub(crate) refund_handling: RefundHandling,
     /// Fee handling.

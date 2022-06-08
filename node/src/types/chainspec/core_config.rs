@@ -3,13 +3,12 @@ use std::collections::BTreeSet;
 use tracing::error;
 
 use casper_execution_engine::core::engine_state::engine_config::{FeeHandling, RefundHandling};
-use casper_types::{
-    account::AccountHash,
-    bytesrepr::{self, FromBytes, ToBytes},
-    TimeDiff,
-};
 #[cfg(test)]
-use casper_types::{testing::TestRng, PublicKey};
+use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey, TimeDiff,
+};
 
 use datasize::DataSize;
 use num::rational::Ratio;
@@ -51,7 +50,7 @@ pub struct CoreConfig {
     pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub(crate) administrators: BTreeSet<AccountHash>, // todo: PublicKey
+    pub(crate) administrators: BTreeSet<PublicKey>,
     /// Refund handling.
     #[data_size(skip)]
     pub(crate) refund_handling: RefundHandling,
@@ -93,7 +92,7 @@ impl CoreConfig {
         let allow_auction_bids = rng.gen();
         let allow_unrestricted_transfers = rng.gen();
         let administrators = (0..rng.gen_range(0..=10u32))
-            .map(|_| PublicKey::random(rng).to_account_hash())
+            .map(|_| PublicKey::random(rng))
             .collect();
         let refund_handling = {
             let numer = rng.gen_range(0..=100);

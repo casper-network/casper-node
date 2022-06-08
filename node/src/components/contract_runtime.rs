@@ -40,7 +40,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{account::AccountHash, bytesrepr::Bytes, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -595,7 +595,7 @@ impl ContractRuntime {
         strict_argument_checking: bool,
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
-        administrative_accounts: BTreeSet<AccountHash>,
+        administrative_accounts: BTreeSet<PublicKey>,
         allow_auction_bids: bool,
         allow_unrestricted_transfers: bool,
         refund_handling: RefundHandling,

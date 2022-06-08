@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use num_rational::Ratio;
 use num_traits::One;
 
-use casper_types::account::AccountHash;
+use casper_types::{account::AccountHash, PublicKey};
 
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
@@ -168,6 +168,7 @@ impl EngineConfig {
     /// Checks if an account hash is an administrator.
     pub(crate) fn is_administrator(&self, account_hash: &AccountHash) -> bool {
         self.administrative_accounts.contains(account_hash)
+            || account_hash == &PublicKey::System.to_account_hash()
     }
 
     /// Returns the engine config's refund ratio.
@@ -194,7 +195,7 @@ pub struct EngineConfigBuilder {
     system_config: Option<SystemConfig>,
     minimum_delegation_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
-    administrative_accounts: Option<BTreeSet<AccountHash>>,
+    administrative_accounts: Option<BTreeSet<PublicKey>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
     refund_handling: Option<RefundHandling>,
@@ -262,7 +263,7 @@ impl EngineConfigBuilder {
     /// Sets the administrative accounts.
     pub fn with_administrative_accounts(
         mut self,
-        administrator_accounts: BTreeSet<AccountHash>,
+        administrator_accounts: BTreeSet<PublicKey>,
     ) -> Self {
         self.administrative_accounts = Some(administrator_accounts);
         self
@@ -318,7 +319,13 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_STRICT_ARGUMENT_CHECKING);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
-        let administrative_accounts = self.administrative_accounts.unwrap_or_default();
+        let administrative_accounts = {
+            self.administrative_accounts
+                .unwrap_or_default()
+                .iter()
+                .map(PublicKey::to_account_hash)
+                .collect()
+        };
         let allow_auction_bids = self
             .allow_auction_bids
             .unwrap_or(DEFAULT_ALLOW_AUCTION_BIDS);

@@ -164,11 +164,11 @@ enum TestScenario {
     ShouldNotAcceptExpiredDeploySentByClient,
     ShouldAcceptExpiredDeploySentByPeer,
     ShouldAcceptDeployFromAdministrator {
-        administrators: BTreeSet<AccountHash>,
+        administrators: BTreeSet<PublicKey>,
         secret_keys: Vec<[u8; 32]>,
     },
     ShouldRejectDeployFromNonAdministrator {
-        administrators: BTreeSet<AccountHash>,
+        administrators: BTreeSet<PublicKey>,
         secret_keys: Vec<[u8; 32]>,
     },
 }
@@ -399,7 +399,10 @@ impl TestScenario {
             TestScenario::ShouldAcceptDeployFromAdministrator { administrators, .. }
             | TestScenario::ShouldRejectDeployFromNonAdministrator { administrators, .. } => {
                 chainspec.core_config.administrators.clear();
-                chainspec.core_config.administrators.extend(administrators);
+                chainspec
+                    .core_config
+                    .administrators
+                    .extend(administrators.clone());
             }
             _ => {}
         }
@@ -1590,10 +1593,7 @@ async fn should_accept_valid_deploy_from_peer_signed_by_administrator() {
     let bob = SecretKey::ed25519_from_bytes(BOB_SECRET_KEY_BYTES).expect("should create alice");
 
     let test_scenario = TestScenario::ShouldAcceptDeployFromAdministrator {
-        administrators: [alice, bob]
-            .iter()
-            .map(|secret_key| PublicKey::from(secret_key).to_account_hash())
-            .collect(),
+        administrators: [alice, bob].iter().map(PublicKey::from).collect(),
         secret_keys: vec![ALICE_SECRET_KEY_BYTES],
     };
     let result = run_deploy_acceptor(test_scenario).await;
@@ -1605,10 +1605,7 @@ async fn should_reject_valid_deploy_from_peer_signed_by_non_administrator() {
     let alice = SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).expect("should create alice");
 
     let test_scenario = TestScenario::ShouldRejectDeployFromNonAdministrator {
-        administrators: [alice]
-            .iter()
-            .map(|secret_key| PublicKey::from(secret_key).to_account_hash())
-            .collect(),
+        administrators: [alice].iter().map(PublicKey::from).collect(),
         secret_keys: vec![BOB_SECRET_KEY_BYTES],
     };
     let result = run_deploy_acceptor(test_scenario).await;

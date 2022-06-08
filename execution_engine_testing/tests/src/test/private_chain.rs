@@ -76,10 +76,10 @@ static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = L
     vec![default_admin, admin_1]
 });
 
-static PRIVATE_CHAIN_GENESIS_ADMIN_SET: Lazy<BTreeSet<AccountHash>> = Lazy::new(|| {
+static PRIVATE_CHAIN_GENESIS_ADMIN_SET: Lazy<BTreeSet<PublicKey>> = Lazy::new(|| {
     PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS
         .iter()
-        .map(|admin| admin.public_key().to_account_hash())
+        .map(|admin| admin.public_key().clone())
         .collect()
 });
 
@@ -194,11 +194,7 @@ fn make_engine_config(
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
 ) -> EngineConfig {
-    let administrator_accounts = {
-        let mut admin_set = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
-        admin_set.insert(PublicKey::System.to_account_hash());
-        admin_set
-    };
+    let administrator_accounts = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
     EngineConfigBuilder::default()
         .with_administrative_accounts(administrator_accounts)
         .with_allow_auction_bids(allow_auction_bids)
