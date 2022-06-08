@@ -22,9 +22,21 @@ use futures::{FutureExt, Sink, SinkExt};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::sync::ReusableBoxFuture;
 
-use crate::ImmediateFrame;
+use crate::{error::Error, ImmediateFrame};
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
+
+/// Helper macro for returning a `Poll::Ready(Err)` eagerly.
+///
+/// Can be remove once `Try` is stabilized for `Poll`.
+macro_rules! try_ready {
+    ($ex:expr) => {
+        match $ex {
+            Err(e) => return Poll::Ready(Err(e.into())),
+            Ok(v) => v,
+        }
+    };
+}
 
 /// A frame multiplexer.
 ///
@@ -110,21 +122,25 @@ impl<S> MultiplexerHandle<S>
 where
     S: Send + 'static,
 {
-    /// Retrieve the shared sink.
+    /// Retrieve the shared sink, assuming a guard is held.
+    ///
+    /// Returns `Err(Error::MultiplexerClosed)` if the sink has been removed.
     ///
     /// # Panics
     ///
     /// If no guard is held in `self.guard`, panics.
-    fn assume_get_sink(&mut self) -> &mut S {
+    fn assume_get_sink<F>(&mut self) -> Result<&mut S, Error<<S as Sink<F>>::Error>>
+    where
+        S: Sink<F>,
+        <S as Sink<F>>::Error: std::error::Error,
+    {
         match self.guard {
-            Some(ref mut guard) => {
-                let mref = guard
-                    .as_mut()
-                    .expect("TODO: sink disappeard -- could be closed");
-                mref
-            }
+            Some(ref mut guard) => match guard.as_mut() {
+                Some(sink) => Ok(sink),
+                None => Err(Error::MultplexerClosed),
+            },
             None => {
-                todo!("assumption failed")
+                panic!("assume_get_sink called without holding a sink. this is a bug")
             }
         }
     }
@@ -134,8 +150,9 @@ impl<F, S> Sink<F> for MultiplexerHandle<S>
 where
     S: Sink<ChannelPrefixedFrame<F>> + Unpin + Send + 'static,
     F: Buf,
+    <S as Sink<ChannelPrefixedFrame<F>>>::Error: std::error::Error,
 {
-    type Error = <S as Sink<ChannelPrefixedFrame<F>>>::Error;
+    type Error = Error<<S as Sink<ChannelPrefixedFrame<F>>>::Error>;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let guard = match self.guard {
@@ -143,12 +160,11 @@ where
                 // We do not hold the guard at the moment, so attempt to acquire it.
                 match self.lock_future.poll_unpin(cx) {
                     Poll::Ready(guard) => {
-                        // It is our turn: Save the guard and prepare another locking future for later,
-                        // which will not attempt to lock until first polled.
-                        let guard = self.guard.insert(guard);
+                        // It is our turn: Save the guard and prepare another locking future for
+                        // later, which will not attempt to lock until first polled.
                         let sink = self.sink.clone();
                         self.lock_future.set(mk_lock_future(sink));
-                        guard
+                        self.guard.insert(guard)
                     }
                     Poll::Pending => {
                         // The lock could not be acquired yet.
@@ -160,34 +176,28 @@ where
         };
 
         // At this point we have acquired the lock, now our only job is to stuff data into the sink.
-        guard
-            .as_mut()
-            .expect("TODO: closed sink")
+        try_ready!(guard.as_mut().ok_or(Error::MultplexerClosed))
             .poll_ready_unpin(cx)
+            .map_err(Error::Sink)
     }
 
     fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
         let prefixed = ImmediateFrame::from(self.channel).chain(item);
-        self.assume_get_sink().start_send_unpin(prefixed)
+
+        self.assume_get_sink()?
+            .start_send_unpin(prefixed)
+            .map_err(Error::Sink)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Obtain the flush result, then release the sink lock.
-        match self.assume_get_sink().poll_flush_unpin(cx) {
-            Poll::Ready(Ok(())) => {
-                // Acquire wait list lock to update it.
-                Poll::Ready(Ok(()))
-            }
-            Poll::Ready(Err(_)) => {
-                todo!("handle error")
-            }
-
-            Poll::Pending => Poll::Pending,
-        }
+        try_ready!(self.assume_get_sink())
+            .poll_flush_unpin(cx)
+            .map_err(Error::Sink)
     }
 
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Simply close? Note invariants, possibly checking them in debug mode.
-        todo!()
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        try_ready!(self.assume_get_sink())
+            .poll_close_unpin(cx)
+            .map_err(Error::Sink)
     }
 }
