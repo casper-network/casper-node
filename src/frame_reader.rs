@@ -5,6 +5,7 @@ use futures::{AsyncRead, Stream};
 
 use crate::error::Error;
 
+/// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 #[cfg(test)]
 const BUFFER_SIZE: usize = 8;
@@ -28,7 +29,7 @@ impl<R: AsyncRead> FrameReader<R> {
     }
 }
 
-// Checks if the specified buffer contains a frame.
+// Checks if the specified buffer contains a length delimited frame.
 // If yes, it is removed from the buffer and returned.
 fn length_delimited_frame(buffer: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
     let bytes_in_buffer = buffer.remaining();
@@ -38,7 +39,7 @@ fn length_delimited_frame(buffer: &mut BytesMut) -> Result<Option<BytesMut>, Err
     let data_length = u16::from_le_bytes(
         buffer[0..LENGTH_MARKER_SIZE]
             .try_into()
-            .map_err(|_| Error::IncorrectFrameLength)?,
+            .expect("any two bytes should be parseable to u16"),
     ) as usize;
 
     let end = LENGTH_MARKER_SIZE + data_length;
@@ -75,7 +76,7 @@ where
                 Ok(None) => {
                     let start = buffer.len();
                     let end = start + BUFFER_SIZE;
-                    buffer.resize(end, 0xBA);
+                    buffer.resize(end, 0x00);
 
                     match Pin::new(&mut *stream).poll_read(cx, &mut buffer[start..end]) {
                         Poll::Ready(Ok(bytes_read)) => {

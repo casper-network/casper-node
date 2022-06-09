@@ -50,13 +50,16 @@ pub fn chunk_frame<B: Buf>(
 
 /// Generates the "fragmentizer", i.e: an object that when given the source stream of bytes will yield single chunks.
 #[allow(unused)]
-pub(crate) fn make_fragmentizer<S, E>(source: S) -> impl Sink<Bytes, Error = Error<E>>
+pub(crate) fn make_fragmentizer<S, E>(
+    source: S,
+    fragment_size: NonZeroUsize,
+) -> impl Sink<Bytes, Error = Error<E>>
 where
     E: std::error::Error,
     S: Sink<SingleChunk, Error = Error<E>>,
 {
-    source.with_flat_map(|frame: Bytes| {
-        let chunk_iter = chunk_frame(frame, 5.try_into().unwrap()).expect("TODO: Handle error");
+    source.with_flat_map(move |frame: Bytes| {
+        let chunk_iter = chunk_frame(frame, fragment_size).expect("TODO: Handle error");
         stream::iter(chunk_iter.map(Result::<_, Error<E>>::Ok))
     })
 }

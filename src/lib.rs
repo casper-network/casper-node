@@ -68,7 +68,7 @@ where
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::io::Read;
+    use std::{io::Read, num::NonZeroUsize};
 
     use bytes::{Buf, Bytes};
     use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -97,6 +97,7 @@ pub(crate) mod tests {
 
         let mut chunked_sink = make_fragmentizer(
             poll_sender.with(|frame| future::ready(frame_add_length_prefix(frame))),
+            NonZeroUsize::new(5).unwrap(),
         );
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);

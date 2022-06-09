@@ -27,7 +27,4 @@ where
     /// The wrapped sink returned an error.
     #[error(transparent)]
     Sink(#[from] E),
-    /// Can not construct proper `u16` from bytes representing frame length.
-    #[error("Incorrect frame length")]
-    IncorrectFrameLength,
 }
