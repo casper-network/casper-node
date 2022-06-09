@@ -655,7 +655,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         if Some(validator_idx) == self.active_validator.as_ref().map(|av| av.idx) {
             error!(our_idx = validator_idx.0, "we are faulty; deactivating");
             self.active_validator = None;
-            return vec![];
         }
         self.active[validator_idx] = None;
         self.progress_detected = true;
@@ -1142,13 +1141,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // Read all messages recorded in the file.
         loop {
-            use wal::ReadWalError;
-
             match read_wal.read_next_entry() {
-                Ok(next_entry) => match next_entry {
+                Ok(Some(next_entry)) => match next_entry {
                     Entry::SignedMessage(next_message) => {
                         if !self.add_content_no_wal(next_message) {
                             error!("Could not add content from WAL.");
+                            return;
                         }
                     }
                     Entry::Proposal(next_proposal, corresponding_round_id) => {
@@ -1190,7 +1188,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         );
                     }
                 },
-                Err(ReadWalError::NoMoreEntries) => {
+                Ok(None) => {
                     break;
                 }
                 Err(err) => {
@@ -1631,7 +1629,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         };
         let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
         if outcomes.is_empty() {
-            return outcomes; // Failed to create an echo message.
+            return vec![]; // Failed to create an echo message.
         }
         if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
             error!("could not record own proposal in WAL");
