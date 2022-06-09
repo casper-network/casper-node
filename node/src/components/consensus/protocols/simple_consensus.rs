@@ -271,7 +271,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Creates a new boxed [`SimpleConsensus`] instance.
-    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
@@ -630,6 +630,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             secret_key,
         );
+        // We only add and send the new message if we are able to record it. If that fails we
+        // wouldn't know about our own message after a restart and risk double-signing.
         if self.record_entry(&Entry::SignedMessage(signed_msg.clone()))
             && self.add_content_no_wal(signed_msg.clone())
         {
@@ -672,6 +674,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         warn!(?signed_msg, ?content2, id = %validator_id, "validator double-signed");
         let fault = Fault::Direct(signed_msg, content2, signature2);
         self.faults.insert(validator_idx, fault);
+        if Some(validator_idx) == self.active_validator.as_ref().map(|av| av.idx) {
+            error!(our_idx = validator_idx.0, "we are faulty; deactivating");
+            self.active_validator = None;
+            return vec![];
+        }
         self.active[validator_idx] = None;
         self.progress_detected = true;
         let mut outcomes = vec![ProtocolOutcome::NewEvidence(validator_id)];
@@ -1124,7 +1131,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Adds a signed message to the WAL such that we can avoid double signing upon recovery if the
-    /// node shuts down.
+    /// node shuts down. Returns `true` if the message was added successfully.
     fn record_entry(&mut self, entry: &Entry<C>) -> bool {
         match self.write_wal.as_mut().map(|ww| ww.record_entry(entry)) {
             None => false,
@@ -1141,8 +1148,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
-    /// Consumes all of the signed messages we've previously recorded in our write ahead log.
+    /// Consumes all of the signed messages we've previously recorded in our write ahead log, and
+    /// sets up the log for appending future messages. If it fails it prints an error log and
+    /// the WAL remains `None`: That way we can still observe the protocol but not participate as
+    /// a validator.
     pub(crate) fn open_wal(&mut self, wal_file: PathBuf, now: Timestamp) {
+        // Open the file for reading.
         let mut read_wal = match ReadWal::<C>::new(&wal_file) {
             Ok(read_wal) => read_wal,
             Err(err) => {
@@ -1150,6 +1161,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 return;
             }
         };
+
+        // Read all messages recorded in the file.
         loop {
             use wal::ReadWalError;
 
@@ -1203,11 +1216,16 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     break;
                 }
                 Err(err) => {
-                    error!(?err, "couldn't read a message from the WAL: was this validator recently shut down?");
+                    error!(
+                        ?err,
+                        "couldn't read a message from the WAL: was this node recently shut down?"
+                    );
                     return; // Not setting WAL file; won't actively participate.
                 }
             }
         }
+
+        // Open the file for appending.
         match WriteWal::new(&wal_file) {
             Ok(write_wal) => self.write_wal = Some(write_wal),
             Err(err) => error!(?err, ?wal_file, "could not create a WAL using this file"),
@@ -1944,6 +1962,10 @@ where
             }
         }
         if let Some(idx) = self.validators.get_index(&our_id) {
+            if self.faults.contains_key(&idx) {
+                error!(our_idx = idx.0, "we are faulty; not activating");
+                return vec![];
+            }
             info!(our_idx = idx.0, "start voting");
             self.active_validator = Some(ActiveValidator { idx, secret });
             self.schedule_update(self.params.start_timestamp().max(now))
