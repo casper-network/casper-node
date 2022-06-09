@@ -13,10 +13,18 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::core::engine_state::{
-    engine_config::{FeeHandling, RefundHandling},
-    genesis::{AdministratorAccount, ExecConfigBuilder, GenesisValidator},
-    EngineConfig, EngineConfigBuilder, ExecConfig, GenesisAccount, RunGenesisRequest,
+use casper_execution_engine::{
+    core::engine_state::{
+        engine_config::{FeeHandling, RefundHandling},
+        genesis::{AdministratorAccount, ExecConfigBuilder, GenesisValidator},
+        EngineConfig, EngineConfigBuilder, ExecConfig, GenesisAccount, RunGenesisRequest,
+    },
+    shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+    },
 };
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -188,6 +196,23 @@ fn setup_genesis_only() -> InMemoryWasmTestBuilder {
     )
 }
 
+fn make_wasm_config() -> WasmConfig {
+    let host_functions = HostFunctionCosts {
+        // Required for non-standard payment that transfers to a system account.
+        // Depends on a bug filled to lower transfer host functions to be able to freely transfer
+        // funds inside payment code.
+        transfer_from_purse_to_account: HostFunction::fixed(0),
+        ..HostFunctionCosts::default()
+    };
+    WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::default(),
+        StorageCosts::default(),
+        host_functions,
+    )
+}
+
 fn make_engine_config(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
@@ -201,6 +226,7 @@ fn make_engine_config(
         .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
         .with_refund_handling(refund_handling)
         .with_fee_handling(fee_handling)
+        .with_wasm_config(make_wasm_config())
         .build()
 }
 

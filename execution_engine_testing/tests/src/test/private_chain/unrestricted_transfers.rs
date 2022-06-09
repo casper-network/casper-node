@@ -703,7 +703,6 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
     );
 }
 
-#[should_panic(expected = "GasLimit")] // Depends on a bug filled
 #[ignore]
 #[test]
 fn should_allow_custom_payment_by_paying_to_system_account() {
