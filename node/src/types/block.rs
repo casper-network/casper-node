@@ -1855,6 +1855,14 @@ impl Block {
         self
     }
 
+    /// Overrides the era end of a block with a `None`, making it a non-switch block.
+    #[cfg(test)]
+    pub fn disable_switch_block(&mut self, verifiable_chunked_hash_activation: EraId) -> &mut Self {
+        let _ = self.header.era_end.take();
+        self.hash = self.header.hash(verifiable_chunked_hash_activation);
+        self
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
