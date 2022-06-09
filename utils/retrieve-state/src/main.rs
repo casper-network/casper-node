@@ -172,8 +172,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let port_derived_from_peers = opts.port_derived_from_peers;
 
-    let registry = prometheus::Registry::new();
-
     match opts.action {
         Action::DownloadBlocks => {
             let client = ClientBuilder::new()
