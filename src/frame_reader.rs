@@ -81,11 +81,6 @@ where
                     match Pin::new(&mut *stream).poll_read(cx, &mut buffer[start..end]) {
                         Poll::Ready(Ok(bytes_read)) => {
                             buffer.truncate(start + bytes_read);
-
-                            // For testing purposes assume that when the stream is empty
-                            // we finish processing. In production, we'll keep waiting
-                            // for more data to arrive.
-                            #[cfg(test)]
                             if bytes_read == 0 {
                                 return Poll::Ready(None);
                             }
