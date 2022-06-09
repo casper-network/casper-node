@@ -677,7 +677,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         if Some(validator_idx) == self.active_validator.as_ref().map(|av| av.idx) {
             error!(our_idx = validator_idx.0, "we are faulty; deactivating");
             self.active_validator = None;
-            return vec![];
         }
         self.active[validator_idx] = None;
         self.progress_detected = true;
