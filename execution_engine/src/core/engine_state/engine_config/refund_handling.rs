@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 const REFUND_HANDLING_REFUND_TAG: u8 = 0;
+const REFUND_HANDLING_BURN_TAG: u8 = 1;
 
 /// Defines how refunds are calculated.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +24,13 @@ pub enum RefundHandling {
         /// Any dust amount that was a result of multiplying by refund_ratio goes back to user.
         refund_ratio: Ratio<u64>,
     },
+    /// Burns the refund amount. Implies 100% refund amount as described in
+    /// [`RefundHandling::Refund`].
+    Burn {
+        /// Computes how much of the refund amount is burned after deducting gas fspent from the
+        /// paid amount.
+        refund_ratio: Ratio<u64>,
+    },
 }
 
 impl ToBytes for RefundHandling {
@@ -34,6 +42,10 @@ impl ToBytes for RefundHandling {
                 buffer.push(REFUND_HANDLING_REFUND_TAG);
                 buffer.extend(refund_ratio.to_bytes()?);
             }
+            RefundHandling::Burn { refund_ratio } => {
+                buffer.push(REFUND_HANDLING_BURN_TAG);
+                buffer.extend(refund_ratio.to_bytes()?);
+            }
         }
 
         Ok(buffer)
@@ -42,6 +54,7 @@ impl ToBytes for RefundHandling {
     fn serialized_length(&self) -> usize {
         1 + match self {
             RefundHandling::Refund { refund_ratio } => refund_ratio.serialized_length(),
+            RefundHandling::Burn { refund_ratio } => refund_ratio.serialized_length(),
         }
     }
 }
@@ -53,6 +66,10 @@ impl FromBytes for RefundHandling {
             REFUND_HANDLING_REFUND_TAG => {
                 let (refund_ratio, rem) = FromBytes::from_bytes(rem)?;
                 Ok((RefundHandling::Refund { refund_ratio }, rem))
+            }
+            REFUND_HANDLING_BURN_TAG => {
+                let (refund_ratio, rem) = FromBytes::from_bytes(rem)?;
+                Ok((RefundHandling::Burn { refund_ratio }, rem))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -66,6 +83,14 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip_for_refund() {
         let refund_config = RefundHandling::Refund {
+            refund_ratio: Ratio::new(49, 313),
+        };
+        bytesrepr::test_serialization_roundtrip(&refund_config);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip_for_burn() {
+        let refund_config = RefundHandling::Burn {
             refund_ratio: Ratio::new(49, 313),
         };
         bytesrepr::test_serialization_roundtrip(&refund_config);

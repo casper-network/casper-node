@@ -283,7 +283,7 @@ impl EngineConfigBuilder {
     /// Sets the refund handling config option.
     pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
         match refund_handling {
-            RefundHandling::Refund { refund_ratio } => {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
                 debug_assert!(
                     refund_ratio <= Ratio::one(),
                     "refund ratio should be a proper fraction"

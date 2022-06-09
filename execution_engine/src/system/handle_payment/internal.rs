@@ -59,7 +59,7 @@ fn calculate_refund_and_reward(
         .ok_or(Error::ArithmeticOverflow)?;
 
     let refund_ratio = match refund_handling {
-        RefundHandling::Refund { refund_ratio } => {
+        RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
             debug_assert!(
                 refund_ratio <= &Ratio::one(),
                 "refund ratio should be a proper fraction"
@@ -111,60 +111,68 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
 
     debug_assert_eq!(validator_reward + refund_amount, payment_amount);
 
-    let refund_purse = get_refund_purse(provider)?;
-
-    if let Some(refund_purse) = refund_purse {
-        if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
-            // Make sure we're not refunding into a payment purse to invalidate payment code
-            // postconditions.
-            return Err(Error::RefundPurseIsPaymentPurse);
-        }
-    }
-
-    provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
-
     // Give or burn the refund.
-    if !refund_amount.is_zero() {
-        if target == URef::default() {
-            // Fee-handling is set to `Burn`.  Deduct the refund from the payment purse and reduce
-            // the total supply (i.e. burn the refund).
+    match provider.refund_handling() {
+        RefundHandling::Refund { .. } => {
+            let refund_purse = get_refund_purse(provider)?;
+
+            if let Some(refund_purse) = refund_purse {
+                if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
+                    // Make sure we're not refunding into a payment purse to invalidate payment
+                    // code postconditions.
+                    return Err(Error::RefundPurseIsPaymentPurse);
+                }
+            }
+
+            provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
+
+            if !refund_amount.is_zero() {
+                match refund_purse {
+                    Some(refund_purse) => {
+                        // In case of failure to transfer to refund purse we fall back on the
+                        // account's main purse
+                        match provider.transfer_purse_to_purse(
+                            payment_purse,
+                            refund_purse,
+                            refund_amount,
+                        ) {
+                            Ok(()) => {}
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    %refund_amount,
+                                    %account,
+                                    "unable to transfer refund to a refund purse; refunding to account"
+                                );
+                                refund_to_account::<P>(
+                                    provider,
+                                    payment_purse,
+                                    account,
+                                    refund_amount,
+                                )?;
+                            }
+                        }
+                    }
+                    None => {
+                        refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+                    }
+                }
+            }
+        }
+
+        RefundHandling::Burn { .. } if !refund_amount.is_zero() => {
+            // Fee-handling is set to `Burn`.  Deduct the refund from the payment purse and
+            // reduce the total supply (i.e. burn the refund).
             payment_amount = payment_amount
                 .checked_sub(refund_amount)
                 .ok_or(Error::ArithmeticOverflow)?;
 
             provider.write_balance(payment_purse, payment_amount)?;
             provider.reduce_total_supply(refund_amount)?;
-        } else {
-            match refund_purse {
-                Some(refund_purse) => {
-                    // In case of failure to transfer to refund purse we fall back on the account's
-                    // main purse
-                    match provider.transfer_purse_to_purse(
-                        payment_purse,
-                        refund_purse,
-                        refund_amount,
-                    ) {
-                        Ok(()) => {}
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %refund_amount,
-                                %account,
-                                "unable to transfer refund to a refund purse; refunding to account"
-                            );
-                            refund_to_account::<P>(
-                                provider,
-                                payment_purse,
-                                account,
-                                refund_amount,
-                            )?;
-                        }
-                    }
-                }
-                None => {
-                    refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
-                }
-            }
+        }
+
+        RefundHandling::Burn { .. } => {
+            // No refund to burn
         }
     }
 
@@ -209,15 +217,22 @@ mod tests {
 
     #[test]
     fn should_move_dust_to_reward() {
-        let purse_bal = U512::from(10u64);
-        let gas = U512::from(3u64);
         let refund_ratio = Ratio::new_raw(1, 3);
         let refund = RefundHandling::Refund { refund_ratio };
+        test_refund_handling(&refund);
 
-        let (a, b) = calculate_refund_and_reward(gas, purse_bal, &refund).unwrap();
+        let burn = RefundHandling::Burn { refund_ratio };
+        test_refund_handling(&burn);
+    }
 
-        assert_eq!(a, U512::from(2u64)); // (10 - 3) * 1/3 ~ 2.33 (.33 is dust)
-        assert_eq!(b, U512::from(8u64)); // 10 - 2 = 8
+    fn test_refund_handling(refund_handling: &RefundHandling) {
+        let purse_bal = U512::from(10u64);
+        let gas = U512::from(3u64);
+        let (a, b) = calculate_refund_and_reward(gas, purse_bal, refund_handling).unwrap();
+        assert_eq!(a, U512::from(2u64));
+        // (10 - 3) * 1/3 ~ 2.33 (.33 is dust)
+        assert_eq!(b, U512::from(8u64));
+        // 10 - 2 = 8
     }
 
     #[test]

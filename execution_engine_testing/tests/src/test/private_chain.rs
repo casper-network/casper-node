@@ -1,4 +1,4 @@
-mod burn_fees;
+mod burn_fees_and_refund;
 mod fees_accumulation;
 pub mod management;
 mod restricted_auction;

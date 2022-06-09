@@ -61,7 +61,11 @@ pub struct CoreConfig {
 impl CoreConfig {
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
     pub(super) fn is_valid(&self) -> bool {
-        let RefundHandling::Refund { refund_ratio } = &self.refund_handling;
+        let refund_ratio = match &self.refund_handling {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                refund_ratio
+            }
+        };
         if *refund_ratio > Ratio::new(1, 1) {
             error!(%refund_ratio, "refund_ratio is not in the range [0, 1]");
             return false;

@@ -1381,7 +1381,9 @@ where
             .expect("should create motes from gas");
 
         let refund_ratio = match self.engine_state.config().refund_handling() {
-            RefundHandling::Refund { refund_ratio } => *refund_ratio,
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                *refund_ratio
+            }
         };
 
         let (numer, denom) = refund_ratio.into();
