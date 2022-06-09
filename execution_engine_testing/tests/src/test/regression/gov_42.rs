@@ -7,16 +7,14 @@ use casper_types::{runtime_args, Gas, RuntimeArgs, U512};
 use num_traits::Zero;
 
 use crate::{
-    test::regression::test_utils::{
-        make_gas_counter_overflow, make_module_without_call, make_module_without_memory_section,
-        make_stack_overflow,
-    },
+    test::regression::test_utils::{make_gas_counter_overflow, make_module_without_memory_section},
     wasm_utils,
 };
 
 const ARG_AMOUNT: &str = "amount";
 
 struct TestCase<'a> {
+    pub id: String,
     pub input_wasm_bytes: &'a [u8],
     pub expected_error_payment: String,
     pub expected_error_session: String,
@@ -24,11 +22,13 @@ struct TestCase<'a> {
 
 impl<'a> TestCase<'a> {
     fn new(
+        id: String,
         input_wasm_bytes: &'a [u8],
         expected_error_payment: String,
         expected_error_session: String,
     ) -> Self {
         Self {
+            id,
             input_wasm_bytes,
             expected_error_payment,
             expected_error_session,
@@ -44,12 +44,16 @@ enum DeployBytes {
 
 fn run_test_case(
     TestCase {
+        id,
         input_wasm_bytes,
         expected_error_payment,
         expected_error_session,
     }: &TestCase,
     deploy_bytes: DeployBytes,
 ) {
+    dbg!(&id);
+    dbg!(&deploy_bytes);
+
     let payment_amount = *DEFAULT_PAYMENT;
 
     let expected_transaction_fee = *MAX_PAYMENT;
@@ -64,7 +68,7 @@ fn run_test_case(
                 DeployItemBuilder::new()
                     .with_payment_bytes(
                         input_wasm_bytes.to_vec(),
-                        runtime_args! {ARG_AMOUNT => U512::from(0),},
+                        runtime_args! {ARG_AMOUNT => U512::from(payment_amount),},
                     )
                     .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
                 expected_error_payment,
@@ -101,6 +105,7 @@ fn run_test_case(
     builder.exec(do_minimum_request).expect_failure().commit();
 
     let actual_error = builder.get_error().expect("should have error").to_string();
+    dbg!(&actual_error);
     assert!(actual_error.contains(expected_error_message));
 
     let gas = builder.last_exec_gas_cost();
@@ -109,12 +114,9 @@ fn run_test_case(
     let account_balance_after = builder.get_purse_balance(account.main_purse());
     let proposer_balance_after = builder.get_proposer_purse_balance();
 
+    assert_eq!(account_balance_before - *MAX_PAYMENT, account_balance_after);
     assert_eq!(
-        account_balance_before - expected_transaction_fee,
-        account_balance_after
-    );
-    assert_eq!(
-        proposer_balance_before + expected_transaction_fee,
+        proposer_balance_before + *MAX_PAYMENT,
         proposer_balance_after
     );
 }
@@ -122,7 +124,27 @@ fn run_test_case(
 #[ignore]
 #[test]
 fn should_charge_session_with_incorrect_wasm_files() {
+    // This test focuses on testing whether we charge for
+    // WASM files that are malformed (unparseable).
+
+    // If we're provided with such file, we should charge.
+    // The expection here is the "empty wasm" send as
+    // a payment, because in such case we use the "default payment"
+    // instead.
+
+    // For increased security, we also test some other cases in this test
+    // like gas overflow (which is a runtime error).
+
+    // TODO:
+    // Introduce proper layers in wasm execution, for example:
+    // Layer 1. Parse (may throw errors related to malformed wasm bytes)
+    // Layer 2. Validation (may throw errors for parseable, but unsupported
+    //             wasm files, for example, without memory session)
+    // Layer 3. Execution (may throw errors strictly related to execution
+    //             for example, stack overflow)
+
     const WASM_BYTES_INVALID_MAGIC_NUMBER: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
+
     const WASM_BYTES_EMPTY: &[u8] = &[];
 
     // These are the first few bytes of the valid WASM module.
@@ -143,48 +165,42 @@ fn should_charge_session_with_incorrect_wasm_files() {
 
     let wasm_bytes_no_memory_section = make_module_without_memory_section();
 
-    let wasm_stack_overflow = make_stack_overflow();
+    // Other potential test cases:
+    // 1. Wasm that doesn't have "call" function    - tested in `regression_20210924`
+    // 2. Wasm with unsupported "start" section     - tested in `ee_890` (but without asserting the charge)
 
-    let wasm_without_call = make_module_without_call();
-
-    let test_cases: &[TestCase; 7] = {
+    let test_cases: &[TestCase; 4] = {
         &[
             TestCase::new(
+                "WASM_BYTES_INVALID_MAGIC_NUMBER".to_string(),
                 WASM_BYTES_INVALID_MAGIC_NUMBER,
                 "Wasm preprocessing error: Deserialization error: Invalid magic number at start of file".to_string(),
                 "Wasm preprocessing error: Deserialization error: Invalid magic number at start of file".to_string(),
             ),
+            // TestCase::new(
+            //     "WASM_BYTES_EMPTY".to_string(),
+            //     WASM_BYTES_EMPTY,
+            //     "Insufficient payment".to_string(),
+            //     "Wasm preprocessing error: Deserialization error: I/O Error: UnexpectedEof"
+            //         .to_string(),
+            // ),
             TestCase::new(
-                WASM_BYTES_EMPTY,
-                "Insufficient payment".to_string(),
-                "Wasm preprocessing error: Deserialization error: I/O Error: UnexpectedEof"
-                    .to_string(),
-            ),
-            TestCase::new(
+                "WASM_BYTES_INVALID_BUT_WITH_CORRECT_MAGIC_NUMBER".to_string(),
                 WASM_BYTES_INVALID_BUT_WITH_CORRECT_MAGIC_NUMBER,
                 "I/O Error: UnexpectedEof".to_string(),
                 "I/O Error: UnexpectedEof".to_string()
             ),
             TestCase::new(
+                "wasm_bytes_gas_overflow".to_string(),
                 wasm_bytes_gas_overflow.as_slice(),
                 "Wasm preprocessing error: Encountered operation forbidden by gas rules. Consult instruction -> metering config map".to_string(),
                 "Wasm preprocessing error: Encountered operation forbidden by gas rules. Consult instruction -> metering config map".to_string(),
             ),
             TestCase::new(
+                "wasm_bytes_no_memory_section".to_string(),
                 wasm_bytes_no_memory_section.as_slice(),
                 "Memory section should exist".to_string(),
                 "Memory section should exist".to_string(),
-            ),
-            TestCase::new(
-                wasm_stack_overflow.as_slice(),
-                // TODO: wasm that overflows stack produces this kind of error (?)
-                "Interpreter error: trap: Trap { kind: Unreachable }".to_string(),
-                "Interpreter error: trap: Trap { kind: Unreachable }".to_string(),
-            ),
-            TestCase::new(
-                wasm_without_call.as_slice(),
-                "Interpreter error: Module doesn't have export call".to_string(),
-                "Interpreter error: Module doesn't have export call".to_string(),
             ),
         ]
     };

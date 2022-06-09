@@ -1313,7 +1313,7 @@ where
         };
 
         // If provided wasm file was malformed, we should charge.
-        if !is_wasm_file_ok(&payment_result) {
+        if should_charge_for_errors_in_wasm(&payment_result) {
             let error = payment_result
                 .as_error()
                 .cloned()
@@ -1497,7 +1497,7 @@ where
         // Session execution was zero cost or provided wasm was malformed.
         // Check if the payment purse can cover the minimum floor for session execution.
         if (session_result.cost().is_zero() && payment_purse_balance < max_payment_cost)
-            || !is_wasm_file_ok(&session_result)
+            || should_charge_for_errors_in_wasm(&session_result)
         {
             // When session code structure is valid but still has 0 cost we should propagate the
             // error.
@@ -2099,7 +2099,7 @@ where
     }
 }
 
-fn is_wasm_file_ok(execution_result: &ExecutionResult) -> bool {
+fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool {
     match execution_result {
         ExecutionResult::Failure {
             error,
@@ -2107,16 +2107,13 @@ fn is_wasm_file_ok(execution_result: &ExecutionResult) -> bool {
             cost: _,
             execution_journal: _,
         } => match error {
-            Error::WasmPreprocessing(_) => false,
-            // Errors related to wasm issues should return `false`
             Error::Exec(err) => match err {
-                ExecError::InvalidContractWasm(_)
+                ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
+                ExecError::Storage(_)
+                | ExecError::InvalidContractWasm(_)
                 | ExecError::WasmOptimizer
                 | ExecError::ParityWasm(_)
                 | ExecError::Interpreter(_)
-                | ExecError::UnsupportedWasmStart
-                | ExecError::WasmPreprocessing(_) => false,
-                ExecError::Storage(_)
                 | ExecError::BytesRepr(_)
                 | ExecError::NamedKeyNotFound(_)
                 | ExecError::KeyNotFound(_)
@@ -2156,9 +2153,10 @@ fn is_wasm_file_ok(execution_result: &ExecutionResult) -> bool {
                 | ExecError::MissingSystemContractHash(_)
                 | ExecError::RuntimeStackOverflow
                 | ExecError::ValueTooLarge
-                | ExecError::MissingRuntimeStack => true,
+                | ExecError::MissingRuntimeStack => false,
             },
-            Error::WasmSerialization(_) => false,
+            Error::WasmPreprocessing(_) => true,
+            Error::WasmSerialization(_) => true,
             Error::RootNotFound(_)
             | Error::InvalidProtocolVersion(_)
             | Error::Genesis(_)
@@ -2181,8 +2179,8 @@ fn is_wasm_file_ok(execution_result: &ExecutionResult) -> bool {
             | Error::FailedToGetStoredWithdraws
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
-            | Error::FailedToRetrieveEraId => true,
+            | Error::FailedToRetrieveEraId => false,
         },
-        ExecutionResult::Success { .. } => true,
+        ExecutionResult::Success { .. } => false,
     }
 }
