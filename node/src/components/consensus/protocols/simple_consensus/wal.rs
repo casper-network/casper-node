@@ -17,18 +17,22 @@ use crate::components::consensus::{
 
 use super::RoundId;
 
+/// An entry in the Write-Ahead Log, storing a message we had added to our protocol state.
 #[derive(Deserialize, Serialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Entry<C: Context> {
+    /// A signed echo or vote.
     SignedMessage(SignedMessage<C>),
+    /// A proposal.
     Proposal(Proposal<C>, RoundId),
+    /// Evidence of a validator double-signing.
     Evidence(SignedMessage<C>, Content<C>, C::Signature),
 }
 
-/// The messages are written to disk like:
+/// A Write-Ahead Log to store every message on disk when we add it to the protocol state.
 #[derive(Debug)]
 pub(crate) struct WriteWal<C: Context> {
     writer: BufWriter<File>,
@@ -87,6 +91,7 @@ impl<C: Context> WriteWal<C> {
     }
 }
 
+/// A buffer to read a Write-Ahead Log from disk and deserialize its messages.
 #[derive(Debug)]
 pub(crate) struct ReadWal<C: Context> {
     pub(crate) reader: BufReader<File>,
@@ -129,6 +134,8 @@ impl<C: Context> ReadWal<C> {
 }
 
 impl<C: Context> ReadWal<C> {
+    /// Reads the next entry from the WAL, or returns an error.
+    /// If there are 0 bytes left it returns `ReadWalError::NoMoreEntries`.
     pub(crate) fn read_next_entry(&mut self) -> Result<Entry<C>, ReadWalError> {
         let position = self.reader.stream_position()?;
 
