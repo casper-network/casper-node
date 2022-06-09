@@ -761,7 +761,11 @@ where
                     ..
                 }
                 | NewTransferTargetMode::CreateAccount(target_account_hash) => {
-                    if !self.config.is_administrator(&target_account_hash) {
+                    let is_target_system_account =
+                        target_account_hash == PublicKey::System.to_account_hash();
+                    let is_target_administrator =
+                        self.config.is_administrator(&target_account_hash);
+                    if !(is_target_system_account || is_target_administrator) {
                         // Transferring from normal account to a purse doesn't work.
                         return Ok(make_charged_execution_failure(
                             execution::Error::DisabledUnrestrictedTransfers.into(),

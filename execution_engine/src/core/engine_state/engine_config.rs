@@ -168,7 +168,6 @@ impl EngineConfig {
     /// Checks if an account hash is an administrator.
     pub(crate) fn is_administrator(&self, account_hash: &AccountHash) -> bool {
         self.administrative_accounts.contains(account_hash)
-            || account_hash == &PublicKey::System.to_account_hash()
     }
 
     /// Returns the engine config's refund ratio.

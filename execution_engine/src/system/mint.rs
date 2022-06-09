@@ -172,8 +172,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                                     if account.main_purse().addr() != target.addr() {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
-                                    if !is_source_admin
-                                        && !self.is_administrator(&account.account_hash())
+                                    let is_target_system_account = account.account_hash()
+                                        == PublicKey::System.to_account_hash();
+                                    let is_target_administrator =
+                                        self.is_administrator(&account.account_hash());
+                                    if !(is_source_admin
+                                        || is_target_system_account
+                                        || is_target_administrator)
                                     {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
