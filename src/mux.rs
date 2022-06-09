@@ -112,7 +112,8 @@ pub struct MultiplexerHandle<S> {
     //       needs to acquire, whcich is on every sending of an item via `Sink`.
     //
     //       This relies on the fact that merely instantiating the locking future (via
-    //       `mk_lock_future`) will not do anything before the first poll (TODO: write test).
+    //       `mk_lock_future`) will not do anything before the first poll (see
+    //       `tests::ensure_creating_lock_acquisition_future_is_side_effect_free`).
     lock_future: ReusableBoxFuture<'static, SinkGuard<S>>,
     /// A potential acquired guard for the underlying sink.
     ///
@@ -214,14 +215,32 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use bytes::Bytes;
     use futures::{FutureExt, SinkExt};
+    use tokio::sync::Mutex;
 
     use crate::{error::Error, tests::collect_bufs};
 
     use super::{ChannelPrefixedFrame, Multiplexer};
 
-    // TODO: Test lock future assertions.
+    #[test]
+    fn ensure_creating_lock_acquisition_future_is_side_effect_free() {
+        // This test ensures an assumed property in the multiplexer's sink implementation, namely
+        // that calling the `.lock_owned()` function does not affect the lock before being polled.
+
+        let mutex: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
+
+        // Instantiate a locking future without polling it.
+        let lock_fut = mutex.clone().lock_owned();
+
+        // Creates a second locking future, which we will poll immediately. It should return ready.
+        assert!(mutex.lock_owned().now_or_never().is_some());
+
+        // To prove that the first one also worked, poll it as well.
+        assert!(lock_fut.now_or_never().is_some());
+    }
 
     #[test]
     fn mux_lifecycle() {
