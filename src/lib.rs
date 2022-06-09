@@ -67,10 +67,16 @@ where
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::io::Read;
+    use std::{
+        convert::Infallible,
+        io::Read,
+        pin::Pin,
+        sync::{Arc, Mutex},
+        task::{Context, Poll, Waker},
+    };
 
     use bytes::{Buf, Bytes};
-    use futures::{future, stream, FutureExt, SinkExt};
+    use futures::{future, stream, FutureExt, Sink, SinkExt};
 
     use crate::{
         chunked::{chunk_frame, SingleChunk},
@@ -96,6 +102,92 @@ pub(crate) mod tests {
                 .expect("reading buf should never fail");
         }
         vec
+    }
+
+    /// A sink for unit testing.
+    ///
+    /// All data sent to it will be written to a buffer immediately that can be read during
+    /// operation. It is guarded by a lock so that only complete writes are visible.
+    ///
+    /// Additionally, a `Plug` can be inserted into the sink. While a plug is plugged in, no data
+    /// can flow into the sink.
+    #[derive(Debug)]
+    struct TestingSink {
+        /// The engagement of the plug.
+        plug: Mutex<Plug>,
+        /// Buffer storing all the data.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl TestingSink {
+        /// Inserts or removes the plug from the sink.
+        pub fn set_plugged(&self, plugged: bool) {
+            let mut guard = self.plug.lock().expect("could not lock plug");
+            guard.plugged = plugged;
+
+            // Notify any waiting tasks that there may be progress to be made.
+            if !plugged {
+                // TODO: Write test that should fail because this line is absent first.
+                // guard.waker.wake_by_ref()
+            }
+        }
+
+        /// Determine whether the sink is plugged.
+        ///
+        /// Will update the local waker reference.
+        fn is_plugged(&self, cx: &mut Context<'_>) -> bool {
+            let mut guard = self.plug.lock().expect("could not lock plug");
+
+            // Register waker.
+            guard.waker = cx.waker().clone();
+            guard.plugged
+        }
+    }
+
+    /// A plug inserted into the sink.
+    #[derive(Debug)]
+    struct Plug {
+        /// Whether or not the plug is engaged.
+        plugged: bool,
+        /// The waker of the last task to access the plug. Will be called when unplugging.
+        waker: Waker,
+    }
+
+    impl<F: Buf> Sink<F> for &TestingSink {
+        type Error = Infallible;
+
+        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            if self.is_plugged(cx) {
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(()))
+            }
+        }
+
+        fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+            let mut guard = self.buffer.lock().expect("could not lock buffer");
+
+            item.reader()
+                .read_to_end(&mut guard)
+                .expect("writing to vec should never fail");
+
+            Ok(())
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            // We're always done flushing, since we write the entire item when sending. Still, we
+            // use this as an opportunity to plug if necessary.
+            if self.is_plugged(cx) {
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(()))
+            }
+        }
+
+        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            // Nothing to close, so this is essentially the same as flushing.
+            Sink::<F>::poll_flush(self, cx)
+        }
     }
 
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
