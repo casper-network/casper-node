@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
@@ -21,7 +23,8 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, Key, RuntimeArgs, U512,
+    ApiError, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, Key,
+    RuntimeArgs, U512,
 };
 
 use crate::{
@@ -483,7 +486,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         let stored_value = builder
             .query(None, stored_contract_key, &[])
             .expect("should query");
-        let contract = stored_value.into_contract().expect("should be contract");
+        let contract = Contract::try_from(stored_value).expect("should be contract");
         Key::from(contract.contract_package_hash())
     };
 
@@ -492,14 +495,14 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .map(ContractPackageHash::new)
         .expect("should be package hash");
 
-    let contract_package_before = builder
-        .query(None, do_nothing_contract_package_key, &[])
-        .expect("should query")
-        .into_contract_package()
-        .expect("should be contract package");
-    assert_eq!(
-        contract_package_before.is_contract_disabled(&stored_contract_hash),
-        Some(false),
+    let contract_package_before = ContractPackage::try_from(
+        builder
+            .query(None, do_nothing_contract_package_key, &[])
+            .expect("should query"),
+    )
+    .expect("should be contract package");
+    assert!(
+        contract_package_before.is_contract_enabled(&stored_contract_hash),
         "newly stored contract should be enabled"
     );
 
@@ -526,20 +529,18 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
     builder.exec(disable_request).expect_success().commit();
 
-    let contract_package_after_disable = builder
-        .query(None, do_nothing_contract_package_key, &[])
-        .expect("should query")
-        .into_contract_package()
-        .expect("should be contract package");
+    let contract_package_after_disable = ContractPackage::try_from(
+        builder
+            .query(None, do_nothing_contract_package_key, &[])
+            .expect("should query"),
+    )
+    .expect("should be contract package");
 
     assert_ne!(
         contract_package_before, contract_package_after_disable,
         "contract package should be disabled"
     );
-    assert_eq!(
-        contract_package_after_disable.is_contract_disabled(&stored_contract_hash),
-        Some(true)
-    );
+    assert!(!contract_package_after_disable.is_contract_enabled(&stored_contract_hash),);
 
     let call_delegate_requests = {
         // Unable to call disabled stored contract directly
@@ -632,7 +633,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         let stored_value = builder
             .query(None, stored_contract_key, &[])
             .expect("should query");
-        let contract = stored_value.into_contract().expect("should be contract");
+        let contract = Contract::try_from(stored_value).expect("should be contract");
         Key::from(contract.contract_package_hash())
     };
 
@@ -641,14 +642,14 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .map(ContractPackageHash::new)
         .expect("should have contract package");
 
-    let contract_package_before = builder
-        .query(None, test_payment_stored_package_key, &[])
-        .expect("should query")
-        .into_contract_package()
-        .expect("should be contract package");
-    assert_eq!(
-        contract_package_before.is_contract_disabled(&stored_contract_hash),
-        Some(false),
+    let contract_package_before = ContractPackage::try_from(
+        builder
+            .query(None, test_payment_stored_package_key, &[])
+            .expect("should query"),
+    )
+    .expect("should be contract package");
+    assert!(
+        contract_package_before.is_contract_enabled(&stored_contract_hash),
         "newly stored contract should be enabled"
     );
 
@@ -691,20 +692,18 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
     builder.exec(disable_request).expect_success().commit();
 
-    let contract_package_after_disable = builder
-        .query(None, test_payment_stored_package_key, &[])
-        .expect("should query")
-        .into_contract_package()
-        .expect("should be contract package");
+    let contract_package_after_disable = ContractPackage::try_from(
+        builder
+            .query(None, test_payment_stored_package_key, &[])
+            .expect("should query"),
+    )
+    .expect("should be contract package");
 
     assert_ne!(
         contract_package_before, contract_package_after_disable,
         "contract package should be disabled"
     );
-    assert_eq!(
-        contract_package_after_disable.is_contract_disabled(&stored_contract_hash),
-        Some(true)
-    );
+    assert!(!contract_package_after_disable.is_contract_enabled(&stored_contract_hash),);
 
     let call_stored_payment_requests_1 = {
         let payment_args = runtime_args! {

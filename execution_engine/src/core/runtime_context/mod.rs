@@ -161,7 +161,6 @@ where
 
     /// Creates new runtime context cloning values from self.
     #[allow(clippy::too_many_arguments)]
-    #[must_use]
     pub fn new_from_self(
         &self,
         base_key: Key,
@@ -1087,13 +1086,11 @@ where
     }
 
     pub(crate) fn is_authorized_by_admin(&self) -> bool {
-        let admin_set = self.engine_config.administrative_accounts();
-
-        !admin_set.is_empty()
-            && admin_set
-                .intersection(&self.authorization_keys)
-                .next()
-                .is_some()
+        self.engine_config
+            .administrative_accounts()
+            .intersection(&self.authorization_keys)
+            .next()
+            .is_some()
     }
 
     /// Set threshold of an associated key.
@@ -1114,16 +1111,13 @@ where
         // Take an account out of the global state
         let mut account: Account = self.read_gs_typed(&key)?;
 
-        let total_weight = if self.is_authorized_by_admin() {
-            Weight::MAX
-        } else {
-            account.associated_keys().total_keys_weight()
-        };
-
         // Exit early in case of error without updating global state
-        account
-            .set_action_thresholds_with_total_weight(total_weight, action_type, threshold)
-            .map_err(Error::from)?;
+        if self.is_authorized_by_admin() {
+            account.set_action_threshold_unchecked(action_type, threshold)
+        } else {
+            account.set_action_threshold(action_type, threshold)
+        }
+        .map_err(Error::from)?;
 
         let account_value = self.account_to_validated_value(account)?;
 

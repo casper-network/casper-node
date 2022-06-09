@@ -434,7 +434,6 @@ where
                     id_ptr,
                     id_size,
                 ) = Args::parse(args)?;
-
                 self.charge_host_function_call(
                     &host_function_costs.transfer_from_purse_to_purse,
                     [

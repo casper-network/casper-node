@@ -42,11 +42,9 @@ pub trait RuntimeProvider {
     /// Returns main purse of the sender account.
     fn get_main_purse(&self) -> URef;
 
-    /// Returns Some(_) with a flag indicating if execution is started by an admin account. This is
-    /// valid only for private chains.
-    ///
-    /// On public chains this will always return None.
-    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool>;
+    /// Returns `true` if the account hash belongs to an administrator account, otherwise `false`.
+    fn is_administrator(&self, account_hash: &AccountHash) -> bool;
+
     /// Checks if users can perform unrestricted transfers. This option is valid only for private
     /// chains.
     fn allow_unrestricted_transfers(&self) -> bool;

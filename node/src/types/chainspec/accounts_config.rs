@@ -1,16 +1,15 @@
 //! The accounts config is a set of configuration options that is used to create accounts at
 //! genesis, and set up auction contract with validators and delegators.
 mod account_config;
-mod administrator_config;
 mod delegator_config;
 mod validator_config;
 
 use std::path::Path;
 
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-use casper_execution_engine::core::engine_state::GenesisAccount;
+use casper_execution_engine::core::engine_state::{AdministratorAccount, GenesisAccount};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
@@ -18,34 +17,42 @@ use casper_types::{
     file_utils,
 };
 
-pub use self::administrator_config::AdministratorConfig;
 use super::error::ChainspecAccountsLoadError;
-use crate::utils::serde_helpers;
 pub use account_config::AccountConfig;
 pub use delegator_config::DelegatorConfig;
 pub use validator_config::ValidatorConfig;
 
 const CHAINSPEC_ACCOUNTS_FILENAME: &str = "accounts.toml";
 
+fn sorted_vec_deserializer<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: Deserialize<'de> + Ord,
+    D: Deserializer<'de>,
+{
+    let mut vec = Vec::<T>::deserialize(deserializer)?;
+    vec.sort_unstable();
+    Ok(vec)
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
-    #[serde(deserialize_with = "serde_helpers::sorted_vec_deserializer")]
+    #[serde(deserialize_with = "sorted_vec_deserializer")]
     accounts: Vec<AccountConfig>,
-    #[serde(default, deserialize_with = "serde_helpers::sorted_vec_deserializer")]
+    #[serde(default, deserialize_with = "sorted_vec_deserializer")]
     delegators: Vec<DelegatorConfig>,
     #[serde(
         default,
-        deserialize_with = "serde_helpers::sorted_vec_deserializer",
+        deserialize_with = "sorted_vec_deserializer",
         skip_serializing_if = "Vec::is_empty"
     )]
-    administrators: Vec<AdministratorConfig>,
+    administrators: Vec<AdministratorAccount>,
 }
 
 impl AccountsConfig {
     pub fn new(
         accounts: Vec<AccountConfig>,
         delegators: Vec<DelegatorConfig>,
-        administrators: Vec<AdministratorConfig>,
+        administrators: Vec<AdministratorAccount>,
     ) -> Self {
         Self {
             accounts,
@@ -62,7 +69,7 @@ impl AccountsConfig {
         &self.delegators
     }
 
-    pub fn administrators(&self) -> &[AdministratorConfig] {
+    pub fn administrators(&self) -> &[AdministratorAccount] {
         &self.administrators
     }
 
@@ -99,7 +106,7 @@ impl AccountsConfig {
 
         let delegators = vec![delegator];
 
-        let administrators = vec![];
+        let administrators = vec![AdministratorAccount::random(rng)];
 
         AccountsConfig {
             accounts,

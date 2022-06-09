@@ -9,9 +9,8 @@ use wasmi::ModuleImportResolver;
 use casper_types::ProtocolVersion;
 
 use self::error::ResolverError;
-use crate::core::resolvers::memory_resolver::MemoryResolver;
-
 use super::engine_state::EngineConfig;
+use crate::core::resolvers::memory_resolver::MemoryResolver;
 
 /// Creates a module resolver for given protocol version.
 ///

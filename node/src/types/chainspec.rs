@@ -90,7 +90,9 @@ impl Chainspec {
             warn!("era duration is less than minimum era height * round length!");
         }
 
-        self.protocol_config.is_valid() && self.highway_config.is_valid()
+        self.protocol_config.is_valid()
+            && self.core_config.is_valid()
+            && self.highway_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -203,8 +205,8 @@ impl From<&Chainspec> for ExecConfig {
             .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
-            .with_refund_handling(chainspec.core_config.refund_handling.into())
-            .with_fee_handling(chainspec.core_config.fee_handling.into())
+            .with_refund_handling(chainspec.core_config.refund_handling)
+            .with_fee_handling(chainspec.core_config.fee_handling)
             .build()
     }
 }

@@ -63,10 +63,20 @@ strict_argument_checking = false
 allow_auction_bids = true
 # Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
 allow_unrestricted_transfers = true
-# Refund handling config for finalization of an execution.
-refund_handling = { type = "Refund", refund_ratio = [0, 100] }
-# Fee handling config
-fee_handling = { type = "PayToProposer" }
+# Defines how refunds of the unused portion of payment amounts are calculated and handled.
+#
+# The only valid value for 'type' is currently 'refund'.  This causes excess payment amounts to be sent to either a
+# pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
+# minus the execution costs.
+refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+# Defines how fees are handled.
+#
+# Valid options are:
+#   'pay_to_proposer': fees are paid to the block proposer
+#   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
+#                 administrator accounts
+#   'burn': fees are burned
+fee_handling = { type = 'pay_to_proposer' }
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -84,6 +94,7 @@ maximum_round_exponent = 19
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
+# If set to false, then consensus doesn't compute rewards and always uses 0.
 compute_rewards = true
 
 [deploys]

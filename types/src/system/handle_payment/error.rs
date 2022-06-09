@@ -239,9 +239,9 @@ pub enum Error {
     /// Error writing to a storage.
     /// ```
     /// # use casper_types::system::handle_payment::Error;
-    /// assert_eq!(36, Error::Storage as u8);
+    /// assert_eq!(35, Error::Storage as u8);
     /// ```
-    Storage = 36,
+    Storage = 35,
 }
 
 impl Display for Error {

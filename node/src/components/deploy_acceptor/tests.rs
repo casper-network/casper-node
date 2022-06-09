@@ -787,7 +787,7 @@ async fn run_deploy_acceptor_without_timeout(
             assert!(injected_receiver.await.unwrap());
         }
 
-        if matches!(test_scenario, TestScenario::BalanceCheckForDeploySentByPeer) {
+        if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
             let fatal_deploy = Box::new(deploy.clone());
             let (deploy_sender, _) = oneshot::channel();
             let deploy_responder = Responder::without_shutdown(deploy_sender);

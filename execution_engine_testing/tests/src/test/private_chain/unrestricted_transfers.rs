@@ -7,7 +7,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint, standard_payment},
-    Key, PublicKey, RuntimeArgs, URef, U512,
+    Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{test::private_chain::ADMIN_1_ACCOUNT_ADDR, wasm_utils};
@@ -188,8 +188,11 @@ fn should_disallow_transfer_to_own_purse_via_direct_mint_transfer_call() {
     let value = builder
         .query(None, Key::Balance(target.addr()), &[])
         .unwrap();
-    let value_cl = value.into_clvalue().unwrap();
-    let value: U512 = value_cl.into_t().unwrap();
+    let value: U512 = if let StoredValue::CLValue(cl_value) = value {
+        cl_value.into_t().unwrap()
+    } else {
+        panic!("should be a CLValue");
+    };
     assert_eq!(value, U512::zero());
 }
 
@@ -245,8 +248,11 @@ fn should_allow_admin_to_transfer_to_own_purse_via_direct_mint_transfer_call() {
     let value = builder
         .query(None, Key::Balance(target.addr()), &[])
         .unwrap();
-    let value_cl = value.into_clvalue().unwrap();
-    let value: U512 = value_cl.into_t().unwrap();
+    let value: U512 = if let StoredValue::CLValue(cl_value) = value {
+        cl_value.into_t().unwrap()
+    } else {
+        panic!("should be a CLValue");
+    };
     assert_eq!(value, amount);
 }
 

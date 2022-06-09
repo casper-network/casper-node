@@ -233,7 +233,7 @@ impl TransferRuntimeArgsBuilder {
     /// indicates that the system has to create new account first.
     ///
     /// Returns [`TransferTargetMode`] with a resolved variant.
-    pub(crate) fn resolve_transfer_target_mode<R>(
+    pub(super) fn resolve_transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,

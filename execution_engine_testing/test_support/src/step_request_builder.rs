@@ -25,63 +25,54 @@ impl StepRequestBuilder {
     }
 
     /// Sets `parent_state_hash` to the given [`Digest`].
-    #[must_use]
     pub fn with_parent_state_hash(mut self, parent_state_hash: Digest) -> Self {
         self.parent_state_hash = parent_state_hash;
         self
     }
 
     /// Sets `protocol_version` to the given [`ProtocolVersion`].
-    #[must_use]
     pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.protocol_version = protocol_version;
         self
     }
 
     /// Pushes the given [`SlashItem`] into `slash_items`.
-    #[must_use]
     pub fn with_slash_item(mut self, slash_item: SlashItem) -> Self {
         self.slash_items.push(slash_item);
         self
     }
 
     /// Pushes the given [`RewardItem`] into `reward_items`.
-    #[must_use]
     pub fn with_reward_item(mut self, reward_item: RewardItem) -> Self {
         self.reward_items.push(reward_item);
         self
     }
 
     /// Appends the given vector of [`RewardItem`] into `reward_items`.
-    #[must_use]
     pub fn with_reward_items(mut self, reward_items: impl IntoIterator<Item = RewardItem>) -> Self {
         self.reward_items.extend(reward_items);
         self
     }
 
     /// Pushes the given [`EvictItem`] into `evict_items`.
-    #[must_use]
     pub fn with_evict_item(mut self, evict_item: EvictItem) -> Self {
         self.evict_items.push(evict_item);
         self
     }
 
     /// Sets `run_auction`.
-    #[must_use]
     pub fn with_run_auction(mut self, run_auction: bool) -> Self {
         self.run_auction = run_auction;
         self
     }
 
     /// Sets `next_era_id` to the given [`EraId`].
-    #[must_use]
     pub fn with_next_era_id(mut self, next_era_id: EraId) -> Self {
         self.next_era_id = next_era_id;
         self
     }
 
     /// Sets `era_end_timestamp_millis`.
-    #[must_use]
     pub fn with_era_end_timestamp_millis(mut self, era_end_timestamp_millis: u64) -> Self {
         self.era_end_timestamp_millis = era_end_timestamp_millis;
         self

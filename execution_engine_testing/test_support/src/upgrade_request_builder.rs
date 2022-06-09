@@ -23,48 +23,41 @@ pub struct UpgradeRequestBuilder {
 
 impl UpgradeRequestBuilder {
     /// Returns a new `UpgradeRequestBuilder`.
-    #[must_use]
     pub fn new() -> Self {
         Default::default()
     }
 
     /// Sets a pre-state hash using a [`Digest`].
-    #[must_use]
     pub fn with_pre_state_hash(mut self, pre_state_hash: Digest) -> Self {
         self.pre_state_hash = pre_state_hash;
         self
     }
 
     /// Sets `current_protocol_version` to the given [`ProtocolVersion`].
-    #[must_use]
     pub fn with_current_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.current_protocol_version = protocol_version;
         self
     }
 
     /// Sets `new_protocol_version` to the given [`ProtocolVersion`].
-    #[must_use]
     pub fn with_new_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.new_protocol_version = protocol_version;
         self
     }
 
     /// Sets `new_validator_slots`.
-    #[must_use]
     pub fn with_new_validator_slots(mut self, new_validator_slots: u32) -> Self {
         self.new_validator_slots = Some(new_validator_slots);
         self
     }
 
     /// Sets `new_auction_delay`.
-    #[must_use]
     pub fn with_new_auction_delay(mut self, new_auction_delay: u64) -> Self {
         self.new_auction_delay = Some(new_auction_delay);
         self
     }
 
     /// Sets `new_locked_funds_period_millis`.
-    #[must_use]
     pub fn with_new_locked_funds_period_millis(
         mut self,
         new_locked_funds_period_millis: u64,
@@ -74,21 +67,18 @@ impl UpgradeRequestBuilder {
     }
 
     /// Sets `new_round_seigniorage_rate`.
-    #[must_use]
     pub fn with_new_round_seigniorage_rate(mut self, rate: Ratio<u64>) -> Self {
         self.new_round_seigniorage_rate = Some(rate);
         self
     }
 
     /// Sets `new_unbonding_delay`.
-    #[must_use]
     pub fn with_new_unbonding_delay(mut self, unbonding_delay: u64) -> Self {
         self.new_unbonding_delay = Some(unbonding_delay);
         self
     }
 
     /// Sets `global_state_update`.
-    #[must_use]
     pub fn with_global_state_update(
         mut self,
         global_state_update: BTreeMap<Key, StoredValue>,
@@ -98,14 +88,12 @@ impl UpgradeRequestBuilder {
     }
 
     /// Sets `activation_point`.
-    #[must_use]
     pub fn with_activation_point(mut self, activation_point: EraId) -> Self {
         self.activation_point = Some(activation_point);
         self
     }
 
     /// Sets the Chainspec registry.
-    #[must_use]
     pub fn with_chainspec_registry(mut self, chainspec_registry: ChainspecRegistry) -> Self {
         self.chainspec_registry = chainspec_registry;
         self
@@ -130,7 +118,6 @@ impl UpgradeRequestBuilder {
 }
 
 impl Default for UpgradeRequestBuilder {
-    #[must_use]
     fn default() -> Self {
         UpgradeRequestBuilder {
             pre_state_hash: Default::default(),

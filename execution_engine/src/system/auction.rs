@@ -15,11 +15,10 @@ use casper_types::{
     ApiError, EraId, PublicKey, U512,
 };
 
-use crate::core::engine_state::engine_config::FeeHandling;
-
 use self::providers::{
     AccountProvider, HandlePaymentProvider, MintProvider, RuntimeProvider, StorageProvider,
 };
+use crate::core::engine_state::engine_config::FeeHandling;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -553,8 +552,7 @@ pub trait Auction:
                     for target in administrative_accounts {
                         // Round the amounts down and leave the dust amount in the accumulation
                         // purse.
-                        self.mint_transfer_from_purse_to_account(
-                            accumulation_purse,
+                        self.mint_transfer_from_accumulation_purse_to_account(
                             target,
                             reward_amount,
                         )?;

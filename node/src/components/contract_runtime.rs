@@ -39,7 +39,6 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey};
 

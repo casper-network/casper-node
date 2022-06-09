@@ -162,7 +162,6 @@ impl Config {
             chainspec_raw_bytes.chainspec_bytes(),
             chainspec_raw_bytes.maybe_global_state_bytes(),
         );
-
         let upgrade_config = UpgradeConfig::new(
             *upgrade_block_header.state_root_hash(),
             upgrade_block_header.protocol_version(),

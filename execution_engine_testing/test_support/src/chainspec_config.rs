@@ -50,45 +50,6 @@ pub enum Error {
     FailedToCreateGenesisRequest,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum RefundHandlingConfig {
-    Refund { refund_ratio: Ratio<u64> },
-}
-
-impl From<RefundHandlingConfig> for RefundHandling {
-    fn from(value: RefundHandlingConfig) -> Self {
-        match value {
-            RefundHandlingConfig::Refund { refund_ratio } => {
-                RefundHandling::Refund { refund_ratio }
-            }
-        }
-    }
-}
-
-/// Fee handling config
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum FeeHandlingConfig {
-    /// Transaction fees are paid to the block proposer.
-    ///
-    /// This is the default option for public chains.
-    PayToProposer,
-    /// Transaction fees are accumulated in a special rewards purse.
-    ///
-    /// This setting makes sense for some private chains.
-    Accumulate,
-}
-
-impl From<FeeHandlingConfig> for FeeHandling {
-    fn from(value: FeeHandlingConfig) -> Self {
-        match value {
-            FeeHandlingConfig::PayToProposer => FeeHandling::PayToProposer,
-            FeeHandlingConfig::Accumulate => FeeHandling::Accumulate,
-        }
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct CoreConfig {
     /// The number of validator slots in the auction.
@@ -117,13 +78,13 @@ pub struct CoreConfig {
     pub(crate) allow_auction_bids: bool,
     /// Allows unrestricted transfers between users.
     pub(crate) allow_unrestricted_transfers: bool,
-    /// Administrative accounts are valid option for for a private chain only.
+    /// Administrative accounts are a valid option for for a private chain only.
     #[serde(default)]
     pub(crate) administrators: BTreeSet<PublicKey>,
-    // Refund handling.
-    pub(crate) refund_handling: RefundHandlingConfig,
-    // Fee handling.
-    pub(crate) fee_handling: FeeHandlingConfig,
+    /// Refund handling.
+    pub(crate) refund_handling: RefundHandling,
+    /// Fee handling.
+    pub(crate) fee_handling: FeeHandling,
 }
 
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the
@@ -177,8 +138,8 @@ impl ChainspecConfig {
             .with_round_seigniorage_rate(chainspec_config.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
-            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .with_refund_handling(chainspec_config.core_config.refund_handling)
+            .with_fee_handling(chainspec_config.core_config.fee_handling)
             .build();
         Ok(RunGenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
@@ -219,8 +180,8 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
             .with_round_seigniorage_rate(chainspec_config.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-            .with_refund_handling(chainspec_config.core_config.refund_handling.into())
-            .with_fee_handling(chainspec_config.core_config.fee_handling.into())
+            .with_refund_handling(chainspec_config.core_config.refund_handling)
+            .with_fee_handling(chainspec_config.core_config.fee_handling)
             .build())
     }
 }

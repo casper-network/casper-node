@@ -33,10 +33,10 @@ fn should_burn_the_fees_without_refund() {
 #[ignore]
 #[test]
 fn should_burn_the_fees_with_refund() {
-    let zero_refund_handling = RefundHandling::Refund {
+    let full_refund_handling = RefundHandling::Refund {
         refund_ratio: Ratio::one(),
     };
-    test_burning_fees(zero_refund_handling);
+    test_burning_fees(full_refund_handling);
 }
 
 fn test_burning_fees(refund_handling: RefundHandling) {

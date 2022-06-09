@@ -24,8 +24,7 @@ pub(crate) struct HighwayConfig {
     /// quorum, i.e. no finality.
     #[data_size(skip)]
     pub(crate) reduced_reward_multiplier: Ratio<u64>,
-    /// If set to false then consensus doesn't compute rewards and always uses 0. Default is
-    /// `true`.
+    /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub(crate) compute_rewards: bool,
 }
 

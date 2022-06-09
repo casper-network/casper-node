@@ -1239,15 +1239,11 @@ where
             }
         }
 
-        if !self.config.administrative_accounts().is_empty() {
-            match contract_package.is_contract_disabled(&contract_hash) {
-                Some(true) | None => {
-                    if !self.context.is_system_contract(&contract_hash)? {
-                        return Err(Error::DisabledContract(contract_hash));
-                    }
-                }
-                Some(false) => {}
-            }
+        if !self.config.administrative_accounts().is_empty()
+            && !contract_package.is_contract_enabled(&contract_hash)
+            && !self.context.is_system_contract(&contract_hash)?
+        {
+            return Err(Error::DisabledContract(contract_hash));
         }
 
         // if session the caller's context
@@ -1930,25 +1926,20 @@ where
     /// an admin to be able to manage its own keys. If the caller is not an administrator then the
     /// deploy has to be signed by an administrator.
     fn can_manage_keys(&self) -> bool {
-        match self
-            .config
-            .is_account_administrator(&self.context.get_caller())
-        {
-            Some(is_caller_admin) => {
-                if !is_caller_admin {
-                    // If caller is not an admin check if deploy was co-signed by admin account and
-                    // proceed
-                    return self.context.is_authorized_by_admin();
-                }
-                is_caller_admin
-            }
-            None => {
-                // Public chain
-                self.context
-                    .account()
-                    .can_manage_keys_with(self.context.authorization_keys())
-            }
+        if self.config.administrative_accounts().is_empty() {
+            // Public chain
+            return self
+                .context
+                .account()
+                .can_manage_keys_with(self.context.authorization_keys());
         }
+
+        if self.config.is_administrator(&self.context.get_caller()) {
+            return true;
+        }
+
+        // If caller is not an admin, check if deploy was co-signed by admin account.
+        self.context.is_authorized_by_admin()
     }
 
     fn add_associated_key(
@@ -2206,22 +2197,12 @@ where
 
         let target_key = Key::Account(target);
 
-        if let (false, Some(is_source_admin)) = (
-            self.config.allow_unrestricted_transfers(),
-            self.config
-                .is_account_administrator(&self.context.get_caller()),
-        ) {
-            let is_target_admin = self
-                .config
-                .is_account_administrator(&target)
-                .expect("is_account_administrator() returns Some(_) on a private chain");
-
-            if self.context.get_caller() != PublicKey::System.to_account_hash()
-                && !is_source_admin
-                && !is_target_admin
-            {
-                return Err(Error::DisabledUnrestrictedTransfers);
-            }
+        if !self.config.allow_unrestricted_transfers()
+            && self.context.get_caller() != PublicKey::System.to_account_hash()
+            && !self.config.is_administrator(&self.context.get_caller())
+            && !self.config.is_administrator(&target)
+        {
+            return Err(Error::DisabledUnrestrictedTransfers);
         }
 
         // A precondition check that verifies that the transfer can be done
