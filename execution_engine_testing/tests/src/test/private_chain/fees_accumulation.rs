@@ -1,15 +1,20 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_PROTOCOL_VERSION,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::RewardItem;
+use casper_execution_engine::core::engine_state::{
+    engine_config::FeeHandling, EngineConfigBuilder, RewardItem,
+};
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    RuntimeArgs, U512,
+    EraId, ProtocolVersion, RuntimeArgs, U512,
 };
+use once_cell::sync::Lazy;
 
 use crate::{
+    lmdb_fixture,
     test::private_chain::{
         self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, VALIDATOR_1_PUBLIC_KEY,
     },
@@ -17,6 +22,15 @@ use crate::{
 };
 
 const VALIDATOR_1_REWARD_FACTOR: u64 = 0;
+
+static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
+static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    ProtocolVersion::from_parts(
+        OLD_PROTOCOL_VERSION.value().major,
+        OLD_PROTOCOL_VERSION.value().minor,
+        OLD_PROTOCOL_VERSION.value().patch + 1,
+    )
+});
 
 #[ignore]
 #[test]
@@ -256,5 +270,103 @@ fn should_distribute_accumulated_fees_to_admins() {
     assert!(
         admin_balance_after > admin_balance_before,
         "admin balance should grow after distributing accumulated purse"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_accumulate_fees_after_upgrade() {
+    // let mut builder = super::private_chain_setup();
+    let (mut builder, _lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_4);
+
+    // Ensures default proposer didn't receive any funds
+    let proposer_account = builder
+        .get_account(*DEFAULT_PROPOSER_ADDR)
+        .expect("should have proposer account");
+
+    let proposer_balance_before = builder.get_purse_balance(proposer_account.main_purse());
+
+    // Check handle payments has rewards purse
+    let handle_payment_hash = builder.get_handle_payment_contract_hash();
+    let handle_payment_contract = builder
+        .get_contract(handle_payment_hash)
+        .expect("should have handle payment contract");
+
+    assert!(
+        handle_payment_contract
+            .named_keys()
+            .get(ACCUMULATION_PURSE_KEY)
+            .is_none(),
+        "should not have accumulation purse in a persisted state"
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_activation_point(EraId::default())
+            .build()
+    };
+
+    let engine_config = EngineConfigBuilder::default()
+        .with_fee_handling(FeeHandling::Accumulate)
+        .build();
+
+    builder
+        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
+        .expect_upgrade_success();
+    // Check handle payments has rewards purse
+    let handle_payment_hash = builder.get_handle_payment_contract_hash();
+    let handle_payment_contract = builder
+        .get_contract(handle_payment_hash)
+        .expect("should have handle payment contract");
+    let rewards_purse = handle_payment_contract
+        .named_keys()
+        .get(ACCUMULATION_PURSE_KEY)
+        .expect("should have accumulation purse")
+        .into_uref()
+        .expect("should be uref");
+
+    // At this point rewards purse balance is not zero as the `private_chain_setup` executes bunch
+    // of deploys before
+    let rewards_balance_before = builder.get_purse_balance(rewards_purse);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        wasm_utils::do_minimum_bytes(),
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let handle_payment_after = builder
+        .get_contract(handle_payment_hash)
+        .expect("should have handle payment contract");
+
+    assert_eq!(
+        handle_payment_after
+            .named_keys()
+            .get(ACCUMULATION_PURSE_KEY),
+        handle_payment_contract
+            .named_keys()
+            .get(ACCUMULATION_PURSE_KEY),
+        "keys should not change before and after deploy has been processed",
+    );
+
+    let rewards_purse = handle_payment_contract.named_keys()[ACCUMULATION_PURSE_KEY]
+        .into_uref()
+        .expect("should be uref");
+    let rewards_balance_after = builder.get_purse_balance(rewards_purse);
+    assert!(
+        rewards_balance_after > rewards_balance_before,
+        "rewards balance should increase"
+    );
+
+    let proposer_balance_after = builder.get_purse_balance(proposer_account.main_purse());
+    assert_eq!(
+        proposer_balance_before, proposer_balance_after,
+        "proposer should not receive any more funds after switching to accumulation"
     );
 }
