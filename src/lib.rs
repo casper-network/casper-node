@@ -111,11 +111,14 @@ pub(crate) mod tests {
     /// operation. It is guarded by a lock so that only complete writes are visible.
     ///
     /// Additionally, a `Plug` can be inserted into the sink. While a plug is plugged in, no data
-    /// can flow into the sink.
+    /// can flow into the sink. In a similar manner, the sink can be clogged - while it is possible
+    /// to start sending new data, it will not report being done until the clog is cleared.
     #[derive(Default, Debug)]
     pub struct TestingSink {
-        /// The engagement of the plug.
-        plug: Mutex<Plug>,
+        /// The state of the plug.
+        plug: Mutex<BlockingParticle>,
+        /// Whether or not the sink is clogged.
+        clog: Mutex<BlockingParticle>,
         /// Buffer storing all the data.
         buffer: Arc<Mutex<Vec<u8>>>,
     }
@@ -131,10 +134,23 @@ pub(crate) mod tests {
         /// Inserts or removes the plug from the sink.
         pub fn set_plugged(&self, plugged: bool) {
             let mut guard = self.plug.lock().expect("could not lock plug");
-            guard.plugged = plugged;
+            guard.engaged = plugged;
 
             // Notify any waiting tasks that there may be progress to be made.
             if !plugged {
+                if let Some(ref waker) = guard.waker {
+                    waker.wake_by_ref()
+                }
+            }
+        }
+
+        /// Inserts or removes the clog from the sink.
+        pub fn set_clogged(&self, clogged: bool) {
+            let mut guard = self.clog.lock().expect("could not lock plug");
+            guard.engaged = clogged;
+
+            // Notify any waiting tasks that there may be progress to be made.
+            if !clogged {
                 if let Some(ref waker) = guard.waker {
                     waker.wake_by_ref()
                 }
@@ -149,7 +165,18 @@ pub(crate) mod tests {
 
             // Register waker.
             guard.waker = Some(cx.waker().clone());
-            guard.plugged
+            guard.engaged
+        }
+
+        /// Determine whether the sink is clogged.
+        ///
+        /// Will update the local waker reference.
+        pub fn is_clogged(&self, cx: &mut Context<'_>) -> bool {
+            let mut guard = self.clog.lock().expect("could not lock plug");
+
+            // Register waker.
+            guard.waker = Some(cx.waker().clone());
+            guard.engaged
         }
 
         /// Returns a copy of the contents.
@@ -192,9 +219,8 @@ pub(crate) mod tests {
 
         /// Helper function for sink implementations, calling `sink_poll_flush`.
         fn sink_poll_flush(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
-            // We're always done flushing, since we write the entire item when sending. Still, we
-            // use this as an opportunity to plug if necessary.
-            if self.is_plugged(cx) {
+            // We're always done storing the data, but we pretend we need to do more if clogged.
+            if self.is_clogged(cx) {
                 Poll::Pending
             } else {
                 Poll::Ready(Ok(()))
@@ -208,12 +234,12 @@ pub(crate) mod tests {
         }
     }
 
-    /// A plug inserted into the sink.
+    /// A plug/clog inserted into the sink.
     #[derive(Debug, Default)]
-    struct Plug {
-        /// Whether or not the plug is engaged.
-        plugged: bool,
-        /// The waker of the last task to access the plug. Will be called when unplugging.
+    struct BlockingParticle {
+        /// Whether or not the blocking particle is engaged.
+        engaged: bool,
+        /// The waker of the last task to access the plug. Will be called when removing.
         waker: Option<Waker>,
     }
 
@@ -284,6 +310,25 @@ pub(crate) mod tests {
         assert!(second_send.now_or_never().is_some());
         assert!(sink_handle.send(&b"third"[..]).now_or_never().is_some());
         assert_eq!(sink.get_contents(), b"secondthird");
+    }
+
+    #[test]
+    fn clog_blocks_sink_completion() {
+        let sink = TestingSink::new();
+        let mut sink_handle = &sink;
+
+        sink.set_clogged(true);
+
+        // The sink is clogged, so sending should fail to complete, but it is written.
+        assert!(sink_handle.send(&b"first"[..]).now_or_never().is_none());
+        assert_eq!(sink.get_contents(), b"first");
+
+        // Now stuff more data into the sink.
+        let second_send = sink_handle.send(&b"second"[..]);
+        sink.set_clogged(false);
+        assert!(second_send.now_or_never().is_some());
+        assert!(sink_handle.send(&b"third"[..]).now_or_never().is_some());
+        assert_eq!(sink.get_contents(), b"firstsecondthird");
     }
 
     #[tokio::test]
