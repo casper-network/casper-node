@@ -7,24 +7,23 @@ use crate::error::Error;
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
-#[cfg(test)]
-const BUFFER_SIZE: usize = 8;
-#[cfg(not(test))]
-const BUFFER_SIZE: usize = 1024;
 
 /// A reader that decodes the incoming stream of the length delimited frames
 /// into separate frames.
 pub(crate) struct FrameReader<R: AsyncRead> {
     stream: R,
     buffer: BytesMut,
+    // How many bytes to poll at once from the stream.
+    bytes_to_poll: u16,
 }
 
 impl<R: AsyncRead> FrameReader<R> {
     #[cfg(test)]
-    pub(crate) fn new(stream: R) -> Self {
+    pub(crate) fn new(stream: R, bytes_to_poll: u16) -> Self {
         Self {
             stream,
             buffer: BytesMut::new(),
+            bytes_to_poll,
         }
     }
 }
@@ -61,7 +60,6 @@ where
     // TODO: Ultimately, this should become Result<Bytes>.
     type Item = Bytes;
 
-    // TODO: Add UTs for all paths
     fn poll_next(
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -69,13 +67,14 @@ where
         let FrameReader {
             ref mut stream,
             ref mut buffer,
+            bytes_to_poll,
         } = self.get_mut();
         loop {
             match length_delimited_frame(buffer) {
                 Ok(Some(frame)) => return Poll::Ready(Some(frame.freeze())),
                 Ok(None) => {
                     let start = buffer.len();
-                    let end = start + BUFFER_SIZE;
+                    let end = start + *bytes_to_poll as usize;
                     buffer.resize(end, 0x00);
 
                     match Pin::new(&mut *stream).poll_read(cx, &mut buffer[start..end]) {
@@ -105,6 +104,11 @@ mod tests {
 
     use super::length_delimited_frame;
 
+    // In tests use small value so that we make sure that
+    // we correctly merge data that was polled from
+    // the stream in small chunks.
+    const BYTES_TO_POLL: u16 = 4;
+
     #[test]
     fn produces_fragments_from_stream() {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x02\x00\xffM"[..];
@@ -115,7 +119,7 @@ mod tests {
             b"\xffM".to_vec(),
         ];
 
-        let defragmentizer = FrameReader::new(stream);
+        let defragmentizer = FrameReader::new(stream, BYTES_TO_POLL);
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);

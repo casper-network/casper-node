@@ -80,6 +80,11 @@ pub(crate) mod tests {
         length_prefixed::frame_add_length_prefix,
     };
 
+    // In tests use small value so that we make sure that
+    // we correctly merge data that was polled from
+    // the stream in small chunks.
+    const BYTES_TO_POLL: u16 = 4;
+
     /// Collects everything inside a `Buf` into a `Vec`.
     pub fn collect_buf<B: Buf>(buf: B) -> Vec<u8> {
         let mut vec = Vec::new();
@@ -125,7 +130,7 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
         let expected = "ABCDEFGHIJKL";
 
-        let defragmentizer = make_defragmentizer(FrameReader::new(stream));
+        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BYTES_TO_POLL));
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(
@@ -139,7 +144,7 @@ pub(crate) mod tests {
         let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
         let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
 
-        let defragmentizer = make_defragmentizer(FrameReader::new(stream));
+        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BYTES_TO_POLL));
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
