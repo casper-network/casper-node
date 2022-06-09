@@ -1114,7 +1114,7 @@ impl Item for BlockHeaderWithMetadata {
     }
 }
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-/// ID idenfitifying a request for a batch of block headers.
+/// ID identifying a request for a batch of block headers.
 pub struct BlockHeadersBatchId {
     pub highest: u64,
     pub lowest: u64,
@@ -1124,6 +1124,7 @@ impl BlockHeadersBatchId {
     pub fn new(highest: u64, lowest: u64) -> Self {
         Self { highest, lowest }
     }
+
     pub fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
         let highest = lowest_known_block_header.height().saturating_sub(1);
         let lowest = lowest_known_block_header
@@ -1139,7 +1140,7 @@ impl BlockHeadersBatchId {
         (self.lowest..=self.highest).rev()
     }
 
-    /// Returns a length of the batch.
+    /// Returns the length of the batch.
     pub fn len(&self) -> u64 {
         self.highest + 1 - self.lowest
     }
@@ -1163,7 +1164,7 @@ impl BlockHeadersBatch {
     pub(crate) fn validate(
         &self,
         batch_id: &BlockHeadersBatchId,
-        latest_known: &BlockHeader,
+        earliest_known: &BlockHeader,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<BlockHeader, BlockHeadersBatchValidationError> {
         let highest_header = self
@@ -1180,9 +1181,9 @@ impl BlockHeadersBatch {
 
         // Check first header first b/c it's cheaper than verifying continuity.
         let highest_hash = highest_header.hash(verifiable_chunked_hash_activation);
-        if &highest_hash != latest_known.parent_hash() {
+        if &highest_hash != earliest_known.parent_hash() {
             return Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
-                expected: *latest_known.parent_hash(),
+                expected: *earliest_known.parent_hash(),
                 got: highest_hash,
             });
         }
@@ -1208,7 +1209,11 @@ impl BlockHeadersBatch {
         match batch.first() {
             Some(highest) => {
                 if highest.height() != requested_id.highest {
-                    error!(expected_highest=?requested_id.highest, got_highest=?highest, "unexpected highest block header");
+                    error!(
+                        expected_highest=?requested_id.highest,
+                        got_highest=?highest,
+                        "unexpected highest block header"
+                    );
                     return None;
                 }
             }
@@ -1221,7 +1226,11 @@ impl BlockHeadersBatch {
         match batch.last() {
             Some(lowest) => {
                 if lowest.height() != requested_id.lowest {
-                    error!(expected_lowest=?requested_id.lowest, got_lowest=?lowest, "unexpected lowest block header");
+                    error!(
+                        expected_lowest=?requested_id.lowest,
+                        got_lowest=?lowest,
+                        "unexpected lowest block header"
+                    );
                     return None;
                 }
             }
@@ -1267,7 +1276,7 @@ impl BlockHeadersBatch {
     }
 
     #[cfg(test)]
-    // Test-only constructor allowing creation otherwise invalid data.
+    // Test-only constructor allowing creation of otherwise invalid data.
     fn new(batch: Vec<BlockHeader>) -> Self {
         Self(batch)
     }
