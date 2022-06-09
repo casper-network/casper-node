@@ -83,7 +83,7 @@ fee_handling = { type = 'accumulate' }
 # Administrator accounts as an array of hex-formatted account hashes.
 #
 # The system account is an administrator account.
-administrators = ["account-hash-6174cf2e6f8fed1715c9a3bace9c50bfe572eecb763b0ed3f644532616452008"]
+administrators = ["00"]
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
