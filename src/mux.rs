@@ -217,6 +217,8 @@ mod tests {
     use bytes::Bytes;
     use futures::{FutureExt, SinkExt};
 
+    use crate::{error::Error, tests::collect_bufs};
+
     use super::{ChannelPrefixedFrame, Multiplexer};
 
     // TODO: Test lock future assertions.
@@ -237,5 +239,30 @@ mod tests {
             .send(Bytes::from(&b"World"[..]))
             .now_or_never()
             .is_some());
+
+        let output = collect_bufs(muxer.into_inner());
+        assert_eq!(output, b"\x01Hello\x00World")
+    }
+
+    #[test]
+    fn into_inner_invalidates_handles() {
+        let output: Vec<ChannelPrefixedFrame<Bytes>> = Vec::new();
+        let muxer = Multiplexer::new(output);
+
+        let mut chan_0 = muxer.create_channel_handle(0);
+
+        assert!(chan_0
+            .send(Bytes::from(&b"Sample"[..]))
+            .now_or_never()
+            .is_some());
+
+        muxer.into_inner();
+
+        let outcome = chan_0
+            .send(Bytes::from(&b"Seceond"[..]))
+            .now_or_never()
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(outcome, Error::MultplexerClosed));
     }
 }

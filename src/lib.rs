@@ -87,6 +87,17 @@ pub(crate) mod tests {
         vec
     }
 
+    /// Collects the contents of multiple `Buf`s into a single flattened `Vec`.
+    pub fn collect_bufs<B: Buf, I: IntoIterator<Item = B>>(items: I) -> Vec<u8> {
+        let mut vec = Vec::new();
+        for buf in items.into_iter() {
+            buf.reader()
+                .read_to_end(&mut vec)
+                .expect("reading buf should never fail");
+        }
+        vec
+    }
+
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
     fn chunked_length_prefixed_sink() {
