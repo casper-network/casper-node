@@ -93,23 +93,33 @@ fn run_test_case(
 
     let account_balance_before = builder.get_purse_balance(account.main_purse());
 
-    builder.exec(do_minimum_request).expect_failure().commit();
+    let empty_wasm_in_payment = match deploy_bytes {
+        DeployBytes::Payment => input_wasm_bytes.is_empty(),
+        DeployBytes::Session => false,
+    };
 
-    let actual_error = builder.get_error().expect("should have error").to_string();
-    dbg!(&actual_error);
-    assert!(actual_error.contains(expected_error_message));
+    if empty_wasm_in_payment {
+        // Special case: We expect success, since default payment will be used instead.
+        builder.exec(do_minimum_request).expect_success().commit();
+    } else {
+        builder.exec(do_minimum_request).expect_failure().commit();
 
-    let gas = builder.last_exec_gas_cost();
-    assert_eq!(gas, Gas::zero());
+        let actual_error = builder.get_error().expect("should have error").to_string();
+        dbg!(&actual_error);
+        assert!(actual_error.contains(expected_error_message));
 
-    let account_balance_after = builder.get_purse_balance(account.main_purse());
-    let proposer_balance_after = builder.get_proposer_purse_balance();
+        let gas = builder.last_exec_gas_cost();
+        assert_eq!(gas, Gas::zero());
 
-    assert_eq!(account_balance_before - *MAX_PAYMENT, account_balance_after);
-    assert_eq!(
-        proposer_balance_before + *MAX_PAYMENT,
-        proposer_balance_after
-    );
+        let account_balance_after = builder.get_purse_balance(account.main_purse());
+        let proposer_balance_after = builder.get_proposer_purse_balance();
+
+        assert_eq!(account_balance_before - *MAX_PAYMENT, account_balance_after);
+        assert_eq!(
+            proposer_balance_before + *MAX_PAYMENT,
+            proposer_balance_after
+        );
+    }
 }
 
 #[ignore]
@@ -158,20 +168,19 @@ fn should_charge_session_with_incorrect_wasm_files() {
     // 1. Wasm that doesn't have "call" function    - tested in `regression_20210924`
     // 2. Wasm with unsupported "start" section     - tested in `ee_890` (but without asserting the charge)
 
-    let test_cases: &[TestCase; 4] = {
+    let test_cases: &[TestCase; 5] = {
         &[
             TestCase::new(
                 "Invalid magic number".to_string(),
                 WASM_BYTES_INVALID_MAGIC_NUMBER,
                 "Wasm preprocessing error: Deserialization error: Invalid magic number at start of file".to_string(),
             ),
-            // TestCase::new(
-            //     "WASM_BYTES_EMPTY".to_string(),
-            //     WASM_BYTES_EMPTY,
-            //     "Insufficient payment".to_string(),
-            //     "Wasm preprocessing error: Deserialization error: I/O Error: UnexpectedEof"
-            //         .to_string(),
-            // ),
+            TestCase::new(
+                "Empty bytes".to_string(),
+                WASM_BYTES_EMPTY,
+                "Wasm preprocessing error: Deserialization error: I/O Error: UnexpectedEof"
+                    .to_string(),
+            ),
             TestCase::new(
                 "Valid magic number but incomplete bytes".to_string(),
                 WASM_BYTES_INVALID_BUT_WITH_CORRECT_MAGIC_NUMBER,
