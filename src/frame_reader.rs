@@ -103,9 +103,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use bytes::{Buf, BufMut, BytesMut};
     use futures::{FutureExt, StreamExt};
 
     use crate::frame_reader::FrameReader;
+
+    use super::length_delimited_frame;
 
     #[test]
     fn produces_fragments_from_stream() {
@@ -121,5 +124,76 @@ mod tests {
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame() {
+        let mut stream = BytesMut::from(&b"\x05\x00ABCDE\x05\x00FGHIJ\x02\x00KL\x01\x00M"[..]);
+        let frame = length_delimited_frame(&mut stream).unwrap().unwrap();
+
+        assert_eq!(frame, "ABCDE");
+        assert_eq!(stream, b"\x05\x00FGHIJ\x02\x00KL\x01\x00M"[..]);
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame_single_frame() {
+        let mut stream = BytesMut::from(&b"\x01\x00X"[..]);
+        let frame = length_delimited_frame(&mut stream).unwrap().unwrap();
+
+        assert_eq!(frame, "X");
+        assert!(stream.is_empty());
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame_empty_buffer() {
+        let mut stream = BytesMut::from(&b""[..]);
+        let frame = length_delimited_frame(&mut stream).unwrap();
+
+        assert!(frame.is_none());
+        assert!(stream.is_empty());
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame_incomplete_length_in_buffer() {
+        let mut stream = BytesMut::from(&b"A"[..]);
+        let frame = length_delimited_frame(&mut stream).unwrap();
+
+        assert!(frame.is_none());
+        assert_eq!(stream, b"A"[..]);
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame_incomplete_data_in_buffer() {
+        let mut stream = BytesMut::from(&b"\xff\xffABCD"[..]);
+        let frame = length_delimited_frame(&mut stream).unwrap();
+
+        assert!(frame.is_none());
+        assert_eq!(stream, b"\xff\xffABCD"[..]);
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame_only_length_in_buffer() {
+        let mut stream = BytesMut::from(&b"\xff\xff"[..]);
+        let frame = length_delimited_frame(&mut stream).unwrap();
+
+        assert!(frame.is_none());
+        assert_eq!(stream, b"\xff\xff"[..]);
+    }
+
+    #[test]
+    fn extracts_length_delimited_frame_max_size() {
+        let mut stream = BytesMut::from(&b"\xff\xff"[..]);
+        for _ in 0..u16::MAX {
+            stream.put_u8(50);
+        }
+        let mut frame = length_delimited_frame(&mut stream).unwrap().unwrap();
+
+        assert_eq!(frame.remaining(), u16::MAX as usize);
+        for _ in 0..u16::MAX {
+            let byte = frame.get_u8();
+            assert_eq!(byte, 50);
+        }
+
+        assert!(stream.is_empty());
     }
 }
