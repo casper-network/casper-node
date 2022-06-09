@@ -11,6 +11,8 @@ const BUFFER_SIZE: usize = 8;
 #[cfg(not(test))]
 const BUFFER_SIZE: usize = 1024;
 
+/// A reader that decodes the incoming stream of the length delimited frames
+/// into separate frames.
 pub(crate) struct FrameReader<R: AsyncRead> {
     stream: R,
     buffer: BytesMut,
@@ -26,6 +28,8 @@ impl<R: AsyncRead> FrameReader<R> {
     }
 }
 
+// Checks if the specified buffer contains a frame.
+// If yes, it is removed from the buffer and returned.
 fn length_delimited_frame(buffer: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
     let bytes_in_buffer = buffer.remaining();
     if bytes_in_buffer < LENGTH_MARKER_SIZE {
@@ -112,9 +116,9 @@ mod tests {
             b"\xffM".to_vec(),
         ];
 
-        let dechunker = FrameReader::new(stream);
+        let defragmentizer = FrameReader::new(stream);
 
-        let messages: Vec<_> = dechunker.collect().now_or_never().unwrap();
+        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
     }
 }

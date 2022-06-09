@@ -17,10 +17,10 @@ use crate::{error::Error, ImmediateFrame};
 pub type SingleChunk = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
 /// Indicator that more chunks are following.
-pub const MORE_CHUNKS: u8 = 0x00;
+const MORE_CHUNKS: u8 = 0x00;
 
 /// Final chunk indicator.
-pub const FINAL_CHUNK: u8 = 0xFF;
+const FINAL_CHUNK: u8 = 0xFF;
 
 /// Chunks a frame into ready-to-send chunks.
 ///
@@ -48,6 +48,8 @@ pub fn chunk_frame<B: Buf>(
     }))
 }
 
+/// Generates the "fragmentizer", i.e: an object that when given the source stream of bytes will yield single chunks.
+#[allow(unused)]
 pub(crate) fn make_fragmentizer<S, E>(source: S) -> impl Sink<Bytes, Error = Error<E>>
 where
     E: std::error::Error,
@@ -59,6 +61,8 @@ where
     })
 }
 
+/// Generates the "defragmentizer", i.e.: an object that when given the source stream of fragments will yield the entire message.
+#[allow(unused)]
 pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl Stream<Item = Bytes> {
     let mut buffer = vec![];
     source.filter_map(move |mut fragment| {

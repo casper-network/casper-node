@@ -75,9 +75,9 @@ pub(crate) mod tests {
     use tokio_util::sync::PollSender;
 
     use crate::{
-        chunked::{make_defragmentizer, make_fragmentizer, SingleChunk},
+        chunked::{make_defragmentizer, make_fragmentizer},
         frame_reader::FrameReader,
-        length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
+        length_prefixed::frame_add_length_prefix,
     };
 
     /// Collects everything inside a `Buf` into a `Vec`.
