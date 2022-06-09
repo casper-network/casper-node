@@ -13,17 +13,17 @@ const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 pub(crate) struct FrameReader<R: AsyncRead> {
     stream: R,
     buffer: BytesMut,
-    // How many bytes to poll at once from the stream.
-    bytes_to_poll: u16,
+    // How much to grow the buffer when reading from the stream.
+    buffer_increment: u16,
 }
 
 impl<R: AsyncRead> FrameReader<R> {
     #[cfg(test)]
-    pub(crate) fn new(stream: R, bytes_to_poll: u16) -> Self {
+    pub(crate) fn new(stream: R, buffer_increment: u16) -> Self {
         Self {
             stream,
             buffer: BytesMut::new(),
-            bytes_to_poll,
+            buffer_increment,
         }
     }
 }
@@ -67,14 +67,14 @@ where
         let FrameReader {
             ref mut stream,
             ref mut buffer,
-            bytes_to_poll,
+            buffer_increment,
         } = self.get_mut();
         loop {
             match length_delimited_frame(buffer) {
                 Ok(Some(frame)) => return Poll::Ready(Some(frame.freeze())),
                 Ok(None) => {
                     let start = buffer.len();
-                    let end = start + *bytes_to_poll as usize;
+                    let end = start + *buffer_increment as usize;
                     buffer.resize(end, 0x00);
 
                     match Pin::new(&mut *stream).poll_read(cx, &mut buffer[start..end]) {
@@ -107,7 +107,7 @@ mod tests {
     // In tests use small value so that we make sure that
     // we correctly merge data that was polled from
     // the stream in small chunks.
-    const BYTES_TO_POLL: u16 = 4;
+    const BUFFER_INCREMENT: u16 = 4;
 
     #[test]
     fn produces_fragments_from_stream() {
@@ -119,7 +119,7 @@ mod tests {
             b"\xffM".to_vec(),
         ];
 
-        let defragmentizer = FrameReader::new(stream, BYTES_TO_POLL);
+        let defragmentizer = FrameReader::new(stream, BUFFER_INCREMENT);
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
