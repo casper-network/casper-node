@@ -112,7 +112,7 @@ pub(crate) mod tests {
     /// Additionally, a `Plug` can be inserted into the sink. While a plug is plugged in, no data
     /// can flow into the sink.
     #[derive(Default, Debug)]
-    struct TestingSink {
+    pub struct TestingSink {
         /// The engagement of the plug.
         plug: Mutex<Plug>,
         /// Buffer storing all the data.
