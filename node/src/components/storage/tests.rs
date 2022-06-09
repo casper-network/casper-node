@@ -1834,7 +1834,7 @@ fn should_update_lowest_available_block_height_when_not_stored() {
         let (mut block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
         storage
             .storage
-            .write_block(&block.disable_switch_block(verifiable_chunked_hash_activation))
+            .write_block(block.disable_switch_block(verifiable_chunked_hash_activation))
             .unwrap();
         storage
             .storage
