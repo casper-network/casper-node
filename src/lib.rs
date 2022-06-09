@@ -111,7 +111,7 @@ pub(crate) mod tests {
     ///
     /// Additionally, a `Plug` can be inserted into the sink. While a plug is plugged in, no data
     /// can flow into the sink.
-    #[derive(Debug)]
+    #[derive(Default, Debug)]
     struct TestingSink {
         /// The engagement of the plug.
         plug: Mutex<Plug>,
@@ -120,6 +120,13 @@ pub(crate) mod tests {
     }
 
     impl TestingSink {
+        /// Creates a new testing sink.
+        ///
+        /// The sink will initially be unplugged.
+        pub fn new() -> Self {
+            TestingSink::default()
+        }
+
         /// Inserts or removes the plug from the sink.
         pub fn set_plugged(&self, plugged: bool) {
             let mut guard = self.plug.lock().expect("could not lock plug");
@@ -127,36 +134,35 @@ pub(crate) mod tests {
 
             // Notify any waiting tasks that there may be progress to be made.
             if !plugged {
-                // TODO: Write test that should fail because this line is absent first.
-                // guard.waker.wake_by_ref()
+                if let Some(ref waker) = guard.waker {
+                    waker.wake_by_ref()
+                }
             }
         }
 
         /// Determine whether the sink is plugged.
         ///
         /// Will update the local waker reference.
-        fn is_plugged(&self, cx: &mut Context<'_>) -> bool {
+        pub fn is_plugged(&self, cx: &mut Context<'_>) -> bool {
             let mut guard = self.plug.lock().expect("could not lock plug");
 
             // Register waker.
-            guard.waker = cx.waker().clone();
+            guard.waker = Some(cx.waker().clone());
             guard.plugged
         }
-    }
 
-    /// A plug inserted into the sink.
-    #[derive(Debug)]
-    struct Plug {
-        /// Whether or not the plug is engaged.
-        plugged: bool,
-        /// The waker of the last task to access the plug. Will be called when unplugging.
-        waker: Waker,
-    }
+        /// Returns a copy of the contents.
+        pub fn get_contents(&self) -> Vec<u8> {
+            Vec::clone(
+                &self
+                    .buffer
+                    .lock()
+                    .expect("could not lock test sink for copying"),
+            )
+        }
 
-    impl<F: Buf> Sink<F> for &TestingSink {
-        type Error = Infallible;
-
-        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        /// Helper function for sink implementations, calling `poll_ready`.
+        fn sink_poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
             if self.is_plugged(cx) {
                 Poll::Pending
             } else {
@@ -164,7 +170,8 @@ pub(crate) mod tests {
             }
         }
 
-        fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+        /// Helper function for sink implementations, calling `start_end`.
+        fn sink_start_send<F: Buf>(&self, item: F) -> Result<(), Infallible> {
             let mut guard = self.buffer.lock().expect("could not lock buffer");
 
             item.reader()
@@ -174,7 +181,7 @@ pub(crate) mod tests {
             Ok(())
         }
 
-        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        fn sink_poll_flush(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
             // We're always done flushing, since we write the entire item when sending. Still, we
             // use this as an opportunity to plug if necessary.
             if self.is_plugged(cx) {
@@ -184,10 +191,99 @@ pub(crate) mod tests {
             }
         }
 
-        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        fn sink_poll_close(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
             // Nothing to close, so this is essentially the same as flushing.
-            Sink::<F>::poll_flush(self, cx)
+            self.sink_poll_flush(cx)
         }
+    }
+
+    /// A plug inserted into the sink.
+    #[derive(Debug, Default)]
+    struct Plug {
+        /// Whether or not the plug is engaged.
+        plugged: bool,
+        /// The waker of the last task to access the plug. Will be called when unplugging.
+        waker: Option<Waker>,
+    }
+
+    impl<F: Buf> Sink<F> for TestingSink {
+        type Error = Infallible;
+
+        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.sink_poll_ready(cx)
+        }
+
+        fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+            self.sink_start_send(item)
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.sink_poll_flush(cx)
+        }
+
+        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.sink_poll_close(cx)
+        }
+    }
+
+    impl<F: Buf> Sink<F> for &TestingSink {
+        type Error = Infallible;
+
+        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.sink_poll_ready(cx)
+        }
+
+        fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+            self.sink_start_send(item)
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.sink_poll_flush(cx)
+        }
+
+        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.sink_poll_close(cx)
+        }
+    }
+
+    #[test]
+    fn plug_blocks_sink() {
+        let sink = TestingSink::new();
+        let mut sink_handle = &sink;
+
+        sink.set_plugged(true);
+
+        // The sink is plugged, so sending should fail. We also drop the future, causing the value
+        // to be discarded.
+        assert!(sink_handle.send(&b"dummy"[..]).now_or_never().is_none());
+        assert!(sink.get_contents().is_empty());
+
+        // Now stuff more data into the sink.
+        let second_send = sink_handle.send(&b"second"[..]);
+        sink.set_plugged(false);
+        assert!(second_send.now_or_never().is_some());
+        assert!(sink_handle.send(&b"third"[..]).now_or_never().is_some());
+        assert_eq!(sink.get_contents(), b"secondthird");
+    }
+
+    #[tokio::test]
+    async fn ensure_sink_wakes_up_after_plugging_in() {
+        let sink = Arc::new(TestingSink::new());
+
+        sink.set_plugged(true);
+
+        let sink_alt = sink.clone();
+
+        let join_handle = tokio::spawn(async move {
+            sink_alt.as_ref().send(&b"sample"[..]).await.unwrap();
+        });
+
+        tokio::task::yield_now().await;
+        sink.set_plugged(false);
+
+        // This will block forever if the other task is not woken up. To verify, comment out the
+        // `Waker::wake_by_ref` call in the sink implementation.
+        join_handle.await.unwrap();
     }
 
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
