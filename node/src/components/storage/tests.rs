@@ -1196,7 +1196,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         thread::spawn(move || {
             let mut harness = ComponentHarness::default();
 
-            let (block, verifiable_chunked_hash_activation) =
+            let (mut block, verifiable_chunked_hash_activation) =
                 random_block_at_height(&mut harness.rng, 42, block_generator);
 
             let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
@@ -1205,7 +1205,15 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
             let deploy = Deploy::random(&mut harness.rng);
             let execution_result: ExecutionResult = harness.rng.gen();
             put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
-            put_block(&mut harness, &mut storage, block.clone());
+            put_block(
+                &mut harness,
+                &mut storage,
+                Box::new(
+                    block
+                        .disable_switch_block(verifiable_chunked_hash_activation)
+                        .clone(),
+                ),
+            );
             let mut execution_results = HashMap::new();
             execution_results.insert(*deploy.id(), execution_result.clone());
             put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
@@ -1794,8 +1802,10 @@ fn should_update_lowest_available_block_height_when_not_stored() {
         );
 
         // Store a block at height 100 and update.  Should update the range.
-        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
-        storage.write_block(&block).unwrap();
+        let (mut block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
+        storage
+            .write_block(block.disable_switch_block(verifiable_chunked_hash_activation))
+            .unwrap();
         storage
             .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
