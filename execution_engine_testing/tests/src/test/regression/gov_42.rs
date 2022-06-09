@@ -133,16 +133,6 @@ fn should_charge_session_with_incorrect_wasm_files() {
     // For increased security, we also test some other cases in this test
     // like gas overflow (which is a runtime error).
 
-    // TODO:
-    // Introduce proper layers in wasm execution, for example:
-    // Layer 1. Parse (may throw errors related to malformed wasm bytes)
-
-    // Layer 2. Validation (may throw errors for parseable, but unsupported wasm files, for example,
-    // without memory section)
-
-    // Layer 3. Execution (may throw errors strictly related to
-    // execution for example, stack overflow)
-
     const WASM_BYTES_INVALID_MAGIC_NUMBER: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
 
     const WASM_BYTES_EMPTY: &[u8] = &[];
