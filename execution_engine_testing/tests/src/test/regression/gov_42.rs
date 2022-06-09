@@ -14,24 +14,17 @@ use crate::{
 const ARG_AMOUNT: &str = "amount";
 
 struct TestCase<'a> {
-    pub id: String,
+    pub name: String,
     pub input_wasm_bytes: &'a [u8],
-    pub expected_error_payment: String,
-    pub expected_error_session: String,
+    pub expected_error: String,
 }
 
 impl<'a> TestCase<'a> {
-    fn new(
-        id: String,
-        input_wasm_bytes: &'a [u8],
-        expected_error_payment: String,
-        expected_error_session: String,
-    ) -> Self {
+    fn new(name: String, input_wasm_bytes: &'a [u8], expected_error: String) -> Self {
         Self {
-            id,
+            name,
             input_wasm_bytes,
-            expected_error_payment,
-            expected_error_session,
+            expected_error,
         }
     }
 }
@@ -44,15 +37,13 @@ enum DeployBytes {
 
 fn run_test_case(
     TestCase {
-        id,
+        name,
         input_wasm_bytes,
-        expected_error_payment,
-        expected_error_session,
+        expected_error,
     }: &TestCase,
     deploy_bytes: DeployBytes,
 ) {
-    dbg!(&id);
-    dbg!(&deploy_bytes);
+    println!("Running test case '{}' in {:?}", name, deploy_bytes);
 
     let payment_amount = *DEFAULT_PAYMENT;
 
@@ -71,13 +62,13 @@ fn run_test_case(
                         runtime_args! {ARG_AMOUNT => U512::from(payment_amount),},
                     )
                     .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
-                expected_error_payment,
+                expected_error,
             ),
             DeployBytes::Session => (
                 DeployItemBuilder::new()
                     .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
                     .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => payment_amount,}),
-                expected_error_session,
+                expected_error,
             ),
         };
         let deploy = deploy_item_builder
@@ -138,10 +129,8 @@ fn should_charge_session_with_incorrect_wasm_files() {
     // TODO:
     // Introduce proper layers in wasm execution, for example:
     // Layer 1. Parse (may throw errors related to malformed wasm bytes)
-    // Layer 2. Validation (may throw errors for parseable, but unsupported
-    //             wasm files, for example, without memory session)
-    // Layer 3. Execution (may throw errors strictly related to execution
-    //             for example, stack overflow)
+    // Layer 2. Validation (may throw errors for parseable, but unsupported wasm files, for example, without memory section)
+    // Layer 3. Execution (may throw errors strictly related to execution for example, stack overflow)
 
     const WASM_BYTES_INVALID_MAGIC_NUMBER: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
 
@@ -172,9 +161,8 @@ fn should_charge_session_with_incorrect_wasm_files() {
     let test_cases: &[TestCase; 4] = {
         &[
             TestCase::new(
-                "WASM_BYTES_INVALID_MAGIC_NUMBER".to_string(),
+                "Invalid magic number".to_string(),
                 WASM_BYTES_INVALID_MAGIC_NUMBER,
-                "Wasm preprocessing error: Deserialization error: Invalid magic number at start of file".to_string(),
                 "Wasm preprocessing error: Deserialization error: Invalid magic number at start of file".to_string(),
             ),
             // TestCase::new(
@@ -185,21 +173,18 @@ fn should_charge_session_with_incorrect_wasm_files() {
             //         .to_string(),
             // ),
             TestCase::new(
-                "WASM_BYTES_INVALID_BUT_WITH_CORRECT_MAGIC_NUMBER".to_string(),
+                "Valid magic number but incomplete bytes".to_string(),
                 WASM_BYTES_INVALID_BUT_WITH_CORRECT_MAGIC_NUMBER,
                 "I/O Error: UnexpectedEof".to_string(),
-                "I/O Error: UnexpectedEof".to_string()
             ),
             TestCase::new(
-                "wasm_bytes_gas_overflow".to_string(),
+                "Gas overflow".to_string(),
                 wasm_bytes_gas_overflow.as_slice(),
                 "Wasm preprocessing error: Encountered operation forbidden by gas rules. Consult instruction -> metering config map".to_string(),
-                "Wasm preprocessing error: Encountered operation forbidden by gas rules. Consult instruction -> metering config map".to_string(),
             ),
             TestCase::new(
-                "wasm_bytes_no_memory_section".to_string(),
+                "Wasm w/o memory section".to_string(),
                 wasm_bytes_no_memory_section.as_slice(),
-                "Memory section should exist".to_string(),
                 "Memory section should exist".to_string(),
             ),
         ]
