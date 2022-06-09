@@ -6,20 +6,18 @@ use casper_types::{
     crypto,
     system::{
         auction::{Bid, EraInfo, Error, UnbondingPurse},
-        handle_payment, mint,
+        mint,
     },
-    CLTyped, CLValue, Contract, EraId, GrantedAccess, Key, KeyTag, PublicKey, RuntimeArgs,
-    StoredValue, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
+    BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;
 use crate::{
-    core::{engine_state::engine_config::FeeHandling, execution},
+    core::execution,
     storage::global_state::StateReader,
     system::auction::{
-        providers::{
-            AccountProvider, HandlePaymentProvider, MintProvider, RuntimeProvider, StorageProvider,
-        },
+        providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider},
         Auction,
     },
 };
@@ -141,14 +139,6 @@ where
 
     fn allow_auction_bids(&self) -> bool {
         self.config.allow_auction_bids()
-    }
-
-    fn fee_handling(&self) -> FeeHandling {
-        self.config.fee_handling()
-    }
-
-    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
-        self.config.administrative_accounts()
     }
 }
 
@@ -297,40 +287,6 @@ where
         self.mint_reduce_total_supply(mint_contract, amount)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))
     }
-
-    fn mint_transfer_from_accumulation_purse_to_account(
-        &mut self,
-        target: AccountHash,
-        amount: U512,
-    ) -> Result<(), Error> {
-        let accumulation_purse = self.get_accumulation_purse()?;
-        let granted_access = self.context.grant_access(accumulation_purse);
-
-        let result = Runtime::transfer_from_purse_to_account_hash(
-            self,
-            accumulation_purse,
-            target,
-            amount,
-            None,
-        )
-        .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
-
-        // Remove from caller temporarily granted ADD access on source.
-        if let GrantedAccess::Granted {
-            uref_addr,
-            newly_granted_access_rights,
-        } = granted_access
-        {
-            self.context
-                .remove_access(uref_addr, newly_granted_access_rights)
-        }
-
-        match result? {
-            Ok(TransferredTo::ExistingAccount) => Ok(()),
-            Ok(TransferredTo::NewAccount) => Ok(()),
-            Err(_error) => Err(Error::TransferToAdministrator),
-        }
-    }
 }
 
 impl<'a, R> AccountProvider for Runtime<'a, R>
@@ -344,30 +300,6 @@ where
         // WASM contract, and purses are going to be removed anytime soon, we're making this
         // exception here.
         Ok(Runtime::context(self).account().main_purse())
-    }
-}
-
-impl<'a, R> HandlePaymentProvider for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-    fn get_accumulation_purse(&mut self) -> Result<URef, Error> {
-        let handle_payment_hash = self
-            .get_handle_payment_contract()
-            .map_err(|_| Error::GetAccumulationPurse)?;
-        let handle_payment: Contract = self
-            .context
-            .read_gs_typed(&Key::Hash(handle_payment_hash.value()))
-            .map_err(|_| Error::CLValue)?;
-        let accumulation_purse_key = handle_payment
-            .named_keys()
-            .get(handle_payment::ACCUMULATION_PURSE_KEY)
-            .ok_or(Error::MissingKey)?;
-        let accumulation_purse = accumulation_purse_key
-            .as_uref()
-            .ok_or(Error::InvalidKeyVariant)?;
-        Ok(*accumulation_purse)
     }
 }
 

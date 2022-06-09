@@ -10,8 +10,6 @@ use casper_types::{
     CLTyped, EraId, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
-use crate::core::engine_state::engine_config::FeeHandling;
-
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
@@ -31,12 +29,6 @@ pub trait RuntimeProvider {
 
     /// Check if auction bids are allowed.
     fn allow_auction_bids(&self) -> bool;
-
-    /// Returns [`FeeHandling`] setting.
-    fn fee_handling(&self) -> FeeHandling;
-
-    /// Returns list of administrative accounts.
-    fn administrative_accounts(&self) -> &BTreeSet<AccountHash>;
 }
 
 /// Provides functionality of a contract storage.
@@ -83,12 +75,6 @@ pub trait MintProvider {
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error>;
 
-    fn mint_transfer_from_accumulation_purse_to_account(
-        &mut self,
-        target: AccountHash,
-        amount: U512,
-    ) -> Result<(), Error>;
-
     /// Mint `amount` new token into `existing_purse`.
     /// Returns unit on success, otherwise an error.
     fn mint_into_existing_purse(&mut self, amount: U512, existing_purse: URef)
@@ -116,9 +102,4 @@ pub trait MintProvider {
 pub trait AccountProvider {
     /// Get currently executing account's purse.
     fn get_main_purse(&self) -> Result<URef, Error>;
-}
-
-/// Provides an access to handle payment.
-pub trait HandlePaymentProvider {
-    fn get_accumulation_purse(&mut self) -> Result<URef, Error>;
 }

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use casper_types::{
     account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, Key, Phase,
     StoredValue, TransferredTo, URef, U512,
@@ -127,6 +129,10 @@ where
 
     fn fee_handling(&self) -> FeeHandling {
         self.config.fee_handling()
+    }
+
+    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
+        self.config.administrative_accounts()
     }
 }
 

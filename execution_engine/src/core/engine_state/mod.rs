@@ -1907,6 +1907,28 @@ where
             DeployHash::new(Digest::hash(&bytes).value())
         };
 
+        let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
+            DirectSystemContractCall::DistributeAccumulatedFees,
+            RuntimeArgs::default(),
+            &virtual_system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            distribute_accumulated_fees_stack,
+            // There should be no tokens transferred during rewards distribution.
+            U512::zero(),
+        );
+
+        if let Some(exec_error) = execution_result.take_error() {
+            return Err(StepError::DistributeAccumulatedFeesError(exec_error));
+        }
+
         let reward_factors = match step_request.reward_factors() {
             Ok(reward_factors) => reward_factors,
             Err(error) => {

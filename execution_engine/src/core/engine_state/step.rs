@@ -151,6 +151,9 @@ pub enum StepError {
     /// Error executing a distribute operation.
     #[error("Distribute error: {0}")]
     DistributeError(Error),
+    /// Error executing a distribute accumulated fees operation.
+    #[error("Distribute accumulated fees error: {0}")]
+    DistributeAccumulatedFeesError(Error),
     /// Invalid protocol version.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),

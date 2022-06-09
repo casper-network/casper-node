@@ -15,6 +15,8 @@ pub const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
 pub const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
 /// Named constant for method `finalize_payment`.
 pub const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
+/// Named constant for method `distribute_accumulated_fees`.
+pub const METHOD_DISTRIBUTE_ACCUMULATED_FEES: &str = "distribute_accumulated_fees";
 
 /// Storage for handle payment contract hash.
 pub const CONTRACT_HASH_KEY: &str = "contract_hash";

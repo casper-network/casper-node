@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
 
@@ -26,4 +28,7 @@ pub trait RuntimeProvider {
 
     /// Returns fee handling value.
     fn fee_handling(&self) -> FeeHandling;
+
+    /// Returns list of administrative accounts.
+    fn administrative_accounts(&self) -> &BTreeSet<AccountHash>;
 }

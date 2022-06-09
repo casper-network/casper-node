@@ -43,4 +43,9 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
     ) -> Result<(), Error> {
         internal::finalize_payment(self, amount_spent, account, target)
     }
+
+    /// Distribute fees from an accumulation purse.
+    fn distribute_accumulated_fees(&mut self) -> Result<(), Error> {
+        internal::distribute_accumulated_fees(self)
+    }
 }

@@ -266,7 +266,8 @@ impl Executor {
                 *mint_hash
             }
             DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse => {
+            | DirectSystemContractCall::GetPaymentPurse
+            | DirectSystemContractCall::DistributeAccumulatedFees => {
                 let handle_payment_hash = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -407,8 +408,10 @@ pub(crate) enum DirectSystemContractCall {
     CreatePurse,
     /// Calls mint's `transfer` entry point.
     Transfer,
-    /// Calls handle payment's `
+    /// Calls handle payment's `get_payment_purse` entry point.
     GetPaymentPurse,
+    /// Calls handle payment's `distribute_accumulated_fees` entry point.
+    DistributeAccumulatedFees,
 }
 
 impl DirectSystemContractCall {
@@ -421,6 +424,9 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
+            DirectSystemContractCall::DistributeAccumulatedFees => {
+                handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES
+            }
         }
     }
 }

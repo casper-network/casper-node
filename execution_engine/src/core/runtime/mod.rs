@@ -768,6 +768,13 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
+            handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
+                runtime
+                    .distribute_accumulated_fees()
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };

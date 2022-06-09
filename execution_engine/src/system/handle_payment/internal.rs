@@ -4,7 +4,7 @@ use tracing::error;
 
 use casper_types::{
     account::AccountHash,
-    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
+    system::handle_payment::{Error, ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
 
@@ -12,7 +12,7 @@ use super::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider,
 };
-use crate::core::engine_state::engine_config::RefundHandling;
+use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 
 /// Returns the purse for accepting payment for transactions.
 pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
@@ -209,6 +209,51 @@ pub(crate) fn refund_to_account<M: MintProvider>(
             Err(Error::FailedTransferToAccountPurse)
         }
     }
+}
+
+/// Gets an accumulation purse from the named keys.
+fn get_accumulation_purse<R: RuntimeProvider>(provider: &mut R) -> Result<URef, Error> {
+    match provider.get_key(ACCUMULATION_PURSE_KEY) {
+        Some(Key::URef(purse_uref)) => Ok(purse_uref),
+        Some(_key) => Err(Error::AccumulationPurseKeyUnexpectedType),
+        None => Err(Error::AccumulationPurseNotFound),
+    }
+}
+
+/// This function distributes the fees according to the fee handling config.
+pub(crate) fn distribute_accumulated_fees<P>(provider: &mut P) -> Result<(), Error>
+where
+    P: RuntimeProvider + MintProvider,
+{
+    if provider.get_caller() != PublicKey::System.to_account_hash() {
+        return Err(Error::SystemFunctionCalledByUserAccount);
+    }
+
+    // Distribute accumulation purse balance into all administrators
+    match provider.fee_handling() {
+        FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+        FeeHandling::Accumulate => {}
+    }
+
+    let administrative_accounts = provider.administrative_accounts().clone();
+    let accumulation_purse = get_accumulation_purse(provider)?;
+    let accumulated_balance = provider.balance(accumulation_purse)?.unwrap_or_default();
+    let reward_recipients = U512::from(administrative_accounts.len());
+
+    if let Some(reward_amount) = accumulated_balance.checked_div(reward_recipients) {
+        if reward_amount.is_zero() {
+            // There is zero tokens to be paid out which means we can exit early.
+            return Ok(());
+        }
+
+        for target in administrative_accounts {
+            provider.transfer_purse_to_account(accumulation_purse, target, reward_amount)?;
+        }
+    }
+
+    // Any dust amount left in the accumulation purse for the next round.
+
+    Ok(())
 }
 
 #[cfg(test)]
