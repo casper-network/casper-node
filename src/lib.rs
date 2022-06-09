@@ -160,41 +160,6 @@ pub(crate) mod tests {
                     .expect("could not lock test sink for copying"),
             )
         }
-
-        /// Helper function for sink implementations, calling `poll_ready`.
-        fn sink_poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
-            if self.is_plugged(cx) {
-                Poll::Pending
-            } else {
-                Poll::Ready(Ok(()))
-            }
-        }
-
-        /// Helper function for sink implementations, calling `start_end`.
-        fn sink_start_send<F: Buf>(&self, item: F) -> Result<(), Infallible> {
-            let mut guard = self.buffer.lock().expect("could not lock buffer");
-
-            item.reader()
-                .read_to_end(&mut guard)
-                .expect("writing to vec should never fail");
-
-            Ok(())
-        }
-
-        fn sink_poll_flush(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
-            // We're always done flushing, since we write the entire item when sending. Still, we
-            // use this as an opportunity to plug if necessary.
-            if self.is_plugged(cx) {
-                Poll::Pending
-            } else {
-                Poll::Ready(Ok(()))
-            }
-        }
-
-        fn sink_poll_close(&self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
-            // Nothing to close, so this is essentially the same as flushing.
-            self.sink_poll_flush(cx)
-        }
     }
 
     /// A plug inserted into the sink.
@@ -206,43 +171,39 @@ pub(crate) mod tests {
         waker: Option<Waker>,
     }
 
-    impl<F: Buf> Sink<F> for TestingSink {
-        type Error = Infallible;
-
-        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.sink_poll_ready(cx)
-        }
-
-        fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
-            self.sink_start_send(item)
-        }
-
-        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.sink_poll_flush(cx)
-        }
-
-        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.sink_poll_close(cx)
-        }
-    }
-
     impl<F: Buf> Sink<F> for &TestingSink {
         type Error = Infallible;
 
         fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.sink_poll_ready(cx)
+            if self.is_plugged(cx) {
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(()))
+            }
         }
 
         fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
-            self.sink_start_send(item)
+            let mut guard = self.buffer.lock().expect("could not lock buffer");
+
+            item.reader()
+                .read_to_end(&mut guard)
+                .expect("writing to vec should never fail");
+
+            Ok(())
         }
 
         fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.sink_poll_flush(cx)
+            // We're always done flushing, since we write the entire item when sending. Still, we
+            // use this as an opportunity to plug if necessary.
+            if self.is_plugged(cx) {
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(()))
+            }
         }
 
         fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.sink_poll_close(cx)
+            Sink::<F>::poll_flush(self, cx)
         }
     }
 
