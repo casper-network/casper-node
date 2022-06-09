@@ -64,11 +64,11 @@ allow_auction_bids = false
 # Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
 allow_unrestricted_transfers = false
 # Refund handling config for finalization of an execution.
-refund_handling = { type = "Refund", refund_ratio = [1, 1] }
+refund_handling = { type = "refund", refund_ratio = [1, 1] }
 # How fees are paid
-fee_handling = { type = "Accumulate" }
+fee_handling = { type = "accumulate" }
 # System account is an administrator
-administrators = ["account-hash-6174cf2e6f8fed1715c9a3bace9c50bfe572eecb763b0ed3f644532616452008"]
+administrators = ["01f137c5b0c252a028cdb3eccf62946c5340837c66a892fc5079a7c1854f0f962f"]
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
