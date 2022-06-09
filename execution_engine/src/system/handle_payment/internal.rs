@@ -48,8 +48,8 @@ pub(crate) fn get_refund_purse<R: RuntimeProvider>(
     }
 }
 
-/// Returns tuple where 1st element is the refund, and 2nd element is the reward.
-fn calculate_refund_and_reward(
+/// Returns tuple where 1st element is the refund, and 2nd element is the fee.
+fn calculate_refund_and_fee(
     gas_spent: U512,
     payment_purse_balance: U512,
     refund_handling: &RefundHandling,
@@ -74,17 +74,18 @@ fn calculate_refund_and_reward(
         .ok_or(Error::ArithmeticOverflow)?
         .to_integer();
 
-    let reward = payment_purse_balance
+    let fee = payment_purse_balance
         .checked_sub(refund)
         .ok_or(Error::ArithmeticOverflow)?;
 
-    Ok((refund, reward))
+    Ok((refund, fee))
 }
 
-/// Transfers funds from the payment purse to the validator rewards purse, as well as to the
-/// refund purse, depending on how much was spent on the computation. This function maintains
-/// the invariant that the balance of the payment purse is zero at the beginning and end of each
-/// deploy and that the refund purse is unset at the beginning and end of each deploy.
+/// Transfers funds from the payment purse to the proposer, accumulation purse or burns the amount
+/// depending on a [`FeeHandling`] configuration option. This function can also transfer funds to a
+/// refund purse, depending on how much was spent on the computation, or burns the refund. This code
+/// maintains the invariant that the balance of the payment purse is zero at the beginning and end
+/// of each deploy and that the refund purse is unset at the beginning and end of each deploy.
 pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
     gas_spent: U512,
@@ -106,10 +107,10 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    let (refund_amount, validator_reward) =
-        calculate_refund_and_reward(gas_spent, payment_amount, provider.refund_handling())?;
+    let (refund_amount, validator_fee) =
+        calculate_refund_and_fee(gas_spent, payment_amount, provider.refund_handling())?;
 
-    debug_assert_eq!(validator_reward + refund_amount, payment_amount);
+    debug_assert_eq!(validator_fee + refund_amount, payment_amount);
 
     // Give or burn the refund.
     match provider.refund_handling() {
@@ -176,19 +177,19 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
         }
     }
 
-    // Pay or burn the reward.
+    // Pay or burn the fee.
     if target == URef::default() {
-        // Fee-handling is set to `Burn`.  Deduct the reward from the payment purse, leaving it
-        // empty, and reduce the total supply (i.e. burn the reward).
+        // Fee-handling is set to `Burn`.  Deduct the fee from the payment purse, leaving it
+        // empty, and reduce the total supply (i.e. burn the fee).
         provider.write_balance(payment_purse, U512::zero())?;
-        provider.reduce_total_supply(validator_reward)?;
+        provider.reduce_total_supply(validator_fee)?;
     } else {
-        // validator_reward purse is already resolved based on fee-handling config which is either a
-        // proposer or rewards purse.
-        match provider.transfer_purse_to_purse(payment_purse, target, validator_reward) {
+        // target purse is already resolved based on fee-handling config which is either a
+        // proposer or accumulation purse.
+        match provider.transfer_purse_to_purse(payment_purse, target, validator_fee) {
             Ok(()) => {}
             Err(error) => {
-                error!(%error, %validator_reward, %target, "unable to transfer reward");
+                error!(%error, %validator_fee, %target, "unable to transfer fee");
                 return Err(Error::FailedTransferToRewardsPurse);
             }
         }
@@ -273,7 +274,7 @@ mod tests {
     fn test_refund_handling(refund_handling: &RefundHandling) {
         let purse_bal = U512::from(10u64);
         let gas = U512::from(3u64);
-        let (a, b) = calculate_refund_and_reward(gas, purse_bal, refund_handling).unwrap();
+        let (a, b) = calculate_refund_and_fee(gas, purse_bal, refund_handling).unwrap();
         assert_eq!(a, U512::from(2u64));
         // (10 - 3) * 1/3 ~ 2.33 (.33 is dust)
         assert_eq!(b, U512::from(8u64));
@@ -289,7 +290,7 @@ mod tests {
             let refund_ratio = Ratio::new_raw(percentage, 100);
             let refund = RefundHandling::Refund { refund_ratio };
 
-            let (a, b) = calculate_refund_and_reward(gas, purse_bal, &refund).unwrap();
+            let (a, b) = calculate_refund_and_fee(gas, purse_bal, &refund).unwrap();
 
             let a = Ratio::from(a);
             let b = Ratio::from(b);
