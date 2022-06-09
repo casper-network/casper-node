@@ -9,6 +9,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::warn;
 
 use crate::components::consensus::{
     protocols::simple_consensus::message::{Content, Proposal, SignedMessage},
@@ -51,14 +52,14 @@ impl<C: Context> DataSize for WriteWal<C> {
 
 #[derive(Error, Debug)]
 pub(crate) enum WriteWalError {
-    #[error("Could not get serialized message size")]
-    CouldntGetSerializedSize,
-    #[error("Could not serialize size")]
-    CouldntSerializeSizeIntoWriter,
-    #[error("Could not serialize message")]
-    CouldntSerializeMessageIntoWriter,
-    #[error("Could not flush message to disk")]
-    CouldntFlushMessageToDisk,
+    #[error("Could not get serialized message size: {0}")]
+    CouldntGetSerializedSize(bincode::Error),
+    #[error("Could not serialize size: {0}")]
+    CouldntSerializeSizeIntoWriter(io::Error),
+    #[error("Could not serialize message: {0}")]
+    CouldntSerializeMessageIntoWriter(bincode::Error),
+    #[error("Could not flush message to disk: {0}")]
+    CouldntFlushMessageToDisk(io::Error),
     #[error("Could not open file: {0}")]
     FileCouldntBeOpened(io::Error),
 }
@@ -77,16 +78,18 @@ impl<C: Context> WriteWal<C> {
     }
 
     pub(crate) fn record_entry(&mut self, entry: &Entry<C>) -> Result<(), WriteWalError> {
+        // First write the size of the entry as a serialized u64.
         let entry_size =
-            bincode::serialized_size(entry).map_err(|_| WriteWalError::CouldntGetSerializedSize)?;
+            bincode::serialized_size(entry).map_err(WriteWalError::CouldntGetSerializedSize)?;
         self.writer
-            .write_all(&entry_size.to_be_bytes())
-            .map_err(|_| WriteWalError::CouldntSerializeSizeIntoWriter)?;
+            .write_all(&entry_size.to_le_bytes())
+            .map_err(WriteWalError::CouldntSerializeSizeIntoWriter)?;
+        // Write the serialized entry itself.
         bincode::serialize_into(&mut self.writer, entry)
-            .map_err(|_| WriteWalError::CouldntSerializeMessageIntoWriter)?;
+            .map_err(WriteWalError::CouldntSerializeMessageIntoWriter)?;
         self.writer
             .flush()
-            .map_err(|_| WriteWalError::CouldntFlushMessageToDisk)?;
+            .map_err(WriteWalError::CouldntFlushMessageToDisk)?;
         Ok(())
     }
 }
@@ -100,22 +103,12 @@ pub(crate) struct ReadWal<C: Context> {
 
 #[derive(Error, Debug)]
 pub(crate) enum ReadWalError {
-    #[error("No more entries; reached end of file")]
-    NoMoreEntries,
     #[error("Could not create file at {0}: {1}")]
     FileCouldntBeCreated(PathBuf, io::Error),
     #[error(transparent)]
     OtherIOError(#[from] io::Error),
-    #[error("WAL file corruption: {:?}", .0)]
-    EndedOnCorruption(WalCorruptionType),
-}
-
-#[derive(Debug)]
-pub(crate) enum WalCorruptionType {
-    /// Normal case of corruption, likely caused by abruptly shutting the node down.
-    NotEnoughInput,
-    /// Abnormal case of corruption, likely caused by operator error.
-    ImproperFormatting,
+    #[error("could not deserialize WAL entry: {0}")]
+    CouldNotDeserialize(bincode::Error),
 }
 
 impl<C: Context> ReadWal<C> {
@@ -135,35 +128,48 @@ impl<C: Context> ReadWal<C> {
 
 impl<C: Context> ReadWal<C> {
     /// Reads the next entry from the WAL, or returns an error.
-    /// If there are 0 bytes left it returns `ReadWalError::NoMoreEntries`.
-    pub(crate) fn read_next_entry(&mut self) -> Result<Entry<C>, ReadWalError> {
+    /// If there are 0 bytes left it returns `Ok(None)`.
+    pub(crate) fn read_next_entry(&mut self) -> Result<Option<Entry<C>>, ReadWalError> {
+        // Remember the current position: If we encounter an unreadable entry we trim the file at
+        // this point so we can continue appending entries after it.
         let position = self.reader.stream_position()?;
 
+        // Deserialize the size of the entry, in bytes, as a u64.
         let mut entry_size_buf = [0u8; mem::size_of::<u64>()];
         if let Err(err) = self.reader.read_exact(&mut entry_size_buf) {
-            if err.kind() != io::ErrorKind::UnexpectedEof {
-                return Err(ReadWalError::OtherIOError(err));
+            if err.kind() == io::ErrorKind::UnexpectedEof {
+                self.trim_file(position)?;
+                return Ok(None);
             }
-        } else {
-            let entry_size = std::primitive::u64::from_be_bytes(entry_size_buf) as usize;
-            let mut entry_buf = vec![0; entry_size];
-            if let Err(err) = self.reader.read_exact(&mut entry_buf) {
-                if err.kind() != io::ErrorKind::UnexpectedEof {
-                    return Err(ReadWalError::OtherIOError(err));
-                }
-            } else {
-                return bincode::deserialize(&entry_buf).map_err(|_| {
-                    ReadWalError::EndedOnCorruption(WalCorruptionType::ImproperFormatting)
-                });
+            return Err(ReadWalError::OtherIOError(err));
+        }
+        let entry_size = u64::from_le_bytes(entry_size_buf) as usize;
+
+        // Read the serialized entry itself.
+        let mut entry_buf = vec![0; entry_size];
+        if let Err(err) = self.reader.read_exact(&mut entry_buf) {
+            if err.kind() == io::ErrorKind::UnexpectedEof {
+                self.trim_file(position)?;
+                return Ok(None);
             }
+            return Err(ReadWalError::OtherIOError(err));
         }
 
-        if self.reader.stream_position()? == position {
-            return Err(ReadWalError::NoMoreEntries);
+        // Deserialize and return the entry.
+        let entry = bincode::deserialize(&entry_buf).map_err(ReadWalError::CouldNotDeserialize)?;
+        Ok(Some(entry))
+    }
+
+    /// Trims the file to the given length and logs a warning if any bytes were removed.
+    ///
+    /// This should be called with the position where the last complete entry ended. Incomplete
+    /// entries can safely be removed because we only send messages after writing them and
+    /// flushing the buffer, so we won't remove any messages that we already sent.
+    fn trim_file(&mut self, position: u64) -> Result<(), ReadWalError> {
+        if self.reader.stream_position()? > position {
+            warn!("removing incomplete entry from WAL");
+            self.reader.get_mut().set_len(position)?;
         }
-        self.reader.get_mut().set_len(position)?;
-        Err(ReadWalError::EndedOnCorruption(
-            WalCorruptionType::NotEnoughInput,
-        ))
+        Ok(())
     }
 }
