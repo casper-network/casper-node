@@ -48,6 +48,8 @@ pub struct CoreConfig {
     pub(crate) allow_auction_bids: bool,
     /// Allows unrestricted transfers between users.
     pub(crate) allow_unrestricted_transfers: bool,
+    /// If set to false then consensus doesn't compute rewards and always uses 0.
+    pub(crate) compute_rewards: bool,
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub(crate) administrators: BTreeSet<PublicKey>,
@@ -95,6 +97,7 @@ impl CoreConfig {
         let strict_argument_checking = rng.gen();
         let allow_auction_bids = rng.gen();
         let allow_unrestricted_transfers = rng.gen();
+        let compute_rewards = rng.gen();
         let administrators = (0..rng.gen_range(0..=10u32))
             .map(|_| PublicKey::random(rng))
             .collect();
@@ -125,6 +128,7 @@ impl CoreConfig {
             allow_auction_bids,
             administrators,
             allow_unrestricted_transfers,
+            compute_rewards,
             refund_handling,
             fee_handling,
         }
@@ -149,6 +153,7 @@ impl ToBytes for CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             allow_unrestricted_transfers,
+            compute_rewards,
             administrators,
             refund_handling,
             fee_handling,
@@ -166,6 +171,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(strict_argument_checking.to_bytes()?);
         buffer.extend(allow_auction_bids.to_bytes()?);
         buffer.extend(allow_unrestricted_transfers.to_bytes()?);
+        buffer.extend(compute_rewards.to_bytes()?);
         buffer.extend(administrators.to_bytes()?);
         buffer.extend(refund_handling.to_bytes()?);
         buffer.extend(fee_handling.to_bytes()?);
@@ -187,6 +193,7 @@ impl ToBytes for CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             allow_unrestricted_transfers,
+            compute_rewards,
             administrators: administrative_accounts,
             refund_handling,
             fee_handling,
@@ -204,6 +211,7 @@ impl ToBytes for CoreConfig {
             + strict_argument_checking.serialized_length()
             + allow_auction_bids.serialized_length()
             + allow_unrestricted_transfers.serialized_length()
+            + compute_rewards.serialized_length()
             + administrative_accounts.serialized_length()
             + refund_handling.serialized_length()
             + fee_handling.serialized_length()
@@ -225,6 +233,7 @@ impl FromBytes for CoreConfig {
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
+        let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
@@ -242,6 +251,7 @@ impl FromBytes for CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             allow_unrestricted_transfers,
+            compute_rewards,
             administrators: administrative_accounts,
             refund_handling,
             fee_handling,

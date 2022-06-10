@@ -71,6 +71,8 @@ allow_unrestricted_transfers = true
 # Setting this to false makes sense only for private chains which don't need to auction new validator slots. These
 # auction entry points will return an error if called when this option is set to false.
 allow_auction_bids = true
+# If set to false, then consensus doesn't compute rewards and always uses 0.
+compute_rewards = true
 # Defines how refunds of the unused portion of payment amounts are calculated and handled.
 #
 # The only valid value for 'type' is currently 'refund'.
@@ -107,8 +109,6 @@ maximum_round_exponent = 17
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
-# If set to false, then consensus doesn't compute rewards and always uses 0.
-compute_rewards = true
 
 [deploys]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.

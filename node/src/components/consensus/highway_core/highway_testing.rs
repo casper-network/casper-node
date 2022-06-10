@@ -57,7 +57,6 @@ pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
 pub(crate) const TEST_INSTANCE_ID: u64 = 42;
 pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
-pub(crate) const TEST_COMPUTE_REWARDS: bool = true;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 enum HighwayMessage {
@@ -722,7 +721,6 @@ fn test_params() -> Params {
         Timestamp::zero(),
         Timestamp::zero(), // Length depends only on block number.
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-        TEST_COMPUTE_REWARDS,
     )
 }
 

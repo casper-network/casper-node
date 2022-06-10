@@ -103,7 +103,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         era_start_time: Timestamp,
         seed: u64,
         now: Timestamp,
-        compute_rewards: bool,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
@@ -177,10 +176,17 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
+        let block_reward = if chainspec.core_config.compute_rewards {
+            BLOCK_REWARD
+        } else {
+            // Set the block reward parameter to 0 so Highway can skip the computation.
+            0
+        };
+
         let params = Params::new(
             seed,
-            BLOCK_REWARD,
-            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
+            block_reward,
+            (highway_config.reduced_reward_multiplier * block_reward).to_integer(),
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
@@ -188,7 +194,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             era_start_time,
             era_start_time + chainspec.core_config.era_duration,
             endorsement_evidence_limit,
-            compute_rewards,
         );
 
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
