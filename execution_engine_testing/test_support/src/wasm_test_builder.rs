@@ -360,8 +360,8 @@ impl LmdbWasmTestBuilder {
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         };
 
-        let registry = builder.query_system_contract_registry(Some(post_state_hash));
-        builder.system_contract_registry = registry;
+        builder.system_contract_registry =
+            builder.query_system_contract_registry(Some(post_state_hash));
 
         builder
     }
