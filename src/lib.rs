@@ -113,6 +113,13 @@ pub(crate) mod tests {
     /// Additionally, a `Plug` can be inserted into the sink. While a plug is plugged in, no data
     /// can flow into the sink. In a similar manner, the sink can be clogged - while it is possible
     /// to start sending new data, it will not report being done until the clog is cleared.
+    ///
+    /// ```text
+    ///   Item ->     (plugged?)             [             ...  ] -> (clogged?) -> done flushing
+    ///    ^ Input     ^ Plug (blocks input)   ^ Buffer contents      ^ Clog, prevents flush
+    /// ```
+    ///
+    /// This can be used to simulate a sink on a busy or slow TCP connection, for example.
     #[derive(Default, Debug)]
     pub struct TestingSink {
         /// The state of the plug.
@@ -289,6 +296,16 @@ pub(crate) mod tests {
     sink_impl_fwd!(TestingSink);
     sink_impl_fwd!(&TestingSink);
     sink_impl_fwd!(TestingSinkRef);
+
+    #[test]
+    fn simple_lifecycle() {
+        let mut sink = TestingSink::new();
+        assert!(sink.send(&b"one"[..]).now_or_never().is_some());
+        assert!(sink.send(&b"two"[..]).now_or_never().is_some());
+        assert!(sink.send(&b"three"[..]).now_or_never().is_some());
+
+        assert_eq!(sink.get_contents(), b"onetwothree");
+    }
 
     #[test]
     fn plug_blocks_sink() {
