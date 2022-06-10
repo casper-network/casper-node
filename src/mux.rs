@@ -221,7 +221,10 @@ mod tests {
     use futures::{FutureExt, SinkExt};
     use tokio::sync::Mutex;
 
-    use crate::{error::Error, tests::collect_bufs};
+    use crate::{
+        error::Error,
+        tests::{collect_bufs, TestingSink},
+    };
 
     use super::{ChannelPrefixedFrame, Multiplexer};
 

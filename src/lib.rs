@@ -116,9 +116,7 @@ pub(crate) mod tests {
     #[derive(Default, Debug)]
     pub struct TestingSink {
         /// The state of the plug.
-        plug: Mutex<BlockingParticle>,
-        /// Whether or not the sink is clogged.
-        clog: Mutex<BlockingParticle>,
+        obstruction: Mutex<SinkObstruction>,
         /// Buffer storing all the data.
         buffer: Arc<Mutex<Vec<u8>>>,
     }
@@ -133,8 +131,8 @@ pub(crate) mod tests {
 
         /// Inserts or removes the plug from the sink.
         pub fn set_plugged(&self, plugged: bool) {
-            let mut guard = self.plug.lock().expect("could not lock plug");
-            guard.engaged = plugged;
+            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            guard.plugged = plugged;
 
             // Notify any waiting tasks that there may be progress to be made.
             if !plugged {
@@ -146,8 +144,8 @@ pub(crate) mod tests {
 
         /// Inserts or removes the clog from the sink.
         pub fn set_clogged(&self, clogged: bool) {
-            let mut guard = self.clog.lock().expect("could not lock plug");
-            guard.engaged = clogged;
+            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            guard.clogged = clogged;
 
             // Notify any waiting tasks that there may be progress to be made.
             if !clogged {
@@ -161,22 +159,20 @@ pub(crate) mod tests {
         ///
         /// Will update the local waker reference.
         pub fn is_plugged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.plug.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("could not lock plug");
 
-            // Register waker.
             guard.waker = Some(cx.waker().clone());
-            guard.engaged
+            guard.plugged
         }
 
         /// Determine whether the sink is clogged.
         ///
         /// Will update the local waker reference.
         pub fn is_clogged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.clog.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("could not lock plug");
 
-            // Register waker.
             guard.waker = Some(cx.waker().clone());
-            guard.engaged
+            guard.clogged
         }
 
         /// Returns a copy of the contents.
@@ -236,9 +232,11 @@ pub(crate) mod tests {
 
     /// A plug/clog inserted into the sink.
     #[derive(Debug, Default)]
-    struct BlockingParticle {
-        /// Whether or not the blocking particle is engaged.
-        engaged: bool,
+    struct SinkObstruction {
+        /// Whether or not the sink is plugged.
+        plugged: bool,
+        /// Whether or not the sink is clogged.
+        clogged: bool,
         /// The waker of the last task to access the plug. Will be called when removing.
         waker: Option<Waker>,
     }
