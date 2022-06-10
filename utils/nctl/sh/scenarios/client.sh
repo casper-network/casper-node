@@ -52,6 +52,7 @@ function main() {
     local ED25519_PEM
     local SECP256K1_HEX
     local SECP256K1_PEM
+    local DICT_WASM
 
     DEPLOY_FILE_1="$MAKE_TRANSFER_DIR/deploy_1.json"
     MAKE_DEPLOY_FILE="$MAKE_DEPLOY_DIR/make_deploy.json"
@@ -62,7 +63,8 @@ function main() {
     ED25519_HEX="$ED25519_DIR/public_key_hex"
     ED25519_PEM="$ED25519_DIR/public_key.pem"
     SECP256K1_HEX="$SECP256K1_DIR/public_key_hex"
-    SECP256K1_PEM="$SECP256K1_DIR/public_key.pem"
+    SECP256K1_PEM="SECP256K1_DIR/public_key.pem"
+    DICT_WASM="$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/nctl-dictionary.wasm"
 
     log "------------------------------------------------------------"
     log "Starting Scenario: client"
@@ -152,13 +154,41 @@ function main() {
     # 29. Test send-deploy subcommand - retest: make/sign deploy
     test_send_deploy "$SIGNED_DEPLOY_FILE"
     # 30. Test put-deploy subcommand
-    test_put_deploy
-    # 31. Cleanup
+    test_put_deploy "$DICT_WASM" "$FAUCET_SK"
+    # 31. Test get-dictionary-item subcommand
+    test_get_dictionary_item "$FAUCET_ACC_HASH"
+    # 32. Cleanup
     clean_tmp_dir
 
     log "------------------------------------------------------------"
     log "Scenario client complete"
     log "------------------------------------------------------------"
+}
+
+# casper-client get-dictionary-item
+# ... use contract from test_put_deploy
+# ... checks valid json with jq
+function test_get_dictionary_item() {
+    local ACCOUNT_HASH=${1}
+    local STATE_ROOT_HASH
+    local DICTIONARY_KEY
+    local DICTIONARY_NAME
+    local OUTPUT
+
+    log_step "Testing Client Subcommand: get-dictionary-item"
+
+    DICTIONARY_KEY="foo"
+    DICTIONARY_NAME="nctl_dictionary"
+
+    OUTPUT=$($(get_path_to_client) get-dictionary-item \
+        --node-address "$(get_node_address_rpc)" \
+        --state-root-hash "$(get_state_root_hash)" \
+        --dictionary-item-key "$DICTIONARY_KEY" \
+        --dictionary-name "$DICTIONARY_NAME" \
+        --account-hash "$ACCOUNT_HASH")
+
+    # Check client responded
+    test_with_jq "$OUTPUT"
 }
 
 # casper-client sign-deploy
@@ -200,18 +230,29 @@ function test_sign_deploy() {
 # ... sends deploy
 # ... awaits for it to be included in a block
 function test_put_deploy() {
+    local CONTRACT_PATH=${1}
+    local SIGNER_SECRET_KEY_PATH=${2}
+    local PAYMENT
+    local CHAIN_NAME
     local OUTPUT
     local DEPLOY_HASH
 
     log_step "Testing Client Subcommand: put-deploy"
 
-    # put-deploy utilized here already
-    OUTPUT=$(source "$NCTL/sh/contracts-transfers/do_dispatch_wasm.sh" \
-        transfers=1 interval=0.0 verbose=true)
+    CHAIN_NAME=$(get_chain_name)
+    PAYMENT='100000000000'
 
-    DEPLOY_HASH=$(echo "$OUTPUT" | grep '#1' | awk -F'::' '{print $4}' | sed 's/^ *//g')
+    OUTPUT=$($(get_path_to_client) put-deploy \
+        --node-address "$(get_node_address_rpc)" \
+        --chain-name "$CHAIN_NAME" \
+        --payment-amount "$PAYMENT" \
+        --session-path "$CONTRACT_PATH" \
+        --secret-key "$SIGNER_SECRET_KEY_PATH")
 
-    echo "DEPLOY_HASH: $DEPLOY_HASH"
+    # Check client responded
+    test_with_jq "$OUTPUT"
+
+    DEPLOY_HASH=$(echo "$OUTPUT" | jq -r '.result.deploy_hash')
 
     await_deploy_inclusion "$DEPLOY_HASH"
 }
