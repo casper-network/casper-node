@@ -1,3 +1,8 @@
+//! Frame reader
+//!
+//! A reader that decodes the incoming stream of the length delimited frames into separate frames.
+//! Each frame is expected to be prefixed with two bytes representing its length.
+
 use std::{pin::Pin, task::Poll};
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -8,8 +13,6 @@ use crate::error::Error;
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 
-/// A reader that decodes the incoming stream of the length delimited frames
-/// into separate frames.
 pub(crate) struct FrameReader<R: AsyncRead> {
     stream: R,
     buffer: BytesMut,

@@ -1,3 +1,5 @@
+//! Asynchronous multiplexing 
+
 pub mod backpressured;
 pub mod chunked;
 pub mod error;
