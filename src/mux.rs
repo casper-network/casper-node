@@ -181,7 +181,7 @@ where
             Some(ref mut guard) => guard,
         };
 
-        // At this point we have acquired the lock, now our only job is to stuff data into the sink.
+        // We have acquired the lock, now our only job is to wait for the sink to become ready.
         try_ready!(sink_guard.as_mut().ok_or(Error::MultiplexerClosed))
             .poll_ready_unpin(cx)
             .map_err(Error::Sink)
