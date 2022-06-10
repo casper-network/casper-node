@@ -204,7 +204,6 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .verifiable_chunked_hash_activation,
-            Some(registry),
         )?;
 
         let contract_runtime = ContractRuntime::new(
