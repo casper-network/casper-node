@@ -79,6 +79,7 @@ refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'pay_to_proposer' }
+administrators = []
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
