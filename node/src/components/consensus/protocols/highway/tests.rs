@@ -9,7 +9,7 @@ use crate::{
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             highway::{SignedWireUnit, Vertex, WireUnit},
-            highway_testing::{self, TEST_COMPUTE_REWARDS},
+            highway_testing,
             state::{self, tests::ALICE, Observation, Panorama},
             validators::ValidatorIndex,
             State,
@@ -44,7 +44,6 @@ where
         0.into(),
         Timestamp::from(u64::MAX),
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-        TEST_COMPUTE_REWARDS,
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
     state::State::new(weights, params, vec![], vec![])
@@ -90,7 +89,6 @@ where
         start_timestamp,
         0,
         start_timestamp,
-        chainspec.highway_config.compute_rewards,
     );
     // We expect five messages:
     // * log participation timer,
