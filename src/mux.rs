@@ -67,7 +67,7 @@ impl<S> Multiplexer<S> {
             sink: self.sink.clone(),
             channel,
             lock_future: ReusableBoxFuture::new(mk_lock_future(self.sink.clone())),
-            guard: None,
+            sink_guard: None,
         }
     }
 
@@ -121,7 +121,7 @@ pub struct MultiplexerHandle<S> {
     /// protocol. A call to `poll_ready` will commence and ultimately complete guard acquisition.
     ///
     /// A [`Poll::Ready`] return value from either `poll_flush` or `poll_close` will release it.
-    guard: Option<SinkGuard<S>>,
+    sink_guard: Option<SinkGuard<S>>,
 }
 
 impl<S> MultiplexerHandle<S>
@@ -140,7 +140,7 @@ where
         S: Sink<F>,
         <S as Sink<F>>::Error: std::error::Error,
     {
-        match self.guard {
+        match self.sink_guard {
             Some(ref mut guard) => match guard.as_mut() {
                 Some(sink) => Ok(sink),
                 None => Err(Error::MultiplexerClosed),
@@ -161,7 +161,7 @@ where
     type Error = Error<<S as Sink<ChannelPrefixedFrame<F>>>::Error>;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        let guard = match self.guard {
+        let sink_guard = match self.sink_guard {
             None => {
                 // We do not hold the guard at the moment, so attempt to acquire it.
                 match self.lock_future.poll_unpin(cx) {
@@ -170,7 +170,7 @@ where
                         // later, which will not attempt to lock until first polled.
                         let sink = self.sink.clone();
                         self.lock_future.set(mk_lock_future(sink));
-                        self.guard.insert(guard)
+                        self.sink_guard.insert(guard)
                     }
                     Poll::Pending => {
                         // The lock could not be acquired yet.
@@ -182,7 +182,7 @@ where
         };
 
         // At this point we have acquired the lock, now our only job is to stuff data into the sink.
-        try_ready!(guard.as_mut().ok_or(Error::MultiplexerClosed))
+        try_ready!(sink_guard.as_mut().ok_or(Error::MultiplexerClosed))
             .poll_ready_unpin(cx)
             .map_err(Error::Sink)
     }
@@ -199,7 +199,7 @@ where
         let sink = try_ready!(self.assume_get_sink());
 
         let outcome = ready!(sink.poll_flush_unpin(cx));
-        self.guard = None;
+        self.sink_guard = None;
         Poll::Ready(outcome.map_err(Error::Sink))
     }
 
@@ -207,7 +207,7 @@ where
         let sink = try_ready!(self.assume_get_sink());
 
         let outcome = ready!(sink.poll_close_unpin(cx));
-        self.guard = None;
+        self.sink_guard = None;
 
         Poll::Ready(outcome.map_err(Error::Sink))
     }
