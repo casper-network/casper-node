@@ -23,7 +23,7 @@ use super::{
 use crate::{
     effect::{requests::RpcRequest, EffectBuilder},
     reactor::QueueKind,
-    types::{Block, Deploy},
+    types::{Block, BlockHash, Deploy},
 };
 
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
@@ -32,6 +32,7 @@ static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| Specu
 });
 static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| SpeculativeExecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    block_hash: *Block::doc_example().hash(),
     execution_result: ExecutionResult::example().clone(),
 });
 
@@ -58,6 +59,8 @@ pub struct SpeculativeExecResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
+    /// Hash of the block on top of which the deploy was executed.
+    pub block_hash: BlockHash,
     /// Result of the execution.
     pub execution_result: ExecutionResult,
 }
@@ -95,6 +98,7 @@ impl RpcWithParams for SpeculativeExec {
             effect_builder,
         )
         .await?;
+        let block_hash = *block.hash();
         let result = effect_builder
             .make_request(
                 |responder| RpcRequest::SpeculativeDeployExecute {
@@ -110,6 +114,7 @@ impl RpcWithParams for SpeculativeExec {
             Ok(Some(execution_result)) => {
                 let result = Self::ResponseResult {
                     api_version,
+                    block_hash,
                     execution_result,
                 };
                 Ok(result)
