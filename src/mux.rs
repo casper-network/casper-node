@@ -287,4 +287,75 @@ mod tests {
             .unwrap_err();
         assert!(matches!(outcome, Error::MultplexerClosed));
     }
+
+    #[test]
+    fn cancelled_send_does_not_deadlock_multiplexer() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        sink.set_clogged(true);
+        let mut chan_0 = muxer.create_channel_handle(0);
+
+        assert!(chan_0
+            .send(Bytes::from(&b"zero"[..]))
+            .now_or_never()
+            .is_none());
+
+        // At this point, we have cancelled a send that was in progress due to the sink not having
+        // finished. The sink will finish eventually, but has not been polled to completion.
+    }
+
+    #[tokio::test]
+    async fn concurrent_sending() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        // Clog the sink for now.
+        sink.set_clogged(true);
+
+        let mut chan_0 = muxer.create_channel_handle(0);
+        let mut chan_1 = muxer.create_channel_handle(1);
+        let mut chan_2 = muxer.create_channel_handle(2);
+
+        // Channel zero has a long send going on.
+        assert!(chan_0
+            .send(Bytes::from(&b"zero"[..]))
+            .now_or_never()
+            .is_none());
+
+        // The data has already arrived (it's a clog, not a plug):
+        assert_eq!(sink.get_contents(), b"\x00zero");
+
+        println!("zero sent");
+        // The other two channels are sending in order.
+        let send_1 = tokio::spawn(async move {
+            println!("begin chan_1 sending");
+            chan_1.send(Bytes::from(&b"one"[..])).await.unwrap();
+            println!("done chan_1 sending");
+        });
+        println!("send_1 spawned");
+
+        // Yield, ensuring that `one` is in queue acquiring the lock first (since it is not plugged,
+        // it should enter the lock wait queue).
+
+        tokio::task::yield_now().await;
+
+        let send_2 =
+            tokio::spawn(async move { chan_2.send(Bytes::from(&b"two"[..])).await.unwrap() });
+        println!("send_2 spawned");
+        tokio::task::yield_now().await;
+
+        // Unclog.
+        sink.set_clogged(false);
+        println!("unclogged");
+
+        // Both should finish with the unclogged sink.
+        send_2.await.unwrap();
+        println!("send_2 finished");
+        send_1.await.unwrap();
+        println!("send_1 finished");
+
+        // The final result should be in order.
+        assert_eq!(sink.get_contents(), b"\x00zero\x01one\x02two");
+    }
 }
