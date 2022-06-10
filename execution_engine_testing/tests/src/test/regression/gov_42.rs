@@ -1,8 +1,8 @@
 // This test focuses on testing whether we charge for
 // WASM files that are malformed (unparseable).
 
-// If we're provided with such file, we should charge.
-// The expection here is the "empty wasm" send as
+// If we're provided with malformed file, we should charge.
+// The exception is the "empty wasm" when send as
 // a payment, because in such case we use the "default payment"
 // instead.
 
@@ -10,8 +10,7 @@
 // like gas overflow (which is a runtime error).
 
 // Other potential test cases:
-// 1. Wasm that doesn't have "call" function    - tested in `regression_20210924`
-// 2. Wasm with unsupported "start" section     - tested in `ee_890` (but without asserting the
+// 1. Wasm with unsupported "start" section - tested in `ee_890` (but without asserting the
 // charge)
 
 use casper_engine_test_support::{
