@@ -45,12 +45,12 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
-    effect::Responder,
+    effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed,
     },
     utils::{DisplayIter, Source},
@@ -99,7 +99,7 @@ pub(crate) enum NetworkRequest<P> {
         respond_after_queueing: bool,
         /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
-        responder: Responder<()>,
+        auto_closing_responder: AutoClosingResponder<()>,
     },
     /// Send a message on the network to all peers.
     /// Note: This request is deprecated and should be phased out, as not every network
@@ -109,7 +109,7 @@ pub(crate) enum NetworkRequest<P> {
         payload: Box<P>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<()>,
+        auto_closing_responder: AutoClosingResponder<()>,
     },
     /// Gossip a message to a random subset of peers.
     Gossip {
@@ -122,7 +122,7 @@ pub(crate) enum NetworkRequest<P> {
         exclude: HashSet<NodeId>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<HashSet<NodeId>>,
+        auto_closing_responder: AutoClosingResponder<HashSet<NodeId>>,
     },
 }
 
@@ -139,27 +139,30 @@ impl<P> NetworkRequest<P> {
                 dest,
                 payload,
                 respond_after_queueing,
-                responder,
+                auto_closing_responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
                 respond_after_queueing,
-                responder,
+                auto_closing_responder,
             },
-            NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
+            NetworkRequest::Broadcast {
+                payload,
+                auto_closing_responder,
+            } => NetworkRequest::Broadcast {
                 payload: Box::new(wrap_payload(*payload)),
-                responder,
+                auto_closing_responder,
             },
             NetworkRequest::Gossip {
                 payload,
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             } => NetworkRequest::Gossip {
                 payload: Box::new(wrap_payload(*payload)),
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             },
         }
     }
@@ -402,7 +405,7 @@ pub(crate) enum StorageRequest {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadata)>>,
+        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>>,
     },
     /// Retrieve block and its metadata by its hash.
     GetBlockAndMetadataByHash {
@@ -763,7 +766,7 @@ pub(crate) enum RpcRequest {
         /// Whether to return finalized approvals.
         finalized_approvals: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadata)>>,
+        responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
     },
     /// Return the connected peers.
     GetPeers {

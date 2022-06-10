@@ -680,6 +680,46 @@ impl FromBytes for BlockHash {
     }
 }
 
+/// Describes a block's hash and height.
+#[derive(
+    Clone, Copy, DataSize, Default, Eq, JsonSchema, Serialize, Deserialize, Debug, PartialEq,
+)]
+pub struct BlockHashAndHeight {
+    /// The hash of the block.
+    #[schemars(description = "The hash of this deploy's block.")]
+    pub block_hash: BlockHash,
+    /// The height of the block.
+    #[schemars(description = "The height of this deploy's block.")]
+    pub block_height: u64,
+}
+
+impl BlockHashAndHeight {
+    pub fn new(block_hash: BlockHash, block_height: u64) -> Self {
+        Self {
+            block_hash,
+            block_height,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen::<u64>(),
+        }
+    }
+}
+
+impl Display for BlockHashAndHeight {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "hash: {}, height {} ",
+            self.block_hash, self.block_height
+        )
+    }
+}
+
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
@@ -1589,6 +1629,14 @@ impl Block {
         verifiable_chunked_hash_activation: EraId,
     ) -> &mut Self {
         self.header.height = height;
+        self.hash = self.header.hash(verifiable_chunked_hash_activation);
+        self
+    }
+
+    /// Overrides the era end of a block with a `None`, making it a non-switch block.
+    #[cfg(test)]
+    pub fn disable_switch_block(&mut self, verifiable_chunked_hash_activation: EraId) -> &mut Self {
+        let _ = self.header.era_end.take();
         self.hash = self.header.hash(verifiable_chunked_hash_activation);
         self
     }

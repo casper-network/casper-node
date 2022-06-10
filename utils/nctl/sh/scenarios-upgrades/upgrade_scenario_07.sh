@@ -15,7 +15,8 @@
 # Step 10: Assert all nodes are running
 # Step 11: Assert lfbs are in sync
 # Step 12: Assert chain didn't stall.
-# Step 13: Terminate.
+# Step 13: Run Health Checks
+# Step 14: Terminate.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -61,6 +62,7 @@ function _main()
     _step_11
     _step_12
     _step_13
+    _step_14
 }
 
 # Step 01: Start network from pre-built stage.
@@ -332,10 +334,24 @@ function _step_12()
     done
 }
 
-# Step 13: Terminate.
+# Step 13: Run NCTL health checks
 function _step_13()
 {
-    log_step_upgrades 13 "upgrade_scenario_07 successful - tidying up"
+    # restarts=12 - Nodes that upgrade
+    log_step_upgrades 13 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=12 \
+            ejections=0
+}
+
+# Step 14: Terminate.
+function _step_14()
+{
+    log_step_upgrades 14 "upgrade_scenario_07 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

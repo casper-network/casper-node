@@ -5,10 +5,7 @@
 
 use std::{
     collections::VecDeque,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
 use futures::{stream, Stream};
@@ -81,21 +78,36 @@ use tokio::sync::Notify;
 /// ```
 #[derive(Debug)]
 pub struct WorkQueue<T> {
-    /// Jobs currently in the queue.
-    jobs: Mutex<VecDeque<T>>,
-    /// Number of jobs that have been popped from the queue using `next_job` but not finished.
-    in_progress: Arc<AtomicUsize>,
+    /// Inner workings of the queue.
+    inner: Mutex<QueueInner<T>>,
     /// Notifier for waiting tasks.
     notify: Notify,
+}
+
+/// Queue inner state.
+#[derive(Debug)]
+struct QueueInner<T> {
+    /// Jobs currently in the queue.
+    jobs: VecDeque<T>,
+    /// Number of jobs that have been popped from the queue using `next_job` but not finished.
+    in_progress: usize,
 }
 
 // Manual default implementation, since the derivation would require a `T: Default` trait bound.
 impl<T> Default for WorkQueue<T> {
     fn default() -> Self {
         Self {
+            inner: Default::default(),
+            notify: Default::default(),
+        }
+    }
+}
+
+impl<T> Default for QueueInner<T> {
+    fn default() -> Self {
+        Self {
             jobs: Default::default(),
             in_progress: Default::default(),
-            notify: Default::default(),
         }
     }
 }
@@ -114,11 +126,11 @@ impl<T> WorkQueue<T> {
         loop {
             let waiting;
             {
-                let mut jobs = self.jobs.lock().expect("lock poisoned");
-                match jobs.pop_front() {
+                let mut inner = self.inner.lock().expect("lock poisoned");
+                match inner.jobs.pop_front() {
                     Some(job) => {
                         // We got a job, increase the `in_progress` count and return.
-                        self.in_progress.fetch_add(1, Ordering::SeqCst);
+                        inner.in_progress += 1;
                         return Some(JobHandle {
                             job,
                             queue: self.clone(),
@@ -126,7 +138,7 @@ impl<T> WorkQueue<T> {
                     }
                     None => {
                         // No job found. Check if we are completely done.
-                        if self.in_progress.load(Ordering::SeqCst) == 0 {
+                        if inner.in_progress == 0 {
                             // No more jobs, no jobs in progress. We are done!
                             return None;
                         }
@@ -140,7 +152,7 @@ impl<T> WorkQueue<T> {
             // Note: Any notification sent while executing this segment (after the guard has been
             // dropped, but before `waiting.await` has been entered) will still be picked up by
             // `waiting.await`, as the call to `notified()` marks the beginning of the waiting
-            // period, not `waiting.await`.
+            // period, not `waiting.await`. See `tests::notification_assumption_holds`.
 
             // After freeing the lock, wait for a new job to arrive or be finished.
             waiting.await;
@@ -151,21 +163,18 @@ impl<T> WorkQueue<T> {
     ///
     /// If there are any worker waiting on `next_job`, one of them will receive the job.
     pub fn push_job(&self, job: T) {
-        let mut guard = self.jobs.lock().expect("lock poisoned");
+        let mut inner = self.inner.lock().expect("lock poisoned");
 
-        guard.push_back(job);
+        inner.jobs.push_back(job);
         self.notify.notify_waiters();
     }
 
     /// Creates a streaming consumer of the work queue.
     #[inline]
     pub fn to_stream(self: Arc<Self>) -> impl Stream<Item = JobHandle<T>> {
-        stream::unfold((), move |_| {
-            let local_ref = self.clone();
-            async move {
-                let next = local_ref.next_job().await;
-                next.map(|handle| (handle, ()))
-            }
+        stream::unfold(self, |work_queue| async move {
+            let next = work_queue.next_job().await;
+            next.map(|handle| (handle, work_queue))
         })
     }
 
@@ -174,13 +183,9 @@ impl<T> WorkQueue<T> {
     /// This is an internal function to be used by `JobHandle`, which locks the internal queue and
     /// decreases the in-progress count by one.
     fn complete_job(&self) {
-        // We need to lock the queue to prevent someone adding a job while we are notifying workers
-        // about the completion of what might appear to be the last job. This also prevents workers
-        // starving in the case of the last job being completed while they are checking for more
-        // work.
-        let _guard = self.jobs.lock().expect("lock poisoned");
+        let mut inner = self.inner.lock().expect("lock poisoned");
 
-        self.in_progress.fetch_sub(1, Ordering::SeqCst);
+        inner.in_progress -= 1;
         self.notify.notify_waiters();
     }
 }
@@ -221,12 +226,33 @@ mod tests {
         time::Duration,
     };
 
-    use futures::StreamExt;
+    use futures::{FutureExt, StreamExt};
+    use tokio::sync::Notify;
 
     use super::WorkQueue;
 
     #[derive(Debug)]
     struct TestJob(u32);
+
+    // Verify that the assumption made about `Notification` -- namely that a call to `notified()` is
+    // enough to "register" the waiter -- holds.
+    #[test]
+    fn notification_assumption_holds() {
+        let not = Notify::new();
+
+        // First attempt to await a notification, should return pending.
+        assert!(not.notified().now_or_never().is_none());
+
+        // Second, we notify, then try notification again. Should also return pending, as we were
+        // "not around" when the notification happened.
+        not.notify_waiters();
+        assert!(not.notified().now_or_never().is_none());
+
+        // Finally, we "register" for notification beforehand.
+        let waiter = not.notified();
+        not.notify_waiters();
+        assert!(waiter.now_or_never().is_some());
+    }
 
     /// Process a job, sleeping a short amout of time on every 5th job.
     async fn job_worker_simple(queue: Arc<WorkQueue<TestJob>>, sum: Arc<AtomicU32>) {
