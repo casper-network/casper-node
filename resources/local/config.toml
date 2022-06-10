@@ -238,7 +238,7 @@ speculative_execution_address = "0.0.0.0:7778"
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-# Setting to 0 disabled the endpoint.
+# Setting to 0 disables the endpoint.
 speculative_execution_qps_limit = 0
 
 

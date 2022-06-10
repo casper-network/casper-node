@@ -15,17 +15,19 @@ use serde::{Deserialize, Serialize};
 use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
+    chain::BlockIdentifier,
+    common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcWithParams,
 };
 use crate::{
     effect::{requests::RpcRequest, EffectBuilder},
     reactor::QueueKind,
-    types::{Block, BlockHash, Deploy},
+    types::{Block, Deploy},
 };
 
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
-    block_hash: *Block::doc_example().hash(),
+    block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
     deploy: Deploy::doc_example().clone(),
 });
 static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| SpeculativeExecResult {
@@ -38,7 +40,7 @@ static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| Specu
 #[serde(deny_unknown_fields)]
 pub struct SpeculativeExecParams {
     /// Block hash on top of which to execute the deploy.
-    pub block_hash: BlockHash,
+    pub block_identifier: Option<BlockIdentifier>,
     /// Deploy to execute.
     pub deploy: Deploy,
 }
@@ -80,11 +82,23 @@ impl RpcWithParams for SpeculativeExec {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let SpeculativeExecParams { block_hash, deploy } = params;
+        let SpeculativeExecParams {
+            block_identifier: maybe_block_id,
+            deploy,
+        } = params;
+        // This RPC request is restricted by the block availability index.
+        let only_from_available_block_range = true;
+
+        let block = common::get_block(
+            maybe_block_id,
+            only_from_available_block_range,
+            effect_builder,
+        )
+        .await?;
         let result = effect_builder
             .make_request(
                 |responder| RpcRequest::SpeculativeDeployExecute {
-                    block_hash,
+                    block_header: block.take_header(),
                     deploy: Box::new(deploy),
                     responder,
                 },

@@ -45,7 +45,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{BlockHash, BlockHeader, Deploy, NodeState, StatusFeed},
+    types::{BlockHeader, Deploy, NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -186,24 +186,11 @@ impl RpcServer {
     fn handle_execute_deploy<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block_hash: BlockHash,
+        block_header: BlockHeader,
         deploy: Deploy,
         responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
     ) -> Effects<Event> {
         async move {
-            let block_header: BlockHeader = {
-                let maybe_block_header = effect_builder
-                    .get_block_header_from_storage(block_hash, false)
-                    .await;
-                match maybe_block_header {
-                    None => {
-                        // Block not found, we could return an error here,
-                        // but we will do that in the RPC layer.
-                        return responder.respond(Ok(None)).await;
-                    }
-                    Some(block_header) => block_header,
-                }
-            };
             let execution_prestate = SpeculativeExecutionState {
                 state_root_hash: *block_header.state_root_hash(),
                 block_time: block_header.timestamp(),
@@ -376,10 +363,10 @@ where
             }
             .ignore(),
             Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
-                block_hash,
+                block_header,
                 deploy,
                 responder,
-            }) => self.handle_execute_deploy(effect_builder, block_hash, *deploy, responder),
+            }) => self.handle_execute_deploy(effect_builder, block_header, *deploy, responder),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
