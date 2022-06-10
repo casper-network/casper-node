@@ -1,14 +1,7 @@
-use std::{convert::Infallible, time::Duration};
-
-use http::header::ACCEPT_ENCODING;
 use hyper::server::{conn::AddrIncoming, Builder};
-use tokio::sync::oneshot;
-use tower::ServiceBuilder;
-use tracing::info;
 
 use casper_json_rpc::RequestHandlersBuilder;
 use casper_types::ProtocolVersion;
-use warp::Filter;
 
 use super::ReactorEventT;
 use crate::{
@@ -18,6 +11,8 @@ use crate::{
 
 /// The URL path for all JSON-RPC requests.
 pub const SPECULATIVE_EXEC_API_PATH: &str = "rpc";
+
+pub const SPECULATIVE_EXEC_SERVER_NAME: &str = "speculative execution";
 
 /// Run the speculative execution server.
 pub(super) async fn run<REv: ReactorEventT>(
@@ -31,32 +26,13 @@ pub(super) async fn run<REv: ReactorEventT>(
     SpeculativeExec::register_as_handler(effect_builder, api_version, &mut handlers);
     let handlers = handlers.build();
 
-    let make_svc = hyper::service::make_service_fn(move |_| {
-        let service_routes =
-            casper_json_rpc::route(SPECULATIVE_EXEC_API_PATH, max_body_bytes, handlers.clone());
-
-        // Supports content negotiation for gzip responses. This is an interim fix until
-        // https://github.com/seanmonstar/warp/pull/513 moves forward.
-        let service_routes_gzip = warp::header::exact(ACCEPT_ENCODING.as_str(), "gzip")
-            .and(service_routes.clone())
-            .with(warp::compression::gzip());
-
-        let service = warp::service(service_routes_gzip.or(service_routes));
-        async move { Ok::<_, Infallible>(service.clone()) }
-    });
-
-    let make_svc = ServiceBuilder::new()
-        .rate_limit(qps_limit, Duration::from_secs(1))
-        .service(make_svc);
-
-    let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started speculative execution server");
-
-    let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-    let server_with_shutdown = server.with_graceful_shutdown(async {
-        shutdown_receiver.await.ok();
-    });
-
-    let _ = tokio::spawn(server_with_shutdown).await;
-    let _ = shutdown_sender.send(());
+    super::rpcs::run(
+        builder,
+        handlers,
+        qps_limit,
+        max_body_bytes,
+        SPECULATIVE_EXEC_API_PATH,
+        SPECULATIVE_EXEC_SERVER_NAME,
+    )
+    .await;
 }
