@@ -8,14 +8,10 @@ compile_error!("target arch should be wasm32: compile with '--target wasm32-unkn
 // `no_std` environment.
 extern crate alloc;
 
-use casper_contract::{
-    contract_api::storage,
-    unwrap_or_revert::UnwrapOrRevert,
-};
+use casper_contract::{contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let seed_uref = storage::new_dictionary("nctl_dictionary")
-        .unwrap_or_revert();
+    let seed_uref = storage::new_dictionary("nctl_dictionary").unwrap_or_revert();
     storage::dictionary_put(seed_uref, "foo", 1u64);
 }
