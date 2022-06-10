@@ -342,7 +342,11 @@ where
         );
 
         system_upgrader
-            .ensure_consistent_contract_state(correlation_id, handle_payment_hash, &self.config)
+            .create_accumulation_purse_if_required(
+                correlation_id,
+                handle_payment_hash,
+                &self.config,
+            )
             .map_err(Error::ProtocolUpgrade)?;
 
         system_upgrader

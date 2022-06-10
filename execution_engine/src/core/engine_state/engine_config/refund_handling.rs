@@ -24,10 +24,9 @@ pub enum RefundHandling {
         /// Any dust amount that was a result of multiplying by refund_ratio goes back to user.
         refund_ratio: Ratio<u64>,
     },
-    /// Burns the refund amount. Implies 100% refund amount as described in
-    /// [`RefundHandling::Refund`].
+    /// Burns the refund amount.
     Burn {
-        /// Computes how much of the refund amount is burned after deducting gas fspent from the
+        /// Computes how much of the refund amount is burned after deducting gas spent from the
         /// paid amount.
         refund_ratio: Ratio<u64>,
     },

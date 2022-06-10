@@ -75,8 +75,6 @@ allow_auction_bids = true
 compute_rewards = true
 # Defines how refunds of the unused portion of payment amounts are calculated and handled.
 #
-# The only valid value for 'type' is currently 'refund'.
-#
 # Valid options are:
 #   'refund': this causes excess payment amounts to be sent to either a pre-defined purse, or back to the sender.
 #             the refunded amount is calculated as the given ratio of the payment amount minus the execution costs.

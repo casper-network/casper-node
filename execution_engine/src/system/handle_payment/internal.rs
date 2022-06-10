@@ -107,10 +107,10 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    let (refund_amount, validator_fee) =
+    let (refund, fee) =
         calculate_refund_and_fee(gas_spent, payment_amount, provider.refund_handling())?;
 
-    debug_assert_eq!(validator_fee + refund_amount, payment_amount);
+    debug_assert_eq!(fee + refund, payment_amount);
 
     // Give or burn the refund.
     match provider.refund_handling() {
@@ -127,49 +127,41 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
 
             provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
 
-            if !refund_amount.is_zero() {
+            if !refund.is_zero() {
                 match refund_purse {
                     Some(refund_purse) => {
                         // In case of failure to transfer to refund purse we fall back on the
                         // account's main purse
-                        match provider.transfer_purse_to_purse(
-                            payment_purse,
-                            refund_purse,
-                            refund_amount,
-                        ) {
+                        match provider.transfer_purse_to_purse(payment_purse, refund_purse, refund)
+                        {
                             Ok(()) => {}
                             Err(error) => {
                                 error!(
                                     %error,
-                                    %refund_amount,
+                                    %refund,
                                     %account,
                                     "unable to transfer refund to a refund purse; refunding to account"
                                 );
-                                refund_to_account::<P>(
-                                    provider,
-                                    payment_purse,
-                                    account,
-                                    refund_amount,
-                                )?;
+                                refund_to_account::<P>(provider, payment_purse, account, refund)?;
                             }
                         }
                     }
                     None => {
-                        refund_to_account::<P>(provider, payment_purse, account, refund_amount)?;
+                        refund_to_account::<P>(provider, payment_purse, account, refund)?;
                     }
                 }
             }
         }
 
-        RefundHandling::Burn { .. } if !refund_amount.is_zero() => {
+        RefundHandling::Burn { .. } if !refund.is_zero() => {
             // Fee-handling is set to `Burn`.  Deduct the refund from the payment purse and
             // reduce the total supply (i.e. burn the refund).
             payment_amount = payment_amount
-                .checked_sub(refund_amount)
+                .checked_sub(refund)
                 .ok_or(Error::ArithmeticOverflow)?;
 
             provider.write_balance(payment_purse, payment_amount)?;
-            provider.reduce_total_supply(refund_amount)?;
+            provider.reduce_total_supply(refund)?;
         }
 
         RefundHandling::Burn { .. } => {
@@ -178,20 +170,28 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
     }
 
     // Pay or burn the fee.
-    if target == URef::default() {
-        // Fee-handling is set to `Burn`.  Deduct the fee from the payment purse, leaving it
-        // empty, and reduce the total supply (i.e. burn the fee).
-        provider.write_balance(payment_purse, U512::zero())?;
-        provider.reduce_total_supply(validator_fee)?;
-    } else {
-        // target purse is already resolved based on fee-handling config which is either a
-        // proposer or accumulation purse.
-        match provider.transfer_purse_to_purse(payment_purse, target, validator_fee) {
-            Ok(()) => {}
-            Err(error) => {
-                error!(%error, %validator_fee, %target, "unable to transfer fee");
-                return Err(Error::FailedTransferToRewardsPurse);
+    match provider.fee_handling() {
+        FeeHandling::PayToProposer | FeeHandling::Accumulate => {
+            // target purse is already resolved based on fee-handling config which is either a
+            // proposer or accumulation purse.
+            match provider.transfer_purse_to_purse(payment_purse, target, fee) {
+                Ok(()) => {}
+                Err(error) => {
+                    error!(%error, %fee, %target, "unable to transfer fee");
+                    return Err(Error::FailedTransferToRewardsPurse);
+                }
             }
+        }
+        FeeHandling::Burn => {
+            debug_assert_eq!(
+                target,
+                URef::default(),
+                "Caller should pass a defaulted URef if the fees are burned"
+            );
+            // Fee-handling is set to `Burn`.  Deduct the fee from the payment purse, leaving it
+            // empty, and reduce the total supply (i.e. burn the fee).
+            provider.write_balance(payment_purse, U512::zero())?;
+            provider.reduce_total_supply(fee)?;
         }
     }
     Ok(())
