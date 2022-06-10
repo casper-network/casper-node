@@ -47,5 +47,5 @@ pub trait RuntimeProvider {
 
     /// Checks if users can perform unrestricted transfers. This option is valid only for private
     /// chains.
-    fn allow_unrestricted_transfers(&self) -> bool;
+    fn disable_unrestricted_transfers(&self) -> bool;
 }

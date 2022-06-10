@@ -759,7 +759,7 @@ where
         // At this point we know target refers to either a purse on an existing account or an
         // account which has to be created.
 
-        if !self.config.allow_unrestricted_transfers()
+        if self.config.disable_unrestricted_transfers()
             && !self.config.is_administrator(&account_hash)
         {
             // We need to make sure that source or target has to be admin.

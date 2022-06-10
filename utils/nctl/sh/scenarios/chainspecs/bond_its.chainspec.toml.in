@@ -56,8 +56,8 @@ minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
 refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 fee_handling = { type = 'pay_to_proposer' }
-allow_unrestricted_transfers = true
-allow_auction_bids = true
+disable_unrestricted_transfers = false
+disable_auction_bids = false
 compute_rewards = true
 administrators = []
 

@@ -241,11 +241,14 @@ impl Reactor {
                 .protocol_config
                 .verifiable_chunked_hash_activation,
             administrative_accounts,
-            chainspec_loader.chainspec().core_config.allow_auction_bids,
             chainspec_loader
                 .chainspec()
                 .core_config
-                .allow_unrestricted_transfers,
+                .disable_auction_bids,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .disable_unrestricted_transfers,
             chainspec_loader.chainspec().core_config.refund_handling,
             chainspec_loader.chainspec().core_config.fee_handling,
         )?;

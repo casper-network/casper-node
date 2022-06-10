@@ -57,10 +57,10 @@ max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 strict_argument_checking = false
-# Allows peer to peer transfers between users.
-allow_unrestricted_transfers = true
-# Enables the auction entry points 'delegate' and 'add_bid'.
-allow_auction_bids = true
+# Disables peer to peer transfers between users.
+disable_unrestricted_transfers = false
+# Disables the auction entry points 'delegate' and 'add_bid'.
+disable_auction_bids = false
 # Defines how refunds of the unused portion of payment amounts are calculated and handled.
 refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 # Defines how fees are handled.
