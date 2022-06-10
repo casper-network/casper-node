@@ -26,7 +26,7 @@ where
     AckStreamError, // TODO: Capture actual ack stream error here.
     /// The multiplexer was closed, while a handle tried to access it.
     #[error("Multiplexer closed")]
-    MultplexerClosed,
+    MultiplexerClosed,
     /// The wrapped sink returned an error.
     #[error(transparent)]
     Sink(#[from] E),

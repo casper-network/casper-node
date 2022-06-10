@@ -143,7 +143,7 @@ where
         match self.guard {
             Some(ref mut guard) => match guard.as_mut() {
                 Some(sink) => Ok(sink),
-                None => Err(Error::MultplexerClosed),
+                None => Err(Error::MultiplexerClosed),
             },
             None => {
                 panic!("assume_get_sink called without holding a sink. this is a bug")
@@ -182,7 +182,7 @@ where
         };
 
         // At this point we have acquired the lock, now our only job is to stuff data into the sink.
-        try_ready!(guard.as_mut().ok_or(Error::MultplexerClosed))
+        try_ready!(guard.as_mut().ok_or(Error::MultiplexerClosed))
             .poll_ready_unpin(cx)
             .map_err(Error::Sink)
     }
@@ -285,7 +285,7 @@ mod tests {
             .now_or_never()
             .unwrap()
             .unwrap_err();
-        assert!(matches!(outcome, Error::MultplexerClosed));
+        assert!(matches!(outcome, Error::MultiplexerClosed));
     }
 
     #[test]
