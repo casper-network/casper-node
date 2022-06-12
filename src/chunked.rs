@@ -4,9 +4,13 @@
 //! continuation byte, which is `0x00` if more chunks are following, `0xFF` if this is the frame's
 //! last chunk.
 
-use std::num::NonZeroUsize;
+use std::{future, num::NonZeroUsize};
 
-use bytes::{Buf, Bytes};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use futures::{
+    stream::{self},
+    Sink, SinkExt, Stream, StreamExt,
+};
 
 use crate::{error::Error, ImmediateFrame};
 
@@ -42,6 +46,44 @@ pub fn chunk_frame<B: Buf>(
         };
         ImmediateFrame::from(continuation_byte).chain(chunk_data)
     }))
+}
+
+/// Generates the "fragmentizer", i.e: an object that when given the source stream of bytes will yield single chunks.
+#[allow(unused)]
+pub(crate) fn make_fragmentizer<S, E>(
+    source: S,
+    fragment_size: NonZeroUsize,
+) -> impl Sink<Bytes, Error = Error<E>>
+where
+    E: std::error::Error,
+    S: Sink<SingleChunk, Error = Error<E>>,
+{
+    source.with_flat_map(move |frame: Bytes| {
+        let chunk_iter = chunk_frame(frame, fragment_size).expect("TODO: Handle error");
+        stream::iter(chunk_iter.map(Result::<_, Error<E>>::Ok))
+    })
+}
+
+/// Generates the "defragmentizer", i.e.: an object that when given the source stream of fragments will yield the entire message.
+#[allow(unused)]
+pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl Stream<Item = Bytes> {
+    let mut buffer = vec![];
+    source.filter_map(move |mut fragment| {
+        let first_byte = *fragment.first().expect("missing first byte");
+        buffer.push(fragment.split_off(std::mem::size_of_val(&first_byte)));
+        match first_byte {
+            FINAL_CHUNK => {
+                // TODO: Check the true zero-copy approach.
+                let mut buf = BytesMut::new();
+                for fragment in buffer.drain(..) {
+                    buf.put_slice(&fragment);
+                }
+                future::ready(Some(buf.freeze()))
+            }
+            MORE_CHUNKS => future::ready(None),
+            _ => panic!("garbage found where continuation byte was expected"),
+        }
+    })
 }
 
 #[cfg(test)]
