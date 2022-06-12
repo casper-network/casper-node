@@ -12,9 +12,11 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::{Sink, SinkExt};
+use bytes::Bytes;
+use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use thiserror::Error;
 
-use crate::ImmediateFrame;
+use crate::{FromFixedSize, ImmediateFrame};
 
 /// Sink for immediate values.
 ///
@@ -27,12 +29,38 @@ pub struct ImmediateSink<A, S> {
     _phantom: PhantomData<A>,
 }
 
-impl<A, S> ImmediateSink<A, S> {
+/// Stream of immediate values.
+///
+/// Reconstructs immediates from variably sized frames. The incoming frames are assumed to be all of
+/// the same size.
+pub struct ImmediateStream<S, T> {
+    stream: S,
+    _type: PhantomData<T>,
+}
+
+/// Error occuring during immediate stream reading.
+#[derive(Debug, Error)]
+pub enum ImmediateStreamError {
+    /// The incoming frame was of the wrong size.
+    #[error("wrong size for immediate frame, expected {expected}, got {actual}")]
+    WrongSize { actual: usize, expected: usize },
+}
+
+impl<T, S> ImmediateSink<T, S> {
     /// Creates a new immediate sink on top of the given stream.
     pub fn new(sink: S) -> Self {
         Self {
             sink,
             _phantom: PhantomData,
+        }
+    }
+}
+
+impl<S, T> ImmediateStream<S, T> {
+    pub fn new(stream: S) -> Self {
+        Self {
+            stream,
+            _type: PhantomData,
         }
     }
 }
@@ -60,6 +88,32 @@ where
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.get_mut().sink.poll_close_unpin(cx)
+    }
+}
+
+impl<S, T> Stream for ImmediateStream<S, T>
+where
+    T: FromFixedSize + Unpin,
+    S: Stream<Item = Bytes> + Unpin,
+{
+    type Item = Result<T, ImmediateStreamError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let self_mut = self.get_mut();
+
+        match ready!(self_mut.stream.poll_next_unpin(cx)) {
+            Some(frame) => {
+                let slice = AsRef::<[u8]>::as_ref(&frame);
+
+                Poll::Ready(Some(T::from_slice(slice).ok_or({
+                    ImmediateStreamError::WrongSize {
+                        actual: slice.len(),
+                        expected: T::WIRE_SIZE,
+                    }
+                })))
+            }
+            None => Poll::Ready(None),
+        }
     }
 }
 

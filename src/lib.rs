@@ -19,6 +19,19 @@ pub struct ImmediateFrame<A> {
     value: A,
 }
 
+/// Canonical encoding of immediates.
+///
+/// This trait describes the conversion of an immediate type from a slice of bytes.
+pub trait FromFixedSize: Sized {
+    /// The size of the type on the wire.
+    ///
+    /// `from_slice` expected its input argument to be of this length.
+    const WIRE_SIZE: usize;
+
+    /// Try to reconstruct a type from a slice of bytes.
+    fn from_slice(slice: &[u8]) -> Option<Self>;
+}
+
 impl<A> ImmediateFrame<A> {
     #[inline]
     pub fn new(value: A) -> Self {
@@ -44,6 +57,33 @@ impl From<u32> for ImmediateFrame<[u8; 4]> {
     #[inline]
     fn from(value: u32) -> Self {
         ImmediateFrame::new(value.to_le_bytes())
+    }
+}
+
+impl FromFixedSize for u8 {
+    const WIRE_SIZE: usize = 1;
+
+    fn from_slice(slice: &[u8]) -> Option<Self> {
+        match *slice {
+            [v] => Some(v),
+            _ => None,
+        }
+    }
+}
+
+impl FromFixedSize for u16 {
+    const WIRE_SIZE: usize = 2;
+
+    fn from_slice(slice: &[u8]) -> Option<Self> {
+        Some(u16::from_le_bytes(slice.try_into().ok()?))
+    }
+}
+
+impl FromFixedSize for u32 {
+    const WIRE_SIZE: usize = 4;
+
+    fn from_slice(slice: &[u8]) -> Option<Self> {
+        Some(u32::from_le_bytes(slice.try_into().ok()?))
     }
 }
 
