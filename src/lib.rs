@@ -3,6 +3,7 @@ pub mod chunked;
 pub mod error;
 pub mod length_prefixed;
 pub mod mux;
+pub mod fixed_size;
 
 use bytes::Buf;
 
