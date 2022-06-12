@@ -1,6 +1,9 @@
+//! Asynchronous multiplexing 
+
 pub mod backpressured;
 pub mod chunked;
 pub mod error;
+pub mod frame_reader;
 pub mod length_prefixed;
 pub mod mux;
 
@@ -67,16 +70,22 @@ where
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::io::Read;
+    use std::{io::Read, num::NonZeroUsize};
 
     use bytes::{Buf, Bytes};
-    use futures::{future, stream, FutureExt, SinkExt};
+    use futures::{future, FutureExt, SinkExt, StreamExt};
+    use tokio_util::sync::PollSender;
 
     use crate::{
-        chunked::{chunk_frame, SingleChunk},
-        error::Error,
-        length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame},
+        chunked::{make_defragmentizer, make_fragmentizer},
+        frame_reader::FrameReader,
+        length_prefixed::frame_add_length_prefix,
     };
+
+    // In tests use small value so that we make sure that
+    // we correctly merge data that was polled from
+    // the stream in small chunks.
+    const BUFFER_INCREMENT: u16 = 4;
 
     /// Collects everything inside a `Buf` into a `Vec`.
     pub fn collect_buf<B: Buf>(buf: B) -> Vec<u8> {
@@ -90,15 +99,13 @@ pub(crate) mod tests {
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
     fn chunked_length_prefixed_sink() {
-        let base_sink: Vec<LengthPrefixedFrame<SingleChunk>> = Vec::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+        let poll_sender = PollSender::new(tx);
 
-        let length_prefixed_sink =
-            base_sink.with(|frame| future::ready(frame_add_length_prefix(frame)));
-
-        let mut chunked_sink = length_prefixed_sink.with_flat_map(|frame| {
-            let chunk_iter = chunk_frame(frame, 5.try_into().unwrap()).expect("TODO: Handle error");
-            stream::iter(chunk_iter.map(Result::<_, Error>::Ok))
-        });
+        let mut chunked_sink = make_fragmentizer(
+            poll_sender.with(|frame| future::ready(frame_add_length_prefix(frame))),
+            NonZeroUsize::new(5).unwrap(),
+        );
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
@@ -108,10 +115,9 @@ pub(crate) mod tests {
             .unwrap()
             .expect("send failed");
 
-        let chunks: Vec<_> = chunked_sink
-            .into_inner()
-            .into_inner()
-            .into_iter()
+        drop(chunked_sink);
+
+        let chunks: Vec<_> = std::iter::from_fn(move || rx.blocking_recv())
             .map(collect_buf)
             .collect();
 
@@ -119,5 +125,30 @@ pub(crate) mod tests {
             chunks,
             vec![b"\x06\x00\x00QRSTU".to_vec(), b"\x02\x00\xffV".to_vec()]
         )
+    }
+
+    #[test]
+    fn stream_to_message() {
+        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
+        let expected = "ABCDEFGHIJKL";
+
+        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BUFFER_INCREMENT));
+
+        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
+        assert_eq!(
+            expected,
+            messages.first().expect("should have at least one message")
+        );
+    }
+
+    #[test]
+    fn stream_to_multiple_messages() {
+        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
+        let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
+
+        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BUFFER_INCREMENT));
+
+        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
+        assert_eq!(expected, messages);
     }
 }
