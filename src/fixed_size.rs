@@ -21,17 +21,17 @@ use crate::ImmediateFrame;
 /// Any value passed into the sink (via the `futures::Sink` trait) will be converted into an
 /// immediate `ImmediateFrame` and sent.
 pub struct ImmediateSink<A, S> {
-    /// The underlying stream where items are written.
-    stream: S,
+    /// The underlying sink where items are written.
+    sink: S,
     /// Phantom data for the immediate array type.
     _phantom: PhantomData<A>,
 }
 
 impl<A, S> ImmediateSink<A, S> {
     /// Creates a new immediate sink on top of the given stream.
-    pub fn new(stream: S) -> Self {
+    pub fn new(sink: S) -> Self {
         Self {
-            stream,
+            sink,
             _phantom: PhantomData,
         }
     }
@@ -46,20 +46,20 @@ where
     type Error = <S as Sink<ImmediateFrame<A>>>::Error;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.get_mut().stream.poll_ready_unpin(cx)
+        self.get_mut().sink.poll_ready_unpin(cx)
     }
 
     fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
         let immediate = item.into();
-        self.get_mut().stream.start_send_unpin(immediate)
+        self.get_mut().sink.start_send_unpin(immediate)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.get_mut().stream.poll_flush_unpin(cx)
+        self.get_mut().sink.poll_flush_unpin(cx)
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.get_mut().stream.poll_close_unpin(cx)
+        self.get_mut().sink.poll_close_unpin(cx)
     }
 }
 
