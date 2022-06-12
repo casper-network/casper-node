@@ -121,9 +121,12 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use futures::{FutureExt, SinkExt};
+    use bytes::Bytes;
+    use futures::{stream, FutureExt, SinkExt, StreamExt};
 
     use crate::{fixed_size::ImmediateSink, tests::TestingSink};
+
+    use super::ImmediateStream;
 
     #[test]
     fn simple_sending() {
@@ -144,5 +147,20 @@ mod tests {
             output.get_contents(),
             &[0x34, 0x12, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x12, 0x34, 0x56, 0x78]
         );
+    }
+
+    #[test]
+    fn simple_stream() {
+        let input = vec![
+            Bytes::copy_from_slice(&[0x78, 0x56, 0x34, 0x12]),
+            Bytes::copy_from_slice(&[0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+
+        let stream = ImmediateStream::<_, u32>::new(stream::iter(input));
+
+        let output: Vec<Result<u32, _>> = stream.collect().now_or_never().unwrap();
+        let values: Vec<u32> = output.into_iter().collect::<Result<_, _>>().unwrap();
+
+        assert_eq!(values, &[0x12345678, 0xAABBCCDD]);
     }
 }
