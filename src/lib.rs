@@ -197,7 +197,7 @@ pub(crate) mod tests {
         /// Internally, the reference has a static lifetime through `Arc` and can thus be passed
         /// on independently.
         pub fn into_ref(self: Arc<Self>) -> TestingSinkRef {
-            TestingSinkRef(self.clone())
+            TestingSinkRef(self)
         }
 
         /// Helper function for sink implementations, calling `poll_ready`.
