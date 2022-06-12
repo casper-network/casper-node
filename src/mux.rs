@@ -239,7 +239,7 @@ where
         sink.start_send_unpin(prefixed).map_err(Error::Sink)?;
 
         // Item is enqueued, increase the send count.
-        let last_send = self.send_count.fetch_add(1, Ordering::SeqCst);
+        let last_send = self.send_count.fetch_add(1, Ordering::SeqCst) + 1;
         self.last_send = Some(last_send);
 
         Ok(())
