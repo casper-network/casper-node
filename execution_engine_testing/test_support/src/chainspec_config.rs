@@ -73,7 +73,7 @@ pub struct CoreConfig {
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
-    /// `true`. Setting up this option makes sense only for private chains where validator set
+    /// `false`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
     pub(crate) allow_auction_bids: bool,
     /// Allows unrestricted transfers between users.

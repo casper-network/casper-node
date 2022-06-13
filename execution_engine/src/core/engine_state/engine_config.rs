@@ -53,7 +53,7 @@ pub struct EngineConfig {
     /// A private network specifies a list of administrative accounts.
     pub(crate) administrative_accounts: BTreeSet<AccountHash>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
-    /// `true`.
+    /// `false`.
     pub(crate) allow_auction_bids: bool,
     /// Allow unrestricted transfers between normal accounts.
     ///
