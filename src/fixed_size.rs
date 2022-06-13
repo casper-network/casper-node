@@ -1,6 +1,6 @@
 //! Immediate (small/fixed size) item sink and stream.
 //!
-//! `ImmediateSink` allows sending items for which `Into<ImmediateFrameSink<_>>` is
+//! `ImmediateSink` allows sending items for which `Into<ImmediateSink<_>>` is
 //! implemented. Typically this is true for small atomic types like `u32`, which are encoded as
 //! little endian in throughout this crate.
 //!

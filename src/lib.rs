@@ -162,7 +162,7 @@ pub(crate) mod tests {
 
         /// Inserts or removes the clog from the sink.
         pub fn set_clogged(&self, clogged: bool) {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("could not lock clog");
             guard.clogged = clogged;
 
             // Notify any waiting tasks that there may be progress to be made.
@@ -187,7 +187,7 @@ pub(crate) mod tests {
         ///
         /// Will update the local waker reference.
         pub fn is_clogged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("could not lock clog");
 
             guard.waker = Some(cx.waker().clone());
             guard.clogged
@@ -358,7 +358,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn ensure_sink_wakes_up_after_plugging_in() {
+    async fn waiting_tasks_can_progress_upon_unplugging_the_sink() {
         let sink = Arc::new(TestingSink::new());
 
         sink.set_plugged(true);
