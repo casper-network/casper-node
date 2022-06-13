@@ -357,6 +357,7 @@ pub(crate) mod tests {
         assert_eq!(sink.get_contents(), b"firstsecondthird");
     }
 
+    /// Verifies that when a sink is clogged but later unclogged, any waiters on it are woken up.
     #[tokio::test]
     async fn waiting_tasks_can_progress_upon_unplugging_the_sink() {
         let sink = Arc::new(TestingSink::new());
