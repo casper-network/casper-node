@@ -149,7 +149,7 @@ pub(crate) mod tests {
 
         /// Inserts or removes the plug from the sink.
         pub fn set_plugged(&self, plugged: bool) {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
             guard.plugged = plugged;
 
             // Notify any waiting tasks that there may be progress to be made.
@@ -162,7 +162,7 @@ pub(crate) mod tests {
 
         /// Inserts or removes the clog from the sink.
         pub fn set_clogged(&self, clogged: bool) {
-            let mut guard = self.obstruction.lock().expect("could not lock clog");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
             guard.clogged = clogged;
 
             // Notify any waiting tasks that there may be progress to be made.
@@ -177,7 +177,7 @@ pub(crate) mod tests {
         ///
         /// Will update the local waker reference.
         pub fn is_plugged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
 
             guard.waker = Some(cx.waker().clone());
             guard.plugged
@@ -187,7 +187,7 @@ pub(crate) mod tests {
         ///
         /// Will update the local waker reference.
         pub fn is_clogged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.obstruction.lock().expect("could not lock clog");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
 
             guard.waker = Some(cx.waker().clone());
             guard.clogged
