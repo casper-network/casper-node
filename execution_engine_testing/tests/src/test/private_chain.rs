@@ -69,8 +69,8 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_
 
 const ADMIN_ACCOUNT_INITIAL_BALANCE: U512 = U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
 
-const PRIVATE_CHAIN_DISABLE_AUCTION_BIDS: bool = true;
-const PRIVATE_CHAIN_DISABLE_UNRESTRICTED_TRANSFERS: bool = true;
+const PRIVATE_CHAIN_ALLOW_AUCTION_BIDS: bool = false;
+const PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS: bool = false;
 
 static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = Lazy::new(|| {
     let default_admin = AdministratorAccount::new(
@@ -171,14 +171,14 @@ static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
 });
 
 fn custom_setup_genesis_only(
-    disable_auction_bids: bool,
-    disable_unrestricted_transfers: bool,
+    allow_auction_bids: bool,
+    allow_unrestricted_transfers: bool,
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
 ) -> InMemoryWasmTestBuilder {
     let engine_config = make_engine_config(
-        disable_auction_bids,
-        disable_unrestricted_transfers,
+        allow_auction_bids,
+        allow_unrestricted_transfers,
         refund_handling,
         fee_handling,
     );
@@ -189,8 +189,8 @@ fn custom_setup_genesis_only(
 
 fn setup_genesis_only() -> InMemoryWasmTestBuilder {
     custom_setup_genesis_only(
-        PRIVATE_CHAIN_DISABLE_AUCTION_BIDS,
-        PRIVATE_CHAIN_DISABLE_UNRESTRICTED_TRANSFERS,
+        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         PRIVATE_CHAIN_REFUND_HANDLING,
         PRIVATE_CHAIN_FEE_HANDLING,
     )
@@ -214,16 +214,16 @@ fn make_wasm_config() -> WasmConfig {
 }
 
 fn make_engine_config(
-    disable_auction_bids: bool,
-    disable_unrestricted_transfers: bool,
+    allow_auction_bids: bool,
+    allow_unrestricted_transfers: bool,
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
 ) -> EngineConfig {
     let administrator_accounts = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
     EngineConfigBuilder::default()
         .with_administrative_accounts(administrator_accounts)
-        .with_disable_auction_bids(disable_auction_bids)
-        .with_disable_unrestricted_transfers(disable_unrestricted_transfers)
+        .with_allow_auction_bids(allow_auction_bids)
+        .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
         .with_refund_handling(refund_handling)
         .with_fee_handling(fee_handling)
         .with_wasm_config(make_wasm_config())
@@ -232,8 +232,8 @@ fn make_engine_config(
 
 fn private_chain_setup() -> InMemoryWasmTestBuilder {
     custom_setup_genesis_only(
-        PRIVATE_CHAIN_DISABLE_AUCTION_BIDS,
-        PRIVATE_CHAIN_DISABLE_UNRESTRICTED_TRANSFERS,
+        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         PRIVATE_CHAIN_REFUND_HANDLING,
         PRIVATE_CHAIN_FEE_HANDLING,
     )

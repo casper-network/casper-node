@@ -596,8 +596,8 @@ impl ContractRuntime {
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
         administrative_accounts: BTreeSet<PublicKey>,
-        disable_auction_bids: bool,
-        disable_unrestricted_transfers: bool,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
         refund_handling: RefundHandling,
         fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
@@ -633,8 +633,8 @@ impl ContractRuntime {
             .with_wasm_config(wasm_config)
             .with_system_config(system_config)
             .with_administrative_accounts(administrative_accounts)
-            .with_disable_auction_bids(disable_auction_bids)
-            .with_disable_unrestricted_transfers(disable_unrestricted_transfers)
+            .with_allow_auction_bids(allow_auction_bids)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
             .with_refund_handling(refund_handling)
             .with_fee_handling(fee_handling)
             .build();

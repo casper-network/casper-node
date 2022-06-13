@@ -2204,7 +2204,7 @@ where
 
         let target_key = Key::Account(target);
 
-        if self.config.disable_unrestricted_transfers()
+        if !self.config.allow_unrestricted_transfers()
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self.config.is_administrator(&self.context.get_caller())
             && !self.config.is_administrator(&target)

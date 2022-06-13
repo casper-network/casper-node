@@ -29,7 +29,7 @@ use casper_types::{
 
 use crate::{
     test::private_chain::{
-        self, ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, PRIVATE_CHAIN_DISABLE_AUCTION_BIDS,
+        self, ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         VALIDATOR_1_PUBLIC_KEY,
     },
     wasm_utils,
@@ -601,8 +601,8 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     // We'll simulate enabled unrestricted transfers here to test if stored payment contract is
     // disabled.
     let mut builder = private_chain::custom_setup_genesis_only(
-        PRIVATE_CHAIN_DISABLE_AUCTION_BIDS,
-        false,
+        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        true,
         PRIVATE_CHAIN_REFUND_HANDLING,
         PRIVATE_CHAIN_FEE_HANDLING,
     );

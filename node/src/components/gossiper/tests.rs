@@ -21,8 +21,8 @@ use tracing::debug;
 use casper_execution_engine::{
     core::engine_state::{
         engine_config::{
-            DEFAULT_DISABLE_AUCTION_BIDS, DEFAULT_DISABLE_UNRESTRICTED_TRANSFERS,
-            DEFAULT_FEE_HANDLING, DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_REFUND_HANDLING,
+            DEFAULT_ALLOW_AUCTION_BIDS, DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS, DEFAULT_FEE_HANDLING,
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_REFUND_HANDLING,
             DEFAULT_STRICT_ARGUMENT_CHECKING,
         },
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
@@ -253,8 +253,8 @@ impl reactor::Reactor for Reactor {
             registry,
             verifiable_chunked_hash_activation.into(),
             Default::default(),
-            DEFAULT_DISABLE_AUCTION_BIDS,
-            DEFAULT_DISABLE_UNRESTRICTED_TRANSFERS,
+            DEFAULT_ALLOW_AUCTION_BIDS,
+            DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
             DEFAULT_REFUND_HANDLING,
             DEFAULT_FEE_HANDLING,
         )

@@ -204,9 +204,9 @@ impl InMemoryWasmTestBuilder {
             .with_wasm_config(chainspec_config.wasm_config)
             .with_system_config(chainspec_config.system_costs_config)
             .with_administrative_accounts(chainspec_config.core_config.administrators.clone())
-            .with_disable_auction_bids(chainspec_config.core_config.disable_auction_bids)
-            .with_disable_unrestricted_transfers(
-                chainspec_config.core_config.disable_unrestricted_transfers,
+            .with_allow_auction_bids(chainspec_config.core_config.allow_auction_bids)
+            .with_allow_unrestricted_transfers(
+                chainspec_config.core_config.allow_unrestricted_transfers,
             )
             .with_refund_handling(chainspec_config.core_config.refund_handling)
             .with_fee_handling(chainspec_config.core_config.fee_handling)
@@ -280,9 +280,9 @@ impl LmdbWasmTestBuilder {
             .with_wasm_config(chainspec_config.wasm_config)
             .with_system_config(chainspec_config.system_costs_config)
             .with_administrative_accounts(chainspec_config.core_config.administrators.clone())
-            .with_disable_auction_bids(chainspec_config.core_config.disable_auction_bids)
-            .with_disable_unrestricted_transfers(
-                chainspec_config.core_config.disable_unrestricted_transfers,
+            .with_allow_auction_bids(chainspec_config.core_config.allow_auction_bids)
+            .with_allow_unrestricted_transfers(
+                chainspec_config.core_config.allow_unrestricted_transfers,
             )
             .with_refund_handling(chainspec_config.core_config.refund_handling)
             .with_fee_handling(chainspec_config.core_config.fee_handling)

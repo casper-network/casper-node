@@ -15,8 +15,8 @@ use num_traits::{One, Zero};
 
 use crate::{
     test::private_chain::{
-        self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, PRIVATE_CHAIN_DISABLE_AUCTION_BIDS,
-        PRIVATE_CHAIN_DISABLE_UNRESTRICTED_TRANSFERS,
+        self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
     },
     wasm_utils,
 };
@@ -104,8 +104,8 @@ fn test_burning_fees(
     expected_burn_amount: U512,
 ) {
     let mut builder = private_chain::custom_setup_genesis_only(
-        PRIVATE_CHAIN_DISABLE_AUCTION_BIDS,
-        PRIVATE_CHAIN_DISABLE_UNRESTRICTED_TRANSFERS,
+        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         refund_handling,
         fee_handling,
     );

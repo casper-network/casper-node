@@ -21,10 +21,10 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 fee_handling = { type = 'pay_to_proposer' }
-disable_auction_bids = false
+allow_auction_bids = true
 strict_argument_checking = false
 compute_rewards = true
-disable_unrestricted_transfers = false
+allow_unrestricted_transfers = true
 administrators = []
 
 [highway]

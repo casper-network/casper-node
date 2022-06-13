@@ -112,7 +112,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidContext);
         }
 
-        if self.disable_unrestricted_transfers() {
+        if !self.allow_unrestricted_transfers() {
             let registry = match self.get_system_contract_registry() {
                 Ok(registry) => registry,
                 Err(error) => {

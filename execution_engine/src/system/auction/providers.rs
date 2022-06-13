@@ -27,8 +27,8 @@ pub trait RuntimeProvider {
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
 
-    /// Check if auction bids are disabled.
-    fn disable_auction_bids(&self) -> bool;
+    /// Check if auction bids are allowed.
+    fn allow_auction_bids(&self) -> bool;
 }
 
 /// Provides functionality of a contract storage.

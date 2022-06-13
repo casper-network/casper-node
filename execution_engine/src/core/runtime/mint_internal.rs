@@ -72,8 +72,8 @@ where
         self.config.is_administrator(account_hash)
     }
 
-    fn disable_unrestricted_transfers(&self) -> bool {
-        self.config.disable_unrestricted_transfers()
+    fn allow_unrestricted_transfers(&self) -> bool {
+        self.config.allow_unrestricted_transfers()
     }
 
     fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {

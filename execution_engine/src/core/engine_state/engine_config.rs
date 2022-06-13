@@ -24,10 +24,10 @@ pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for strict argument checking.
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
-/// Default value for disable auction bids.
-pub const DEFAULT_DISABLE_AUCTION_BIDS: bool = false;
-/// Default value for disabling unrestricted transfers.
-pub const DEFAULT_DISABLE_UNRESTRICTED_TRANSFERS: bool = false;
+/// Default value for allowing auction bids.
+pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
+/// Default value for allowing unrestricted transfers.
+pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
 pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
     refund_ratio: Ratio::new_raw(0, 1),
@@ -54,13 +54,13 @@ pub struct EngineConfig {
     pub(crate) administrative_accounts: BTreeSet<AccountHash>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`.
-    pub(crate) disable_auction_bids: bool,
-    /// Disable unrestricted transfers between normal accounts.
+    pub(crate) allow_auction_bids: bool,
+    /// Allow unrestricted transfers between normal accounts.
     ///
-    /// If set to `false` accounts can transfer tokens between themselves without restrictions. If
-    /// set to `true` tokens can be transferred only from normal accounts to administrators
+    /// If set to `true` accounts can transfer tokens between themselves without restrictions. If
+    /// set to `false` tokens can be transferred only from normal accounts to administrators
     /// and administrators to normal accounts but not normal accounts to normal accounts.
-    pub(crate) disable_unrestricted_transfers: bool,
+    pub(crate) allow_unrestricted_transfers: bool,
     /// Refund handling config.
     pub(crate) refund_handling: RefundHandling,
     /// Fee handling.
@@ -78,8 +78,8 @@ impl Default for EngineConfig {
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
             administrative_accounts: Default::default(),
-            disable_auction_bids: DEFAULT_DISABLE_AUCTION_BIDS,
-            disable_unrestricted_transfers: DEFAULT_DISABLE_UNRESTRICTED_TRANSFERS,
+            allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
+            allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
         }
@@ -113,8 +113,8 @@ impl EngineConfig {
             wasm_config,
             system_config,
             administrative_accounts: Default::default(),
-            disable_auction_bids: DEFAULT_DISABLE_AUCTION_BIDS,
-            disable_unrestricted_transfers: DEFAULT_DISABLE_UNRESTRICTED_TRANSFERS,
+            allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
+            allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
         }
@@ -155,14 +155,14 @@ impl EngineConfig {
         &self.administrative_accounts
     }
 
-    /// Returns true if auction bids are disabled.
-    pub fn disable_auction_bids(&self) -> bool {
-        self.disable_auction_bids
+    /// Returns true if auction bids are allowed.
+    pub fn allow_auction_bids(&self) -> bool {
+        self.allow_auction_bids
     }
 
-    /// Returns true if unrestricted transfers are disabled.
-    pub fn disable_unrestricted_transfers(&self) -> bool {
-        self.disable_unrestricted_transfers
+    /// Returns true if unrestricted transfers are allowed.
+    pub fn allow_unrestricted_transfers(&self) -> bool {
+        self.allow_unrestricted_transfers
     }
 
     /// Checks if an account hash is an administrator.
@@ -195,8 +195,8 @@ pub struct EngineConfigBuilder {
     minimum_delegation_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
     administrative_accounts: Option<BTreeSet<PublicKey>>,
-    disable_auction_bids: Option<bool>,
-    disable_unrestricted_transfers: Option<bool>,
+    allow_auction_bids: Option<bool>,
+    allow_unrestricted_transfers: Option<bool>,
     refund_handling: Option<RefundHandling>,
     fee_handling: Option<FeeHandling>,
 }
@@ -269,17 +269,14 @@ impl EngineConfigBuilder {
     }
 
     /// Sets the allow auction bids config option.
-    pub fn with_disable_auction_bids(mut self, disable_auction_bids: bool) -> Self {
-        self.disable_auction_bids = Some(disable_auction_bids);
+    pub fn with_allow_auction_bids(mut self, allow_auction_bids: bool) -> Self {
+        self.allow_auction_bids = Some(allow_auction_bids);
         self
     }
 
-    /// Sets the disable unrestricted transfers config option.
-    pub fn with_disable_unrestricted_transfers(
-        mut self,
-        disable_unrestricted_transfers: bool,
-    ) -> Self {
-        self.disable_unrestricted_transfers = Some(disable_unrestricted_transfers);
+    /// Sets the allow unrestricted transfers config option.
+    pub fn with_allow_unrestricted_transfers(mut self, allow_unrestricted_transfers: bool) -> Self {
+        self.allow_unrestricted_transfers = Some(allow_unrestricted_transfers);
         self
     }
 
@@ -328,12 +325,12 @@ impl EngineConfigBuilder {
                 .map(PublicKey::to_account_hash)
                 .collect()
         };
-        let disable_auction_bids = self
-            .disable_auction_bids
-            .unwrap_or(DEFAULT_DISABLE_AUCTION_BIDS);
-        let disable_unrestricted_transfers = self
-            .disable_unrestricted_transfers
-            .unwrap_or(DEFAULT_DISABLE_UNRESTRICTED_TRANSFERS);
+        let allow_auction_bids = self
+            .allow_auction_bids
+            .unwrap_or(DEFAULT_ALLOW_AUCTION_BIDS);
+        let allow_unrestricted_transfers = self
+            .allow_unrestricted_transfers
+            .unwrap_or(DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS);
         let refund_handling = self.refund_handling.unwrap_or(DEFAULT_REFUND_HANDLING);
         let fee_handling = self.fee_handling.unwrap_or(DEFAULT_FEE_HANDLING);
 
@@ -346,8 +343,8 @@ impl EngineConfigBuilder {
             wasm_config,
             system_config,
             administrative_accounts,
-            disable_auction_bids,
-            disable_unrestricted_transfers,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
             refund_handling,
             fee_handling,
         }

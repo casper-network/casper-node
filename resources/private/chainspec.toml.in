@@ -57,12 +57,12 @@ max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 strict_argument_checking = false
-# Disable auction entrypoints such as delegate, redelegate and add_bid to function properly.
+# Allow auction entrypoints such as delegate, redelegate and add_bid to function properly.
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
-disable_auction_bids = true
-# Disable peer to peer transfers between users. Setting this to true makes sense only on private chains.
-disable_unrestricted_transfers = true
+allow_auction_bids = false
+# Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
+allow_unrestricted_transfers = false
 # If set to false, then consensus doesn't compute rewards and always uses 0.
 compute_rewards = false
 # Defines how refunds of the unused portion of payment amounts are calculated and handled.

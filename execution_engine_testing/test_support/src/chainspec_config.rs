@@ -75,9 +75,9 @@ pub struct CoreConfig {
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
-    pub(crate) disable_auction_bids: bool,
-    /// Disables unrestricted transfers between users.
-    pub(crate) disable_unrestricted_transfers: bool,
+    pub(crate) allow_auction_bids: bool,
+    /// Allows unrestricted transfers between users.
+    pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are a valid option for for a private chain only.
     #[serde(default)]
     pub(crate) administrators: BTreeSet<PublicKey>,

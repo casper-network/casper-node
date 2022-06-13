@@ -45,9 +45,9 @@ pub struct CoreConfig {
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
-    pub(crate) disable_auction_bids: bool,
+    pub(crate) allow_auction_bids: bool,
     /// Allows unrestricted transfers between users.
-    pub(crate) disable_unrestricted_transfers: bool,
+    pub(crate) allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub(crate) compute_rewards: bool,
     /// Administrative accounts are valid option for for a private chain only.
@@ -95,8 +95,8 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
-        let disable_auction_bids = rng.gen();
-        let disable_unrestricted_transfers = rng.gen();
+        let allow_auction_bids = rng.gen();
+        let allow_unrestricted_transfers = rng.gen();
         let compute_rewards = rng.gen();
         let administrators = (0..rng.gen_range(0..=10u32))
             .map(|_| PublicKey::random(rng))
@@ -125,9 +125,9 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            disable_auction_bids,
+            allow_auction_bids,
             administrators,
-            disable_unrestricted_transfers,
+            allow_unrestricted_transfers,
             compute_rewards,
             refund_handling,
             fee_handling,
@@ -151,8 +151,8 @@ impl ToBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            disable_auction_bids,
-            disable_unrestricted_transfers,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
             compute_rewards,
             administrators,
             refund_handling,
@@ -169,8 +169,8 @@ impl ToBytes for CoreConfig {
         buffer.extend(max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(minimum_delegation_amount.to_bytes()?);
         buffer.extend(strict_argument_checking.to_bytes()?);
-        buffer.extend(disable_auction_bids.to_bytes()?);
-        buffer.extend(disable_unrestricted_transfers.to_bytes()?);
+        buffer.extend(allow_auction_bids.to_bytes()?);
+        buffer.extend(allow_unrestricted_transfers.to_bytes()?);
         buffer.extend(compute_rewards.to_bytes()?);
         buffer.extend(administrators.to_bytes()?);
         buffer.extend(refund_handling.to_bytes()?);
@@ -191,8 +191,8 @@ impl ToBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            disable_auction_bids,
-            disable_unrestricted_transfers,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
             compute_rewards,
             administrators: administrative_accounts,
             refund_handling,
@@ -209,8 +209,8 @@ impl ToBytes for CoreConfig {
             + max_runtime_call_stack_height.serialized_length()
             + minimum_delegation_amount.serialized_length()
             + strict_argument_checking.serialized_length()
-            + disable_auction_bids.serialized_length()
-            + disable_unrestricted_transfers.serialized_length()
+            + allow_auction_bids.serialized_length()
+            + allow_unrestricted_transfers.serialized_length()
             + compute_rewards.serialized_length()
             + administrative_accounts.serialized_length()
             + refund_handling.serialized_length()
@@ -231,10 +231,10 @@ impl FromBytes for CoreConfig {
         let (max_runtime_call_stack_height, remainder) = FromBytes::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
-        let (disable_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
-        let (disable_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
         let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
-        let (administrators, remainder) = FromBytes::from_bytes(remainder)?;
+        let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
@@ -249,10 +249,10 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            disable_auction_bids,
-            disable_unrestricted_transfers,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
             compute_rewards,
-            administrators,
+            administrators: administrative_accounts,
             refund_handling,
             fee_handling,
         };
