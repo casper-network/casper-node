@@ -10,6 +10,19 @@ pub mod mux;
 
 use bytes::Buf;
 
+/// Helper macro for returning a `Poll::Ready(Err)` eagerly.
+///
+/// Can be remove once `Try` is stabilized for `Poll`.
+#[macro_export]
+macro_rules! try_ready {
+    ($ex:expr) => {
+        match $ex {
+            Err(e) => return Poll::Ready(Err(e.into())),
+            Ok(v) => v,
+        }
+    };
+}
+
 /// A frame for stack allocated data.
 #[derive(Debug)]
 pub struct ImmediateFrame<A> {

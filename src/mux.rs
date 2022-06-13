@@ -31,21 +31,9 @@ use futures::{ready, FutureExt, Sink, SinkExt};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::sync::ReusableBoxFuture;
 
-use crate::{error::Error, ImmediateFrame};
+use crate::{error::Error, try_ready, ImmediateFrame};
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
-
-/// Helper macro for returning a `Poll::Ready(Err)` eagerly.
-///
-/// Can be remove once `Try` is stabilized for `Poll`.
-macro_rules! try_ready {
-    ($ex:expr) => {
-        match $ex {
-            Err(e) => return Poll::Ready(Err(e.into())),
-            Ok(v) => v,
-        }
-    };
-}
 
 /// A frame multiplexer.
 ///
