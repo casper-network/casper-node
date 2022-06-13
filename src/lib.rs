@@ -7,6 +7,8 @@ pub mod fixed_size;
 pub mod io;
 pub mod length_delimited_io;
 pub mod mux;
+#[cfg(test)]
+pub(crate) mod pipe;
 
 use bytes::Buf;
 
