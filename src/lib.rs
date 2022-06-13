@@ -4,6 +4,7 @@ pub mod backpressured;
 pub mod chunked;
 pub mod error;
 pub mod fixed_size;
+pub mod io;
 pub mod length_delimited_io;
 pub mod mux;
 
