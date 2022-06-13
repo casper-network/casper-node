@@ -1,7 +1,7 @@
-//! Frame reader
+//! Length-prefixed frame reading
 //!
-//! A reader that decodes the incoming stream of the length delimited frames into separate frames.
-//! Each frame is expected to be prefixed with two bytes representing its length.
+//! A reader that decodes an incoming stream of length delimited frames into separate frames. Each
+//! frame is expected to be prefixed with two bytes representing its length.
 
 use std::{pin::Pin, task::Poll};
 
@@ -13,16 +13,19 @@ use crate::error::Error;
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 
-pub(crate) struct FrameReader<R: AsyncRead> {
+/// Frame reader for length prefixed frames.
+pub struct FrameReader<R: AsyncRead> {
+    /// The underlying async bytestream being read.
     stream: R,
+    /// Internal buffer for incomplete frames.
     buffer: BytesMut,
-    // How much to grow the buffer when reading from the stream.
+    /// Maximum size of a single read call.
     buffer_increment: u16,
 }
 
 impl<R: AsyncRead> FrameReader<R> {
-    #[cfg(test)]
-    pub(crate) fn new(stream: R, buffer_increment: u16) -> Self {
+    /// Creates a new frame reader on a given stream with the given read buffer increment.
+    pub fn new(stream: R, buffer_increment: u16) -> Self {
         Self {
             stream,
             buffer: BytesMut::new(),
@@ -31,8 +34,9 @@ impl<R: AsyncRead> FrameReader<R> {
     }
 }
 
-// Checks if the specified buffer contains a length delimited frame.
-// If yes, it is removed from the buffer and returned.
+/// Extracts a length delimited frame from a given buffer.
+///
+/// If a frame is found, it is split off from the buffer and returned.
 fn length_delimited_frame(buffer: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
     let bytes_in_buffer = buffer.remaining();
     if bytes_in_buffer < LENGTH_MARKER_SIZE {
@@ -107,10 +111,9 @@ mod tests {
 
     use super::length_delimited_frame;
 
-    // In tests use small value so that we make sure that
-    // we correctly merge data that was polled from
-    // the stream in small chunks.
-    const BUFFER_INCREMENT: u16 = 4;
+    // In tests use small value to make sure that we correctly merge data that was polled from the
+    // stream in small chunks.
+    const TESTING_BUFFER_INCREMENT: u16 = 4;
 
     #[test]
     fn produces_fragments_from_stream() {
@@ -122,7 +125,7 @@ mod tests {
             b"\xffM".to_vec(),
         ];
 
-        let defragmentizer = FrameReader::new(stream, BUFFER_INCREMENT);
+        let defragmentizer = FrameReader::new(stream, TESTING_BUFFER_INCREMENT);
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
