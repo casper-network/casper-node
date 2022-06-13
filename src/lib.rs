@@ -5,7 +5,6 @@ pub mod chunked;
 pub mod error;
 pub mod fixed_size;
 pub mod io;
-pub mod length_delimited_io;
 pub mod mux;
 #[cfg(test)]
 pub(crate) mod pipe;
@@ -138,18 +137,19 @@ pub(crate) mod tests {
     };
 
     use bytes::{Buf, Bytes};
-    use futures::{future, FutureExt, Sink, SinkExt, Stream, StreamExt};
+    use futures::{future, AsyncReadExt, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use tokio_util::sync::PollSender;
 
     use crate::{
         chunked::{make_defragmentizer, make_fragmentizer},
-        length_delimited_io::{reader::FrameReader, writer::frame_add_length_prefix},
+        io::{length_delimited::LengthDelimited, FrameReader, FrameWriter},
+        pipe::pipe,
     };
 
     // In tests use small value so that we make sure that
     // we correctly merge data that was polled from
     // the stream in small chunks.
-    const BUFFER_INCREMENT: u16 = 4;
+    const BUFFER_INCREMENT: usize = 4;
 
     /// Collects everything inside a `Buf` into a `Vec`.
     pub fn collect_buf<B: Buf>(buf: B) -> Vec<u8> {
@@ -452,13 +452,14 @@ pub(crate) mod tests {
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
     fn chunked_length_prefixed_sink() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-        let poll_sender = PollSender::new(tx);
+        let (tx, rx) = pipe();
 
-        let mut chunked_sink = make_fragmentizer(
-            poll_sender.with(|frame| future::ready(frame_add_length_prefix(frame))),
-            NonZeroUsize::new(5).unwrap(),
-        );
+        let frame_writer = FrameWriter::new(LengthDelimited, tx);
+        let mut chunked_sink =
+            make_fragmentizer::<_, Infallible>(frame_writer, NonZeroUsize::new(5).unwrap());
+
+        let frame_reader = FrameReader::new(LengthDelimited, rx, BUFFER_INCREMENT);
+        let chunked_reader = make_defragmentizer(frame_reader);
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
@@ -468,24 +469,21 @@ pub(crate) mod tests {
             .unwrap()
             .expect("send failed");
 
+        // Drop the sink, to ensure it is closed.
         drop(chunked_sink);
 
-        let chunks: Vec<_> = std::iter::from_fn(move || rx.blocking_recv())
-            .map(collect_buf)
-            .collect();
+        let round_tripped: Vec<_> = chunked_reader.collect().now_or_never().unwrap();
 
-        assert_eq!(
-            chunks,
-            vec![b"\x06\x00\x00QRSTU".to_vec(), b"\x02\x00\xffV".to_vec()]
-        )
+        assert_eq!(round_tripped, &[&b"QRSTUV"[..]])
     }
 
     #[test]
-    fn stream_to_message() {
-        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
+    fn from_bytestream_to_frame() {
+        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
         let expected = "ABCDEFGHIJKL";
 
-        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BUFFER_INCREMENT));
+        let defragmentizer =
+            make_defragmentizer(FrameReader::new(LengthDelimited, input, BUFFER_INCREMENT));
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(
@@ -495,11 +493,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn stream_to_multiple_messages() {
-        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
-        let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
+    fn from_bytestream_to_multiple_frames() {
+        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
+        let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_CHUNK", b"CRUMBS"];
 
-        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BUFFER_INCREMENT));
+        let defragmentizer =
+            make_defragmentizer(FrameReader::new(LengthDelimited, input, BUFFER_INCREMENT));
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);
