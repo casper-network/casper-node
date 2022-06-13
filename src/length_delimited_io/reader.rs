@@ -101,7 +101,7 @@ where
 mod tests {
     use bytes::{Buf, BufMut, BytesMut};
 
-    use crate::{frame_reader::FrameReader, tests::collect_stream_results};
+    use crate::{length_delimited_io::reader::FrameReader, tests::collect_stream_results};
 
     use super::length_delimited_frame;
 

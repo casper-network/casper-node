@@ -4,8 +4,7 @@ pub mod backpressured;
 pub mod chunked;
 pub mod error;
 pub mod fixed_size;
-pub mod frame_reader;
-pub mod length_prefixed;
+pub mod length_delimited_io;
 pub mod mux;
 
 use bytes::Buf;
@@ -128,8 +127,7 @@ pub(crate) mod tests {
 
     use crate::{
         chunked::{make_defragmentizer, make_fragmentizer},
-        frame_reader::FrameReader,
-        length_prefixed::frame_add_length_prefix,
+        length_delimited_io::{reader::FrameReader, writer::frame_add_length_prefix},
     };
 
     // In tests use small value so that we make sure that
