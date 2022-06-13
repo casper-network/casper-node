@@ -3,7 +3,7 @@
 //! A reader that decodes an incoming stream of length delimited frames into separate frames. Each
 //! frame is expected to be prefixed with two bytes representing its length.
 
-use std::{pin::Pin, task::Poll};
+use std::{io, pin::Pin, task::Poll};
 
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{AsyncRead, Stream};
@@ -62,8 +62,7 @@ impl<R> Stream for FrameReader<R>
 where
     R: AsyncRead + Unpin,
 {
-    // TODO: Ultimately, this should become Result<Bytes>.
-    type Item = Bytes;
+    type Item = io::Result<Bytes>;
 
     fn poll_next(
         self: Pin<&mut Self>,
@@ -76,7 +75,7 @@ where
         } = self.get_mut();
         loop {
             match length_delimited_frame(buffer) {
-                Some(frame) => return Poll::Ready(Some(frame.freeze())),
+                Some(frame) => return Poll::Ready(Some(Ok(frame.freeze()))),
                 None => {
                     let start = buffer.len();
                     let end = start + *buffer_increment as usize;
@@ -89,7 +88,7 @@ where
                                 return Poll::Ready(None);
                             }
                         }
-                        Poll::Ready(Err(err)) => panic!("poll_read() failed: {}", err),
+                        Poll::Ready(Err(err)) => return Poll::Ready(Some(Err(err))),
                         Poll::Pending => return Poll::Pending,
                     }
                 }
@@ -101,9 +100,8 @@ where
 #[cfg(test)]
 mod tests {
     use bytes::{Buf, BufMut, BytesMut};
-    use futures::{FutureExt, StreamExt};
 
-    use crate::frame_reader::FrameReader;
+    use crate::{frame_reader::FrameReader, tests::collect_stream_results};
 
     use super::length_delimited_frame;
 
@@ -123,8 +121,7 @@ mod tests {
 
         let defragmentizer = FrameReader::new(stream, TESTING_BUFFER_INCREMENT);
 
-        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
-        assert_eq!(expected, messages);
+        assert_eq!(expected, collect_stream_results(defragmentizer));
     }
 
     #[test]

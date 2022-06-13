@@ -113,6 +113,7 @@ where
 pub(crate) mod tests {
     use std::{
         convert::Infallible,
+        fmt::Debug,
         io::Read,
         num::NonZeroUsize,
         ops::Deref,
@@ -122,7 +123,7 @@ pub(crate) mod tests {
     };
 
     use bytes::{Buf, Bytes};
-    use futures::{future, FutureExt, Sink, SinkExt, StreamExt};
+    use futures::{future, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use tokio_util::sync::PollSender;
 
     use crate::{
@@ -154,6 +155,23 @@ pub(crate) mod tests {
                 .expect("reading buf should never fail");
         }
         vec
+    }
+
+    /// Given a stream producing results, returns the values.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the future is not `Poll::Ready` or any value is an error.
+    pub fn collect_stream_results<T, E, S>(stream: S) -> Vec<T>
+    where
+        E: Debug,
+        S: Stream<Item = Result<T, E>>,
+    {
+        let results: Vec<_> = stream.collect().now_or_never().expect("stream not ready");
+        results
+            .into_iter()
+            .collect::<Result<_, _>>()
+            .expect("error in stream results")
     }
 
     /// A sink for unit testing.

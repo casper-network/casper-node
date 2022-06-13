@@ -66,11 +66,14 @@ where
 
 /// Generates the "defragmentizer", i.e.: an object that when given the source stream of fragments will yield the entire message.
 #[allow(unused)]
-pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl Stream<Item = Bytes> {
+pub(crate) fn make_defragmentizer<S: Stream<Item = std::io::Result<Bytes>>>(
+    source: S,
+) -> impl Stream<Item = Bytes> {
     let mut buffer = vec![];
-    source.filter_map(move |mut fragment| {
+    source.filter_map(move |fragment| {
+        let mut fragment = fragment.expect("TODO: handle read error");
         let first_byte = *fragment.first().expect("missing first byte");
-        buffer.push(fragment.split_off(std::mem::size_of_val(&first_byte)));
+        buffer.push(fragment.split_off(1));
         match first_byte {
             FINAL_CHUNK => {
                 // TODO: Check the true zero-copy approach.
