@@ -15,7 +15,9 @@ use casper_engine_test_support::{
 };
 use casper_engine_tests::profiling;
 use casper_execution_engine::core::engine_state::{
-    engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
+    engine_config::{EngineConfig, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+    genesis::ExecConfigBuilder,
+    run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{runtime_args, RuntimeArgs};
 
@@ -67,17 +69,20 @@ fn main() {
     let engine_config = EngineConfig::default();
     let mut builder = LmdbWasmTestBuilder::new_with_config(&data_dir, engine_config);
 
-    let exec_config = ExecConfig::new(
-        DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    );
+    let exec_config = ExecConfigBuilder::default()
+        .with_accounts(DEFAULT_ACCOUNTS.clone())
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(DEFAULT_VALIDATOR_SLOTS)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(DEFAULT_REFUND_HANDLING)
+        .with_fee_handling(DEFAULT_FEE_HANDLING)
+        .build();
+
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,

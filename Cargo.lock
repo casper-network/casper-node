@@ -360,6 +360,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
+name = "call-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "casper-contract"
 version = "1.4.4"
 dependencies = [
@@ -730,6 +738,22 @@ checksum = "9f6b64db6932c7e49332728e3a6bd82c6b7e16016607d20923b537c3bc4c0d5f"
 
 [[package]]
 name = "contract-context"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "contract-funds"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "contract-funds-call"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -1191,6 +1215,14 @@ checksum = "f2fb860ca6fafa5552fb6d0e816a69c8e49f0908bf524e30a90d97c85892d506"
 dependencies = [
  "block-buffer 0.10.2",
  "crypto-common",
+]
+
+[[package]]
+name = "disable-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1983,6 +2015,7 @@ dependencies = [
  "casper-types",
  "clap",
  "lmdb",
+ "rand 0.8.5",
 ]
 
 [[package]]
@@ -2589,6 +2622,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mint-transfer-proxy"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "mio"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2688,6 +2729,14 @@ name = "new-named-uref"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
+]
+
+[[package]]
+name = "non-standard-payment"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4804,6 +4853,14 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "update-associated-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
 
 [[package]]
 name = "url"

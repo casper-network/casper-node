@@ -29,6 +29,23 @@ pub enum TransferTargetMode {
     CreateAccount(AccountHash),
 }
 
+/// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
+/// will have to create a new account first.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) enum NewTransferTargetMode {
+    /// Native transfer arguments resolved into a transfer to an existing account.
+    ExistingAccount {
+        /// Existing account hash.
+        target_account_hash: AccountHash,
+        /// Main purse of a resolved account.
+        main_purse: URef,
+    },
+    /// Native transfer arguments resolved into a transfer to a purse.
+    PurseExists(URef),
+    /// Native transfer arguments resolved into a transfer to a new account.
+    CreateAccount(AccountHash),
+}
+
 /// Mint's transfer arguments.
 ///
 /// A struct has a benefit of static typing, which is helpful while resolving the arguments.
@@ -103,8 +120,6 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
-    transfer_target_mode: TransferTargetMode,
-    to: Option<AccountHash>,
 }
 
 impl TransferRuntimeArgsBuilder {
@@ -114,8 +129,6 @@ impl TransferRuntimeArgsBuilder {
     pub fn new(imputed_runtime_args: RuntimeArgs) -> TransferRuntimeArgsBuilder {
         TransferRuntimeArgsBuilder {
             inner: imputed_runtime_args,
-            transfer_target_mode: TransferTargetMode::Unknown,
-            to: None,
         }
     }
 
@@ -220,11 +233,11 @@ impl TransferRuntimeArgsBuilder {
     /// indicates that the system has to create new account first.
     ///
     /// Returns [`TransferTargetMode`] with a resolved variant.
-    fn resolve_transfer_target_mode<R>(
+    pub(super) fn resolve_transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<TransferTargetMode, Error>
+    ) -> Result<NewTransferTargetMode, Error>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
@@ -240,7 +253,7 @@ impl TransferRuntimeArgsBuilder {
                     return Err(Error::reverter(ApiError::InvalidPurse));
                 }
 
-                return Ok(TransferTargetMode::PurseExists(uref));
+                return Ok(NewTransferTargetMode::PurseExists(uref));
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 let account_hash: AccountHash =
@@ -264,15 +277,18 @@ impl TransferRuntimeArgsBuilder {
             None => return Err(Error::reverter(ApiError::MissingArgument)),
         };
 
-        self.to = Some(account_hash);
         match tracking_copy
             .borrow_mut()
             .read_account(correlation_id, account_hash)
         {
-            Ok(account) => Ok(TransferTargetMode::PurseExists(
-                account.main_purse().with_access_rights(AccessRights::ADD),
-            )),
-            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
+            Ok(account) => {
+                let main_purse_addable = account.main_purse().with_access_rights(AccessRights::ADD);
+                Ok(NewTransferTargetMode::ExistingAccount {
+                    target_account_hash: account_hash,
+                    main_purse: main_purse_addable,
+                })
+            }
+            Err(_) => Ok(NewTransferTargetMode::CreateAccount(account_hash)),
         }
     }
 
@@ -314,29 +330,6 @@ impl TransferRuntimeArgsBuilder {
         Ok(id)
     }
 
-    /// Returns a resolved [`TransferTargetMode`].
-    pub(crate) fn transfer_target_mode<R>(
-        &mut self,
-        correlation_id: CorrelationId,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<TransferTargetMode, Error>
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
-    {
-        let mode = self.transfer_target_mode;
-        if mode != TransferTargetMode::Unknown {
-            return Ok(mode);
-        }
-        match self.resolve_transfer_target_mode(correlation_id, tracking_copy) {
-            Ok(mode) => {
-                self.transfer_target_mode = mode;
-                Ok(mode)
-            }
-            Err(error) => Err(error),
-        }
-    }
-
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
@@ -348,15 +341,21 @@ impl TransferRuntimeArgsBuilder {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let to = self.to;
-
-        let target_uref =
-            match self.resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))? {
-                TransferTargetMode::PurseExists(uref) => uref,
-                _ => {
-                    return Err(Error::reverter(ApiError::Transfer));
-                }
-            };
+        let (to, target_uref) = match self
+            .resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))?
+        {
+            NewTransferTargetMode::ExistingAccount {
+                main_purse: purse_uref,
+                target_account_hash: target_account,
+            } => (Some(target_account), purse_uref),
+            NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
+            NewTransferTargetMode::CreateAccount(_) => {
+                // Method "build()" is called after `resolve_transfer_target_mode` is first called
+                // and handled by creating a new account. Calling `resolve_transfer_target_mode`
+                // for the second time should never return `CreateAccount` variant.
+                return Err(Error::reverter(ApiError::Transfer));
+            }
+        };
 
         let source_uref =
             self.resolve_source_uref(from, correlation_id, Rc::clone(&tracking_copy))?;

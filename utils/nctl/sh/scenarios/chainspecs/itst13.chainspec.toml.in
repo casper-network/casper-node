@@ -53,6 +53,34 @@ max_runtime_call_stack_height = 12
 max_stored_value_size = 8_388_608
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
+# Allows peer to peer transfers between users.
+#
+# Setting this to false makes sense only for private chains.
+allow_unrestricted_transfers = true
+# Enables the auction entry points 'delegate' and 'add_bid'.
+#
+# Setting this to false makes sense only for private chains which don't need to auction new validator slots. These
+# auction entry points will return an error if called when this option is set to false.
+allow_auction_bids = true
+# If set to false, then consensus doesn't compute rewards and always uses 0.
+compute_rewards = true
+# Defines how refunds of the unused portion of payment amounts are calculated and handled.
+#
+# Valid options are:
+#   'refund': this causes excess payment amounts to be sent to either a pre-defined purse, or back to the sender.
+#             the refunded amount is calculated as the given ratio of the payment amount minus the execution costs.
+#   'burn': similar to what refund does; except the refund amount is burned.
+refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+# Defines how fees are handled.
+#
+# Valid options are:
+#   'pay_to_proposer': fees are paid to the block proposer
+#   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
+#                 administrator accounts
+#   'burn': fees are burned
+fee_handling = { type = 'pay_to_proposer' }
+# No administrators
+administrators = []
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

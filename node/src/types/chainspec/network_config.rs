@@ -26,10 +26,8 @@ impl NetworkConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
-        let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let delegators = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let accounts_config = AccountsConfig::new(accounts, delegators);
         let maximum_net_message_size = 4 + rng.gen_range(0..4);
+        let accounts_config = AccountsConfig::random(rng);
 
         NetworkConfig {
             name,

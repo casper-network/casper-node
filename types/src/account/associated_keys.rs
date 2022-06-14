@@ -122,6 +122,12 @@ impl From<BTreeMap<AccountHash, Weight>> for AssociatedKeys {
     }
 }
 
+impl From<AssociatedKeys> for BTreeMap<AccountHash, Weight> {
+    fn from(associated_keys: AssociatedKeys) -> Self {
+        associated_keys.0
+    }
+}
+
 impl ToBytes for AssociatedKeys {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.0.to_bytes()

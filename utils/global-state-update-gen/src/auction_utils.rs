@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     system::auction::{
-        Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
+        Bid, DelegationRate, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     AsymmetricType, EraId, Key, PublicKey, StoredValue, U512,
@@ -33,22 +33,27 @@ pub fn read_snapshot(builder: &LmdbWasmTestBuilder) -> (Key, SeigniorageRecipien
     (validators_key, cl_value.into_t().expect("should convert"))
 }
 
+type Type<'a> = (&'a str, &'a str, Option<&'a str>);
+
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
 /// - The list of validators, in format (validator_public_key,stake), both expressed as strings.
 /// - The starting era ID (the era ID at which the snapshot should start).
 /// - Count - the number of eras to be included in the snapshot.
 pub fn gen_snapshot(
-    validators: Vec<(String, String)>,
+    validators: Vec<Type>,
     starting_era_id: EraId,
     count: u64,
 ) -> SeigniorageRecipientsSnapshot {
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
-    for (pub_key_str, bonded_amount_str) in &validators {
+    for (pub_key_str, bonded_amount_str, maybe_delegation_rate) in validators {
         let validator_pub_key = PublicKey::from_hex(pub_key_str.as_bytes()).unwrap();
         let bonded_amount = U512::from_dec_str(bonded_amount_str).unwrap();
+        let delegation_rate: DelegationRate = maybe_delegation_rate
+            .and_then(|delegation_rate| delegation_rate.parse().ok())
+            .unwrap_or_default();
         let seigniorage_recipient =
-            SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());
+            SeigniorageRecipient::new(bonded_amount, delegation_rate, Default::default());
         let _ = era_validators.insert(validator_pub_key, seigniorage_recipient);
     }
     for era_id in starting_era_id.iter(count) {

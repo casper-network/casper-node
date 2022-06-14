@@ -8,7 +8,7 @@ mod types;
 
 use once_cell::sync::Lazy;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Debug, Formatter},
     path::Path,
     sync::{Arc, Mutex},
@@ -23,7 +23,9 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
+        self,
+        engine_config::{FeeHandling, RefundHandling},
+        EngineConfigBuilder, EngineState, GenesisSuccess, GetEraValidatorsError,
         GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
@@ -33,7 +35,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::ProtocolVersion;
+use casper_types::{ProtocolVersion, PublicKey};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -422,6 +424,11 @@ impl ContractRuntime {
         max_delegator_size_limit: u32,
         minimum_delegation_amount: u64,
         registry: &Registry,
+        administrative_accounts: BTreeSet<PublicKey>,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -446,16 +453,21 @@ impl ContractRuntime {
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
 
-        let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            max_stored_value_size,
-            max_delegator_size_limit,
-            minimum_delegation_amount,
-            wasm_config,
-            system_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(contract_runtime_config.max_query_depth())
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_max_delegator_size_limit(max_delegator_size_limit)
+            .with_max_stored_value_size(max_stored_value_size)
+            .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_config)
+            .with_administrative_accounts(administrative_accounts)
+            .with_allow_auction_bids(allow_auction_bids)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+            .with_refund_handling(refund_handling)
+            .with_fee_handling(fee_handling)
+            .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

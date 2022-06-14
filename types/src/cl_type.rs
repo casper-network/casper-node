@@ -3,7 +3,7 @@
 
 use alloc::{
     boxed::Box,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     string::String,
     vec::Vec,
 };
@@ -442,6 +442,18 @@ impl<T: CLTyped> CLTyped for Vec<T> {
     }
 }
 
+impl<T: CLTyped> CLTyped for BTreeSet<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
+    }
+}
+
+impl<T: CLTyped> CLTyped for &T {
+    fn cl_type() -> CLType {
+        T::cl_type()
+    }
+}
+
 macro_rules! impl_cl_typed_for_array {
     ($($N:literal)+) => {
         $(
@@ -772,5 +784,10 @@ mod tests {
 
         let any = Any("Any test".to_string());
         round_trip(&any);
+    }
+
+    #[test]
+    fn should_have_cltype_of_ref_to_cltyped() {
+        assert_eq!(<Vec<&u64>>::cl_type(), <Vec<u64>>::cl_type())
     }
 }

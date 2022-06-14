@@ -19,7 +19,11 @@ use tracing::debug;
 
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+        engine_config::{
+            DEFAULT_ALLOW_AUCTION_BIDS, DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS, DEFAULT_FEE_HANDLING,
+            DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            DEFAULT_REFUND_HANDLING,
+        },
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
@@ -216,6 +220,11 @@ impl reactor::Reactor for Reactor {
             DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             registry,
+            Default::default(),
+            DEFAULT_ALLOW_AUCTION_BIDS,
+            DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
+            DEFAULT_REFUND_HANDLING,
+            DEFAULT_FEE_HANDLING,
         )
         .unwrap();
 

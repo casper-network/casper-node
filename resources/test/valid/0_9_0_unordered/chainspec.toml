@@ -9,6 +9,7 @@ maximum_net_message_size = 23_068_672
 
 [core]
 era_duration = '3minutes'
+refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 minimum_era_height = 9
 validator_slots = 5
 auction_delay = 3
@@ -19,6 +20,11 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 max_stored_value_size = 8_388_608
 minimum_delegation_amount = 500_000_000_000
+fee_handling = { type = 'pay_to_proposer' }
+allow_auction_bids = true
+compute_rewards = true
+allow_unrestricted_transfers = true
+administrators = []
 
 [highway]
 finality_threshold_fraction = [2, 25]

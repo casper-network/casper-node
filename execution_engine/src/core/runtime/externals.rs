@@ -409,7 +409,7 @@ where
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret = match self.transfer_from_purse_to_account(
+                let ret = match self.transfer_from_purse_to_account_hash(
                     source_purse,
                     account_hash,
                     amount,
@@ -460,16 +460,28 @@ where
                         id_size,
                     ],
                 )?;
-                let ret = self.transfer_from_purse_to_purse(
-                    source_ptr,
-                    source_size,
-                    target_ptr,
-                    target_size,
-                    amount_ptr,
-                    amount_size,
-                    id_ptr,
-                    id_size,
-                )?;
+
+                let source: URef = {
+                    let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let target: URef = {
+                    let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let amount: U512 = {
+                    let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let id: Option<u64> = {
+                    let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let ret = self.transfer_from_purse_to_purse(source, target, amount, id)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 

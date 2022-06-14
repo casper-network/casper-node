@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    system::mint::ARG_AMOUNT,
+    system::standard_payment,
     CLType, RuntimeArgs, URef, U512,
 };
 
@@ -19,14 +19,13 @@ const ENTRY_FUNCTION_NAME: &str = "pay";
 const HASH_KEY_NAME: &str = "test_payment_hash";
 const PACKAGE_HASH_KEY_NAME: &str = "test_payment_package_hash";
 const ACCESS_KEY_NAME: &str = "test_payment_access";
-const ARG_NAME: &str = "amount";
 const CONTRACT_VERSION: &str = "contract_version";
 const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
 #[no_mangle]
 pub extern "C" fn pay() {
     // amount to transfer from named purse to payment purse
-    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let amount: U512 = runtime::get_named_arg(standard_payment::ARG_AMOUNT);
 
     let purse_uref = account::get_main_purse();
 
@@ -51,7 +50,7 @@ pub extern "C" fn call() {
         let mut entry_points = EntryPoints::new();
         let entry_point = EntryPoint::new(
             ENTRY_FUNCTION_NAME.to_string(),
-            vec![Parameter::new(ARG_NAME, CLType::U512)],
+            vec![Parameter::new(standard_payment::ARG_AMOUNT, CLType::U512)],
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Session,

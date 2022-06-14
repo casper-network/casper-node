@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
-    EngineConfig, RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
     runtime_args,
@@ -72,8 +72,8 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
-    let engine_config = EngineConfig::default();
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     builder.exec(fund_request).expect_success().commit();
 

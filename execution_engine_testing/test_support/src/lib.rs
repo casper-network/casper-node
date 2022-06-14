@@ -24,8 +24,10 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
+        engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+        genesis::{ExecConfigBuilder, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
+        ExecConfig, GenesisAccount,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
@@ -48,6 +50,9 @@ pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
+const DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER: u64 = 6414;
+const DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM: u64 = 623437335209;
+
 /// Default round seigniorage rate represented as a fractional number.
 ///
 /// Annual issuance: 2%
@@ -55,7 +60,10 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 /// Ticks per year: 31536000000
 ///
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(
+    DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM,
+);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
@@ -125,19 +133,22 @@ pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_0
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
+
 /// Default [`ExecConfig`].
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    ExecConfig::new(
-        DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    )
+    ExecConfigBuilder::default()
+        .with_accounts(DEFAULT_ACCOUNTS.clone())
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(DEFAULT_VALIDATOR_SLOTS)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(DEFAULT_REFUND_HANDLING)
+        .with_fee_handling(DEFAULT_FEE_HANDLING)
+        .build()
 });
 /// Default [`GenesisConfig`].
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {

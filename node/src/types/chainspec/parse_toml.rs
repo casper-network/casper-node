@@ -64,7 +64,8 @@ impl From<&Chainspec> for TomlChainspec {
             name: chainspec.network_config.name.clone(),
             maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
         };
-        let core = chainspec.core_config;
+
+        let core = chainspec.core_config.clone();
         let deploys = chainspec.deploy_config;
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;

@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        Bid, DelegationRate, Delegator, EraInfo, EraValidators, Error, SeigniorageRecipients,
-        ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
+        Bid, DelegationRate, Delegator, EraInfo, EraValidators, Error, SeigniorageAllocation,
+        SeigniorageRecipients, ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, PublicKey, U512,
 };
@@ -64,6 +64,12 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512, ApiError> {
+        if !self.allow_auction_bids() {
+            // Validation set rotation might be disabled on some private chains and we should not
+            // allow new bids to come in.
+            return Err(Error::AuctionBidsDisabled.into());
+        }
+
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
@@ -208,6 +214,11 @@ pub trait Auction:
         max_delegator_size_limit: usize,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
+        if !self.allow_auction_bids() {
+            // Validation set rotation might be disabled on some private chains and we should not
+            // allow new bids to come in.
+            return Err(Error::AuctionBidsDisabled.into());
+        }
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
 
@@ -532,13 +543,17 @@ pub trait Auction:
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
+            if reward_factor == 0 {
+                let allocation = SeigniorageAllocation::validator(public_key.clone(), U512::zero());
+                seigniorage_allocations.push(allocation);
+                continue;
+            }
             let recipient = seigniorage_recipients
                 .get(&public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
-            let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
-            if total_stake.is_zero() {
-                // TODO: error?
+            let current_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
+            if current_stake.is_zero() {
                 continue;
             }
 
@@ -558,7 +573,8 @@ pub trait Auction:
                     U512::from(*recipient.delegation_rate()),
                     U512::from(DELEGATION_RATE_DENOMINATOR),
                 );
-                let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
+                let reward_multiplier: Ratio<U512> =
+                    Ratio::new(delegator_total_stake, current_stake);
                 let delegator_reward: Ratio<U512> = total_reward
                     .checked_mul(&reward_multiplier)
                     .ok_or(Error::ArithmeticOverflow)?;

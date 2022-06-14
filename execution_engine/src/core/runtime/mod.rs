@@ -21,7 +21,10 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{Account, AccountHash, ActionType, Weight},
+    account::{
+        Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
+        UpdateKeyFailure, Weight,
+    },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -98,7 +101,7 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            config: self.config.clone(),
             memory: Some(memory),
             module: Some(module),
             host_buffer: None,
@@ -116,7 +119,7 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            config: self.config.clone(),
             memory: None,
             module: None,
             host_buffer: None,
@@ -351,7 +354,7 @@ where
     }
 
     /// Gets the immediate caller of the current execution
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+    fn get_immediate_caller(&self) -> Option<&RuntimeStackFrame> {
         self.stack.as_ref().and_then(|stack| stack.previous_frame())
     }
 
@@ -415,7 +418,7 @@ where
             return Ok(Ok(()));
         }
 
-        let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
+        let call_stack_cl_value = CLValue::from_t(call_stack).map_err(Error::CLValue)?;
 
         let call_stack_cl_value_bytes_len = call_stack_cl_value.inner_bytes().len() as u32;
         if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
@@ -748,6 +751,14 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
+            handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
+                runtime
+                    .distribute_accumulated_fees()
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
@@ -975,10 +986,10 @@ where
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let protocol_version = self.context.protocol_version();
-        let wasm_config = self.config.wasm_config();
-        let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
+        let engine_config = self.config.clone();
+        let module = wasm_prep::preprocess(*engine_config.wasm_config(), module_bytes)?;
         let (instance, memory) =
-            utils::instance_and_memory(module.clone(), protocol_version, wasm_config)?;
+            utils::instance_and_memory(module.clone(), protocol_version, &engine_config)?;
         self.memory = Some(memory);
         self.module = Some(module);
         self.stack = Some(stack);
@@ -1185,6 +1196,13 @@ where
         // }
         //}
 
+        if !self.config.administrative_accounts().is_empty()
+            && !contract_package.is_contract_enabled(&contract_hash)
+            && !self.context.is_system_contract(&contract_hash)?
+        {
+            return Err(Error::DisabledContract(contract_hash));
+        }
+
         // if session the caller's context
         // else the called contract's context
         let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
@@ -1317,11 +1335,8 @@ where
             context_args,
         );
         let protocol_version = self.context.protocol_version();
-        let (instance, memory) = utils::instance_and_memory(
-            module.clone(),
-            protocol_version,
-            self.config.wasm_config(),
-        )?;
+        let (instance, memory) =
+            utils::instance_and_memory(module.clone(), protocol_version, &self.config)?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
         let result = instance.invoke_export(entry_point.name(), &[], runtime);
@@ -1873,6 +1888,28 @@ where
         Error::Revert(status.into()).into()
     }
 
+    /// Checks if a caller can manage its own associated keys and thresholds.
+    ///
+    /// On some private chains with administrator keys configured this requires that the caller is
+    /// an admin to be able to manage its own keys. If the caller is not an administrator then the
+    /// deploy has to be signed by an administrator.
+    fn can_manage_keys(&self) -> bool {
+        if self.config.administrative_accounts().is_empty() {
+            // Public chain
+            return self
+                .context
+                .account()
+                .can_manage_keys_with(self.context.authorization_keys());
+        }
+
+        if self.config.is_administrator(&self.context.get_caller()) {
+            return true;
+        }
+
+        // If caller is not an admin, check if deploy was co-signed by admin account.
+        self.context.is_authorized_by_admin()
+    }
+
     fn add_associated_key(
         &mut self,
         account_hash_ptr: u32,
@@ -1888,6 +1925,10 @@ where
             source
         };
         let weight = Weight::new(weight_value);
+
+        if !self.can_manage_keys() {
+            return Ok(AddKeyFailure::PermissionDenied as i32);
+        }
 
         match self.context.add_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
@@ -1914,6 +1955,11 @@ where
                 bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
+
+        if !self.can_manage_keys() {
+            return Ok(RemoveKeyFailure::PermissionDenied as i32);
+        }
+
         match self.context.remove_associated_key(account_hash) {
             Ok(_) => Ok(0),
             Err(Error::RemoveKeyFailure(e)) => Ok(e as i32),
@@ -1937,6 +1983,10 @@ where
         };
         let weight = Weight::new(weight_value);
 
+        if !self.can_manage_keys() {
+            return Ok(UpdateKeyFailure::PermissionDenied as i32);
+        }
+
         match self.context.update_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
             // This relies on the fact that `UpdateKeyFailure` is represented as
@@ -1954,13 +2004,17 @@ where
         action_type_value: u32,
         threshold_value: u8,
     ) -> Result<i32, Trap> {
+        if !self.can_manage_keys() {
+            return Ok(SetThresholdFailure::PermissionDeniedError as i32);
+        }
+
         match ActionType::try_from(action_type_value) {
             Ok(action_type) => {
                 let threshold = Weight::new(threshold_value);
                 match self.context.set_action_threshold(action_type, threshold) {
                     Ok(_) => Ok(0),
                     Err(Error::SetThresholdFailure(e)) => Ok(e as i32),
-                    Err(e) => Err(e.into()),
+                    Err(error) => Err(error.into()),
                 }
             }
             Err(_) => Err(Trap::new(TrapKind::Unreachable)),
@@ -2111,6 +2165,14 @@ where
 
         let target_key = Key::Account(target);
 
+        if !self.config.allow_unrestricted_transfers()
+            && self.context.get_caller() != PublicKey::System.to_account_hash()
+            && !self.config.is_administrator(&self.context.get_caller())
+            && !self.config.is_administrator(&target)
+        {
+            return Err(Error::DisabledUnrestrictedTransfers);
+        }
+
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount > self.get_balance(source)?.unwrap_or_default() {
@@ -2140,7 +2202,12 @@ where
 
         match result? {
             Ok(()) => {
-                let account = Account::create(target, Default::default(), target_purse);
+                // None, and Some(_) with empty container is considered equal for the purpose of
+                // listing admin keys.
+                let account = {
+                    let named_keys = NamedKeys::default();
+                    Account::create(target, named_keys, target_purse)
+                };
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -2153,13 +2220,15 @@ where
     /// been created by the mint contract (or are the genesis account's).
     fn transfer_to_existing_account(
         &mut self,
-        to: Option<AccountHash>,
+        to: Option<&Account>,
         source: URef,
         target: URef,
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract()?;
+
+        let to = to.map(Account::account_hash);
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
@@ -2176,12 +2245,12 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let source = self.context.get_main_purse()?;
-        self.transfer_from_purse_to_account(source, target, amount, id)
+        self.transfer_from_purse_to_account_hash(source, target, amount, id)
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` account.
     /// If that account does not exist, creates one.
-    fn transfer_from_purse_to_account(
+    fn transfer_from_purse_to_account_hash(
         &mut self,
         source: URef,
         target: AccountHash,
@@ -2191,6 +2260,7 @@ where
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
 
         let target_key = Key::Account(target);
+
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {
             None => {
@@ -2199,36 +2269,7 @@ where
                 self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
-                // Attenuate the target main purse
-                let target_uref = account.main_purse_add_only();
-
-                if source.with_access_rights(AccessRights::ADD) == target_uref {
-                    return Ok(Ok(TransferredTo::ExistingAccount));
-                }
-
-                // Upsert ADD access to caller on target allowing deposit of motes; this will be
-                // revoked after the transfer is completed if caller did not already have ADD access
-                let granted_access = self.context.grant_access(target_uref);
-
-                // If an account exists, transfer the amount to its purse
-                let transfer_result = self.transfer_to_existing_account(
-                    Some(target),
-                    source,
-                    target_uref,
-                    amount,
-                    id,
-                );
-
-                // Remove from caller temporarily granted ADD access on target.
-                if let GrantedAccess::Granted {
-                    uref_addr,
-                    newly_granted_access_rights,
-                } = granted_access
-                {
-                    self.context
-                        .remove_access(uref_addr, newly_granted_access_rights)
-                }
-                transfer_result
+                self.transfer_from_purse_to_account(source, &account, amount, id)
             }
             Some(_) => {
                 // If some other value exists, return an error
@@ -2237,43 +2278,55 @@ where
         }
     }
 
+    fn transfer_from_purse_to_account(
+        &mut self,
+        source: URef,
+        target_account: &Account,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<TransferResult, Error> {
+        // Attenuate the target main purse
+        let target_uref = target_account.main_purse_add_only();
+
+        if source.with_access_rights(AccessRights::ADD) == target_uref {
+            return Ok(Ok(TransferredTo::ExistingAccount));
+        }
+
+        // Grant ADD access to caller on target allowing deposit of motes; this will be
+        // revoked after the transfer is completed if caller did not already have ADD access
+        let granted_access = self.context.grant_access(target_uref);
+
+        // If an account exists, transfer the amount to its purse
+        let transfer_result = self.transfer_to_existing_account(
+            Some(target_account),
+            source,
+            target_uref,
+            amount,
+            id,
+        );
+
+        // Remove from caller temporarily granted ADD access on target.
+        if let GrantedAccess::Granted {
+            uref_addr,
+            newly_granted_access_rights,
+        } = granted_access
+        {
+            self.context
+                .remove_access(uref_addr, newly_granted_access_rights)
+        }
+        transfer_result
+    }
+
     /// Transfers `amount` of motes from `source` purse to `target` purse.
-    #[allow(clippy::too_many_arguments)]
     fn transfer_from_purse_to_purse(
         &mut self,
-        source_ptr: u32,
-        source_size: u32,
-        target_ptr: u32,
-        target_size: u32,
-        amount_ptr: u32,
-        amount_size: u32,
-        id_ptr: u32,
-        id_size: u32,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        let source: URef = {
-            let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let target: URef = {
-            let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let amount: U512 = {
-            let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let id: Option<u64> = {
-            let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
         self.context.validate_uref(&source)?;
-
         let mint_contract_key = self.get_mint_contract()?;
-
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
             Err(mint_error) => Ok(Err(mint_error)),

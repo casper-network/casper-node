@@ -721,6 +721,11 @@ impl Deploy {
         &self.approvals
     }
 
+    /// Replaces the set of approvals attached to this deploy.
+    pub fn replace_approvals(&mut self, approvals: BTreeSet<Approval>) {
+        self.approvals = approvals;
+    }
+
     /// Returns the hash of this deploy wrapped in `DeployOrTransferHash`.
     pub fn deploy_or_transfer_hash(&self) -> DeployOrTransferHash {
         if self.session.is_transfer() {

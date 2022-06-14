@@ -16,8 +16,9 @@ use log::LevelFilter;
 use bytesrepr::FromBytes;
 use casper_execution_engine::{
     core::{
-        engine_state,
         engine_state::{
+            self,
+            engine_config::RefundHandling,
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
@@ -59,12 +60,14 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, U512,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, Motes, PublicKey, RuntimeArgs, StoredValue,
+    Transfer, TransferAddr, URef, U512,
 };
+use num_rational::Ratio;
 
 use crate::{
-    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    utils, ExecuteRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -95,8 +98,8 @@ pub struct WasmTestBuilder<S> {
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<AdditiveMap<Key, Transform>>,
-    /// Cached genesis transforms
-    genesis_account: Option<Account>,
+    /// Cached system account.
+    system_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Scratch global state used for in-memory execution and commit optimization.
@@ -116,25 +119,7 @@ impl<S> WasmTestBuilder<S> {
 
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            system_contract_registry: None,
-            global_state_dir: None,
-            scratch_engine_state: None,
-        }
+        Self::new_with_config(EngineConfig::default())
     }
 }
 
@@ -149,7 +134,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
-            genesis_account: self.genesis_account.clone(),
+            system_account: None,
             genesis_transforms: self.genesis_transforms.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
@@ -169,10 +154,25 @@ impl InMemoryWasmTestBuilder {
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: maybe_post_state_hash,
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
+            genesis_hash: None,
             post_state_hash: maybe_post_state_hash,
-            ..Default::default()
+            transforms: Vec::new(),
+            system_account: None,
+            genesis_transforms: None,
+            scratch_engine_state: None,
+            system_contract_registry: None,
+            global_state_dir: None,
         }
+    }
+
+    /// Returns an empty [`InMemoryWasmTestBuilder`].
+    pub fn new_with_config(engine_config: EngineConfig) -> Self {
+        Self::initialize_logging();
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
+        let root_hash = global_state.empty_root_hash();
+        Self::new(global_state, engine_config, Some(root_hash))
     }
 }
 
@@ -211,7 +211,7 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
-            genesis_account: None,
+            system_account: None,
             genesis_transforms: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
@@ -268,19 +268,25 @@ impl LmdbWasmTestBuilder {
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
 
         let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
+
+        let mut builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
-            genesis_account: None,
+            system_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
-            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
-        }
+            global_state_dir: None,
+        };
+
+        builder.system_contract_registry =
+            builder.query_system_contract_registry(Some(post_state_hash));
+
+        builder
     }
 
     fn create_global_state_dir<T: AsRef<Path>>(global_state_path: T) {
@@ -388,8 +394,6 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(PublicKey::System.to_account_hash());
-
         let GenesisSuccess {
             post_state_hash,
             execution_effect,
@@ -404,30 +408,29 @@ where
             .expect("Unable to get genesis response");
 
         let transforms = execution_effect.transforms;
-        let empty_path: Vec<String> = vec![];
 
-        let genesis_account =
-            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
+        self.system_contract_registry = self.query_system_contract_registry(Some(post_state_hash));
 
-        self.system_contract_registry = match self.query(
-            Some(post_state_hash),
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
+        self.genesis_hash = Some(post_state_hash);
+        self.post_state_hash = Some(post_state_hash);
+        self.genesis_transforms = Some(transforms);
+        self.system_account = self.get_account(*SYSTEM_ADDR);
+        self
+    }
+
+    fn query_system_contract_registry(
+        &mut self,
+        post_state_hash: Option<Digest>,
+    ) -> Option<SystemContractRegistry> {
+        match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
             Ok(StoredValue::CLValue(cl_registry)) => {
                 let system_contract_registry =
                     CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
                 Some(system_contract_registry)
             }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
-
-        self.genesis_hash = Some(post_state_hash);
-        self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(genesis_account);
-        self.genesis_transforms = Some(transforms);
-        self
+            Ok(_) => None,
+            Err(_) => None,
+        }
     }
 
     /// Queries state for a [`StoredValue`].
@@ -576,15 +579,27 @@ where
         engine_config: EngineConfig,
         upgrade_config: &mut UpgradeConfig,
     ) -> &mut Self {
+        self.upgrade_with_upgrade_request_and_config(Some(engine_config), upgrade_config)
+    }
+
+    /// Upgrades the execution engine.
+    ///
+    /// If `engine_config` is set to None, then it is defaulted to the current one.
+    pub fn upgrade_with_upgrade_request_and_config(
+        &mut self,
+        engine_config: Option<EngineConfig>,
+        upgrade_config: &mut UpgradeConfig,
+    ) -> &mut Self {
+        let engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
+
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
-        engine_state.update_config(engine_config);
+        let engine_state_mut =
+            Rc::get_mut(&mut self.engine_state).expect("should have unique ownership");
+        engine_state_mut.update_config(engine_config);
 
-        let result = self
-            .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
+        let result = engine_state_mut.commit_upgrade(CorrelationId::new(), upgrade_config.clone());
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
@@ -592,13 +607,8 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-
-            if let Ok(StoredValue::CLValue(cl_registry)) =
-                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
-            {
-                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                self.system_contract_registry = Some(registry);
-            }
+            self.system_contract_registry =
+                self.query_system_contract_registry(Some(post_state_hash));
         }
 
         self.upgrade_results.push(result);
@@ -714,7 +724,7 @@ where
 
     /// Gets genesis account (if present)
     pub fn get_genesis_account(&self) -> &Account {
-        self.genesis_account
+        self.system_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
@@ -1156,5 +1166,26 @@ where
         self.engine_state
             .get_trie(CorrelationId::default(), state_hash)
             .unwrap()
+    }
+
+    /// Calculates refunded amount from a last execution request.
+    pub fn calculate_refund_amount(&self, payment_amount: U512) -> U512 {
+        let gas_amount = Motes::from_gas(self.last_exec_gas_cost(), DEFAULT_GAS_PRICE)
+            .expect("should create motes from gas");
+
+        let refund_ratio = match self.engine_state.config().refund_handling() {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                *refund_ratio
+            }
+        };
+
+        let (numer, denom) = refund_ratio.into();
+        let refund_ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+
+        // amount declared to be paid in payment code MINUS gas spent in last execution.
+        let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
+        (refundable_amount * refund_ratio)
+            .ceil() // assumes possible dust amounts are always transferred to the user
+            .to_integer()
     }
 }
