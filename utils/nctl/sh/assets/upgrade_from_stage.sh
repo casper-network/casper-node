@@ -75,6 +75,7 @@ function _main()
     local ACTIVATION_POINT=${2}
     local VERBOSE=${3}
     local CHAINSPEC_PATH=${4}
+    local CONFIG_PATH=${5}
     local CHUNKED_HASH_ACTIVATION
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
@@ -89,6 +90,10 @@ function _main()
 
     if [ -z "$CHAINSPEC_PATH" ]; then
         CHAINSPEC_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml"
+    fi
+
+    if [ -z "$CONFIG_PATH" ]; then
+        CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
     fi
 
     if [ "$PROTOCOL_VERSION" != "" ]; then
@@ -111,7 +116,7 @@ function _main()
                               "$CHUNKED_HASH_ACTIVATION"
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
-                                 "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
+                                 "$CONFIG_PATH" \
                                  false
         setup_asset_global_state_toml "$COUNT_NODES" \
                                       "$PROTOCOL_VERSION"
@@ -130,6 +135,7 @@ unset NET_ID
 unset STAGE_ID
 unset VERBOSE
 unset CHAINSPEC_PATH
+unset CONFIG_PATH
 
 for ARGUMENT in "$@"
 do
@@ -141,6 +147,7 @@ do
         stage) STAGE_ID=${VALUE} ;;
         verbose) VERBOSE=${VALUE} ;;
         chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
+        config_path) CONFIG_PATH=${VALUE} ;;
         *)
     esac
 done
@@ -154,4 +161,5 @@ fi
 _main "${STAGE_ID:-1}" \
       $((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET)) \
       "${VERBOSE:-true}" \
-      "${CHAINSPEC_PATH}"
+      "${CHAINSPEC_PATH}" \
+      "${CONFIG_PATH}"

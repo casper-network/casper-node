@@ -18,6 +18,7 @@ mod config;
 mod event;
 mod http_server;
 pub mod rpcs;
+mod speculative_exec_server;
 
 use std::{convert::Infallible, fmt::Debug, time::Instant};
 
@@ -29,12 +30,13 @@ use casper_execution_engine::core::engine_state::{
     QueryResult,
 };
 use casper_hashing::Digest;
-use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
+use casper_types::{system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::contract_runtime::EraValidatorsRequest,
+    contract_runtime::SpeculativeExecutionState,
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
@@ -43,15 +45,12 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeState, StatusFeed},
+    types::{BlockHeader, Deploy, NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
 pub use config::Config;
 pub(crate) use event::Event;
-
-/// The URL path for all JSON-RPC requests.
-pub const RPC_API_PATH: &str = "rpc";
 
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
@@ -110,6 +109,18 @@ impl RpcServer {
             config.qps_limit,
             config.max_body_bytes,
         ));
+
+        // QPS limit set to 0 disables the server.
+        if config.speculative_execution_qps_limit > 0 {
+            let builder = utils::start_listening(&config.speculative_execution_address)?;
+            tokio::spawn(speculative_exec_server::run(
+                builder,
+                effect_builder,
+                api_version,
+                config.speculative_execution_qps_limit,
+                config.max_body_bytes,
+            ));
+        }
 
         Ok(RpcServer {
             node_startup_instant,
@@ -170,6 +181,27 @@ impl RpcServer {
                 result,
                 main_responder: responder,
             })
+    }
+
+    fn handle_execute_deploy<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block_header: BlockHeader,
+        deploy: Deploy,
+        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
+    ) -> Effects<Event> {
+        async move {
+            let execution_prestate = SpeculativeExecutionState {
+                state_root_hash: *block_header.state_root_hash(),
+                block_time: block_header.timestamp(),
+                protocol_version: block_header.protocol_version(),
+            };
+            let result = effect_builder
+                .speculative_execute_deploy(execution_prestate, deploy)
+                .await;
+            responder.respond(result).await
+        }
+        .ignore()
     }
 }
 
@@ -330,6 +362,11 @@ where
                     .await
             }
             .ignore(),
+            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
+                block_header,
+                deploy,
+                responder,
+            }) => self.handle_execute_deploy(effect_builder, block_header, *deploy, responder),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,

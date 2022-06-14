@@ -58,7 +58,10 @@ function _step_01()
 
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
-    source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID" chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_8.chainspec.toml.in"
+    source "$NCTL/sh/assets/setup_from_stage.sh" \
+        stage="$STAGE_ID" \
+        chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_8.chainspec.toml.in" \
+        config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_8.config.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -79,7 +82,13 @@ function _step_03()
 
     log_step_upgrades 3 "upgrading node-6 from stage ($STAGE_ID)"
 
-    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="6" era="$ACTIVATION_POINT" chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_8.chainspec.toml.in"
+    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" \
+        stage="$STAGE_ID" \
+        verbose=false \
+        node="6" \
+        era="$ACTIVATION_POINT" \
+        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_8.chainspec.toml.in" \
+        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_8.config.toml"
 }
 
 # Step 04: Join passive node.
