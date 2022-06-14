@@ -1,235 +1,476 @@
 //! Stream multiplexing
 //!
-//! Multiplexes multiple sinks into a single one, allowing no more than one frame to be buffered for
-//! each to avoid starvation or flooding.
+//! Multiplexes multiple sinks into a single one, without buffering any items. Up to 256 channels
+//! are supported, each item sent on a specific channel will be forwarded with a 1-byte prefix
+//! indicating the channel.
+//!
+//! ## Fairness
+//!
+//! Multiplexing is fair per handle, that is every handle is eventually guaranteed to receive a slot
+//! for sending on the underlying sink. Under maximal contention, every `MultiplexerHandle` will
+//! receive `1/n` of the slots, with `n` being the total number of multiplexers, with no handle
+//! being able to send more than twice without all other waiting handles receiving a slot.
+//!
+//! ## Locking
+//!
+//! Sending and flushing an item each requires a separate lock acquisition, as the lock is released
+//! after each `start_send` operation. This in turn means that a [`SinkExt::send_all`] call will not
+//! hold the underlying output sink hostage until all items are send.
 
 use std::{
-    fmt::Debug,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     task::{Context, Poll},
 };
 
 use bytes::Buf;
-use futures::{Sink, SinkExt};
+use futures::{ready, FutureExt, Sink, SinkExt};
+use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio_util::sync::ReusableBoxFuture;
 
-use crate::ImmediateFrame;
+use crate::{error::Error, ImmediateFrame};
 
 pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>;
 
-/// A waiting list handing out turns to interested participants in round-robin fashion.
+/// Helper macro for returning a `Poll::Ready(Err)` eagerly.
 ///
-/// The list is set up with a set of `n` participants labelled from `0..(n-1)` and no active
-/// participant. Any participant can attempt to acquire the lock by calling the `try_acquire`
-/// function.
-///
-/// If the lock is currently unavailable, the participant will be put in a wait queue and is
-/// guaranteed a turn "in order" at some point when it calls `try_acquire` again. If a participant
-/// has not registered interest in obtaining the lock their turn is skipped.
-///
-/// Once work has been completed, the lock must manually be released using the `end_turn`
-///
-/// This "lock" differs from `Mutex` in multiple ways:
-///
-/// * Mutable access required: Counterintuitively this lock needs to be wrapped in a `Mutex` to
-///   guarding access to its internals.
-/// * No notifications/waiting: There is no way to wait for the lock to become available, rather it
-///   is assumed participants get an external notification indication that the lock might now be
-///   available.
-/// * Advisory: No actual access control is enforced by the type system, rather it is assumed that
-///   clients are well behaved and respect the lock.
-///   (TODO: We can possibly put a ghost cell here to enforce it)
-/// * Fixed set of participants: The total set of participants must be specified in advance.
-#[derive(Debug)]
-struct RoundRobinAdvisoryLock {
-    /// The currently active lock holder.
-    active: Option<u8>,
-    /// Participants wanting to take a turn.
-    waiting: Vec<bool>,
-}
-
-impl RoundRobinAdvisoryLock {
-    /// Creates a new round robin advisory lock with the given number of participants.
-    pub fn new(num_participants: u8) -> Self {
-        let mut waiting = Vec::new();
-        waiting.resize(num_participants as usize, false);
-
-        Self {
-            active: None,
-            waiting,
+/// Can be removed once `Try` is stabilized for `Poll`.
+macro_rules! try_ready {
+    ($ex:expr) => {
+        match $ex {
+            Err(e) => return Poll::Ready(Err(e.into())),
+            Ok(v) => v,
         }
-    }
-
-    /// Tries to take a turn on the wait list.
-    ///
-    /// If it is our turn, or if the wait list was empty, marks us as active and returns `true`.
-    /// Otherwise, marks `me` as wanting a turn and returns `false`.
-    ///
-    /// # Safety
-    ///
-    /// A participant MUST NOT give up on calling `try_acquire` once it has called it once, as the
-    /// lock will ultimately prevent any other participant from acquiring it while the interested is
-    /// registered.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `me` is not a participant in the initial set of participants.
-    fn try_acquire(&mut self, me: u8) -> bool {
-        debug_assert!(
-            self.waiting.len() as u8 > me,
-            "participant out of bounds in advisory lock"
-        );
-
-        if let Some(active) = self.active {
-            if active == me {
-                return true;
-            }
-
-            // Someone is already sending, mark us as interested.
-            self.waiting[me as usize] = true;
-            return false;
-        }
-
-        // If we reached this, no one was sending, mark us as active.
-        self.active = Some(me);
-        true
-    }
-
-    /// Finish taking a turn.
-    ///
-    /// This function must only be called if `try_take_turn` returned `true` and the wait has not
-    /// been modified in the meantime.
-    ///
-    /// # Panic
-    ///
-    /// Panics if the active turn was modified in the meantime.
-    fn release(&mut self, me: u8) {
-        assert_eq!(
-            self.active,
-            Some(me),
-            "tried to release unacquired advisory lock"
-        );
-
-        // We finished our turn, mark us as no longer interested.
-        self.waiting[me as usize] = false;
-
-        // Now determine the next slot in line.
-        for offset in 0..self.waiting.len() {
-            let idx = (me as usize + offset) % self.waiting.len();
-            if self.waiting[idx] {
-                self.active = Some(idx as u8);
-                return;
-            }
-        }
-
-        // We found no slot, so we're inactive.
-        self.active = None;
-    }
+    };
 }
 
 /// A frame multiplexer.
 ///
-/// Typically the multiplexer is not used directly, but used to spawn multiplexing handles.
-struct Multiplexer<S> {
-    wait_list: Mutex<RoundRobinAdvisoryLock>,
-    sink: Mutex<Option<S>>,
+/// A multiplexer is not used directly, but used to spawn multiplexing handles.
+pub struct Multiplexer<S> {
+    /// The shared sink for output.
+    sink: Arc<Mutex<Option<S>>>,
 }
 
 impl<S> Multiplexer<S> {
+    /// Creates a new multiplexer with the given sink.
+    pub fn new(sink: S) -> Self {
+        Self {
+            sink: Arc::new(Mutex::new(Some(sink))),
+        }
+    }
+
     /// Create a handle for a specific multiplexer channel on this multiplexer.
     ///
-    /// # Safety
+    /// Any item sent via this handle's `Sink` implementation will be sent on the given channel by
+    /// prefixing with the channel identifier (see module documentation).
     ///
-    /// This function **must not** be called multiple times on the same `Multiplexer` with the same
-    /// `channel` value.
-    pub fn get_channel_handle(self: Arc<Self>, channel: u8) -> MultiplexerHandle<S> {
+    /// It is valid to have multiple handles for the same channel.
+    ///
+    /// # Correctness and cancellation safety
+    ///
+    /// Since a handle may hold a lock on the shared sink, additional invariants that must be upheld
+    /// by the calling tasks:
+    ///
+    /// * Every call to `Sink::poll_ready` returning `Poll::Pending` **must** be repeated until
+    ///   `Poll::Ready` is returned or followed by a drop of the handle.
+    /// * Every call to `Sink::poll_ready` returning `Poll::Ready` **must** be followed by a call to
+    ///   `Sink::start_send` or a drop of the handle.
+    /// * Every call to `Sink::poll_flush` returning `Poll::Pending` must be repeated until
+    ///   `Poll::Ready` is returned or followed by a drop of the handle.
+    /// * Every call to `Sink::poll_close` returning `Poll::Pending` must be repeated until
+    ///   `Poll::Ready` is returned or followed by a drop of the handle.
+    ///
+    /// As a result **the `SinkExt::send`, `SinkExt::send_all`, `SinkExt::flush` and
+    /// `SinkExt::close` methods of any chain of sinks involving a `Multiplexer` is not cancellation
+    /// safe**.
+    pub fn create_channel_handle(&self, channel: u8) -> MultiplexerHandle<S>
+    where
+        S: Send + 'static,
+    {
         MultiplexerHandle {
-            multiplexer: self,
-            slot: channel,
+            sink: self.sink.clone(),
+            send_count: Arc::new(AtomicUsize::new(0)),
+            channel,
+            lock_future: ReusableBoxFuture::new(mk_lock_future(self.sink.clone())),
+            sink_guard: None,
+            highest_flush: Arc::new(AtomicUsize::new(0)),
+            last_send: None,
         }
+    }
+
+    /// Deconstructs the multiplexer into its sink.
+    ///
+    /// This function will block until outstanding writes to the underlying sink have completed. Any
+    /// handle to this multiplexer will be closed afterwards.
+    pub fn into_inner(self) -> S {
+        self.sink
+            .blocking_lock()
+            .take()
+            // This function is the only one ever taking out of the `Option<S>` and it consumes the
+            // only `Multiplexer`, thus we can always expect a `Some` value here.
+            .expect("did not expect sink to be missing")
     }
 }
 
-struct MultiplexerHandle<S> {
-    multiplexer: Arc<Multiplexer<S>>,
-    slot: u8,
+/// A guard of a protected sink.
+type SinkGuard<S> = OwnedMutexGuard<Option<S>>;
+
+/// Helper function to create a locking future.
+///
+/// It is important to always return a same-sized future when replacing futures using
+/// `ReusableBoxFuture`. For this reason, lock futures are only ever created through this helper
+/// function.
+fn mk_lock_future<S>(
+    sink: Arc<Mutex<Option<S>>>,
+) -> impl futures::Future<Output = tokio::sync::OwnedMutexGuard<Option<S>>> {
+    sink.lock_owned()
+}
+
+/// A handle to a multiplexer.
+///
+/// A handle is bound to a specific channel, see [`Multiplexer::create_channel_handle`] for details.
+///
+/// Closing a handle will close the underlying multiplexer stream. To only "close" a specific
+/// channel, flush the handle and drop it.
+pub struct MultiplexerHandle<S> {
+    /// The sink shared across the multiplexer and all its handles.
+    sink: Arc<Mutex<Option<S>>>,
+    /// The number of items sent to the underlying sink.
+    send_count: Arc<AtomicUsize>,
+    /// Highest `send_count` that has been flushed.
+    highest_flush: Arc<AtomicUsize>,
+    /// The send count at which our last enqueued data was sent.
+    last_send: Option<usize>,
+    /// Channel ID assigned to this handle.
+    channel: u8,
+    /// The future locking the shared sink.
+    // Note: To avoid frequent heap allocations, a single box is reused for every lock this handle
+    //       needs to acquire, which is on every sending of an item via `Sink`.
+    //
+    //       This relies on the fact that merely instantiating the locking future (via
+    //       `mk_lock_future`) will not do anything before the first poll (see
+    //       `tests::ensure_creating_lock_acquisition_future_is_side_effect_free`).
+    lock_future: ReusableBoxFuture<'static, SinkGuard<S>>,
+    /// A potential acquired guard for the underlying sink.
+    ///
+    /// Proper acquisition and dropping of the guard is dependent on callers obeying the sink
+    /// protocol and the invariants specified in the [`Multiplexer::create_channel_handle`]
+    /// documentation.
+    ///
+    /// A [`Poll::Ready`] return value from either `poll_flush` or `poll_close` or a call to
+    /// `start_send` will release the guard.
+    sink_guard: Option<SinkGuard<S>>,
+}
+
+impl<S> MultiplexerHandle<S>
+where
+    S: Send + 'static,
+{
+    /// Acquire or return a guard on the sink lock.
+    ///
+    /// Helper function for lock acquisition:
+    ///
+    /// * If the lock is already obtained, returns `Ready(guard)`.
+    /// * If the lock has not been obtained, attempts to poll the locking future, either returning
+    ///   `Pending` or `Ready(guard)`.
+    fn acquire_lock(&mut self, cx: &mut Context<'_>) -> Poll<&mut SinkGuard<S>> {
+        let sink_guard = match self.sink_guard {
+            None => {
+                // We do not hold the guard at the moment, so attempt to acquire it.
+                match self.lock_future.poll_unpin(cx) {
+                    Poll::Ready(guard) => {
+                        // It is our turn: Save the guard and prepare another locking future for
+                        // later, which will not attempt to lock until first polled.
+                        let sink = self.sink.clone();
+                        self.lock_future.set(mk_lock_future(sink));
+                        self.sink_guard.insert(guard)
+                    }
+                    Poll::Pending => {
+                        // The lock could not be acquired yet.
+                        return Poll::Pending;
+                    }
+                }
+            }
+            Some(ref mut guard) => guard,
+        };
+        Poll::Ready(sink_guard)
+    }
 }
 
 impl<F, S> Sink<F> for MultiplexerHandle<S>
 where
-    S: Sink<ChannelPrefixedFrame<F>> + Unpin,
+    S: Sink<ChannelPrefixedFrame<F>> + Unpin + Send + 'static,
     F: Buf,
+    <S as Sink<ChannelPrefixedFrame<F>>>::Error: std::error::Error,
 {
-    type Error = <S as Sink<ChannelPrefixedFrame<F>>>::Error;
+    type Error = Error<<S as Sink<ChannelPrefixedFrame<F>>>::Error>;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Required invariant: For any channel there is only one handle, thus we are the only one
-        // writing to the `waiting[n]` atomic bool.
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let sink_guard = ready!(self.acquire_lock(cx));
 
-        // Try to grab a slot on the wait list (will put us into the queue if we don't get one).
-        let our_turn = self
-            .multiplexer
-            .wait_list
-            .lock()
-            .expect("TODO handle poisoning")
-            .try_acquire(self.slot);
-
-        // At this point, we no longer hold the `wait_list` lock.
-
-        if !our_turn {
-            Poll::Pending
-        } else {
-            // We are now active, check if the sink is ready.
-            match *self.multiplexer.sink.lock().expect("TODO: Lock Poisoning") {
-                Some(ref mut sink_ref) => sink_ref.poll_ready_unpin(cx),
-                None => todo!("handle closed multiplexer"),
-            }
-        }
+        // We have acquired the lock, now our job is to wait for the sink to become ready.
+        try_ready!(sink_guard.as_mut().ok_or(Error::MultiplexerClosed))
+            .poll_ready_unpin(cx)
+            .map_err(Error::Sink)
     }
 
-    fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
-        let prefixed = ImmediateFrame::from(self.slot).chain(item);
+    fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+        let prefixed = ImmediateFrame::from(self.channel).chain(item);
 
-        let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
-
-        match *guard {
-            Some(ref mut sink_ref) => sink_ref.start_send_unpin(prefixed),
-            None => todo!("handle closed multiplexer"),
-        }
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Obtain the flush result, then release the sink lock.
-        let flush_result = {
-            let mut guard = self.multiplexer.sink.lock().expect("TODO: Lock Poisoning");
-
-            match *guard {
-                Some(ref mut sink) => sink.poll_flush_unpin(cx),
-                None => todo!("TODO: MISSING SINK"),
+        // We take the guard here, so that early exits due to errors will free the lock.
+        let mut guard = match self.sink_guard.take() {
+            Some(guard) => guard,
+            None => {
+                panic!("protocol violation - `start_send` called before `poll_ready`");
             }
         };
 
-        match flush_result {
-            Poll::Ready(Ok(())) => {
-                // Acquire wait list lock to update it.
-                self.multiplexer
-                    .wait_list
-                    .lock()
-                    .expect("TODO: Lock poisoning")
-                    .release(self.slot);
-
-                Poll::Ready(Ok(()))
+        let sink = match guard.as_mut() {
+            Some(sink) => sink,
+            None => {
+                return Err(Error::MultiplexerClosed);
             }
-            Poll::Ready(Err(_)) => {
-                todo!("handle error")
-            }
+        };
 
-            Poll::Pending => Poll::Pending,
-        }
+        sink.start_send_unpin(prefixed).map_err(Error::Sink)?;
+
+        // Item is enqueued, increase the send count.
+        let last_send = self.send_count.fetch_add(1, Ordering::SeqCst) + 1;
+        self.last_send = Some(last_send);
+
+        Ok(())
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Simply close? Note invariants, possibly checking them in debug mode.
-        todo!()
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // Check if our last message was already flushed, this saves us some needless locking.
+        let last_send = if let Some(last_send) = self.last_send {
+            if self.highest_flush.load(Ordering::SeqCst) >= last_send {
+                // Someone else flushed the sink for us.
+                self.last_send = None;
+                self.sink_guard.take();
+                return Poll::Ready(Ok(()));
+            }
+
+            last_send
+        } else {
+            // There was no data that we are waiting to flush still.
+            self.sink_guard.take();
+            return Poll::Ready(Ok(()));
+        };
+
+        // At this point we know that we have to flush, and for that we need the lock.
+        let sink_guard = ready!(self.acquire_lock(cx));
+
+        let outcome = match sink_guard.as_mut() {
+            Some(sink) => {
+                // We have the lock, so try to flush.
+                ready!(sink.poll_flush_unpin(cx))
+            }
+            None => {
+                self.sink_guard.take();
+                return Poll::Ready(Err(Error::MultiplexerClosed));
+            }
+        };
+
+        if outcome.is_ok() {
+            self.highest_flush.fetch_max(last_send, Ordering::SeqCst);
+            self.last_send.take();
+        }
+
+        // Release lock.
+        self.sink_guard.take();
+
+        Poll::Ready(outcome.map_err(Error::Sink))
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let sink_guard = ready!(self.acquire_lock(cx));
+
+        let outcome = match sink_guard.as_mut() {
+            Some(sink) => {
+                ready!(sink.poll_close_unpin(cx))
+            }
+            None => {
+                // Closing an underlying closed multiplexer has no effect.
+                self.sink_guard.take();
+                return Poll::Ready(Ok(()));
+            }
+        };
+
+        // Release lock.
+        self.sink_guard.take();
+
+        Poll::Ready(outcome.map_err(Error::Sink))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use bytes::Bytes;
+    use futures::{FutureExt, SinkExt};
+    use tokio::sync::Mutex;
+
+    use crate::{
+        error::Error,
+        tests::{collect_bufs, TestingSink},
+    };
+
+    use super::{ChannelPrefixedFrame, Multiplexer};
+
+    #[test]
+    fn ensure_creating_lock_acquisition_future_is_side_effect_free() {
+        // This test ensures an assumed property in the multiplexer's sink implementation, namely
+        // that calling the `.lock_owned()` function does not affect the lock before being polled.
+
+        let mutex: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
+
+        // Instantiate a locking future without polling it.
+        let lock_fut = mutex.clone().lock_owned();
+
+        // Creates a second locking future, which we will poll immediately. It should return ready.
+        assert!(mutex.lock_owned().now_or_never().is_some());
+
+        // To prove that the first one also worked, poll it as well.
+        assert!(lock_fut.now_or_never().is_some());
+    }
+
+    #[test]
+    fn mux_lifecycle() {
+        let output: Vec<ChannelPrefixedFrame<Bytes>> = Vec::new();
+        let muxer = Multiplexer::new(output);
+
+        let mut chan_0 = muxer.create_channel_handle(0);
+        let mut chan_1 = muxer.create_channel_handle(1);
+
+        assert!(chan_1
+            .send(Bytes::from(&b"Hello"[..]))
+            .now_or_never()
+            .is_some());
+        assert!(chan_0
+            .send(Bytes::from(&b"World"[..]))
+            .now_or_never()
+            .is_some());
+
+        let output = collect_bufs(muxer.into_inner());
+        assert_eq!(output, b"\x01Hello\x00World")
+    }
+
+    #[test]
+    fn into_inner_invalidates_handles() {
+        let output: Vec<ChannelPrefixedFrame<Bytes>> = Vec::new();
+        let muxer = Multiplexer::new(output);
+
+        let mut chan_0 = muxer.create_channel_handle(0);
+
+        assert!(chan_0
+            .send(Bytes::from(&b"Sample"[..]))
+            .now_or_never()
+            .is_some());
+
+        muxer.into_inner();
+
+        let outcome = chan_0
+            .send(Bytes::from(&b"Second"[..]))
+            .now_or_never()
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(outcome, Error::MultiplexerClosed));
+    }
+
+    #[test]
+    fn cancelled_send_does_not_deadlock_multiplexer_if_handle_dropped() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        sink.set_clogged(true);
+        let mut chan_0 = muxer.create_channel_handle(0);
+
+        assert!(chan_0
+            .send(Bytes::from(&b"zero"[..]))
+            .now_or_never()
+            .is_none());
+
+        // At this point, we have cancelled a send that was in progress due to the sink not having
+        // finished. The sink will finish eventually, but has not been polled to completion, which
+        // means the lock is still engaged. Dropping the handle resolves this.
+        drop(chan_0);
+
+        // Unclog the sink - a fresh handle should be able to continue.
+        sink.set_clogged(false);
+
+        let mut chan_0 = muxer.create_channel_handle(1);
+        assert!(chan_0
+            .send(Bytes::from(&b"one"[..]))
+            .now_or_never()
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn concurrent_sending() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        // Clog the sink for now.
+        sink.set_clogged(true);
+
+        let mut chan_0 = muxer.create_channel_handle(0);
+        let mut chan_1 = muxer.create_channel_handle(1);
+        let mut chan_2 = muxer.create_channel_handle(2);
+
+        // Channel zero has a long send going on.
+        let send_0 =
+            tokio::spawn(async move { chan_0.send(Bytes::from(&b"zero"[..])).await.unwrap() });
+        tokio::task::yield_now().await;
+
+        // The data has already arrived (it's a clog, not a plug):
+        assert_eq!(sink.get_contents(), b"\x00zero");
+
+        // The other two channels are sending in order.
+        let send_1 = tokio::spawn(async move {
+            chan_1.send(Bytes::from(&b"one"[..])).await.unwrap();
+        });
+
+        // Yield, ensuring that `one` is in queue acquiring the lock first (since it is not plugged,
+        // it should enter the lock wait queue).
+
+        tokio::task::yield_now().await;
+
+        let send_2 =
+            tokio::spawn(async move { chan_2.send(Bytes::from(&b"two"[..])).await.unwrap() });
+
+        tokio::task::yield_now().await;
+
+        // Unclog, this causes the first write to finish and others to follow.
+        sink.set_clogged(false);
+
+        // All should finish with the unclogged sink.
+        send_2.await.unwrap();
+        send_0.await.unwrap();
+        send_1.await.unwrap();
+
+        // The final result should be in order.
+        assert_eq!(sink.get_contents(), b"\x00zero\x01one\x02two");
+    }
+
+    #[test]
+    fn multiple_handles_same_channel() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        let mut h0 = muxer.create_channel_handle(0);
+        let mut h1 = muxer.create_channel_handle(0);
+        let mut h2 = muxer.create_channel_handle(0);
+
+        assert!(h1.send(Bytes::from(&b"One"[..])).now_or_never().is_some());
+        assert!(h0.send(Bytes::from(&b"Two"[..])).now_or_never().is_some());
+        assert!(h2.send(Bytes::from(&b"Three"[..])).now_or_never().is_some());
+
+        assert_eq!(sink.get_contents(), b"\x00One\x00Two\x00Three");
     }
 }
