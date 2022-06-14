@@ -457,4 +457,20 @@ mod tests {
         // The final result should be in order.
         assert_eq!(sink.get_contents(), b"\x00zero\x01one\x02two");
     }
+
+    #[test]
+    fn multiple_handles_same_channel() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        let mut h0 = muxer.create_channel_handle(0);
+        let mut h1 = muxer.create_channel_handle(0);
+        let mut h2 = muxer.create_channel_handle(0);
+
+        assert!(h1.send(Bytes::from(&b"One"[..])).now_or_never().is_some());
+        assert!(h0.send(Bytes::from(&b"Two"[..])).now_or_never().is_some());
+        assert!(h2.send(Bytes::from(&b"Three"[..])).now_or_never().is_some());
+
+        assert_eq!(sink.get_contents(), b"\x00One\x00Two\x00Three");
+    }
 }
