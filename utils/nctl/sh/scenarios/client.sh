@@ -157,12 +157,47 @@ function main() {
     test_put_deploy "$DICT_WASM" "$FAUCET_SK"
     # 31. Test get-dictionary-item subcommand
     test_get_dictionary_item "$FAUCET_ACC_HASH"
-    # 32. Cleanup
+    # 32. Test get-balance subcommand
+    test_get_balance "$ED25519_HEX" "7500000000"
+    # 33. Cleanup
     clean_tmp_dir
 
     log "------------------------------------------------------------"
     log "Scenario client complete"
     log "------------------------------------------------------------"
+}
+
+# casper-client get-balance
+# ... gets balance from purse uref
+# ... checks valid json with jq
+# ... checks expected balance
+function test_get_balance() {
+    local PUBLIC_KEY=${1}
+    local BALANCE=${2}
+    local PURSE_UREF
+    local OUTPUT
+
+    log_step "Testing Client Subcommand: get-balance"
+
+    PURSE_UREF=$(get_uref_for_public_key "$PUBLIC_KEY")
+
+    echo "$PURSE_UREF"
+
+    OUTPUT=$($(get_path_to_client) get-balance \
+        --node-address "$(get_node_address_rpc)" \
+        --state-root-hash "$(get_state_root_hash)" \
+        --purse-uref "$PURSE_UREF")
+
+    # Check client responded
+    test_with_jq "$OUTPUT"
+
+    # Balance Check
+    if [ "$BALANCE" = "$(echo $OUTPUT | jq -r '.result.balance_value')" ]; then
+        log "... balance match! [expected]"
+    else
+        log "ERROR: Mismatched balance!"
+        exit 1
+    fi
 }
 
 # casper-client get-dictionary-item
@@ -1063,6 +1098,21 @@ function test_subcommand_help() {
 #--------------------------------#
 # HELPER FUNCTIONS USED IN TESTS #
 #--------------------------------#
+
+# returns uref from get-account by public key
+function get_uref_for_public_key() {
+    local PUBLIC_KEY=${1}
+    local OUTPUT
+
+    OUTPUT=$($(get_path_to_client) get-account \
+        --node-address "$(get_node_address_rpc)" \
+        --public-key "$PUBLIC_KEY")
+
+    # Check non-empty
+    check_client_responded "$OUTPUT"
+
+    echo "$OUTPUT" | jq -r '.result.account.main_purse'
+}
 
 # returns block hash containing deploy
 function get_block_containing_deploy_hash() {
