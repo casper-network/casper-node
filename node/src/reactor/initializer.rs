@@ -206,16 +206,6 @@ impl Reactor {
                 .verifiable_chunked_hash_activation,
         )?;
 
-        let administrative_accounts = chainspec_loader
-            .chainspec()
-            .network_config
-            .accounts_config
-            .administrators()
-            .iter()
-            .map(|admin| admin.public_key())
-            .cloned()
-            .collect();
-
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.chainspec().protocol_config.version,
             storage.root_path(),
@@ -240,7 +230,11 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .verifiable_chunked_hash_activation,
-            administrative_accounts,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .administrators
+                .clone(),
             chainspec_loader.chainspec().core_config.allow_auction_bids,
             chainspec_loader
                 .chainspec()
