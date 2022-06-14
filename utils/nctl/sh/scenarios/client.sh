@@ -428,15 +428,18 @@ function test_transfer() {
 # casper-client get-account
 # ... checks valid json with jq
 # ... verifys some data matches expected outcome
+# ... compare alias output
 function test_get_account() {
     local PUBLIC_KEY=${1}
     local ACCOUNT_HASH=${2}
     local OUTPUT
+    local ALIAS_OUTPUT
 
     log_step "Testing Client Subcommand: get-account"
 
     OUTPUT=$($(get_path_to_client) get-account \
         --node-address "$(get_node_address_rpc)" \
+        --id '1' \
         --public-key "$PUBLIC_KEY")
 
     # Check client responded
@@ -447,6 +450,23 @@ function test_get_account() {
         log "... account hash match! [expected]"
     else
         log "ERROR: Mismatched balance!"
+        exit 1
+    fi
+
+    log "Testing alias subcommand: get-account-info"
+
+    ALIAS_OUTPUT=$($(get_path_to_client) get-account-info \
+        --node-address "$(get_node_address_rpc)" \
+        --id '1' \
+        --public-key "$PUBLIC_KEY")
+
+    # Check client responded
+    test_with_jq "$ALIAS_OUTPUT"
+
+    if [ "$OUTPUT" = "$ALIAS_OUTPUT" ]; then
+        log "... alias output match! [expected]"
+    else
+        log "ERROR: Mismatched alias output!"
         exit 1
     fi
 }
@@ -482,10 +502,12 @@ function test_query_balance() {
 # casper-client query-global-state
 # ... checks valid json with jq
 # ... verifys some data matches expected outcome
+# ... compare alias output
 function test_query_global_state() {
     local BLOCK_HASH=${1}
     local DEPLOY_HASH=${2}
     local OUTPUT
+    local ALIAS_OUTPUT
 
     log_step "Testing Client Subcommand: query-global-state"
 
@@ -497,6 +519,7 @@ function test_query_global_state() {
     OUTPUT=$($(get_path_to_client) query-global-state \
         --node-address "$(get_node_address_rpc)" \
         --block-identifier "$BLOCK_HASH" \
+        --id '1' \
         --key deploy-"$DEPLOY_HASH")
 
     # Check client responded
@@ -510,11 +533,30 @@ function test_query_global_state() {
         exit 1
     fi
 
+    log "Testing alias subcommand: query-state"
+
+    ALIAS_OUTPUT=$($(get_path_to_client) query-state \
+        --node-address "$(get_node_address_rpc)" \
+        --block-identifier "$BLOCK_HASH" \
+        --id '1' \
+        --key deploy-"$DEPLOY_HASH")
+
+    # Check client responded
+    test_with_jq "$ALIAS_OUTPUT"
+
+    if [ "$OUTPUT" = "$ALIAS_OUTPUT" ]; then
+        log "... alias output match! [expected]"
+    else
+        log "ERROR: Mismatched alias output!"
+        exit 1
+    fi
+
     # --key deploy-"$DEPLOY_HASH"
     # --state-root-hash "$(get_state_root_hash)
     OUTPUT=$($(get_path_to_client) query-global-state \
         --node-address "$(get_node_address_rpc)" \
         --key deploy-"$DEPLOY_HASH" \
+        --id '1' \
         --state-root-hash "$(get_state_root_hash)")
 
     # Check client responded
@@ -527,22 +569,62 @@ function test_query_global_state() {
         log "ERROR: Mismatched deploy hash!"
         exit 1
     fi
+
+    log "Testing alias subcommand: query-state"
+
+    ALIAS_OUTPUT=$($(get_path_to_client) query-state \
+        --node-address "$(get_node_address_rpc)" \
+        --key deploy-"$DEPLOY_HASH" \
+        --id '1' \
+        --state-root-hash "$(get_state_root_hash)")
+
+    # Check client responded
+    test_with_jq "$ALIAS_OUTPUT"
+
+    if [ "$OUTPUT" = "$ALIAS_OUTPUT" ]; then
+        log "... alias output match! [expected]"
+    else
+        log "ERROR: Mismatched alias output!"
+        exit 1
+    fi
 }
 
 # casper-client get-era-info
 # ... checks valid json with jq
+# ... compare alias output
+# TODO: check era_summary when selecting a switch block
+#       for an era is an input
 function test_get_era_info() {
     local BLOCK_HASH=${1}
     local OUTPUT
+    local ALIAS_OUTPUT
 
     log_step "Testing Client Subcommand: get-era-info"
 
     OUTPUT=$($(get_path_to_client) get-era-info \
         --node-address "$(get_node_address_rpc)" \
+        --id '1' \
         --block-identifier "$BLOCK_HASH")
 
     # Check client responded
     test_with_jq "$OUTPUT"
+
+    log "Testing alias subcommand: get-era-info-by-switch-block"
+
+    ALIAS_OUTPUT=$($(get_path_to_client) get-era-info-by-switch-block \
+        --node-address "$(get_node_address_rpc)" \
+         --id '1' \
+        --block-identifier "$BLOCK_HASH")
+
+    # Check client responded
+    test_with_jq "$ALIAS_OUTPUT"
+
+    if [ "$OUTPUT" = "$ALIAS_OUTPUT" ]; then
+        log "... alias output match! [expected]"
+    else
+        log "ERROR: Mismatched alias output!"
+        exit 1
+    fi
 }
 
 # casper-client list-deploys
