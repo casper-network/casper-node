@@ -772,6 +772,18 @@ impl ContractPackage {
         Ok(())
     }
 
+    /// Enable the contract version corresponding to the given hash (if it exists).
+    pub fn enable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        self.disabled_versions.remove(&contract_version_key);
+
+        Ok(())
+    }
+
     fn find_contract_version_key_by_hash(
         &self,
         contract_hash: &ContractHash,
@@ -1577,7 +1589,7 @@ mod tests {
     }
 
     #[test]
-    fn should_disable_contract_version() {
+    fn should_disable_and_enable_contract_version() {
         const NEW_CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
 
         let mut contract_package = make_contract_package();
@@ -1701,6 +1713,66 @@ mod tests {
         assert_eq!(
             contract_package.disabled_versions(),
             &BTreeSet::from_iter([next_version, ContractVersionKey(1, 2)]),
+        );
+
+        assert_eq!(
+            contract_package.enable_contract_version(CONTRACT_HASH_V2),
+            Ok(()),
+        );
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            BTreeMap::from_iter([
+                (ContractVersionKey(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey(1, 2), CONTRACT_HASH_V2),
+            ]),
+        );
+
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version])
+        );
+
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(
+            contract_package.enable_contract_version(NEW_CONTRACT_HASH),
+            Ok(()),
+        );
+
+        assert_eq!(
+            contract_package.enable_contract_version(NEW_CONTRACT_HASH),
+            Ok(()),
+            "enabling a contract twice should be a noop"
+        );
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            BTreeMap::from_iter([
+                (ContractVersionKey(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey(1, 2), CONTRACT_HASH_V2),
+                (next_version, NEW_CONTRACT_HASH),
+            ]),
+        );
+
+        assert_eq!(contract_package.disabled_versions(), &BTreeSet::new(),);
+
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(NEW_CONTRACT_HASH)
+        );
+    }
+
+    #[test]
+    fn should_not_allow_to_enable_non_existing_version() {
+        let mut contract_package = make_contract_package();
+
+        assert_eq!(
+            contract_package.enable_contract_version(ContractHash::default()),
+            Err(Error::ContractNotFound),
         );
     }
 

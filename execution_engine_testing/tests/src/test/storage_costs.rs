@@ -121,6 +121,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     remove_contract_user_group_urefs: HostFunction::fixed(0),
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
+    enable_contract_version: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(

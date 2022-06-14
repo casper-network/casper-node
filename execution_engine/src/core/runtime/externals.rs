@@ -1060,6 +1060,29 @@ where
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::EnableContractVersion => {
+                // args(0) = pointer to package hash in wasm memory
+                // args(1) = size of package hash in wasm memory
+                // args(2) = pointer to contract hash in wasm memory
+                // args(3) = size of contract hash in wasm memory
+                let (package_key_ptr, package_key_size, contract_hash_ptr, contract_hash_size) =
+                    Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.enable_contract_version,
+                    [
+                        package_key_ptr,
+                        package_key_size,
+                        contract_hash_ptr,
+                        contract_hash_size,
+                    ],
+                )?;
+                let contract_package_hash = self.t_from_mem(package_key_ptr, package_key_size)?;
+                let contract_hash = self.t_from_mem(contract_hash_ptr, contract_hash_size)?;
+
+                let result = self.enable_contract_version(contract_package_hash, contract_hash)?;
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
         }
     }
 }
