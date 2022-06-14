@@ -56,6 +56,21 @@ impl From<&ExecutionJournal> for JsonExecutionEffect {
     }
 }
 
+impl From<ExecutionJournal> for JsonExecutionEffect {
+    fn from(execution_journal: ExecutionJournal) -> Self {
+        Self::new(
+            execution_journal
+                .0
+                .iter()
+                .map(|(key, transform)| JsonTransformEntry {
+                    key: key.to_formatted_string(),
+                    transform: transform.into(),
+                })
+                .collect(),
+        )
+    }
+}
+
 impl IntoIterator for ExecutionJournal {
     type Item = (Key, Transform);
     type IntoIter = IntoIter<Self::Item>;

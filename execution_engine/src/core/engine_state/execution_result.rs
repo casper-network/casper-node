@@ -369,6 +369,33 @@ impl From<&ExecutionResult> for casper_types::ExecutionResult {
     }
 }
 
+impl From<ExecutionResult> for casper_types::ExecutionResult {
+    fn from(ee_execution_result: ExecutionResult) -> Self {
+        match ee_execution_result {
+            ExecutionResult::Success {
+                transfers,
+                cost,
+                execution_journal,
+            } => casper_types::ExecutionResult::Success {
+                effect: execution_journal.into(),
+                transfers,
+                cost: cost.value(),
+            },
+            ExecutionResult::Failure {
+                error,
+                transfers,
+                cost,
+                execution_journal,
+            } => casper_types::ExecutionResult::Failure {
+                effect: execution_journal.into(),
+                transfers,
+                cost: cost.value(),
+                error_message: error.to_string(),
+            },
+        }
+    }
+}
+
 /// Represents error conditions of an execution result builder.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ExecutionResultBuilderError {

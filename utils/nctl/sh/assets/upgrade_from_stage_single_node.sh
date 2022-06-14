@@ -167,6 +167,7 @@ function _setup_asset_node_configs()
     local PATH_TO_NET
     local PATH_TO_CONFIG
     local PATH_TO_CONFIG_FILE
+    local SPECULATIVE_EXEC_ADDR
     local SCRIPT
 
     PATH_TO_NET="$(get_path_to_net)"
@@ -182,6 +183,8 @@ function _setup_asset_node_configs()
     cp "$PATH_TO_NET/chainspec/chainspec.toml" "$PATH_TO_CONFIG"
     cp "$PATH_TO_TEMPLATE" "$PATH_TO_CONFIG_FILE"
 
+    SPECULATIVE_EXEC_ADDR=$(grep 'speculative_execution_address' $PATH_TO_CONFIG_FILE || true)
+
     # Set node configuration settings.
     SCRIPT=(
         "import toml;"
@@ -194,8 +197,18 @@ function _setup_asset_node_configs()
         "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
         "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
         "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
+    )
+
+    if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
+        SCRIPT+=(
+            "cfg['rpc_server']['speculative_execution_address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
+        )
+    fi
+
+    SCRIPT+=(
         "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
     )
+
     python3 -c "${SCRIPT[*]}"
 
     # Do workarounds.
@@ -323,6 +336,7 @@ function _main()
     local VERBOSE=${3}
     local NODE_ID=${4}
     local CHAINSPEC_PATH=${5}
+    local CONFIG_PATH=${6}
     local CHUNKED_HASH_ACTIVATION
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
@@ -335,6 +349,10 @@ function _main()
 
     if [ -z "$CHAINSPEC_PATH" ]; then
         CHAINSPEC_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml"
+    fi
+
+    if [ -z "$CONFIG_PATH" ]; then
+        CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
     fi
 
     if [ "$PROTOCOL_VERSION" != "" ]; then
@@ -356,7 +374,7 @@ function _main()
                               "$CHUNKED_HASH_ACTIVATION"
         _setup_asset_node_configs "$NODE_ID" \
                                  "$PROTOCOL_VERSION" \
-                                 "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
+                                 "$CONFIG_PATH" \
                                  false
         if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "140" ]; then
             _setup_asset_global_state_toml "$NODE_ID" \
@@ -378,6 +396,7 @@ unset STAGE_ID
 unset VERBOSE
 unset NODE_ID
 unset CHAINSPEC_PATH
+unset CONFIG_PATH
 
 for ARGUMENT in "$@"
 do
@@ -390,6 +409,7 @@ do
         verbose) VERBOSE=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
+        config_path) CONFIG_PATH=${VALUE} ;;
         *)
     esac
 done
@@ -404,4 +424,5 @@ _main "${STAGE_ID:-1}" \
       $((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET)) \
       "${VERBOSE:-true}" \
       "${NODE_ID}" \
-      "${CHAINSPEC_PATH}"
+      "${CHAINSPEC_PATH}" \
+      "${CONFIG_PATH}"
