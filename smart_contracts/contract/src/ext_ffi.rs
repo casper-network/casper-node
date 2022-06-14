@@ -773,4 +773,19 @@ extern "C" {
     /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `out_size` - size of output pointer
     pub fn casper_random_bytes(out_ptr: *mut u8, out_size: usize) -> i32;
+    /// Enables contract in a contract package. Returns non-zero standard error for a failure,
+    /// otherwise a zero indicates success.
+    ///
+    /// # Arguments
+    ///
+    /// * `contract_package_hash_ptr` - pointer to serialized contract package hash.
+    /// * `contract_package_hash_size` - size of contract package hash in serialized form.
+    /// * `contract_hash_ptr` - pointer to serialized contract hash.
+    /// * `contract_hash_size` - size of contract hash in serialized form.
+    pub fn casper_enable_contract_version(
+        contract_package_hash_ptr: *const u8,
+        contract_package_hash_size: usize,
+        contract_hash_ptr: *const u8,
+        contract_hash_size: usize,
+    ) -> i32;
 }

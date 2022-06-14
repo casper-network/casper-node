@@ -274,6 +274,7 @@ mod tests {
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
+            enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(

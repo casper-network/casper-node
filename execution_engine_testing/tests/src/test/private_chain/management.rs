@@ -47,6 +47,7 @@ const REMOVE_ASSOCIATED_KEY_CONTRACT: &str = "remove_associated_key.wasm";
 const SET_ACTION_THRESHOLDS_CONTRACT: &str = "set_action_thresholds.wasm";
 const UPDATE_ASSOCIATED_KEY_CONTRACT: &str = "update_associated_key.wasm";
 const DISABLE_CONTRACT: &str = "disable_contract.wasm";
+const ENABLE_CONTRACT: &str = "enable_contract.wasm";
 const TRANSFER_TO_ACCOUNT_CONTRACT: &&str = &"transfer_to_account.wasm";
 const ARG_CONTRACT_PACKAGE_HASH: &str = "contract_package_hash";
 const ARG_CONTRACT_HASH: &str = "contract_hash";
@@ -542,7 +543,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     );
     assert!(!contract_package_after_disable.is_contract_enabled(&stored_contract_hash),);
 
-    let call_delegate_requests = {
+    let call_delegate_requests_1 = {
         // Unable to call disabled stored contract directly
         let call_delegate_by_name = ExecuteRequestBuilder::contract_call_by_name(
             *ACCOUNT_1_ADDR,
@@ -574,7 +575,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         ]
     };
 
-    for call_delegate_request in call_delegate_requests {
+    for call_delegate_request in call_delegate_requests_1 {
         builder
             .exec(call_delegate_request)
             .expect_failure()
@@ -591,8 +592,54 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         );
     }
 
-    // Enable contract
-    // TODO: https://github.com/casper-network/casper-node/issues/3033
+    // Enable stored contract
+    let enable_request = {
+        let session_args = runtime_args! {
+            ARG_CONTRACT_PACKAGE_HASH => do_nothing_contract_package_hash,
+            ARG_CONTRACT_HASH => stored_contract_hash,
+        };
+
+        ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, ENABLE_CONTRACT, session_args)
+            .build()
+    };
+
+    builder.exec(enable_request).expect_success().commit();
+
+    let call_delegate_requests_2 = {
+        // Unable to call disabled stored contract directly
+        let call_delegate_by_name = ExecuteRequestBuilder::contract_call_by_name(
+            *ACCOUNT_1_ADDR,
+            DO_NOTHING_HASH_NAME,
+            DELEGATE_ENTRYPOINT,
+            RuntimeArgs::default(),
+        )
+        .build();
+
+        let call_delegate_by_hash = ExecuteRequestBuilder::contract_call_by_hash(
+            *ACCOUNT_1_ADDR,
+            stored_contract_hash,
+            DELEGATE_ENTRYPOINT,
+            RuntimeArgs::default(),
+        )
+        .build();
+
+        let call_delegate_from_wasm = make_call_contract_session_request(
+            *ACCOUNT_1_ADDR,
+            stored_contract_hash,
+            DELEGATE_ENTRYPOINT,
+            RuntimeArgs::default(),
+        );
+
+        vec![
+            call_delegate_by_name,
+            call_delegate_by_hash,
+            call_delegate_from_wasm,
+        ]
+    };
+
+    for exec_request in call_delegate_requests_2 {
+        builder.exec(exec_request).expect_success().commit();
+    }
 }
 
 #[ignore]
@@ -760,8 +807,63 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         );
     }
 
-    // Enable contract
-    // TODO: https://github.com/casper-network/casper-node/issues/3033
+    // Enable stored contract
+    let enable_request = {
+        let session_args = runtime_args! {
+            ARG_CONTRACT_PACKAGE_HASH => test_payment_stored_package_hash,
+            ARG_CONTRACT_HASH => stored_contract_hash,
+        };
+
+        ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, ENABLE_CONTRACT, session_args)
+            .build()
+    };
+
+    builder.exec(enable_request).expect_success().commit();
+
+    let call_stored_payment_requests_2 = {
+        let payment_args = runtime_args! {
+            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
+        };
+        let session_args = RuntimeArgs::default();
+
+        let call_by_name = {
+            let sender = *ACCOUNT_1_ADDR;
+            let deploy_hash = [100; 32];
+
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args.clone())
+                .with_stored_payment_named_key(
+                    TEST_PAYMENT_STORED_HASH_NAME,
+                    PAY_ENTRYPOINT,
+                    payment_args.clone(),
+                )
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        let call_by_hash = {
+            let sender = *ACCOUNT_1_ADDR;
+            let deploy_hash = [100; 32];
+
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+                .with_stored_payment_hash(stored_contract_hash, PAY_ENTRYPOINT, payment_args)
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        vec![call_by_name, call_by_hash]
+    };
+
+    for exec_request in call_stored_payment_requests_2 {
+        builder.exec(exec_request).expect_success().commit();
+    }
 }
 
 #[ignore]
