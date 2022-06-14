@@ -94,10 +94,10 @@ mod tests {
 
     use openssl::pkey::{PKey, Private, Public};
 
-    use casper_types::{bytesrepr, checksummed_hex, AsymmetricType, Tagged};
+    use casper_types::{bytesrepr, checksummed_hex, testing::TestRng, AsymmetricType, Tagged};
 
     use super::*;
-    use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
+    use crate::crypto::AsymmetricKeyExt;
 
     type OpenSSLSecretKey = PKey<Private>;
     type OpenSSLPublicKey = PKey<Public>;

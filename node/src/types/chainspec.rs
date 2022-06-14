@@ -38,9 +38,9 @@ pub(crate) use self::{
     deploy_config::DeployConfig, global_state_update::GlobalStateUpdate,
     highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::utils::Loadable;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";

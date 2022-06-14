@@ -24,7 +24,7 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::ProtocolVersion;
+use casper_types::{testing::TestRng, ProtocolVersion};
 
 use super::*;
 use crate::{
@@ -47,7 +47,7 @@ use crate::{
     testing,
     testing::{
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor, TestRng,
+        ConditionCheckReactor,
     },
     types::{Chainspec, Deploy, NodeId, Tag},
     utils::{Loadable, WithDir},

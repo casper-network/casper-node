@@ -54,4 +54,4 @@ pub type NodeRng = ChaCha20Rng;
 
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
-pub type NodeRng = crate::testing::TestRng;
+pub type NodeRng = casper_types::testing::TestRng;

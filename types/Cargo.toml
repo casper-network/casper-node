@@ -28,6 +28,7 @@ num-traits = { version = "0.2.10", default-features = false }
 once_cell = { version = "1.5.2", optional = true }
 proptest = { version = "1.0.0", optional = true }
 rand = { version = "0.8.3", default-features = false, features = ["small_rng"] }
+rand_pcg = { version = "0.3.0", optional = true }
 schemars = { version = "=0.8.5", features = ["preserve_order"], optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
@@ -41,13 +42,17 @@ criterion = "0.3.5"
 getrandom = { version = "0.2.0", features = ["rdrand"] }
 proptest = "1.0.0"
 proptest-attr-macro = "1.0.0"
+rand = "0.8.3"
+rand_pcg = "0.3.0"
 serde_json = "1.0.55"
 serde_test = "1.0.117"
 strum = { version = "0.21", features = ["derive"] }
 
 [features]
 json-schema = ["once_cell", "schemars"]
-gens = ["proptest"]
+# DEPRECATED - use "testing" instead of "gens".
+gens = ["testing"]
+testing = ["proptest", "rand_pcg"]
 # DEPRECATED - enabling `std` has no effect.
 std = []
 

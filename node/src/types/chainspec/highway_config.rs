@@ -7,9 +7,9 @@ use tracing::error;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::types::TimeDiff;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.

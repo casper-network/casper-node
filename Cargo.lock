@@ -622,6 +622,7 @@ dependencies = [
  "proptest",
  "proptest-attr-macro",
  "rand 0.8.5",
+ "rand_pcg",
  "schemars",
  "serde",
  "serde_bytes",

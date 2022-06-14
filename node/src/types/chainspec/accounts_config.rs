@@ -12,9 +12,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::utils::{self, Loadable};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 use super::error::ChainspecAccountsLoadError;
 pub use account_config::AccountConfig;

@@ -293,6 +293,8 @@ use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
+use casper_types::testing::TestRng;
+
 use crate::{
     components::Component,
     effect::{
@@ -301,7 +303,6 @@ use crate::{
     },
     logging,
     reactor::{EventQueueHandle, QueueKind},
-    testing::TestRng,
     types::NodeId,
     NodeRng,
 };

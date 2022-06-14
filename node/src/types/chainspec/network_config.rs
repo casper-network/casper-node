@@ -7,7 +7,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::AccountsConfig;
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct NetworkConfig {

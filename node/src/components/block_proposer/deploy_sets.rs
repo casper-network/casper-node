@@ -152,7 +152,9 @@ pub(super) fn prune_pending_deploys(
 
 #[cfg(test)]
 mod tests {
-    use crate::{testing, testing::TestRng};
+    use casper_types::testing::TestRng;
+
+    use crate::testing;
 
     use super::*;
 

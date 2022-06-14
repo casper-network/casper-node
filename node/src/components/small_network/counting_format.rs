@@ -24,9 +24,9 @@ use tracing::{trace, warn};
 use casper_hashing::Digest;
 
 use super::{tls::KeyFingerprint, Message, Metrics, Payload};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{types::NodeId, utils};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 /// Lazily-evaluated network message ID generator.
 ///

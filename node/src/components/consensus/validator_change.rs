@@ -119,8 +119,10 @@ impl<'a, I> From<&'a Era<I>> for EraMetadata<'a> {
 mod tests {
     use std::iter;
 
+    use casper_types::testing::TestRng;
+
     use super::*;
-    use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
+    use crate::crypto::AsymmetricKeyExt;
 
     fn preset_validators(rng: &mut TestRng) -> HashSet<PublicKey> {
         iter::repeat_with(|| PublicKey::random(rng))
