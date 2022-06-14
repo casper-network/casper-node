@@ -19,7 +19,7 @@ use crate::components::consensus::{
 use super::RoundId;
 
 /// An entry in the Write-Ahead Log, storing a message we had added to our protocol state.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -171,5 +171,113 @@ impl<C: Context> ReadWal<C> {
             self.reader.get_mut().set_len(position)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::components::consensus::{
+        cl_context::{ClContext, Keypair},
+        protocols::common,
+    };
+    use casper_types::{PublicKey, SecretKey, Timestamp, U512};
+    use tempfile::tempdir;
+
+    use super::*;
+    use once_cell::sync::Lazy;
+    const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
+    const ALICE_WEIGHT: u64 = 1000000;
+    const ALICE_SECRET_KEY_BYTES: [u8; SecretKey::ED25519_LENGTH] = [3; SecretKey::ED25519_LENGTH];
+    static ALICE_SECRET_KEY: Lazy<SecretKey> =
+        Lazy::new(|| SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).unwrap());
+    static ALICE_PUBLIC_KEY: Lazy<PublicKey> =
+        Lazy::new(|| PublicKey::from(Lazy::force(&ALICE_SECRET_KEY)));
+
+    #[test]
+    fn test_read_write_wal() {
+        let alice_keypair = Keypair::from(std::sync::Arc::new(
+            SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).unwrap(),
+        ));
+        let weights: Vec<(PublicKey, U512)> =
+            vec![(ALICE_PUBLIC_KEY.clone(), U512::from(ALICE_WEIGHT))];
+        let validators = common::validators::<ClContext>(
+            &Default::default(),
+            &Default::default(),
+            weights.iter().cloned().collect(),
+        );
+        let instance_id = ClContext::hash(INSTANCE_ID_DATA);
+        let create_message = |round_id, content: Content<ClContext>| {
+            let validator_idx = validators.get_index(alice_keypair.public_key()).unwrap();
+            SignedMessage::sign_new(
+                round_id,
+                instance_id,
+                content,
+                validator_idx,
+                &alice_keypair,
+            )
+        };
+        let mut entries = vec![
+            Entry::SignedMessage(create_message(0, Content::Vote(true))),
+            Entry::SignedMessage(create_message(1, Content::Vote(false))),
+            Entry::SignedMessage(create_message(
+                2,
+                Content::Echo(ClContext::hash(&[123u8; 1])),
+            )),
+            Entry::Proposal(Proposal::dummy(Timestamp::zero(), 0), 0),
+            Entry::Evidence(
+                create_message(0, Content::Echo(ClContext::hash(&[23u8; 1]))),
+                Content::Echo(ClContext::hash(&[52u8; 1])),
+                create_message(0, Content::Echo(ClContext::hash(&[4u8; 1]))).signature,
+            ),
+        ];
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("wal");
+        let mut read_wal: ReadWal<ClContext> = ReadWal::new(&path).unwrap();
+        matches!(read_wal.read_next_entry(), Ok(None));
+        let mut write_wal: WriteWal<ClContext> = WriteWal::new(&path).unwrap();
+        for entry in entries.iter() {
+            write_wal.record_entry(entry).unwrap();
+        }
+
+        let mut read_entries = vec![];
+
+        loop {
+            match read_wal.read_next_entry().unwrap() {
+                Some(entry) => read_entries.push(entry),
+                None => break,
+            }
+        }
+
+        assert_eq!(entries, read_entries);
+
+        loop {
+            if entries.len() == 0 {
+                break;
+            }
+            let mut file = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&path)
+                .unwrap();
+
+            file.seek(io::SeekFrom::End(-1)).unwrap();
+            let position = file.stream_position().unwrap();
+            file.set_len(position).unwrap();
+
+            entries.pop().unwrap();
+
+            let mut read_wal: ReadWal<ClContext> = ReadWal::new(&path).unwrap();
+
+            let mut read_entries = vec![];
+
+            loop {
+                match read_wal.read_next_entry().unwrap() {
+                    Some(entry) => read_entries.push(entry),
+                    None => break,
+                }
+            }
+
+            assert_eq!(entries, read_entries);
+        }
     }
 }
