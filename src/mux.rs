@@ -37,7 +37,7 @@ pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
 ///
-/// Can be remove once `Try` is stabilized for `Poll`.
+/// Can be removed once `Try` is stabilized for `Poll`.
 macro_rules! try_ready {
     ($ex:expr) => {
         match $ex {
@@ -72,7 +72,7 @@ impl<S> Multiplexer<S> {
     ///
     /// # Correctness and cancellation safety
     ///
-    /// Since a handle may hold a lock on the share sink, additional invariants that must be upheld
+    /// Since a handle may hold a lock on the shared sink, additional invariants that must be upheld
     /// by the calling tasks:
     ///
     /// * Every call to `Sink::poll_ready` returning `Poll::Pending` **must** be repeated until
@@ -176,7 +176,7 @@ where
     ///
     /// * If the lock is already obtained, returns `Ready(guard)`.
     /// * If the lock has not been obtained, attempts to poll the locking future, either returning
-    ///   `Pending` or `Ready(guad)`.
+    ///   `Pending` or `Ready(guard)`.
     fn acquire_lock(&mut self, cx: &mut Context<'_>) -> Poll<&mut SinkGuard<S>> {
         let sink_guard = match self.sink_guard {
             None => {
@@ -376,7 +376,7 @@ mod tests {
         muxer.into_inner();
 
         let outcome = chan_0
-            .send(Bytes::from(&b"Seceond"[..]))
+            .send(Bytes::from(&b"Second"[..]))
             .now_or_never()
             .unwrap()
             .unwrap_err();
@@ -449,12 +449,28 @@ mod tests {
         // Unclog, this causes the first write to finish and others to follow.
         sink.set_clogged(false);
 
-        // Both should finish with the unclogged sink.
+        // All should finish with the unclogged sink.
         send_2.await.unwrap();
         send_0.await.unwrap();
         send_1.await.unwrap();
 
         // The final result should be in order.
         assert_eq!(sink.get_contents(), b"\x00zero\x01one\x02two");
+    }
+
+    #[test]
+    fn multiple_handles_same_channel() {
+        let sink = Arc::new(TestingSink::new());
+        let muxer = Multiplexer::new(sink.clone().into_ref());
+
+        let mut h0 = muxer.create_channel_handle(0);
+        let mut h1 = muxer.create_channel_handle(0);
+        let mut h2 = muxer.create_channel_handle(0);
+
+        assert!(h1.send(Bytes::from(&b"One"[..])).now_or_never().is_some());
+        assert!(h0.send(Bytes::from(&b"Two"[..])).now_or_never().is_some());
+        assert!(h2.send(Bytes::from(&b"Three"[..])).now_or_never().is_some());
+
+        assert_eq!(sink.get_contents(), b"\x00One\x00Two\x00Three");
     }
 }
