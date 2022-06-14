@@ -336,10 +336,10 @@ pub fn disable_contract_version(
     api_error::result_from(result)
 }
 
-/// Enable a version of a contract from the contract stored at the given
-/// `Key`. That version of the contract will no longer be callable by
+/// Enable a version of a contract from the contract stored at the given hash.
+/// That version of the contract will no longer be callable by
 /// `call_versioned_contract`. Note that this contract must have been created by
-/// `create_contract` or `create_contract_package_at_hash` first.
+/// [`new_contract`] or [`create_contract_package_at_hash`] first.
 pub fn enable_contract_version(
     contract_package_hash: ContractPackageHash,
     contract_hash: ContractHash,

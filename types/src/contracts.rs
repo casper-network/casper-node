@@ -1855,6 +1855,12 @@ mod tests {
         );
 
         assert_eq!(
+            contract_package.enable_contract_version(NEW_CONTRACT_HASH),
+            Ok(()),
+            "enabling a contract twice should be a noop"
+        );
+
+        assert_eq!(
             contract_package.enabled_versions(),
             BTreeMap::from_iter([
                 (ContractVersionKey(1, 1), CONTRACT_HASH_V1),
@@ -1868,6 +1874,16 @@ mod tests {
         assert_eq!(
             contract_package.current_contract_hash(),
             Some(NEW_CONTRACT_HASH)
+        );
+    }
+
+    #[test]
+    fn should_not_allow_to_enable_non_existing_version() {
+        let mut contract_package = make_contract_package();
+
+        assert_eq!(
+            contract_package.enable_contract_version(ContractHash::default()),
+            Err(Error::ContractNotFound),
         );
     }
 

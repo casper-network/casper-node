@@ -1772,7 +1772,6 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
-        // Return an error in trying to disable the (singular) version of a locked contract.
         if contract_package.is_locked() {
             return Err(Error::LockedContract(contract_package_hash));
         }
@@ -1799,7 +1798,6 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
-        // Return an error in trying to disable the (singular) version of a locked contract.
         if contract_package.is_locked() {
             return Err(Error::LockedContract(contract_package_hash));
         }
