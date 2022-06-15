@@ -38,7 +38,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -58,6 +58,8 @@ pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
 pub use operations::execute_finalized_block;
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
+
+use self::operations::execute_only;
 
 use super::fetcher::FetchedOrNotFound;
 
@@ -96,6 +98,17 @@ where
     tokio::task::spawn_blocking(task)
         .await
         .expect("task panicked")
+}
+
+#[derive(DataSize, Debug, Clone, Serialize)]
+/// Wrapper for speculative execution prestate.
+pub struct SpeculativeExecutionState {
+    /// State root on top of which to execute deploy.
+    pub state_root_hash: Digest,
+    /// Block time.
+    pub block_time: Timestamp,
+    /// Protocol version used when creating the original block.
+    pub protocol_version: ProtocolVersion,
 }
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
@@ -571,6 +584,21 @@ impl ContractRuntime {
                         .missing_trie_keys
                         .observe(start.elapsed().as_secs_f64());
                     trace!(?result, "find missing descendant trie keys");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::SpeculativeDeployExecution {
+                execution_prestate,
+                deploy,
+                responder,
+            } => {
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let result = run_intensive_task(move || {
+                        execute_only(engine_state.as_ref(), execution_prestate, (*deploy).into())
+                    })
+                    .await;
                     responder.respond(result).await
                 }
                 .ignore()

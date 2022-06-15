@@ -22,7 +22,10 @@ use casper_types::{runtime_args, Gas, RuntimeArgs};
 use num_traits::Zero;
 
 use crate::{
-    test::regression::test_utils::{make_gas_counter_overflow, make_module_without_memory_section},
+    test::regression::test_utils::{
+        make_gas_counter_overflow, make_module_with_start_section,
+        make_module_without_memory_section,
+    },
     wasm_utils,
 };
 
@@ -112,14 +115,10 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
 #[ignore]
 #[test]
 fn should_charge_payment_with_incorrect_wasm_file_invalid_magic_number() {
-    const WASM_BYTES_INVALID_MAGIC_NUMBER: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
+    const WASM_BYTES: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
     let execution_phase = ExecutionPhase::Payment;
     let expected_error = " Invalid magic number at start of file";
-    run_test_case(
-        WASM_BYTES_INVALID_MAGIC_NUMBER,
-        expected_error,
-        execution_phase,
-    )
+    run_test_case(WASM_BYTES, expected_error, execution_phase)
 }
 
 #[ignore]
@@ -222,5 +221,23 @@ fn should_charge_session_with_incorrect_wasm_no_memory_section() {
     let wasm_bytes = make_module_without_memory_section();
     let execution_phase = ExecutionPhase::Session;
     let expected_error = "Memory section should exist";
+    run_test_case(&wasm_bytes, expected_error, execution_phase)
+}
+
+#[ignore]
+#[test]
+fn should_charge_payment_with_incorrect_wasm_start_section() {
+    let wasm_bytes = make_module_with_start_section();
+    let execution_phase = ExecutionPhase::Payment;
+    let expected_error = "Unsupported WASM start";
+    run_test_case(&wasm_bytes, expected_error, execution_phase)
+}
+
+#[ignore]
+#[test]
+fn should_charge_session_with_incorrect_wasm_start_section() {
+    let wasm_bytes = make_module_with_start_section();
+    let execution_phase = ExecutionPhase::Session;
+    let expected_error = "Unsupported WASM start";
     run_test_case(&wasm_bytes, expected_error, execution_phase)
 }

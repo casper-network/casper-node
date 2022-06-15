@@ -142,6 +142,7 @@ use crate::{
         fetcher::FetchResult,
         small_network::FromIncoming,
     },
+    contract_runtime::SpeculativeExecutionState,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
@@ -2089,6 +2090,27 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::StoreFinalizedApprovals {
                 deploy_hash,
                 finalized_approvals,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests execution of a single deploy, without commiting its effects.
+    /// Inteded to be used for debugging & discovery purposes.
+    pub(crate) async fn speculative_execute_deploy(
+        self,
+        execution_prestate: SpeculativeExecutionState,
+        deploy: Deploy,
+    ) -> Result<Option<ExecutionResult>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
+                execution_prestate,
+                deploy: Box::new(deploy),
                 responder,
             },
             QueueKind::Regular,

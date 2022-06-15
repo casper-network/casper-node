@@ -11,6 +11,14 @@ function clean_up() {
     local EXIT_CODE=$?
     local STDOUT
     local STDERR
+    local TMP_CLIENT_DIR
+
+    TMP_CLIENT_DIR='/tmp/client'
+
+    if [ -d "$TMP_CLIENT_DIR" ]; then
+        log "Removing client tmp dir..."
+        rm -rf "$TMP_CLIENT_DIR"
+    fi
 
     # Removes DEPLOY_LOG for ITST06/07
     if [ -f "$DEPLOY_LOG" ]; then

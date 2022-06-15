@@ -72,7 +72,9 @@ function _step_01()
 
     log_step_upgrades 1 "Begin upgrade_scenario_07"
 
-    nctl-assets-setup "chainspec_path=$NCTL/sh/scenarios/chainspecs/upgrade_scenario_7.chainspec.toml.in"
+    nctl-assets-setup \
+        "chainspec_path=$NCTL/sh/scenarios/chainspecs/upgrade_scenario_7.chainspec.toml.in" \
+        "config_path=$NCTL/sh/scenarios/configs/upgrade_scenario_7.config.toml"
     
     # Force Hard Reset
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
