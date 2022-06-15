@@ -54,7 +54,7 @@ pub(crate) enum Error {
     #[error("no such block hash: {bogus_block_hash}")]
     NoSuchBlockHash { bogus_block_hash: BlockHash },
 
-    #[error("no such block height: {0} when archival sync")]
+    #[error("no such block height: {0} encountered during syncing to Genesis")]
     NoSuchBlockHeight(u64),
 
     #[error(transparent)]
