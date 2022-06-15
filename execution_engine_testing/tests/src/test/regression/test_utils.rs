@@ -69,3 +69,16 @@ pub(crate) fn make_module_without_memory_section() -> Vec<u8> {
         .build();
     parity_wasm::serialize(module).expect("should serialize")
 }
+
+/// Prepare malicious payload in a form of a wasm module with forbidden start section.
+pub(crate) fn make_module_with_start_section() -> Vec<u8> {
+    let module = r#"
+        (module
+            (memory 1)
+            (start 0)
+            (func (export "call")
+            )
+        )
+    "#;
+    wabt::wat2wasm(module).expect("should parse wat")
+}

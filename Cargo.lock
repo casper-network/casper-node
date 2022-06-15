@@ -2730,6 +2730,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nctl-dictionary"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "new-named-uref"
 version = "0.1.0"
 dependencies = [

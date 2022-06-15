@@ -38,6 +38,7 @@ function _main()
     do
         source "$NCTL/sh/staging/set_remote.sh" version=$PROTOCOL_VERSION
         source "$NCTL/sh/staging/set_remote_chainspecs.sh" version=$PROTOCOL_VERSION
+        source "$NCTL/sh/staging/set_remote_configs.sh" version=$PROTOCOL_VERSION
     done
 }
 
