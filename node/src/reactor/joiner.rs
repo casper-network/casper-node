@@ -541,7 +541,7 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    chain_synchronizer: ChainSynchronizer,
+    chain_synchronizer: ChainSynchronizer<JoinerEvent>,
     deploy_fetcher: Fetcher<Deploy>,
     finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_by_hash_fetcher: Fetcher<Block>,

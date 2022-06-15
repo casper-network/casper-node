@@ -4,13 +4,16 @@ mod event;
 mod metrics;
 mod operations;
 
-use std::{collections::HashSet, convert::Infallible, fmt::Debug, sync::Arc};
+use std::{collections::HashSet, convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
+use casper_execution_engine::{
+    core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess},
+    storage::trie::TrieOrChunk,
+};
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use self::metrics::Metrics;
@@ -20,12 +23,19 @@ use crate::{
         contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState},
         Component,
     },
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest,
+        },
+        EffectBuilder, EffectExt, Effects,
+    },
     fatal,
-    reactor::joiner::JoinerEvent,
+    storage::StorageRequest,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock,
-        NodeConfig,
+        ActivationPoint, Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockPayload, BlockWithMetadata, Chainspec, Deploy,
+        FinalizedApprovalsWithId, FinalizedBlock, NodeConfig,
     },
     NodeRng, SmallNetworkConfig,
 };
@@ -49,7 +59,7 @@ pub(crate) enum JoiningOutcome {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct ChainSynchronizer {
+pub(crate) struct ChainSynchronizer<REv> {
     config: Config,
     /// This will be populated once the synchronizer has completed all work, indicating the joiner
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
@@ -60,16 +70,36 @@ pub(crate) struct ChainSynchronizer {
     /// The next upgrade activation point, used to determine what action to take after completing
     /// chain synchronization.
     maybe_next_upgrade: Option<ActivationPoint>,
+    /// Association with the reactor event used in subtasks.
+    _phantom: PhantomData<REv>,
 }
 
-impl ChainSynchronizer {
+impl<REv> ChainSynchronizer<REv>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
+        + From<ControlAnnouncement>
+        + Send,
+{
     pub(crate) fn new(
         chainspec: Arc<Chainspec>,
         node_config: NodeConfig,
         small_network_config: SmallNetworkConfig,
         maybe_next_upgrade: Option<ActivationPoint>,
         verifiable_chunked_hash_activation: EraId,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         registry: &Registry,
     ) -> Result<(Self, Effects<Event>), Error> {
         let synchronizer = ChainSynchronizer {
@@ -77,6 +107,7 @@ impl ChainSynchronizer {
             joining_outcome: None,
             metrics: Metrics::new(registry)?,
             maybe_next_upgrade,
+            _phantom: PhantomData,
         };
         let effects = match synchronizer.config.trusted_hash() {
             None => {
@@ -105,7 +136,7 @@ impl ChainSynchronizer {
 
     fn start_syncing(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         trusted_hash: BlockHash,
     ) -> Effects<Event> {
         info!(%trusted_hash, "synchronizing linear chain");
@@ -120,7 +151,7 @@ impl ChainSynchronizer {
 
     fn handle_sync_result(
         &mut self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         result: Result<BlockHeader, Error>,
     ) -> Effects<Event> {
         match result {
@@ -166,7 +197,7 @@ impl ChainSynchronizer {
 
     fn handle_highest_block(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         maybe_highest_block: Option<BlockHash>,
     ) -> Effects<Event> {
         // If we have a block in storage, use its hash as the trusted hash to sync to.  If not,
@@ -178,7 +209,7 @@ impl ChainSynchronizer {
         }
     }
 
-    fn commit_genesis(&self, effect_builder: EffectBuilder<JoinerEvent>) -> Effects<Event> {
+    fn commit_genesis(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event> {
         let genesis_timestamp = match self.config.genesis_timestamp() {
             None => {
                 return fatal!(
@@ -215,7 +246,7 @@ impl ChainSynchronizer {
 
     fn commit_upgrade(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         upgrade_block_header: BlockHeader,
     ) -> Effects<Event> {
         info!("committing upgrade");
@@ -244,7 +275,7 @@ impl ChainSynchronizer {
 
     fn handle_commit_genesis_result(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         result: Result<GenesisSuccess, engine_state::Error>,
     ) -> Effects<Event> {
         match result {
@@ -293,7 +324,7 @@ impl ChainSynchronizer {
 
     fn handle_upgrade_result(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         upgrade_block_header: BlockHeader,
         result: Result<UpgradeSuccess, engine_state::Error>,
     ) -> Effects<Event> {
@@ -340,7 +371,7 @@ impl ChainSynchronizer {
     /// and no consensus instance is run for era 0 or an upgrade point era.
     fn execute_immediate_switch_block(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         maybe_upgrade_block_header: Option<BlockHeader>,
         initial_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
@@ -371,7 +402,7 @@ impl ChainSynchronizer {
 
     fn handle_execute_immediate_switch_block_result(
         &mut self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         maybe_upgrade_block_header: Option<BlockHeader>,
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     ) -> Effects<Event> {
@@ -420,13 +451,31 @@ impl ChainSynchronizer {
     }
 }
 
-impl Component<JoinerEvent> for ChainSynchronizer {
+impl<REv> Component<REv> for ChainSynchronizer<REv>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
+        + From<ControlAnnouncement>
+        + Send,
+{
     type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
