@@ -21,6 +21,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "add-associated-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-bid"
 version = "0.1.0"
 dependencies = [
@@ -4033,6 +4041,14 @@ dependencies = [
  "itoa 1.0.1",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "set-action-thresholds"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
