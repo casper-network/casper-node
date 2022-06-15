@@ -38,7 +38,7 @@ pub struct ImmediateStream<S, T> {
     _type: PhantomData<T>,
 }
 
-/// Error occuring during immediate stream reading.
+/// Error occurring during immediate stream reading.
 #[derive(Debug, Error)]
 pub enum ImmediateStreamError {
     /// The incoming frame was of the wrong size.
@@ -103,7 +103,7 @@ where
 
         match ready!(self_mut.stream.poll_next_unpin(cx)) {
             Some(frame) => {
-                let slice = AsRef::<[u8]>::as_ref(&frame);
+                let slice: &[u8] = &frame;
 
                 Poll::Ready(Some(T::from_slice(slice).ok_or({
                     ImmediateStreamError::WrongSize {

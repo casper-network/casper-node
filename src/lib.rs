@@ -25,7 +25,7 @@ pub struct ImmediateFrame<A> {
 pub trait FromFixedSize: Sized {
     /// The size of the type on the wire.
     ///
-    /// `from_slice` expected its input argument to be of this length.
+    /// `from_slice` expects its input argument to be of this length.
     const WIRE_SIZE: usize;
 
     /// Try to reconstruct a type from a slice of bytes.
