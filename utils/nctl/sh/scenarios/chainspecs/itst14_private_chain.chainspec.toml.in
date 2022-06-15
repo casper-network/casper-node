@@ -14,8 +14,6 @@ hard_reset = false
 activation_point = '${TIMESTAMP}'
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
-# The era ID starting at which the new Merkle tree-based hashing scheme is applied.
-verifiable_chunked_hash_activation = 2
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -55,8 +53,8 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
-# Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
-strict_argument_checking = false
+# Maximum serialized size of values stored in global state.
+max_stored_value_size = 8_388_608
 # Allow auction entrypoints such as delegate, redelegate and add_bid to function properly.
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
