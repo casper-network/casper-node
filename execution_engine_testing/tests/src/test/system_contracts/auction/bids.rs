@@ -16,17 +16,12 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::{
-                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-                DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-                DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            },
+            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             genesis::{GenesisAccount, GenesisValidator},
-            EngineConfig, Error, RewardItem,
+            EngineConfigBuilder, Error, RewardItem,
         },
         execution,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -2595,16 +2590,9 @@ fn should_release_vfta_holder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let custom_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-        NEW_MINIMUM_DELEGATION_AMOUNT,
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+        .build();
 
     let global_state = InMemoryGlobalState::empty().expect("should create global state");
 
@@ -3099,16 +3087,9 @@ fn should_not_allow_delegations_past_limit() {
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    let custom_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        NEW_MAX_DELEGATOR_SIZE_LIMIT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_max_delegator_size_limit(NEW_MAX_DELEGATOR_SIZE_LIMIT)
+        .build();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -3364,16 +3345,9 @@ fn should_continue_running_auction_despite_execeeded_delegator_limit() {
         old_protocol_version.value().patch + 1,
     );
 
-    let custom_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        NEW_MAX_DELEGATOR_SIZE_LIMIT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_max_delegator_size_limit(NEW_MAX_DELEGATOR_SIZE_LIMIT)
+        .build();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -3618,16 +3592,9 @@ fn should_enforce_and_check_global_delegator_capacity() {
         old_protocol_version.value().patch + 1,
     );
 
-    let custom_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        NEW_MAX_DELEGATOR_SIZE_LIMIT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_max_delegator_size_limit(NEW_MAX_DELEGATOR_SIZE_LIMIT)
+        .build();
 
     // Reduce the validator slots from the default to only 2.
     let mut upgrade_request = {

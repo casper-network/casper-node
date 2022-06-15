@@ -12,6 +12,7 @@ use tokio::time;
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
+    testing::TestRng,
     EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
@@ -31,9 +32,7 @@ use crate::{
         participating::{self, ParticipatingEvent},
         Reactor, ReactorExit, Runner,
     },
-    testing::{
-        self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
-    },
+    testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
         ActivationPoint, BlockHeader, Chainspec, Deploy, ExitCode, Timestamp,
@@ -102,7 +101,9 @@ impl TestChain {
             })
             .collect();
         let delegators = vec![];
-        chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
+        let administrators = vec![];
+        chainspec.network_config.accounts_config =
+            AccountsConfig::new(accounts, delegators, administrators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
         let genesis_time = Timestamp::now() + 45000.into();

@@ -19,6 +19,12 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 max_stored_value_size = 8_388_608
 minimum_delegation_amount = 500_000_000_000
+refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+fee_handling = { type = 'pay_to_proposer' }
+allow_unrestricted_transfers = true
+allow_auction_bids = true
+compute_rewards = true
+administrators = []
 
 [highway]
 finality_threshold_fraction = [2, 25]
@@ -108,6 +114,7 @@ transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3, 4, 5, 6] }
 update_associated_key = { cost = 139, arguments = [0, 1, 2] }
 write = { cost = 140,  arguments = [0, 1, 0, 2] }
 write_local = { cost = 141, arguments = [0, 1, 2, 3] }
+enable_contract_version = { cost = 142, arguments = [0, 1, 2, 3] }
 
 [system_costs]
 wasmless_transfer_cost = 100_000_000

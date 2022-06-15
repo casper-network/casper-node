@@ -111,8 +111,9 @@ impl TestChain {
             })
             .collect();
         let delegators = vec![];
+        let administrators = vec![];
         chainspec.network_config.accounts_config =
-            AccountsConfig::new(genesis_accounts, delegators);
+            AccountsConfig::new(genesis_accounts, delegators, administrators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
         chainspec.protocol_config.activation_point =

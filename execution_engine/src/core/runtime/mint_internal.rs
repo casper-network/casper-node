@@ -1,15 +1,19 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::{
-        mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
-        CallStackElement,
-    },
+    system::{mint::Error, CallStackElement},
     CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
-use crate::{core::execution, storage::global_state::StateReader};
+use crate::{
+    core::{engine_state::SystemContractRegistry, execution},
+    storage::global_state::StateReader,
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider, Mint,
+    },
+};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
@@ -62,6 +66,29 @@ where
 
     fn get_main_purse(&self) -> URef {
         self.context.account().main_purse()
+    }
+
+    fn is_administrator(&self, account_hash: &AccountHash) -> bool {
+        self.config.is_administrator(account_hash)
+    }
+
+    fn allow_unrestricted_transfers(&self) -> bool {
+        self.config.allow_unrestricted_transfers()
+    }
+
+    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {
+        self.context.system_contract_registry()
+    }
+
+    fn is_called_from_standard_payment(&self) -> bool {
+        self.context.phase() == Phase::Payment && self.module.is_none()
+    }
+
+    fn read_account(
+        &mut self,
+        account_hash: &AccountHash,
+    ) -> Result<Option<StoredValue>, execution::Error> {
+        self.context.read_account(&Key::Account(*account_hash))
     }
 }
 

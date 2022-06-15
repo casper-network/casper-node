@@ -295,6 +295,18 @@ impl Reactor {
                 .core_config
                 .minimum_delegation_amount,
             registry,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .administrators
+                .clone(),
+            chainspec_loader.chainspec().core_config.allow_auction_bids,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .allow_unrestricted_transfers,
+            chainspec_loader.chainspec().core_config.refund_handling,
+            chainspec_loader.chainspec().core_config.fee_handling,
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);

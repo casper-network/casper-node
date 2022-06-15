@@ -81,6 +81,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    /// Failed to retrieve accumulation purse from handle payment system contract.
+    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
+    FailedToRetrieveAccumulationPurse,
 }
 
 impl Error {

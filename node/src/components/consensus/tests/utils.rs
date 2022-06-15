@@ -38,7 +38,9 @@ where
         })
         .collect();
     let delegators = vec![];
-    chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
+    let administrators = vec![];
+    chainspec.network_config.accounts_config =
+        AccountsConfig::new(accounts, delegators, administrators);
     chainspec.protocol_config.activation_point = ActivationPoint::Genesis(Timestamp::now());
 
     // Every era has exactly two blocks.

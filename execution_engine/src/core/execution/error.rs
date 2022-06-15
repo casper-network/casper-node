@@ -169,6 +169,12 @@ pub enum Error {
     /// The runtime stack is `None`.
     #[error("Runtime stack missing")]
     MissingRuntimeStack,
+    /// Contract is disabled.
+    #[error("Contract is disabled")]
+    DisabledContract(ContractHash),
+    /// Failed to transfer tokens on a private chain.
+    #[error("Failed to transfer with unrestricted transfers disabled")]
+    DisabledUnrestrictedTransfers,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

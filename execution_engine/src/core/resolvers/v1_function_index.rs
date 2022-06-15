@@ -56,6 +56,7 @@ pub(crate) enum FunctionIndex {
     DictionaryGetFuncIndex,
     DictionaryPutFuncIndex,
     LoadCallStack,
+    EnableContractVersion,
 }
 
 impl From<FunctionIndex> for usize {

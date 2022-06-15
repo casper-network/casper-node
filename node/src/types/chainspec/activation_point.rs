@@ -14,9 +14,9 @@ use casper_types::{
     EraId,
 };
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::types::Timestamp;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 const ERA_ID_TAG: u8 = 0;
 const GENESIS_TAG: u8 = 1;

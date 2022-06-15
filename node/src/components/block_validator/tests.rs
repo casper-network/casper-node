@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, RuntimeArgs, SecretKey,
-    U512,
+    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
+    RuntimeArgs, SecretKey, U512,
 };
 use derive_more::From;
 use itertools::Itertools;
@@ -12,7 +12,6 @@ use crate::{
     components::{consensus::BlockContext, fetcher::FetchResult},
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    testing::TestRng,
     types::{BlockPayload, DeployWithApprovals, TimeDiff},
     utils::{self, Loadable},
 };

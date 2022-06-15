@@ -2,15 +2,14 @@ use std::time::Duration;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, Gas, RuntimeArgs,
-    SecretKey,
+    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Gas,
+    RuntimeArgs, SecretKey,
 };
 use itertools::Itertools;
 
 use super::*;
 use crate::{
     crypto::AsymmetricKeyExt,
-    testing::TestRng,
     types::{Deploy, DeployHash, TimeDiff},
 };
 

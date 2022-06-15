@@ -102,6 +102,8 @@ vergen = "3"
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
+casper-execution-engine = { path = "../execution_engine", features = ["test-support"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"

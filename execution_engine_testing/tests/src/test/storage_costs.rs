@@ -5,21 +5,16 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
 use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
-        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    core::engine_state::EngineConfigBuilder,
     shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
@@ -126,6 +121,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     remove_contract_user_group_urefs: HostFunction::fixed(0),
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
+    enable_contract_version: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -160,18 +156,11 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        *STORAGE_COSTS_ONLY,
-        SystemConfig::default(),
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(*STORAGE_COSTS_ONLY)
+        .build();
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     builder
 }

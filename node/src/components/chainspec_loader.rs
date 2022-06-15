@@ -821,13 +821,14 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
+    use casper_types::testing::TestRng;
+
     use rand::Rng;
 
     use super::*;
     use crate::{
         logging,
         reactor::{participating::ParticipatingEvent, EventQueueHandle, QueueKind, Scheduler},
-        testing::TestRng,
         types::chainspec::CHAINSPEC_NAME,
     };
 

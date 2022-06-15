@@ -1,14 +1,9 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
-extern crate alloc;
-
-use alloc::string::ToString;
-
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    contracts::{EntryPoint, EntryPoints},
+    contracts::{EntryPoint, EntryPoints, Parameters},
     CLType, EntryPointAccess, EntryPointType,
 };
 
@@ -28,8 +23,8 @@ pub extern "C" fn call() {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
         let entry_point = EntryPoint::new(
-            ENTRY_FUNCTION_NAME.to_string(),
-            vec![],
+            ENTRY_FUNCTION_NAME,
+            Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Contract,
@@ -41,8 +36,8 @@ pub extern "C" fn call() {
     let (contract_hash, contract_version) = storage::new_contract(
         entry_points,
         None,
-        Some(PACKAGE_HASH_KEY_NAME.to_string()),
-        Some(ACCESS_KEY_NAME.to_string()),
+        Some(PACKAGE_HASH_KEY_NAME.into()),
+        Some(ACCESS_KEY_NAME.into()),
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
