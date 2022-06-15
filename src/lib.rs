@@ -39,7 +39,7 @@ pub struct ImmediateFrame<A> {
 pub trait FromFixedSize: Sized {
     /// The size of the type on the wire.
     ///
-    /// `from_slice` expected its input argument to be of this length.
+    /// `from_slice` expects its input argument to be of this length.
     const WIRE_SIZE: usize;
 
     /// Try to reconstruct a type from a slice of bytes.
@@ -53,53 +53,30 @@ impl<A> ImmediateFrame<A> {
     }
 }
 
-impl From<u8> for ImmediateFrame<[u8; 1]> {
-    #[inline]
-    fn from(value: u8) -> Self {
-        ImmediateFrame::new(value.to_le_bytes())
-    }
-}
+/// Implements conversion functions to immediate types for atomics like `u8`, etc.
+macro_rules! impl_immediate_frame_le {
+    ($t:ty) => {
+        impl FromFixedSize for $t {
+            // TODO: Consider hardcoding size if porting to really weird platforms.
+            const WIRE_SIZE: usize = std::mem::size_of::<$t>();
 
-impl From<u16> for ImmediateFrame<[u8; 2]> {
-    #[inline]
-    fn from(value: u16) -> Self {
-        ImmediateFrame::new(value.to_le_bytes())
-    }
-}
-
-impl From<u32> for ImmediateFrame<[u8; 4]> {
-    #[inline]
-    fn from(value: u32) -> Self {
-        ImmediateFrame::new(value.to_le_bytes())
-    }
-}
-
-impl FromFixedSize for u8 {
-    const WIRE_SIZE: usize = 1;
-
-    fn from_slice(slice: &[u8]) -> Option<Self> {
-        match *slice {
-            [v] => Some(v),
-            _ => None,
+            fn from_slice(slice: &[u8]) -> Option<Self> {
+                Some(<$t>::from_le_bytes(slice.try_into().ok()?))
+            }
         }
-    }
+
+        impl From<$t> for ImmediateFrame<[u8; ::std::mem::size_of::<$t>()]> {
+            #[inline]
+            fn from(value: $t) -> Self {
+                ImmediateFrame::new(value.to_le_bytes())
+            }
+        }
+    };
 }
 
-impl FromFixedSize for u16 {
-    const WIRE_SIZE: usize = 2;
-
-    fn from_slice(slice: &[u8]) -> Option<Self> {
-        Some(u16::from_le_bytes(slice.try_into().ok()?))
-    }
-}
-
-impl FromFixedSize for u32 {
-    const WIRE_SIZE: usize = 4;
-
-    fn from_slice(slice: &[u8]) -> Option<Self> {
-        Some(u32::from_le_bytes(slice.try_into().ok()?))
-    }
-}
+impl_immediate_frame_le!(u8);
+impl_immediate_frame_le!(u16);
+impl_immediate_frame_le!(u32);
 
 impl<A> Buf for ImmediateFrame<A>
 where
@@ -221,7 +198,7 @@ pub(crate) mod tests {
 
         /// Inserts or removes the plug from the sink.
         pub fn set_plugged(&self, plugged: bool) {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
             guard.plugged = plugged;
 
             // Notify any waiting tasks that there may be progress to be made.
@@ -234,7 +211,7 @@ pub(crate) mod tests {
 
         /// Inserts or removes the clog from the sink.
         pub fn set_clogged(&self, clogged: bool) {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
             guard.clogged = clogged;
 
             // Notify any waiting tasks that there may be progress to be made.
@@ -249,7 +226,7 @@ pub(crate) mod tests {
         ///
         /// Will update the local waker reference.
         pub fn is_plugged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
 
             guard.waker = Some(cx.waker().clone());
             guard.plugged
@@ -259,7 +236,7 @@ pub(crate) mod tests {
         ///
         /// Will update the local waker reference.
         pub fn is_clogged(&self, cx: &mut Context<'_>) -> bool {
-            let mut guard = self.obstruction.lock().expect("could not lock plug");
+            let mut guard = self.obstruction.lock().expect("obstruction mutex poisoned");
 
             guard.waker = Some(cx.waker().clone());
             guard.clogged
@@ -429,8 +406,9 @@ pub(crate) mod tests {
         assert_eq!(sink.get_contents(), b"firstsecondthird");
     }
 
+    /// Verifies that when a sink is clogged but later unclogged, any waiters on it are woken up.
     #[tokio::test]
-    async fn ensure_sink_wakes_up_after_plugging_in() {
+    async fn waiting_tasks_can_progress_upon_unplugging_the_sink() {
         let sink = Arc::new(TestingSink::new());
 
         sink.set_plugged(true);
