@@ -412,6 +412,14 @@ impl LmdbWasmTestBuilder {
         self
     }
 
+    /// Commit scratch to global state, and reset the scratch cache.
+    #[deprecated(since = "2.0.0", note = "renamed to `write_scratch_to_lmdb`")]
+    pub fn write_scratch_to_db(
+        &mut self,
+    ) -> &mut Self {
+        self.write_scratch_to_lmdb()
+    }
+
     /// run step against scratch global state.
     pub fn step_with_scratch(&mut self, step_request: StepRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
