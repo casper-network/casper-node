@@ -1162,13 +1162,10 @@ async fn fetch_block_headers_batch(
             fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
         match fetched_headers_data {
             FetchedData::FromStorage { item } => {
-                return BlockHeadersBatch::validate(
-                    &*item,
-                    &batch_id,
-                    lowest_trusted_block_header,
-                    ctx.config.verifiable_chunked_hash_activation(),
-                )
-                .map_err(FetchBlockHeadersBatchError::InvalidBatchFromStorage)
+                return item
+                    .lowest()
+                    .cloned()
+                    .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
             }
             FetchedData::FromPeer { item, peer } => {
                 match BlockHeadersBatch::validate(

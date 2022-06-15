@@ -14,9 +14,8 @@ use casper_types::{EraId, ProtocolVersion};
 use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     types::{
-        error::BlockHeadersBatchValidationError, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockWithMetadata, Deploy,
-        FinalizedApprovalsWithId,
+        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
     },
 };
 
@@ -185,6 +184,6 @@ pub(crate) enum FetchBlockHeadersBatchError {
     #[error(transparent)]
     FetchError(#[from] FetcherError<BlockHeadersBatch>),
 
-    #[error("Batch from storage failed validation")]
-    InvalidBatchFromStorage(#[from] BlockHeadersBatchValidationError),
+    #[error("Batch from storage was empty")]
+    EmptyBatchFromStorage,
 }

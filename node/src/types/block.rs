@@ -1258,6 +1258,11 @@ impl BlockHeadersBatch {
         &self.0
     }
 
+    /// Returns the lowest element from the batch.
+    pub(crate) fn lowest(&self) -> Option<&BlockHeader> {
+        self.0.last()
+    }
+
     /// Tests whether the block header batch is continuous and in descending order.
     pub(crate) fn is_continuous_and_descending(
         batch: &[BlockHeader],
