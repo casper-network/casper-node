@@ -25,11 +25,6 @@
 //! * Storing a deploy or block that already exists (same hash) is fine and will silently be
 //!   accepted.
 //!
-//! ## Indices
-//!
-//! The current implementation keeps only in-memory indices, which are not persisted, based upon the
-//! estimate that they are reasonably quick to rebuild on start-up and do not take up much memory.
-//!
 //! ## Errors
 //!
 //! The storage component itself is panic free and in general reports three classes of errors:
@@ -1035,10 +1030,8 @@ impl Storage {
                 block_hash,
                 responder,
             } => {
-                let indices = self.indices.read()?;
                 let result = self.get_sufficient_finality_signatures_by_hash(
                     &mut self.env.begin_ro_txn()?,
-                    &indices,
                     &block_hash,
                 )?;
                 responder.respond(result).ignore()
@@ -1912,7 +1905,6 @@ impl Storage {
     fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
         &self,
         tx: &mut Tx,
-        indices: &Indices,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         // Needed to know what era the block was in, so that we can check what the validators were
@@ -1922,7 +1914,7 @@ impl Storage {
             None => return Ok(None),
         };
 
-        self.get_sufficient_finality_signatures(tx, indices, &block_header)
+        self.get_sufficient_finality_signatures(tx, &block_header)
     }
 
     /// Retrieves a deploy from the deploy store.
