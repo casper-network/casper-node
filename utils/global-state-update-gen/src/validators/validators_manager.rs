@@ -262,7 +262,9 @@ impl ValidatorsUpdateManager {
             .get_bids()
             .into_iter()
             .filter(|(pub_key, bid)| {
-                bid.staked_amount() >= min_bid && !seigniorage_recipients.contains_key(pub_key)
+                bid.total_staked_amount()
+                    .map_or(true, |amount| amount >= *min_bid)
+                    && !seigniorage_recipients.contains_key(pub_key)
             })
             .map(|(pub_key, _bid)| pub_key)
             .collect()
