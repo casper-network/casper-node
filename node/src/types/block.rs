@@ -31,7 +31,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     components::consensus,
@@ -1115,17 +1115,17 @@ impl Item for BlockHeaderWithMetadata {
 }
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 /// ID identifying a request for a batch of block headers.
-pub struct BlockHeadersBatchId {
+pub(crate) struct BlockHeadersBatchId {
     pub highest: u64,
     pub lowest: u64,
 }
 
 impl BlockHeadersBatchId {
-    pub fn new(highest: u64, lowest: u64) -> Self {
+    pub(crate) fn new(highest: u64, lowest: u64) -> Self {
         Self { highest, lowest }
     }
 
-    pub fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
+    pub(crate) fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
         let highest = lowest_known_block_header.height().saturating_sub(1);
         let lowest = lowest_known_block_header
             .height()
@@ -1136,12 +1136,12 @@ impl BlockHeadersBatchId {
 
     /// Return an iterator over block header heights starting from highest (inclusive) to lowest
     /// (inclusive).
-    pub fn iter(&self) -> impl Iterator<Item = u64> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = u64> {
         (self.lowest..=self.highest).rev()
     }
 
     /// Returns the length of the batch.
-    pub fn len(&self) -> u64 {
+    pub(crate) fn len(&self) -> u64 {
         self.highest + 1 - self.lowest
     }
 }
@@ -1153,7 +1153,7 @@ impl Display for BlockHeadersBatchId {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct BlockHeadersBatch(Vec<BlockHeader>);
+pub(crate) struct BlockHeadersBatch(Vec<BlockHeader>);
 
 impl BlockHeadersBatch {
     /// Validates whether received batch is:
@@ -1201,7 +1201,7 @@ impl BlockHeadersBatch {
     /// Tries to create an instance of `BlockHeadersBatch` from a `Vec<BlockHeader>`.
     ///
     /// Returns `Some(Self)` if data passes validation, otherwise `None`.
-    pub fn from_vec(
+    pub(crate) fn from_vec(
         batch: Vec<BlockHeader>,
         requested_id: &BlockHeadersBatchId,
         verifiable_chunked_hash_activation: EraId,
@@ -1218,7 +1218,7 @@ impl BlockHeadersBatch {
                 }
             }
             None => {
-                error!("response cannot be an empty batch");
+                warn!("response cannot be an empty batch");
                 return None;
             }
         }
@@ -1249,17 +1249,17 @@ impl BlockHeadersBatch {
     }
 
     /// Returns inner value.
-    pub fn into_inner(self) -> Vec<BlockHeader> {
+    pub(crate) fn into_inner(self) -> Vec<BlockHeader> {
         self.0
     }
 
     /// Returns a reference to an inner vector of block headers.
-    pub fn inner(&self) -> &Vec<BlockHeader> {
+    pub(crate) fn inner(&self) -> &Vec<BlockHeader> {
         &self.0
     }
 
     /// Tests whether the block header batch is continuous and in descending order.
-    pub fn is_continuous_and_descending(
+    pub(crate) fn is_continuous_and_descending(
         batch: &[BlockHeader],
         verifiable_chunked_hash_activation: EraId,
     ) -> bool {
@@ -1321,7 +1321,7 @@ impl Item for BlockHeadersBatch {
         if lower_batch_height.is_none() || upper_batch_height.is_none() {
             // ID should be infallible but it is possible that the `Vec` is empty.
             // In that case we log an error to indicate something went really wrong and use `(0,0)`.
-            error!(
+            warn!(
                 ?lower_batch_height,
                 ?upper_batch_height,
                 "received header batch is empty"
