@@ -246,7 +246,7 @@ function test_sign_deploy() {
 
     # Test Valid JSON
     if [ -f "$OUTPUT_FILE" ]; then
-        cat "$OUTPUT_FILE" | jq
+        cat "$OUTPUT_FILE" | jq '.'
     fi
 
     SIGNER_1=$(jq -r '.approvals[0].signer' "$OUTPUT_FILE")
@@ -336,7 +336,7 @@ function test_make_deploy() {
 
     # Test Valid JSON
     if [ -f "$DEPLOY_FILE" ]; then
-        cat "$DEPLOY_FILE" | jq
+        cat "$DEPLOY_FILE" | jq '.'
     fi
 
     # Test Inputs Match Output
@@ -810,7 +810,7 @@ function test_make_transfer() {
 
     # Test Valid JSON
     if [ -f "$DEPLOY_FILE" ]; then
-        cat "$DEPLOY_FILE" | jq
+        cat "$DEPLOY_FILE" | jq '.'
     fi
 
     # Test Inputs Match Output
@@ -907,7 +907,7 @@ function test_get_chainspec() {
     compare_md5sum "$OUTPUT_PATH/rpc_chainspec.toml" "$(get_path_to_node 1)/config/1_0_0/chainspec.toml"
     compare_md5sum "$OUTPUT_PATH/rpc_accounts.toml" "$(get_path_to_node 1)/config/1_0_0/accounts.toml"
     # Test JSON OUTPUT is Valid, jq will balk if invalid json
-    get_chainspec_json_from_rpc | jq
+    get_chainspec_json_from_rpc | jq '.'
 }
 
 # casper-client get-block
@@ -1418,7 +1418,7 @@ function test_with_jq() {
     log "... testing client returned valid json"
 
     # Test Valid Json
-    echo "$JSON_OUTPUT" | jq
+    echo "$JSON_OUTPUT" | jq '.'
 }
 
 # cleans up test
