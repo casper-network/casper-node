@@ -1204,7 +1204,6 @@ impl BlockHeadersBatch {
     pub(crate) fn from_vec(
         batch: Vec<BlockHeader>,
         requested_id: &BlockHeadersBatchId,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Option<Self> {
         match batch.first() {
             Some(highest) => {
@@ -1238,11 +1237,6 @@ impl BlockHeadersBatch {
                 error!("input cannot be empty");
                 return None;
             }
-        }
-
-        if !Self::is_continuous_and_descending(&batch, verifiable_chunked_hash_activation) {
-            error!("batch is not continuous");
-            return None;
         }
 
         Some(Self(batch))
@@ -3107,15 +3101,12 @@ mod tests {
 
         let id = BlockHeadersBatchId::new(batch[0].height(), batch[2].height());
 
-        let block_headers_batch =
-            BlockHeadersBatch::from_vec(batch.clone(), &id, NEVER_SWITCH_HASHING);
+        let block_headers_batch = BlockHeadersBatch::from_vec(batch.clone(), &id);
         assert!(block_headers_batch.is_some());
         assert_eq!(block_headers_batch.unwrap().inner(), &batch);
 
         let missing_highest_batch = batch.clone().into_iter().skip(1).collect::<Vec<_>>();
-        assert!(
-            BlockHeadersBatch::from_vec(missing_highest_batch, &id, NEVER_SWITCH_HASHING).is_none()
-        );
+        assert!(BlockHeadersBatch::from_vec(missing_highest_batch, &id).is_none());
 
         let missing_lowest_batch = batch
             .clone()
@@ -3124,9 +3115,7 @@ mod tests {
             .skip(1)
             .rev()
             .collect::<Vec<_>>();
-        assert!(
-            BlockHeadersBatch::from_vec(missing_lowest_batch, &id, NEVER_SWITCH_HASHING).is_none()
-        );
+        assert!(BlockHeadersBatch::from_vec(missing_lowest_batch, &id).is_none());
     }
 
     #[test]
