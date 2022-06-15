@@ -8,7 +8,7 @@
 #![warn(missing_docs)]
 
 mod chunk_with_proof;
-pub mod error;
+mod error;
 mod indexed_merkle_proof;
 
 use std::{
@@ -35,18 +35,9 @@ use casper_types::{
     checksummed_hex, CLType, CLTyped,
 };
 pub use chunk_with_proof::ChunkWithProof;
-pub use error::MerkleConstructionError;
-
-/// Possible hashing errors.
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Incorrect digest length {0}, expected length {}.", Digest::LENGTH)]
-    /// The digest length was an incorrect size.
-    IncorrectDigestLength(usize),
-    /// There was a decoding error.
-    #[error("Base16 decode error {0}.")]
-    Base16DecodeError(base16::DecodeError),
-}
+pub use error::{
+    ChunkWithProofVerificationError, Error, MerkleConstructionError, MerkleVerificationError,
+};
 
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
@@ -123,6 +114,12 @@ impl Digest {
             result.copy_from_slice(slice);
         });
         Digest(result)
+    }
+
+    /// Provides the same functionality as [`hash_merkle_tree`].
+    #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
+    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
+        Digest::hash_merkle_tree(vec)
     }
 
     /// Returns the underlying BLAKE2b hash bytes
