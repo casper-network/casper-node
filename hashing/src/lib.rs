@@ -116,7 +116,7 @@ impl Digest {
         Digest(result)
     }
 
-    /// Provides the same functionality as [`hash_merkle_tree`].
+    /// Provides the same functionality as [`Digest::hash_merkle_tree`].
     #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
     pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
         Digest::hash_merkle_tree(vec)
