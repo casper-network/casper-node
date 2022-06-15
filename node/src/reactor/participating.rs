@@ -28,7 +28,7 @@ use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
-        chain_synchronizer::JoiningOutcome,
+        chain_synchronizer::{ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
@@ -488,6 +488,7 @@ pub(crate) struct Reactor {
     block_proposer: BlockProposer,
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent,
+    chain_synchronizer: ChainSynchronizer<ParticipatingEvent>,
     diagnostics_port: DiagnosticsPort,
 
     // Non-components.
@@ -746,6 +747,17 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
+        let chain_synchronizer = ChainSynchronizer::new(
+            chainspec.clone(),
+            config.node.clone(),
+            config.network.clone(),
+            next_upgrade_activation_point,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            effect_builder,
+            false,
+            registry,
+        )?;
+
         Ok((
             Reactor {
                 metrics,
@@ -764,6 +776,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
+                chain_synchronizer,
                 diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
