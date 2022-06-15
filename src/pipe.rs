@@ -104,7 +104,7 @@ impl AsyncRead for ReadEnd {
 impl AsyncWrite for WriteEnd {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         source: &[u8],
     ) -> Poll<io::Result<usize>> {
         let mut guard = try_ready!(acquire_lock(&mut self.get_mut().inner));

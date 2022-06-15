@@ -114,8 +114,7 @@ pub(crate) mod tests {
     };
 
     use bytes::{Buf, Bytes};
-    use futures::{future, AsyncReadExt, FutureExt, Sink, SinkExt, Stream, StreamExt};
-    use tokio_util::sync::PollSender;
+    use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
 
     use crate::{
         chunked::{make_defragmentizer, make_fragmentizer},
