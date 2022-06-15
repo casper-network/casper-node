@@ -1460,6 +1460,7 @@ pub(super) async fn run_chain_sync_task<REv>(
     config: Config,
     metrics: Metrics,
     trusted_hash: BlockHash,
+    allow_sync_to_genesis: bool,
 ) -> Result<BlockHeader, Error>
 where
     REv: From<StorageRequest>
@@ -1506,11 +1507,12 @@ where
         return Ok(*trusted_block_header);
     }
 
-    let (trusted_key_block_info, most_recent_block_header) = if config.sync_to_genesis() {
-        sync_to_genesis(&chain_sync_context).await?
-    } else {
-        fast_sync(&chain_sync_context).await?
-    };
+    let (trusted_key_block_info, most_recent_block_header) =
+        if allow_sync_to_genesis && config.sync_to_genesis() {
+            sync_to_genesis(&chain_sync_context).await?
+        } else {
+            fast_sync(&chain_sync_context).await?
+        };
 
     // Iterate forwards, fetching each full block and deploys but executing each block to generate
     // global state. Stop once we get to a block in the current era.

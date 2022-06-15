@@ -70,6 +70,8 @@ pub(crate) struct ChainSynchronizer<REv> {
     /// The next upgrade activation point, used to determine what action to take after completing
     /// chain synchronization.
     maybe_next_upgrade: Option<ActivationPoint>,
+    /// Allow syncing to genesis. If not, will fast sync regardless of configuration.
+    allow_sync_to_genesis: bool,
     /// Association with the reactor event used in subtasks.
     _phantom: PhantomData<REv>,
 }
@@ -100,6 +102,7 @@ where
         maybe_next_upgrade: Option<ActivationPoint>,
         verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<REv>,
+        allow_sync_to_genesis: bool,
         registry: &Registry,
     ) -> Result<(Self, Effects<Event>), Error> {
         let synchronizer = ChainSynchronizer {
@@ -107,6 +110,7 @@ where
             joining_outcome: None,
             metrics: Metrics::new(registry)?,
             maybe_next_upgrade,
+            allow_sync_to_genesis,
             _phantom: PhantomData,
         };
         let effects = match synchronizer.config.trusted_hash() {
@@ -145,6 +149,7 @@ where
             self.config.clone(),
             self.metrics.clone(),
             trusted_hash,
+            self.allow_sync_to_genesis,
         )
         .event(Event::SyncResult)
     }

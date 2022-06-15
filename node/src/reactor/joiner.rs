@@ -637,6 +637,7 @@ impl reactor::Reactor for Reactor {
             next_upgrade_activation_point,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
             effect_builder,
+            false,
             registry,
         )?;
         effects.extend(reactor::wrap_effects(
