@@ -1188,10 +1188,6 @@ impl BlockHeadersBatch {
             });
         }
 
-        if !Self::is_continuous_and_descending(self.inner(), verifiable_chunked_hash_activation) {
-            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
-        }
-
         self.0
             .last()
             .cloned()
@@ -2913,7 +2909,11 @@ mod tests {
     #[test]
     fn block_headers_batch_id_iter() {
         let id = BlockHeadersBatchId::new(5, 1);
-        assert_eq!(vec![5u64, 4, 3, 2, 1], id.iter().collect::<Vec<_>>());
+        assert_eq!(
+            vec![5u64, 4, 3, 2, 1],
+            id.iter().collect::<Vec<_>>(),
+            ".iter() must return descending order"
+        );
 
         let id = BlockHeadersBatchId::new(5, 5);
         assert_eq!(vec![5u64], id.iter().collect::<Vec<_>>());
