@@ -39,53 +39,30 @@ impl<A> ImmediateFrame<A> {
     }
 }
 
-impl From<u8> for ImmediateFrame<[u8; 1]> {
-    #[inline]
-    fn from(value: u8) -> Self {
-        ImmediateFrame::new(value.to_le_bytes())
-    }
-}
+/// Implements conversion functions to immediate types for atomics like `u8`, etc.
+macro_rules! impl_immediate_frame_le {
+    ($t:ty) => {
+        impl FromFixedSize for $t {
+            // TODO: Consider hardcoding size if porting to really weird platforms.
+            const WIRE_SIZE: usize = std::mem::size_of::<$t>();
 
-impl From<u16> for ImmediateFrame<[u8; 2]> {
-    #[inline]
-    fn from(value: u16) -> Self {
-        ImmediateFrame::new(value.to_le_bytes())
-    }
-}
-
-impl From<u32> for ImmediateFrame<[u8; 4]> {
-    #[inline]
-    fn from(value: u32) -> Self {
-        ImmediateFrame::new(value.to_le_bytes())
-    }
-}
-
-impl FromFixedSize for u8 {
-    const WIRE_SIZE: usize = 1;
-
-    fn from_slice(slice: &[u8]) -> Option<Self> {
-        match *slice {
-            [v] => Some(v),
-            _ => None,
+            fn from_slice(slice: &[u8]) -> Option<Self> {
+                Some(<$t>::from_le_bytes(slice.try_into().ok()?))
+            }
         }
-    }
+
+        impl From<$t> for ImmediateFrame<[u8; ::std::mem::size_of::<$t>()]> {
+            #[inline]
+            fn from(value: $t) -> Self {
+                ImmediateFrame::new(value.to_le_bytes())
+            }
+        }
+    };
 }
 
-impl FromFixedSize for u16 {
-    const WIRE_SIZE: usize = 2;
-
-    fn from_slice(slice: &[u8]) -> Option<Self> {
-        Some(u16::from_le_bytes(slice.try_into().ok()?))
-    }
-}
-
-impl FromFixedSize for u32 {
-    const WIRE_SIZE: usize = 4;
-
-    fn from_slice(slice: &[u8]) -> Option<Self> {
-        Some(u32::from_le_bytes(slice.try_into().ok()?))
-    }
-}
+impl_immediate_frame_le!(u8);
+impl_immediate_frame_le!(u16);
+impl_immediate_frame_le!(u32);
 
 impl<A> Buf for ImmediateFrame<A>
 where
