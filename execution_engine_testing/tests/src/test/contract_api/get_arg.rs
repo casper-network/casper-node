@@ -25,7 +25,9 @@ fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
         return Ok(());
     }
 
-    let response = builder.get_exec_result(0).expect("should have a response");
+    let response = builder
+        .get_exec_result_owned(0)
+        .expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 

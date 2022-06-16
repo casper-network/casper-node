@@ -22,7 +22,9 @@ fn should_run_ee_771_regression() {
         .exec(exec_request)
         .commit();
 
-    let response = builder.get_exec_result(0).expect("should have a response");
+    let response = builder
+        .get_exec_result_owned(0)
+        .expect("should have a response");
 
     let error = response[0].as_error().expect("should have error");
     assert_eq!(
