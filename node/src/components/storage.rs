@@ -86,10 +86,11 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
-        BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy,
-        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalizedApprovals, FinalizedApprovalsWithId, HashingAlgorithmVersion, Item,
-        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId,
+        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
+        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
+        NodeId,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -679,6 +680,19 @@ impl Storage {
                     opt_item,
                 )?)
             }
+            NetRequest::BlockHeadersBatch(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockHeadersBatch>(serialized_id)?;
+
+                let opt_item = self.read_block_headers_batch(&item_id)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
         }
     }
 
@@ -1035,33 +1049,21 @@ impl Storage {
                 block_header,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                if !txn.put_value(
-                    self.block_header_db,
-                    &block_header.hash(self.verifiable_chunked_hash_activation),
-                    &block_header,
-                    false,
-                )? {
-                    error!(
-                        ?block_header,
-                        "Could not insert block header (maybe already inserted?)",
-                    );
-                    txn.abort();
-                    return Ok(responder.respond(false).ignore());
+                let block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
+                match self.put_block_headers(vec![*block_header]) {
+                    Ok(result) => responder.respond(result).ignore(),
+                    Err(err) => {
+                        error!(?err, ?block_header_hash, "error when storing block header");
+                        return Err(err);
+                    }
                 }
-
-                {
-                    insert_to_block_header_indices(
-                        &mut self.block_height_index,
-                        &mut self.switch_block_era_id_index,
-                        &block_header,
-                        self.verifiable_chunked_hash_activation,
-                    )?;
-                }
-
-                txn.commit()?;
-                responder.respond(true).ignore()
             }
+            StorageRequest::PutHeadersBatch {
+                block_headers,
+                responder,
+            } => responder
+                .respond(self.put_block_headers(block_headers)?)
+                .ignore(),
             StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
                 self.update_lowest_available_block_height(height)?;
                 responder.respond(()).ignore()
@@ -1084,6 +1086,18 @@ impl Storage {
                 responder,
             } => responder
                 .respond(self.read_block_and_deploys_by_hash(block_hash)?)
+                .ignore(),
+            StorageRequest::GetHeadersBatch {
+                block_headers_id,
+                responder,
+            } => responder
+                .respond(self.read_block_headers_batch(&block_headers_id)?)
+                .ignore(),
+            StorageRequest::GetBlockHashByHeight {
+                block_height,
+                responder,
+            } => responder
+                .respond(self.get_block_hash_by_height(block_height)?)
                 .ignore(),
         })
     }
@@ -1174,7 +1188,14 @@ impl Storage {
             }
         }
 
-        if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
+        let overwrite = true;
+
+        if !txn.put_value(
+            self.block_header_db,
+            block.hash(),
+            block.header(),
+            overwrite,
+        )? {
             error!("Could not insert block header for block: {}", block);
             return Ok((false, txn));
         }
@@ -1256,6 +1277,14 @@ impl Storage {
                     .map(|deploys| BlockAndDeploys { block, deploys }))
             }
         }
+    }
+
+    /// Retrieves block hash by height.
+    fn get_block_hash_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHash>, FatalStorageError> {
+        Ok(self.block_height_index.get(&height).cloned())
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1444,6 +1473,47 @@ impl Storage {
     /// storage).
     fn block_header_exists(&self, block_height: u64) -> bool {
         self.block_height_index.contains_key(&block_height)
+    }
+
+    /// Stores block headers in the db and, if successful, updates the in-memory indices.
+    /// Returns an error on failure or a boolean indicating whether any of the block headers were
+    /// previously known.
+    fn put_block_headers(
+        &mut self,
+        block_headers: Vec<BlockHeader>,
+    ) -> Result<bool, FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let mut result = false;
+
+        for block_header in &block_headers {
+            let block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
+            match txn.put_value(
+                self.block_header_db,
+                &block_header_hash,
+                block_header,
+                false,
+            ) {
+                Ok(single_result) => {
+                    result = result && single_result;
+                }
+                Err(err) => {
+                    error!(?err, ?block_header_hash, "error when storing block header");
+                    txn.abort();
+                    return Err(err.into());
+                }
+            }
+        }
+        txn.commit()?;
+        // Update the indices if and only if we wrote to storage correctly.
+        for block_header in &block_headers {
+            insert_to_block_header_indices(
+                &mut self.block_height_index,
+                &mut self.switch_block_era_id_index,
+                block_header,
+                self.verifiable_chunked_hash_activation,
+            )?;
+        }
+        Ok(result)
     }
 
     /// Writes a single block body in a separate transaction to storage.
@@ -1808,6 +1878,26 @@ impl Storage {
             .begin_ro_txn()
             .map_err(Into::into)
             .and_then(|mut txn| txn.get_value(self.deploy_db, &deploy_hash))
+    }
+
+    fn read_block_headers_batch(
+        &self,
+        block_header_ids: &BlockHeadersBatchId,
+    ) -> Result<Option<BlockHeadersBatch>, FatalStorageError> {
+        let mut tx = self.env.begin_ro_txn()?;
+
+        let mut headers = Vec::with_capacity(block_header_ids.len() as usize);
+        for block_height in block_header_ids.iter() {
+            match self.get_block_header_by_height_restricted(&mut tx, block_height, true)? {
+                Some(block_header) => headers.push(block_header),
+                None => {
+                    debug!(?block_height, "block header not found");
+                    // Short-circuit, we're all interested in the complete data.
+                    return Ok(None);
+                }
+            }
+        }
+        Ok(BlockHeadersBatch::from_vec(headers, block_header_ids))
     }
 
     /// Creates a serialized representation of a `FetchedOrNotFound` and the resulting message.

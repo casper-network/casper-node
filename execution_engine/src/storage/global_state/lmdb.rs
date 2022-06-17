@@ -6,7 +6,7 @@ use std::{
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
-use tracing::info;
+use tracing::trace;
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -318,7 +318,7 @@ impl StateProvider for LmdbGlobalState {
                 .count()
         };
         if trie_count == 0 {
-            info!("no need to call missing_trie_keys");
+            trace!("no need to call missing_trie_keys");
             Ok(vec![])
         } else {
             let txn = self.environment.create_read_txn()?;
