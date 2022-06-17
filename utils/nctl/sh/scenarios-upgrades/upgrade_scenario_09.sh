@@ -21,6 +21,7 @@
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/views/utils.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -84,7 +85,8 @@ function _step_01()
 function _step_02()
 {
     log_step_upgrades 2 "awaiting until era 2"
-    await_until_era_n 2
+
+    do_wait_until_era '2' 'false' '180'
 }
 
 # Step 03: Stage nodes 1-5 and upgrade.

@@ -26,6 +26,7 @@ source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/views/utils.sh"
 source "$NCTL/sh/assets/upgrade.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE.sh"
+source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -91,7 +92,8 @@ function _step_01()
 function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
-    await_until_era_n 1
+
+    do_await_genesis_era_to_complete 'false'
 }
 
 # Step 03: Stage nodes 2-9 and upgrade.
