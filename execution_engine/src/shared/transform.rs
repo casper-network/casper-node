@@ -24,6 +24,7 @@ use casper_types::{
 /// b > i32::MAX then a `AddInt32(a).apply(Value::Int32(b))` would
 /// cause an overflow).
 #[derive(PartialEq, Eq, Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     /// Error while (de)serializing data.
     #[error("{0}")]

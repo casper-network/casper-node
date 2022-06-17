@@ -55,7 +55,7 @@ fn should_transfer_to_account_with_correct_balances() {
         .scratch_exec_and_commit(exec_builder.build())
         .expect_success();
 
-    builder.write_scratch_to_lmdb();
+    builder.write_scratch_to_db();
     builder.flush_environment();
 
     assert_ne!(
@@ -143,7 +143,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         .scratch_exec_and_commit(exec_builder.build())
         .expect_failure();
 
-    builder.write_scratch_to_lmdb();
+    builder.write_scratch_to_db();
     builder.flush_environment();
 
     assert_ne!(
