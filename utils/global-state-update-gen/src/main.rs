@@ -41,7 +41,7 @@ fn main() {
                         .short("v")
                         .long("validator")
                         .value_name("KEY,STAKE")
-                        .help("A new validator with their stake")
+                        .help("A validator config in the format 'public_key,stake[,balance]'")
                         .takes_value(true)
                         .required(true)
                         .multiple(true)

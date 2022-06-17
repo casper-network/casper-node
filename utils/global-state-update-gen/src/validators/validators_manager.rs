@@ -1,10 +1,11 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
 };
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
+    account::Account,
     system::{
         auction::{
             Bid, Bids, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
@@ -12,20 +13,28 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    AsymmetricType, CLValue, EraId, Key, PublicKey, StoredValue, U512,
+    CLValue, EraId, Key, PublicKey, StoredValue, U512,
 };
 
 use crate::utils::{hash_from_str, validators_diff, StateTracker, ValidatorsDiff};
 
+use super::ValidatorConfig;
+
 /// A struct tracking all the changes to the state made during the course of the upgrade.
 pub struct ValidatorsUpdateManager {
+    validators: BTreeMap<PublicKey, ValidatorConfig>,
     builder: LmdbWasmTestBuilder,
     state_tracker: StateTracker,
+    accounts: BTreeMap<PublicKey, Account>,
 }
 
 impl ValidatorsUpdateManager {
     /// Creates a new `ValidatorsUpdateManager`.
-    pub fn new(data_dir: &str, state_hash: &str) -> Self {
+    pub fn new(
+        data_dir: &str,
+        state_hash: &str,
+        validators: BTreeMap<PublicKey, ValidatorConfig>,
+    ) -> Self {
         // Open the global state that should be in the supplied directory.
         let builder =
             LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
@@ -47,11 +56,13 @@ impl ValidatorsUpdateManager {
             .expect("should be cl value");
 
         ValidatorsUpdateManager {
+            validators,
             builder,
             state_tracker: StateTracker::new(
                 total_supply_key,
                 total_supply.into_t().expect("should be U512"),
             ),
+            accounts: BTreeMap::new(),
         }
     }
 
@@ -61,13 +72,12 @@ impl ValidatorsUpdateManager {
     }
 
     /// Performs the update, replacing the current validators with the supplied set.
-    pub fn perform_update(&mut self, validators: Vec<(String, String)>) {
+    pub fn perform_update(&mut self) {
         // Read the old SeigniorageRecipientsSnapshot
         let (validators_key, old_snapshot) = self.read_snapshot();
 
         // Create a new snapshot based on the old one and the supplied validators.
-        let new_snapshot = gen_snapshot(
-            validators,
+        let new_snapshot = self.gen_snapshot(
             *old_snapshot.keys().next().unwrap(),
             old_snapshot.len() as u64,
         );
@@ -83,6 +93,38 @@ impl ValidatorsUpdateManager {
         self.add_and_remove_bids(&validators_diff, &new_snapshot);
 
         self.remove_withdraws(&validators_diff);
+
+        // Create accounts for non-validators (0 stake) - validators have been taken care of when
+        // creating bids.
+        // If the account already existed, it will get overwritten.
+        for (pub_key, validator_cfg) in &self.validators {
+            if validator_cfg.stake == U512::zero() {
+                let balance = validator_cfg.maybe_balance.unwrap_or_else(U512::zero);
+                let _ = self.state_tracker.create_account(pub_key.clone(), balance);
+            }
+        }
+    }
+
+    /// Gets the account for the given public key from the global state, or creates one if it
+    /// doesn't exist and fills it with the amount of tokens specified in the validators config.
+    fn get_or_create_account(&mut self, pub_key: &PublicKey) -> &Account {
+        match self.accounts.entry(pub_key.clone()) {
+            Entry::Vacant(vac) => {
+                let account_hash = pub_key.to_account_hash();
+                let account = match self.builder.get_account(account_hash) {
+                    Some(account) => account,
+                    None => self.state_tracker.create_account(
+                        pub_key.clone(),
+                        self.validators
+                            .get(pub_key)
+                            .and_then(|vcfg| vcfg.maybe_balance)
+                            .unwrap_or_else(U512::zero),
+                    ),
+                };
+                vac.insert(account)
+            }
+            Entry::Occupied(occupied) => occupied.into_mut(),
+        }
     }
 
     /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
@@ -157,14 +199,11 @@ impl ValidatorsUpdateManager {
         let maybe_bid = bids.get(pub_key);
         let bid_amount = maybe_bid
             .map(|bid| *bid.staked_amount())
-            .unwrap_or(U512::zero());
+            .unwrap_or_else(U512::zero);
 
         let account_hash = pub_key.to_account_hash();
-        let maybe_account = self.builder.get_account(account_hash);
-        let account_balance = maybe_account
-            .as_ref()
-            .map(|acc| self.builder.get_purse_balance(acc.main_purse()))
-            .unwrap_or(U512::zero());
+        let account = self.get_or_create_account(pub_key).clone();
+        let account_balance = self.builder.get_purse_balance(account.main_purse());
 
         match stake.cmp(&bid_amount) {
             Ordering::Greater => {
@@ -179,7 +218,7 @@ impl ValidatorsUpdateManager {
                     self.state_tracker.write_entry(
                         // if we can transfer anything at all, the account has to exist, and so the
                         // unwrap is safe
-                        Key::Balance(maybe_account.unwrap().main_purse().addr()),
+                        Key::Balance(account.main_purse().addr()),
                         StoredValue::CLValue(
                             CLValue::from_t(account_balance - to_transfer).unwrap(),
                         ),
@@ -210,7 +249,6 @@ impl ValidatorsUpdateManager {
             }
             Ordering::Less => {
                 let to_withdraw = bid_amount - stake;
-                let account = maybe_account.expect("a bonded validator should have an account");
                 let bid = maybe_bid.expect("a bonded validator should have a bid");
                 let bonding_purse = *bid.bonding_purse();
                 // withdraw the surplus amount from the bid purse to the account main purse
@@ -269,29 +307,30 @@ impl ValidatorsUpdateManager {
             .map(|(pub_key, _bid)| pub_key)
             .collect()
     }
-}
 
-/// Generates a new `SeigniorageRecipientsSnapshot` based on:
-/// - The list of validators, in format (validator_public_key,stake), both expressed as strings.
-/// - The starting era ID (the era ID at which the snapshot should start).
-/// - Count - the number of eras to be included in the snapshot.
-fn gen_snapshot(
-    validators: Vec<(String, String)>,
-    starting_era_id: EraId,
-    count: u64,
-) -> SeigniorageRecipientsSnapshot {
-    let mut new_snapshot = BTreeMap::new();
-    let mut era_validators = BTreeMap::new();
-    for (pub_key_str, bonded_amount_str) in &validators {
-        let validator_pub_key = PublicKey::from_hex(pub_key_str.as_bytes()).unwrap();
-        let bonded_amount = U512::from_dec_str(bonded_amount_str).unwrap();
-        let seigniorage_recipient =
-            SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());
-        let _ = era_validators.insert(validator_pub_key, seigniorage_recipient);
-    }
-    for era_id in starting_era_id.iter(count) {
-        let _ = new_snapshot.insert(era_id, era_validators.clone());
-    }
+    /// Generates a new `SeigniorageRecipientsSnapshot` based on:
+    /// - The list of validators, in format (validator_public_key,stake), both expressed as strings.
+    /// - The starting era ID (the era ID at which the snapshot should start).
+    /// - Count - the number of eras to be included in the snapshot.
+    fn gen_snapshot(&self, starting_era_id: EraId, count: u64) -> SeigniorageRecipientsSnapshot {
+        let mut new_snapshot = BTreeMap::new();
+        let mut era_validators = BTreeMap::new();
+        for (validator_pub_key, validator_cfg) in &self.validators {
+            // don't add validatord with zero stake to the snapshot
+            if validator_cfg.stake == U512::zero() {
+                continue;
+            }
+            let seigniorage_recipient = SeigniorageRecipient::new(
+                validator_cfg.stake,
+                Default::default(),
+                Default::default(),
+            );
+            let _ = era_validators.insert(validator_pub_key.clone(), seigniorage_recipient);
+        }
+        for era_id in starting_era_id.iter(count) {
+            let _ = new_snapshot.insert(era_id, era_validators.clone());
+        }
 
-    new_snapshot
+        new_snapshot
+    }
 }
