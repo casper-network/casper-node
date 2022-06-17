@@ -147,7 +147,7 @@ impl EngineState<LmdbGlobalState> {
     }
 
     /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
-    pub fn write_scratch_to_lmdb(
+    pub fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
@@ -156,16 +156,6 @@ impl EngineState<LmdbGlobalState> {
         self.state
             .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
             .map_err(Into::into)
-    }
-
-    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
-    #[deprecated(since = "2.0.0", note = "renamed to `write_scratch_to_lmdb`")]
-    pub fn write_scratch_to_db(
-        &self,
-        state_root_hash: Digest,
-        scratch_global_state: ScratchGlobalState,
-    ) -> Result<Digest, Error> {
-        self.write_scratch_to_lmdb(state_root_hash, scratch_global_state)
     }
 }
 

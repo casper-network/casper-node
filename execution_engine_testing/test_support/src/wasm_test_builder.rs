@@ -359,7 +359,7 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
+    /// You MUST call write_scratch_to_db to flush these changes to LmdbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
@@ -400,22 +400,16 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Commit scratch to global state, and reset the scratch cache.
-    pub fn write_scratch_to_lmdb(&mut self) -> &mut Self {
+    pub fn write_scratch_to_db(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         if let Some(scratch) = self.scratch_engine_state.take() {
             let new_state_root = self
                 .engine_state
-                .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
+                .write_scratch_to_db(prestate_hash, scratch.into_inner())
                 .unwrap();
             self.post_state_hash = Some(new_state_root);
         }
         self
-    }
-
-    /// Commit scratch to global state, and reset the scratch cache.
-    #[deprecated(since = "2.2.0", note = "renamed to `write_scratch_to_lmdb`")]
-    pub fn write_scratch_to_db(&mut self) -> &mut Self {
-        self.write_scratch_to_lmdb()
     }
 
     /// run step against scratch global state.
