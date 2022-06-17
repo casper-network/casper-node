@@ -768,7 +768,27 @@ async fn sync_trie_store_worker(
 }
 
 /// Synchronizes the trie store under a given state root hash.
-async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+async fn sync_trie_store(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
+    let state_root_hash = *block_header.state_root_hash();
+    trace!(?state_root_hash, "syncing trie store");
+
+    if ctx
+        .locally_available_block_range_on_start
+        .contains(block_header.height())
+    {
+        info!(
+            locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
+            block_height = %block_header.height(),
+            "skipping trie store sync because it is already available locally"
+        );
+        return Ok(());
+    }
+
+    let start_instant = Timestamp::now();
+
     // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
@@ -784,11 +804,10 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
             .await?
             .is_empty()
     {
+        ctx.metrics
+            .observe_sync_trie_store_duration_seconds(start_instant);
         return Ok(());
     }
-
-    trace!(?state_root_hash, "syncing trie store");
-    let start_instant = Timestamp::now();
 
     // Flag set by a worker when it encounters an error.
     let abort = Arc::new(AtomicBool::new(false));
@@ -841,7 +860,7 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
         .await?;
 
     // Synchronize the trie store for the most recent block header.
-    sync_trie_store(*most_recent_block_header.state_root_hash(), ctx).await?;
+    sync_trie_store(&most_recent_block_header, ctx).await?;
 
     ctx.effect_builder
         .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
@@ -1002,7 +1021,7 @@ async fn sync_deploys_and_transfers_and_state(
         ctx,
     )
     .await?;
-    sync_trie_store(*block.header().state_root_hash(), ctx).await
+    sync_trie_store(block.header(), ctx).await
 }
 
 /// Sync to genesis.
@@ -1254,13 +1273,11 @@ async fn fetch_block_worker(
             Ok(fetched_block) => {
                 trace!(?block_hash, "downloaded block and deploys");
                 // We want to download the trie only when we know we have the block.
-                if let Err(error) =
-                    sync_trie_store(*fetched_block.block.state_root_hash(), ctx).await
-                {
+                if let Err(error) = sync_trie_store(fetched_block.block.header(), ctx).await {
                     error!(
                         ?error,
                         ?block_hash,
-                        "failed to download trie with inifite retries"
+                        "failed to download trie with infinite retries"
                     );
                     return Err(error);
                 }
@@ -1406,7 +1423,9 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
         if ctx.trusted_block_header().is_switch_block()
             && ctx.trusted_block_header().next_block_era_id() == last_emergency_restart_era
         {
-            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
+            info!("synchronizing trie store before committing emergency upgrade");
+            sync_trie_store(ctx.trusted_block_header(), ctx).await?;
+            info!("finished synchronizing before committing emergency upgrade");
             return Ok(true);
         }
     }
@@ -1435,7 +1454,9 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
         .await?;
 
         if fetch_and_store_next_result.is_none() {
-            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
+            info!("synchronizing trie store before committing upgrade");
+            sync_trie_store(ctx.trusted_block_header(), ctx).await?;
+            info!("finished synchronizing before committing upgrade");
             return Ok(true);
         }
     }
