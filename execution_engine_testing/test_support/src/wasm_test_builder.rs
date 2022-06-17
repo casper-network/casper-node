@@ -889,7 +889,7 @@ where
     }
 
     /// Returns the results of all execs.
-    #[deprecated(since = "2.2.0", note = "use `get_exec_result` instead")]
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result` instead")]
     pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
         &self.exec_results
     }
@@ -902,7 +902,7 @@ where
     }
 
     /// Returns the results of a specific exec.
-    #[deprecated(since = "2.2.0", note = "use `get_exec_result_owned` instead")]
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
     pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
         self.exec_results.get(index)
     }
@@ -1203,7 +1203,7 @@ where
     }
 
     /// Gets [`UnbondingPurses`].
-    #[deprecated(since = "2.2.0", note = "use `get_withdraw_purses` instead")]
+    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
     pub fn get_withdraws(&mut self) -> UnbondingPurses {
         let withdraw_purses = self.get_withdraw_purses();
         let unbonding_purses: UnbondingPurses = withdraw_purses

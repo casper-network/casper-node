@@ -67,7 +67,7 @@ pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default max serialized size of `StoredValue`s.
 #[deprecated(
-    since = "2.2.0",
+    since = "2.3.0",
     note = "not used in `casper-execution-engine` config anymore"
 )]
 pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
