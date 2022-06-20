@@ -117,6 +117,12 @@ pub(crate) enum Error {
     #[error("parent block has a height of u64::MAX")]
     HeightOverflow { parent: Box<BlockHeader> },
 
+    #[error("there is no single switch block in chain")]
+    NoSwitchBlocksFound,
+
+    #[error("found switch block without validator weights")]
+    FoundSwitchBlockWithoutValidatorWeights,
+
     /// Error joining tokio task.
     #[error(transparent)]
     Join(

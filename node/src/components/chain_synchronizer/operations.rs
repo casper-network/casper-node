@@ -1099,9 +1099,18 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
         "starting fetch to genesis",
     );
 
-    fetch_headers_till_genesis(trusted_block, ctx).await?;
-
-    fetch_blocks_and_state_and_finality_signatures_since_genesis(ctx).await?;
+    let maybe_latest_switch_block_header = fetch_headers_till_genesis(trusted_block, ctx).await?;
+    if let Some(latest_switch_block_header) = maybe_latest_switch_block_header {
+        if let Some(validator_weights) = latest_switch_block_header.next_era_validator_weights() {
+            info!(switch_block_height = %latest_switch_block_header.height(), "using validator weigths");
+            fetch_blocks_and_state_and_finality_signatures_since_genesis(validator_weights, ctx)
+                .await?;
+        } else {
+            return Err(Error::FoundSwitchBlockWithoutValidatorWeights);
+        }
+    } else {
+        return Err(Error::NoSwitchBlocksFound);
+    }
 
     // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
     // trusted block, we can update the lowest available block of the continuous range.
@@ -1118,16 +1127,30 @@ const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 async fn fetch_headers_till_genesis(
     trusted_block: &Block,
     ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+) -> Result<Option<BlockHeader>, Error> {
     let mut lowest_trusted_block_header = trusted_block.header().clone();
+
+    let mut latest_switch_block_header_global: Option<BlockHeader> = None;
 
     loop {
         match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
-            Ok(new_lowest) => {
+            Ok((new_lowest, latest_switch_block_header_in_batch)) => {
                 if new_lowest.height() % 1_000 == 0 {
                     info!(?new_lowest, "new lowest trusted block header stored");
                 }
                 lowest_trusted_block_header = new_lowest;
+                match (
+                    latest_switch_block_header_global,
+                    &latest_switch_block_header_in_batch,
+                ) {
+                    (Some(previous_highest_switch_block_header), Some(new_switch_block_header))
+                        if new_switch_block_header.height()
+                            > previous_highest_switch_block_header.height() =>
+                    {
+                        latest_switch_block_header_global = Some(new_switch_block_header.clone())
+                    }
+                    _ => latest_switch_block_header_global = latest_switch_block_header_in_batch,
+                }
             }
             Err(err) => {
                 // If we get an error here it means something must have gone really wrong.
@@ -1146,15 +1169,16 @@ async fn fetch_headers_till_genesis(
             break;
         }
     }
-    Ok(())
+    Ok(latest_switch_block_header_global)
 }
 
 // Fetches a batch of block headers, validates and stores in storage.
-// Returns either an error or lowest valid block in the chain.
+// Returns either an error or a tuple of lowest valid block in the chain and the highest switch
+// block header, if available in batch.
 async fn fetch_block_headers_batch(
     lowest_trusted_block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_>,
-) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
+) -> Result<(BlockHeader, Option<BlockHeader>), FetchBlockHeadersBatchError> {
     let batch_id =
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
 
@@ -1163,13 +1187,14 @@ async fn fetch_block_headers_batch(
             fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
         match fetched_headers_data {
             FetchedData::FromStorage { item } => {
-                return BlockHeadersBatch::validate(
+                let block_header = BlockHeadersBatch::validate(
                     &*item,
                     &batch_id,
                     lowest_trusted_block_header,
                     ctx.config.verifiable_chunked_hash_activation(),
                 )
-                .map_err(FetchBlockHeadersBatchError::InvalidBatchFromStorage)
+                .map_err(FetchBlockHeadersBatchError::InvalidBatchFromStorage)?;
+                return Ok((block_header, item.latest_switch_block_header().cloned()));
             }
             FetchedData::FromPeer { item, peer } => {
                 match BlockHeadersBatch::validate(
@@ -1180,10 +1205,11 @@ async fn fetch_block_headers_batch(
                 ) {
                     Ok(new_lowest) => {
                         info!(?batch_id, ?peer, "received valid batch of headers");
+                        let latest_validator_weights = item.latest_switch_block_header().cloned();
                         ctx.effect_builder
                             .put_block_headers_batch_to_storage(item.into_inner())
                             .await;
-                        return Ok(new_lowest);
+                        return Ok((new_lowest, latest_validator_weights));
                     }
                     Err(err) => {
                         error!(
@@ -1202,11 +1228,10 @@ async fn fetch_block_headers_batch(
 
 // Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
 async fn fetch_blocks_and_state_and_finality_signatures_since_genesis(
+    validator_weights: &BTreeMap<PublicKey, U512>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     info!("syncing blocks and deploys and state since Genesis");
-
-    // TODO[RC]: Update comments to cover the finality signatures fetch
 
     // NOTE: Currently there's no good way to read the known, highest *FULL* block.
     // Full means that we have:
@@ -1221,7 +1246,14 @@ async fn fetch_blocks_and_state_and_finality_signatures_since_genesis(
     let latest_height_requested: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
     let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_block_fetches())
-        .map(|worker_id| fetch_block_worker(worker_id, latest_height_requested.clone(), ctx))
+        .map(|worker_id| {
+            fetch_block_worker(
+                worker_id,
+                latest_height_requested.clone(),
+                validator_weights.clone(),
+                ctx,
+            )
+        })
         .collect();
 
     while let Some(result) = workers.next().await {
@@ -1234,6 +1266,7 @@ async fn fetch_blocks_and_state_and_finality_signatures_since_genesis(
 async fn fetch_block_worker(
     worker_id: usize,
     latest_height_requested: Arc<AtomicU64>,
+    validator_weights: BTreeMap<PublicKey, U512>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     let trusted_block_height = ctx.trusted_block_header().height();
@@ -1286,15 +1319,8 @@ async fn fetch_block_worker(
             }
         }
 
-        // TODO[RC]: Collect the true validator weights from the most recent switch block.
-        let dummy_validator_weigths = BTreeMap::new();
-
-        match fetch_and_store_finality_signatures_by_block_hash(
-            block_hash,
-            &dummy_validator_weigths,
-            ctx,
-        )
-        .await
+        match fetch_and_store_finality_signatures_by_block_hash(block_hash, &validator_weights, ctx)
+            .await
         {
             Some(_fetched_signatures) => todo!(),
             None => todo!(),
