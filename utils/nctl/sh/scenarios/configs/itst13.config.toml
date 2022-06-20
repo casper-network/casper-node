@@ -68,9 +68,20 @@ sync_state_interval = '1sec'
 # '0sec' means it is disabled and we never print the log message.
 log_participation_interval = '1min'
 
-# The initial proposal timeout. Validators wait this long for a proposal to receive a quorum of
+# The minimal proposal timeout. Validators wait this long for a proposal to receive a quorum of
 # echo messages, before they vote to make the round skippable and move on to the next proposer.
 proposal_timeout = '10sec'
+
+# The additional proposal delay that is still considered fast enough, in percent. This should
+# take into account variables like empty vs. full blocks, network traffic etc.
+# E.g. if proposing a full block while under heavy load takes 50% longer than an empty one
+# while idle this should be at least 50, meaning that the timeout is 50% longer than
+# necessary for a quorum of recent proposals, approximately.
+proposal_grace_period = 200
+
+# The average number of rounds after which the proposal timeout adapts by a factor of 2.
+# Note: It goes up faster than it goes down: it takes fewer rounds to double than to halve.
+proposal_timeout_inertia = 10
 
 # The maximum difference between validators' clocks we expect. Incoming proposals whose timestamp
 # lies in the future by more than that are rejected.

@@ -126,8 +126,8 @@ where
 {
     /// Contains numerical parameters for the protocol
     params: Params<C>,
-    /// The timeout for the current round's proposal
-    proposal_timeout: TimeDiff,
+    /// The timeout for the current round's proposal, in milliseconds
+    proposal_timeout_millis: f64,
     /// The validators in this instantiation of the protocol
     validators: Validators<C::ValidatorId>,
     /// If we are a validator ourselves, we must know which index we
@@ -158,8 +158,8 @@ where
     maybe_dirty_round_id: Option<RoundId>,
     /// The lowest non-skippable round without an accepted value.
     current_round: RoundId,
-    /// The timeout for the current round.
-    current_timeout: Timestamp,
+    /// The time when the current round started.
+    current_round_start: Timestamp,
     /// Whether anything was recently added to the protocol state.
     progress_detected: bool,
     /// Whether or not the protocol is currently paused
@@ -190,11 +190,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let core_config = &chainspec.core_config;
 
         // Use the estimate from the previous era as the proposal timeout. Start with one minimum
-        // round length.
-        let proposal_timeout = prev_cp
+        // timeout times the grace period factor: This is what we would settle on if proposals
+        // always got accepted exactly after one minimum timeout.
+        let proposal_timeout_millis = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<SimpleConsensus<C>>())
-            .map(|sc| sc.proposal_timeout)
-            .unwrap_or(config.simple_consensus.proposal_timeout);
+            .map(|sc| sc.proposal_timeout_millis)
+            .unwrap_or_else(|| {
+                config.simple_consensus.proposal_timeout.millis() as f64
+                    * (config.simple_consensus.proposal_grace_period as f64 / 100.0 + 1.0)
+            });
 
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for vidx in validators.iter_cannot_propose_idx() {
@@ -207,7 +211,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
 
         info!(
-            %instance_id, %era_start_time, %proposal_timeout,
+            %instance_id, %era_start_time, %proposal_timeout_millis,
             "initializing SimpleConsensus instance",
         );
 
@@ -228,13 +232,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             first_non_finalized_round_id: 0,
             maybe_dirty_round_id: None,
             current_round: 0,
-            current_timeout: Timestamp::MAX,
+            current_round_start: Timestamp::MAX,
             evidence_only: false,
             faults,
             active,
             config: config.simple_consensus.clone(),
             params,
-            proposal_timeout,
+            proposal_timeout_millis,
             validators,
             active_validator: None,
             pending_proposal: None,
@@ -371,7 +375,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(self.params.start_timestamp()) + interval,
+                now + interval,
                 TIMER_ID_SYNC_PEER,
             ));
         }
@@ -1183,6 +1187,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // Update the round outcome if there is a new accepted proposal.
         if self.update_accepted_proposal(round_id) {
+            if round_id == self.current_round {
+                self.update_proposal_timeout(now);
+            }
             // Vote for finalizing this proposal.
             outcomes.extend(self.create_message(round_id, Content::Vote(true)));
             // Proposed descendants of this proposal can now be validated.
@@ -1204,11 +1211,17 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
 
         if round_id == self.current_round {
-            if now >= self.current_timeout || self.faults.contains_key(&self.leader(round_id)) {
+            let current_timeout = self
+                .current_round_start
+                .saturating_add(self.proposal_timeout());
+            if now >= current_timeout || self.faults.contains_key(&self.leader(round_id)) {
                 outcomes.extend(self.create_message(round_id, Content::Vote(false)));
+                if !self.faults.contains_key(&self.leader(round_id)) {
+                    self.update_proposal_timeout(now);
+                }
             }
             if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
-                self.current_timeout = Timestamp::MAX;
+                self.current_round_start = Timestamp::MAX;
                 self.current_round = self.current_round.saturating_add(1);
                 debug!(
                     round_id = self.current_round,
@@ -1222,14 +1235,16 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     // that time.
                     outcomes.extend(self.schedule_update(timestamp));
                 } else {
-                    if self.current_timeout > now + self.proposal_timeout {
+                    if self.current_round_start > now {
                         // A proposal could be made now. Start the timer and propose if leader.
-                        self.current_timeout = now + self.proposal_timeout;
-                        self.proposal_timeout = self.proposal_timeout * 2u64;
+                        self.current_round_start = now;
                         outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
                     }
-                    if self.current_timeout > now {
-                        outcomes.extend(self.schedule_update(self.current_timeout));
+                    let current_timeout = self
+                        .current_round_start
+                        .saturating_add(self.proposal_timeout());
+                    if current_timeout > now {
+                        outcomes.extend(self.schedule_update(current_timeout));
                     }
                 }
             } else {
@@ -1239,7 +1254,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // If the round has an accepted proposal and is committed, it is finalized.
         if self.has_accepted_proposal(round_id) && self.is_committed_round(round_id) {
-            self.proposal_timeout = self.config.proposal_timeout;
             outcomes.extend(self.finalize_round(round_id));
         }
         outcomes
@@ -1531,6 +1545,29 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// Returns the accepted proposal, if any, together with its height.
     fn accepted_proposal(&self, round_id: RoundId) -> Option<(u64, &Proposal<C>)> {
         self.round(round_id)?.accepted_proposal()
+    }
+
+    /// Returns the current proposal timeout as a `TimeDiff`.
+    fn proposal_timeout(&self) -> TimeDiff {
+        TimeDiff::from(self.proposal_timeout_millis as u64)
+    }
+
+    /// Updates our `proposal_timeout` based on the latest measured actual delay from the start of
+    /// the current round until a proposal was accepted or we voted to skip the round.
+    fn update_proposal_timeout(&mut self, now: Timestamp) {
+        let proposal_delay_millis = now.saturating_diff(self.current_round_start).millis() as f64;
+        let grace_period_factor = self.config.proposal_grace_period as f64 / 100.0 + 1.0;
+        let target_timeout = proposal_delay_millis * grace_period_factor;
+        let inertia = self.config.proposal_timeout_inertia as f64;
+        let ftt = self.params.ftt().0 as f64 / self.validators.total_weight().0 as f64;
+        if target_timeout > self.proposal_timeout_millis {
+            self.proposal_timeout_millis *= (1.0 / (inertia * (1.0 - ftt))).exp2();
+            self.proposal_timeout_millis = self.proposal_timeout_millis.min(target_timeout);
+        } else {
+            self.proposal_timeout_millis *= (-1.0 / (inertia * (1.0 + ftt))).exp2();
+            let min_timeout = (self.config.proposal_timeout.millis() as f64).max(target_timeout);
+            self.proposal_timeout_millis = self.proposal_timeout_millis.max(min_timeout);
+        }
     }
 
     /// Returns `true` if the given validators, together will all faulty validators, form a quorum.
@@ -1839,7 +1876,7 @@ where
             info!(current_round = self.current_round, "unpausing consensus");
             self.paused = paused;
             // Reset the timeout to give the proposer another chance, after the pause.
-            self.current_timeout = Timestamp::MAX;
+            self.current_round_start = Timestamp::MAX;
             self.mark_dirty(self.current_round);
             self.update(now)
         } else {
