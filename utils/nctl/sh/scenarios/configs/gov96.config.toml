@@ -71,7 +71,7 @@ sync_state_interval = '1sec'
 # '0sec' means it is disabled and we never print the log message.
 log_participation_interval = '1min'
 
-# The initial proposal timeout. Validators wait this long for a proposal to receive a quorum of
+# The minimal proposal timeout. Validators wait this long for a proposal to receive a quorum of
 # echo messages, before they vote to make the round skippable and move on to the next proposer.
 proposal_timeout = '10sec'
 

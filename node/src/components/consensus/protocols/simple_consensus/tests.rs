@@ -984,3 +984,59 @@ fn test_quorum() {
         assert!(sc.is_quorum(vec![alice_idx].into_iter()));
     }
 }
+
+#[test]
+fn update_proposal_timeout() {
+    macro_rules! assert_approx {
+        ($val0:expr, $val1:expr) => {
+            let v0: f64 = $val0;
+            let v1: f64 = $val1;
+            let diff = (v1 - v0).abs();
+            let min = v1.abs().min(v0.abs());
+            assert!(diff < min * 0.1, "not approximately equal: {}, {}", v0, v1);
+        };
+    }
+
+    let mut rng = crate::new_rng();
+
+    let (weights, _validators) = abc_weights(1, 2, 3);
+    let mut sc = new_test_simple_consensus(weights, vec![], &[]);
+    let _outcomes = sc.handle_timer(Timestamp::from(100000), TIMER_ID_UPDATE, &mut rng);
+
+    let round_start = sc.current_round_start;
+    let grace_factor = sc.config.proposal_grace_period as f64 / 100.0 + 1.0;
+    let inertia = sc.config.proposal_timeout_inertia;
+    let initial_timeout = sc.config.proposal_timeout.millis() as f64 * grace_factor;
+
+    let timeout = sc.proposal_timeout().millis() as f64;
+
+    assert_approx!(initial_timeout, timeout);
+
+    // Within 2 * inertia blocks the timeout should double and go back down again, if rounds
+    // without proposals come before rounds with fast proposals and the fraction of rounds with
+    // fast proposals is (1 + ftt) / 2, i.e. 2/3.
+    let fail_rounds = (inertia as f64 * 2.0 / 3.0).round() as u16;
+    let success_rounds = 2 * inertia - fail_rounds;
+    for _ in 0..fail_rounds {
+        sc.update_proposal_timeout(round_start + TimeDiff::from_seconds(10000));
+    }
+    assert_approx!(2.0 * initial_timeout, sc.proposal_timeout().millis() as f64);
+    for _ in 0..success_rounds {
+        sc.update_proposal_timeout(round_start + TimeDiff::from(1));
+    }
+    assert_approx!(initial_timeout, sc.proposal_timeout().millis() as f64);
+
+    // If the proposal delay is consistently t, the timeout will settle on t * grace_factor
+    // within 2 * inertia rounds.
+    let min_delay = (sc.proposal_timeout().millis() as f64 / grace_factor) as u64;
+    for _ in 0..10 {
+        let delay = TimeDiff::from(rng.gen_range(min_delay..(min_delay * 2)));
+        for _ in 0..(2 * inertia) {
+            sc.update_proposal_timeout(round_start + delay);
+        }
+        assert_eq!(
+            delay.millis() as f64 * grace_factor,
+            sc.proposal_timeout().millis() as f64
+        );
+    }
+}
