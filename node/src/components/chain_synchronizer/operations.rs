@@ -1333,12 +1333,13 @@ async fn fetch_block_worker(
             }
         }
 
-        match fetch_and_store_finality_signatures_by_block_hash(block_hash, &validator_weights, ctx)
-            .await
+        if let Some(finality_signatures) =
+            fetch_finality_signatures_by_block_hash(block_hash, &validator_weights, ctx).await
         {
-            Some(_fetched_signatures) => todo!(),
-            None => todo!(),
-        }
+            ctx.effect_builder
+                .put_signatures_to_storage(finality_signatures)
+                .await;
+        };
     }
 }
 
@@ -1387,7 +1388,7 @@ impl BlockSignaturesCollector {
     }
 }
 
-async fn fetch_and_store_finality_signatures_by_block_hash(
+async fn fetch_finality_signatures_by_block_hash(
     block_hash: BlockHash,
     validator_weights: &BTreeMap<PublicKey, U512>,
     ctx: &ChainSyncContext<'_>,

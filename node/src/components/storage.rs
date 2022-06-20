@@ -1704,7 +1704,7 @@ impl Storage {
         Ok(txn.get_value(self.transfer_db, block_hash)?)
     }
 
-    /// Retrieves finality signatures for a block with a given block hash
+    /// Retrieves finality signatures for a block with a given block hash.
     fn get_finality_signatures<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1713,7 +1713,7 @@ impl Storage {
         Ok(txn.get_value(self.block_metadata_db, block_hash)?)
     }
 
-    /// Retrieves finality signatures for a block with a given block hash
+    /// Retrieves finality signatures for a block with a given block hash.
     fn read_finality_signatures(
         &self,
         block_hash: &BlockHash,
