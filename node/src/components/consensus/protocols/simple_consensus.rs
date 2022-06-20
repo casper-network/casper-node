@@ -190,11 +190,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let core_config = &chainspec.core_config;
 
         // Use the estimate from the previous era as the proposal timeout. Start with one minimum
-        // round length.
+        // timeout times the grace period factor: This is what we would settle on if proposals
+        // always got accepted exactly after one minimum timeout.
         let proposal_timeout_millis = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<SimpleConsensus<C>>())
             .map(|sc| sc.proposal_timeout_millis)
-            .unwrap_or(config.simple_consensus.proposal_timeout.millis() as f64);
+            .unwrap_or_else(|| {
+                config.simple_consensus.proposal_timeout.millis() as f64
+                    * (config.simple_consensus.proposal_grace_period as f64 / 100.0 + 1.0)
+            });
 
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for vidx in validators.iter_cannot_propose_idx() {
@@ -1549,7 +1553,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Updates our `proposal_timeout` based on the latest measured actual delay from the start of
-    /// the current round until a proposal was accepted.
+    /// the current round until a proposal was accepted or we voted to skip the round.
     fn update_proposal_timeout(&mut self, now: Timestamp) {
         let proposal_delay_millis = now.saturating_diff(self.current_round_start).millis() as f64;
         let grace_period_factor = self.config.proposal_grace_period as f64 / 100.0 + 1.0;
@@ -1557,10 +1561,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let inertia = self.config.proposal_timeout_inertia as f64;
         let ftt = self.params.ftt().0 as f64 / self.validators.total_weight().0 as f64;
         if target_timeout > self.proposal_timeout_millis {
-            self.proposal_timeout_millis *= (2.0 / (inertia * (ftt + 1.0))).exp2();
+            self.proposal_timeout_millis *= (2.0 / (inertia * (1.0 - ftt))).exp2();
             self.proposal_timeout_millis = self.proposal_timeout_millis.min(target_timeout);
         } else {
-            self.proposal_timeout_millis *= (2.0 / (inertia * (ftt - 1.0))).exp2();
+            self.proposal_timeout_millis *= (-2.0 / (inertia * (1.0 + ftt))).exp2();
             let min_timeout = (self.config.proposal_timeout.millis() as f64).max(target_timeout);
             self.proposal_timeout_millis = self.proposal_timeout_millis.max(min_timeout);
         }

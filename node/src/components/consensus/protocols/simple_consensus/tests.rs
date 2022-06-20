@@ -366,7 +366,7 @@ fn simple_consensus_no_fault() {
     sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
 
     let block_time = sc_c.params.min_block_time();
-    let proposal_timeout = sc_c.config.proposal_timeout;
+    let proposal_timeout = sc_c.proposal_timeout();
 
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
