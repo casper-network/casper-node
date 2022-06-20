@@ -11,7 +11,8 @@
 # Step 06: Await 1 era.
 # Step 07: Stage node-6 with old trusted hash.
 # Step 08: Verify that node-6 successfully syncs.
-# Step 09: Terminate.
+# Step 09: Run Health Checks
+# Step 10: Terminate.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -20,6 +21,7 @@
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/views/utils.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -53,6 +55,7 @@ function _main()
     _step_07 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_08 '6'
     _step_09
+    _step_10
 }
 
 # Step 01: Start network from pre-built stage.
@@ -72,7 +75,8 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_9.chainspec.toml.in"
+            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_9.chainspec.toml.in" \
+            config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_9.config.toml"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
 }
@@ -81,7 +85,8 @@ function _step_01()
 function _step_02()
 {
     log_step_upgrades 2 "awaiting until era 2"
-    await_until_era_n 2
+
+    do_wait_until_era '2' 'false' '180'
 }
 
 # Step 03: Stage nodes 1-5 and upgrade.
@@ -96,7 +101,13 @@ function _step_03()
 
     for i in $(seq 1 5); do
         log "... staging upgrade on validator node-$i"
-        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="$i" era="$ACTIVATION_POINT" chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_9.chainspec.toml.in"
+        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" \
+            stage="$STAGE_ID" \
+            verbose=false \
+            node="$i" \
+            era="$ACTIVATION_POINT" \
+            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_9.chainspec.toml.in" \
+            config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_9.config.toml"
         echo ""
     done
 
@@ -181,7 +192,13 @@ function _step_07()
 
     log "... setting upgrade assets"
 
-    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="6" era="$ACTIVATION_POINT" chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_9.chainspec.toml.in"
+    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" \
+        stage="$STAGE_ID" \
+        verbose=false \
+        node="6" \
+        era="$ACTIVATION_POINT" \
+        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_9.chainspec.toml.in" \
+        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_9.config.toml"
     echo ""
     # add hash to upgrades config
     PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"
@@ -226,10 +243,24 @@ function _step_08()
     done
 }
 
-# Step 09: Terminate.
+# Step 09: Run NCTL health checks
 function _step_09()
 {
-    log_step_upgrades 9 "upgrade_scenario_09 successful - tidying up"
+    # restarts=5 - Nodes that upgrade
+    log_step_upgrades 9 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=5 \
+            ejections=0
+}
+
+# Step 10: Terminate.
+function _step_10()
+{
+    log_step_upgrades 10 "upgrade_scenario_09 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

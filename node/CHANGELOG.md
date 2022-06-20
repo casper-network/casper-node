@@ -35,6 +35,9 @@ All notable changes to this project will be documented in this file.  The format
 * Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
 * Add new `block_hash` and `block_height` optional fields to `info_get_deploy` RPC query which will be present when execution results aren't available.
 * Add a new config option `[rpc_server.max_body_bytes]` to allow a configurable value for the maximum size of the body of a JSON-RPC request.
+* Add new JSON RPC endpoint `/speculative_exec` that accepts a deploy and a block hash and executes that deploy, returning the execution effects.
+* Add `speculative_execution_address` to `rpc_server` section in `config.toml` to control address which the speculative execution server binds to.
+* Add `speculative_execution_qps_limit` to `rpc_server` section in `config.toml` to control requests per second the node handles. Setting to 0 disbles the endpoint.
 * Add a `[consensus.simple_consensus]` section to `config.toml` for the simple consensus protocol.
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 

@@ -206,6 +206,18 @@ function get_node_port()
 }
 
 #######################################
+# Calculates speculative execution port.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_port_speculative_exec()
+{
+    local NODE_ID=${1}    
+
+    get_node_port "$NCTL_BASE_PORT_SPEC_EXEC" "$NODE_ID"
+}
+
+#######################################
 # Calculates REST port.
 # Arguments:
 #   Node ordinal identifier.
