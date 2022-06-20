@@ -1535,10 +1535,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let inertia = self.config.proposal_timeout_inertia as f64;
         let ftt = self.params.ftt().0 as f64 / self.validators.total_weight().0 as f64;
         if target_timeout > self.proposal_timeout_millis {
-            self.proposal_timeout_millis *= (2.0 / (inertia * (1.0 - ftt))).exp2();
+            self.proposal_timeout_millis *= (1.0 / (inertia * (1.0 - ftt))).exp2();
             self.proposal_timeout_millis = self.proposal_timeout_millis.min(target_timeout);
         } else {
-            self.proposal_timeout_millis *= (-2.0 / (inertia * (1.0 + ftt))).exp2();
+            self.proposal_timeout_millis *= (-1.0 / (inertia * (1.0 + ftt))).exp2();
             let min_timeout = (self.config.proposal_timeout.millis() as f64).max(target_timeout);
             self.proposal_timeout_millis = self.proposal_timeout_millis.max(min_timeout);
         }
