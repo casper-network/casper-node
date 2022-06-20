@@ -46,7 +46,7 @@ fn should_charge_for_user_error(
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("should have result")
         .get(0)
         .cloned()
@@ -166,7 +166,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("should have result")
         .get(0)
         .cloned()

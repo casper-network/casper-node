@@ -10,7 +10,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use thiserror::Error;
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-use casper_hashing::{error::ChunkWithProofVerificationError, Digest};
+use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::EraId;
 
 use crate::types::{BlockHash, BlockHeader};

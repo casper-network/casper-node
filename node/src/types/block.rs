@@ -31,7 +31,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     components::consensus,
@@ -1116,17 +1116,17 @@ impl Item for BlockHeaderWithMetadata {
 
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 /// ID identifying a request for a batch of block headers.
-pub struct BlockHeadersBatchId {
+pub(crate) struct BlockHeadersBatchId {
     pub highest: u64,
     pub lowest: u64,
 }
 
 impl BlockHeadersBatchId {
-    pub fn new(highest: u64, lowest: u64) -> Self {
+    pub(crate) fn new(highest: u64, lowest: u64) -> Self {
         Self { highest, lowest }
     }
 
-    pub fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
+    pub(crate) fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
         let highest = lowest_known_block_header.height().saturating_sub(1);
         let lowest = lowest_known_block_header
             .height()
@@ -1137,12 +1137,12 @@ impl BlockHeadersBatchId {
 
     /// Return an iterator over block header heights starting from highest (inclusive) to lowest
     /// (inclusive).
-    pub fn iter(&self) -> impl Iterator<Item = u64> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = u64> {
         (self.lowest..=self.highest).rev()
     }
 
     /// Returns the length of the batch.
-    pub fn len(&self) -> u64 {
+    pub(crate) fn len(&self) -> u64 {
         self.highest + 1 - self.lowest
     }
 }
@@ -1154,7 +1154,7 @@ impl Display for BlockHeadersBatchId {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct BlockHeadersBatch(Vec<BlockHeader>);
+pub(crate) struct BlockHeadersBatch(Vec<BlockHeader>);
 
 impl BlockHeadersBatch {
     /// Returns the header of the latest switch block available in the batch.
@@ -1196,10 +1196,6 @@ impl BlockHeadersBatch {
             });
         }
 
-        if !Self::is_continuous_and_descending(self.inner(), verifiable_chunked_hash_activation) {
-            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
-        }
-
         self.0
             .last()
             .cloned()
@@ -1209,10 +1205,9 @@ impl BlockHeadersBatch {
     /// Tries to create an instance of `BlockHeadersBatch` from a `Vec<BlockHeader>`.
     ///
     /// Returns `Some(Self)` if data passes validation, otherwise `None`.
-    pub fn from_vec(
+    pub(crate) fn from_vec(
         batch: Vec<BlockHeader>,
         requested_id: &BlockHeadersBatchId,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Option<Self> {
         match batch.first() {
             Some(highest) => {
@@ -1226,7 +1221,7 @@ impl BlockHeadersBatch {
                 }
             }
             None => {
-                error!("response cannot be an empty batch");
+                warn!("response cannot be an empty batch");
                 return None;
             }
         }
@@ -1248,26 +1243,26 @@ impl BlockHeadersBatch {
             }
         }
 
-        if !Self::is_continuous_and_descending(&batch, verifiable_chunked_hash_activation) {
-            error!("batch is not continuous");
-            return None;
-        }
-
         Some(Self(batch))
     }
 
     /// Returns inner value.
-    pub fn into_inner(self) -> Vec<BlockHeader> {
+    pub(crate) fn into_inner(self) -> Vec<BlockHeader> {
         self.0
     }
 
     /// Returns a reference to an inner vector of block headers.
-    pub fn inner(&self) -> &Vec<BlockHeader> {
+    pub(crate) fn inner(&self) -> &Vec<BlockHeader> {
         &self.0
     }
 
+    /// Returns the lowest element from the batch.
+    pub(crate) fn lowest(&self) -> Option<&BlockHeader> {
+        self.0.last()
+    }
+
     /// Tests whether the block header batch is continuous and in descending order.
-    pub fn is_continuous_and_descending(
+    pub(crate) fn is_continuous_and_descending(
         batch: &[BlockHeader],
         verifiable_chunked_hash_activation: EraId,
     ) -> bool {
@@ -1329,7 +1324,7 @@ impl Item for BlockHeadersBatch {
         if lower_batch_height.is_none() || upper_batch_height.is_none() {
             // ID should be infallible but it is possible that the `Vec` is empty.
             // In that case we log an error to indicate something went really wrong and use `(0,0)`.
-            error!(
+            warn!(
                 ?lower_batch_height,
                 ?upper_batch_height,
                 "received header batch is empty"
@@ -2940,7 +2935,11 @@ mod tests {
     #[test]
     fn block_headers_batch_id_iter() {
         let id = BlockHeadersBatchId::new(5, 1);
-        assert_eq!(vec![5u64, 4, 3, 2, 1], id.iter().collect::<Vec<_>>());
+        assert_eq!(
+            vec![5u64, 4, 3, 2, 1],
+            id.iter().collect::<Vec<_>>(),
+            ".iter() must return descending order"
+        );
 
         let id = BlockHeadersBatchId::new(5, 5);
         assert_eq!(vec![5u64], id.iter().collect::<Vec<_>>());
@@ -3195,15 +3194,12 @@ mod tests {
 
         let id = BlockHeadersBatchId::new(batch[0].height(), batch[2].height());
 
-        let block_headers_batch =
-            BlockHeadersBatch::from_vec(batch.clone(), &id, NEVER_SWITCH_HASHING);
+        let block_headers_batch = BlockHeadersBatch::from_vec(batch.clone(), &id);
         assert!(block_headers_batch.is_some());
         assert_eq!(block_headers_batch.unwrap().inner(), &batch);
 
         let missing_highest_batch = batch.clone().into_iter().skip(1).collect::<Vec<_>>();
-        assert!(
-            BlockHeadersBatch::from_vec(missing_highest_batch, &id, NEVER_SWITCH_HASHING).is_none()
-        );
+        assert!(BlockHeadersBatch::from_vec(missing_highest_batch, &id).is_none());
 
         let missing_lowest_batch = batch
             .clone()
@@ -3212,9 +3208,7 @@ mod tests {
             .skip(1)
             .rev()
             .collect::<Vec<_>>();
-        assert!(
-            BlockHeadersBatch::from_vec(missing_lowest_batch, &id, NEVER_SWITCH_HASHING).is_none()
-        );
+        assert!(BlockHeadersBatch::from_vec(missing_lowest_batch, &id).is_none());
     }
 
     #[test]
@@ -3310,27 +3304,6 @@ mod tests {
                 &trusted,
                 NEVER_SWITCH_HASHING
             )
-        );
-
-        let reversed = {
-            let mut tmp = batch.inner().clone();
-            let correct_first = tmp.first().cloned().unwrap();
-            tmp.reverse();
-            // We are putting highest block at the first index of the batch.
-            // The rest of the batch is in ascending order.
-            // We do that b/c `BlockHeadersBatch::validate` first checks whether the highest header
-            // in the batch is the expected one and only later validates the continuity.
-            // We want to retain that validation order as checking the first header in the batch is
-            // faster than iterating over all headers.
-            if let Some(current_first) = tmp.first_mut() {
-                *current_first = correct_first
-            }
-            BlockHeadersBatch::new(tmp)
-        };
-
-        assert_eq!(
-            Err(BlockHeadersBatchValidationError::BatchNotContinuous),
-            BlockHeadersBatch::validate(&reversed, &batch_id, &trusted, NEVER_SWITCH_HASHING)
         );
 
         let invalid_length_batch = BlockHeadersBatch::new(batch.inner().clone()[1..].to_vec());

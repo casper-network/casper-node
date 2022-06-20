@@ -1942,11 +1942,7 @@ impl Storage {
                 }
             }
         }
-        Ok(BlockHeadersBatch::from_vec(
-            headers,
-            block_header_ids,
-            self.verifiable_chunked_hash_activation,
-        ))
+        Ok(BlockHeadersBatch::from_vec(headers, block_header_ids))
     }
 
     /// Creates a serialized representation of a `FetchedOrNotFound` and the resulting message.

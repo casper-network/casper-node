@@ -77,7 +77,7 @@ fn should_raise_auth_failure_with_invalid_key() {
         .commit();
 
     let deploy_result = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("should have exec response")
         .get(0)
         .cloned()
@@ -127,7 +127,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
         .commit();
 
     let deploy_result = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("should have exec response")
         .get(0)
         .cloned()
@@ -223,7 +223,7 @@ fn should_raise_deploy_authorization_failure() {
 
     {
         let deploy_result = builder
-            .get_exec_result(0)
+            .get_exec_result_owned(0)
             .expect("should have exec response")
             .get(0)
             .cloned()
@@ -285,7 +285,7 @@ fn should_raise_deploy_authorization_failure() {
 
     {
         let deploy_result = builder
-            .get_exec_result(0)
+            .get_exec_result_owned(0)
             .expect("should have exec response")
             .get(0)
             .cloned()
@@ -450,7 +450,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     };
     builder.clear_results().exec(exec_request_3).commit();
     let deploy_result = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("should have exec response")
         .get(0)
         .cloned()
@@ -538,7 +538,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     builder.exec(transfer_request_1).commit();
 
     let response = builder
-        .get_exec_result(3)
+        .get_exec_result_owned(3)
         .expect("should have response")
         .first()
         .cloned()

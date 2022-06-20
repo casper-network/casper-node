@@ -118,7 +118,7 @@ impl UpgradeRequestBuilder {
 }
 
 impl Default for UpgradeRequestBuilder {
-    fn default() -> Self {
+    fn default() -> UpgradeRequestBuilder {
         UpgradeRequestBuilder {
             pre_state_hash: Default::default(),
             current_protocol_version: Default::default(),

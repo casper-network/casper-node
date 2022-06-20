@@ -147,7 +147,7 @@ impl EngineState<LmdbGlobalState> {
     }
 
     /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
-    pub fn write_scratch_to_lmdb(
+    pub fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,

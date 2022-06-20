@@ -41,7 +41,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
         .commit();
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let precondition_failure = utils::get_precondition_failure(&response);
@@ -72,7 +72,7 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
         .commit();
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let precondition_failure = utils::get_precondition_failure(&response);
@@ -110,7 +110,7 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
         .commit();
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let precondition_failure = utils::get_precondition_failure(&response);
