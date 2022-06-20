@@ -192,6 +192,7 @@ mod tests {
         Lazy::new(|| SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).unwrap());
     static ALICE_PUBLIC_KEY: Lazy<PublicKey> =
         Lazy::new(|| PublicKey::from(Lazy::force(&ALICE_SECRET_KEY)));
+
     #[test]
     fn test_read_write_wal() {
         let alice_keypair = Keypair::from(std::sync::Arc::new(
