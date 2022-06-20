@@ -99,7 +99,7 @@ impl ValidatorsUpdateManager {
         // If the account already existed, it will get overwritten.
         for (pub_key, validator_cfg) in &self.validators {
             if validator_cfg.stake == U512::zero() {
-                let balance = validator_cfg.maybe_balance.unwrap_or_else(U512::zero);
+                let balance = validator_cfg.maybe_new_balance.unwrap_or_else(U512::zero);
                 let _ = self.state_tracker.create_account(pub_key.clone(), balance);
             }
         }
@@ -107,6 +107,7 @@ impl ValidatorsUpdateManager {
 
     /// Gets the account for the given public key from the global state, or creates one if it
     /// doesn't exist and fills it with the amount of tokens specified in the validators config.
+    /// If the amount is not specified, it defaults to zero.
     fn get_or_create_account(&mut self, pub_key: &PublicKey) -> &Account {
         match self.accounts.entry(pub_key.clone()) {
             Entry::Vacant(vac) => {
@@ -117,7 +118,7 @@ impl ValidatorsUpdateManager {
                         pub_key.clone(),
                         self.validators
                             .get(pub_key)
-                            .and_then(|vcfg| vcfg.maybe_balance)
+                            .and_then(|vcfg| vcfg.maybe_new_balance)
                             .unwrap_or_else(U512::zero),
                     ),
                 };

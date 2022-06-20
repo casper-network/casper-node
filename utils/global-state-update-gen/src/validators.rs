@@ -10,7 +10,7 @@ use validators_manager::ValidatorsUpdateManager;
 
 pub struct ValidatorConfig {
     stake: U512,
-    maybe_balance: Option<U512>,
+    maybe_new_balance: Option<U512>,
 }
 
 pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
@@ -34,8 +34,8 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
                 let stake =
                     U512::from_dec_str(&stake_str).expect("stake should be a valid decimal number");
 
-                let maybe_balance_str = fields.next();
-                let maybe_balance = maybe_balance_str.as_ref().map(|balance_str| {
+                let maybe_new_balance_str = fields.next();
+                let maybe_new_balance = maybe_new_balance_str.as_ref().map(|balance_str| {
                     U512::from_dec_str(balance_str)
                         .expect("balance should be a valid decimal number")
                 });
@@ -44,7 +44,7 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
                     pub_key,
                     ValidatorConfig {
                         stake,
-                        maybe_balance,
+                        maybe_new_balance,
                     },
                 )
             })
