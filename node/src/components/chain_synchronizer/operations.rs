@@ -1102,7 +1102,7 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
     let maybe_latest_switch_block_header = fetch_headers_till_genesis(trusted_block, ctx).await?;
     if let Some(latest_switch_block_header) = maybe_latest_switch_block_header {
         if let Some(validator_weights) = latest_switch_block_header.next_era_validator_weights() {
-            info!(switch_block_height = %latest_switch_block_header.height(), "using validator weigths");
+            info!(switch_block_height = %latest_switch_block_header.height(), "using validator weights");
             fetch_blocks_and_state_and_finality_signatures_since_genesis(validator_weights, ctx)
                 .await?;
         } else {
