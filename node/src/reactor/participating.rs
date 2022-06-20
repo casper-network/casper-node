@@ -20,22 +20,22 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
+use casper_execution_engine::storage::trie::TrieOrChunk;
+
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
-        chain_synchronizer::{ChainSynchronizer, JoiningOutcome},
+        chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},
-        fetcher::{self, FetchedOrNotFound, Fetcher},
+        fetcher::{self, Fetcher, FetcherBuilder},
         gossiper::{self, Gossiper},
         linear_chain::{self, LinearChainComponent},
         metrics::Metrics,
@@ -56,7 +56,7 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -69,10 +69,16 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Deploy, DeployHash, ExitCode, FinalitySignature, NodeState},
+    types::{
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockWithMetadata, Deploy, ExitCode, FinalitySignature, FinalizedApprovalsWithId,
+        NodeState,
+    },
     utils::{Source, WithDir},
     NodeRng,
 };
+#[cfg(test)]
+use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 use memory_metrics::MemoryMetrics;
@@ -85,152 +91,142 @@ const DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK: Duration = Duration::from_secs(1
 // Note: The large enum size must be reigned in eventually. This is a stopgap for now.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ParticipatingEvent {
-    /// Small network event.
+    #[from]
+    ChainSynchronizer(chain_synchronizer::Event),
     #[from]
     SmallNetwork(small_network::Event<Message>),
-    /// Storage event.
     #[from]
     Storage(storage::Event),
-    /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
     #[from]
-    /// RPC server event.
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
     #[from]
-    /// REST server event.
     RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
-    /// Event stream server event.
     EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
-    /// Chainspec Loader event.
     ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
     #[from]
-    /// Consensus event.
     Consensus(#[serde(skip_serializing)] consensus::Event),
-    /// Deploy acceptor event.
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
-    /// Deploy fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
-    /// Deploy gossiper event.
     #[from]
     DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
-    /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
-    /// Block validator event.
     #[from]
     BlockValidator(#[serde(skip_serializing)] block_validator::Event),
-    /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event),
-    /// Diagnostics port event.
     #[from]
     DiagnosticsPort(diagnostics_port::Event),
-    /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
+    #[from]
+    BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
+    #[from]
+    BlockHeaderFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeader>),
+    #[from]
+    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
+    #[from]
+    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
+    #[from]
+    BlockHeaderByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeaderWithMetadata>),
+    #[from]
+    BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
+    #[from]
+    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
+    #[from]
+    BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
 
     // Requests
-    /// Contract runtime request.
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
-    /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
-    /// Network info request.
     #[from]
     NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
-    /// Deploy fetcher request.
+    #[from]
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
+    #[from]
+    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
+    #[from]
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
+    #[from]
+    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
+    #[from]
+    BlockHeaderByHeightFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<BlockHeaderWithMetadata>,
+    ),
+    #[from]
+    BlockAndDeploysFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAndDeploys>),
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
-    /// Block proposer request.
+    #[from]
+    FinalizedApprovalsFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
+    ),
+    #[from]
+    BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
-    /// Block validator request.
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
-    /// Metrics request.
     #[from]
     MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
-    /// Chainspec info request
     #[from]
     ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
-    /// Storage request.
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
-    /// Address gossip request.
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
-    /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
-    /// Consensus dump request.
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
 
     // Announcements
-    /// Control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
-    /// API server announcement.
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
-    /// DeployAcceptor announcement.
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
-    /// Consensus announcement.
     #[from]
     ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
-    /// ContractRuntime announcement.
     #[from]
     ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
-    /// Deploy Gossiper announcement.
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
-    /// Address Gossiper announcement.
     #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
-    /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
-    /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
-    /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement),
-    /// Incoming consensus network message.
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
-    /// Incoming deploy gossiper network message.
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
-    /// Incoming address gossiper network message.
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
-    /// Incoming net request network message.
     #[from]
     NetRequestIncoming(NetRequestIncoming),
-    /// Incoming net response network message.
     #[from]
     NetResponseIncoming(NetResponseIncoming),
-    /// Incoming trie request network message.
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
-    /// Incoming trie demand.
     #[from]
     TrieDemand(TrieDemand),
-    /// Incoming trie response network message.
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
-    /// Incoming finality signature network message.
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
-    /// Block proposer announcement.
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
 }
@@ -255,6 +251,7 @@ impl ReactorEvent for ParticipatingEvent {
     #[inline]
     fn description(&self) -> &'static str {
         match self {
+            ParticipatingEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
             ParticipatingEvent::BlockProposer(_) => "BlockProposer",
             ParticipatingEvent::Storage(_) => "Storage",
@@ -270,10 +267,32 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            ParticipatingEvent::BlockFetcher(_) => "BlockFetcher",
+            ParticipatingEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
+            ParticipatingEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
+            ParticipatingEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
+            ParticipatingEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
+            ParticipatingEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
+            ParticipatingEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
+            ParticipatingEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             ParticipatingEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            ParticipatingEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            ParticipatingEvent::BlockHeaderFetcherRequest(_) => "BlockHeaderFetcherRequest",
+            ParticipatingEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
+            ParticipatingEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
+            ParticipatingEvent::BlockHeaderByHeightFetcherRequest(_) => {
+                "BlockHeaderByHeightFetcherRequest"
+            }
+            ParticipatingEvent::BlockAndDeploysFetcherRequest(_) => "BlockAndDeploysFetcherRequest",
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            ParticipatingEvent::FinalizedApprovalsFetcherRequest(_) => {
+                "FinalizedApprovalsFetcherRequest"
+            }
+            ParticipatingEvent::BlockHeadersBatchFetcherRequest(_) => {
+                "BlockHeadersBatchFetcherRequest"
+            }
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
@@ -346,6 +365,9 @@ impl From<ConsensusRequest> for ParticipatingEvent {
 impl Display for ParticipatingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ParticipatingEvent::ChainSynchronizer(event) => {
+                write!(f, "chain synchronizer: {}", event)
+            }
             ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
@@ -365,6 +387,28 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            ParticipatingEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
+            ParticipatingEvent::BlockHeaderFetcher(event) => {
+                write!(f, "block header fetcher: {}", event)
+            }
+            ParticipatingEvent::TrieOrChunkFetcher(event) => {
+                write!(f, "trie or chunk fetcher: {}", event)
+            }
+            ParticipatingEvent::BlockByHeightFetcher(event) => {
+                write!(f, "block by height fetcher: {}", event)
+            }
+            ParticipatingEvent::BlockHeaderByHeightFetcher(event) => {
+                write!(f, "block header by height fetcher: {}", event)
+            }
+            ParticipatingEvent::BlockAndDeploysFetcher(event) => {
+                write!(f, "block and deploys fetcher: {}", event)
+            }
+            ParticipatingEvent::FinalizedApprovalsFetcher(event) => {
+                write!(f, "finalized approvals fetcher: {}", event)
+            }
+            ParticipatingEvent::BlockHeadersBatchFetcher(event) => {
+                write!(f, "block headers batch fetcher: {}", event)
+            }
             ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
@@ -375,8 +419,32 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             ParticipatingEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
-            ParticipatingEvent::DeployFetcherRequest(req) => {
-                write!(f, "deploy fetcher request: {}", req)
+            ParticipatingEvent::BlockFetcherRequest(request) => {
+                write!(f, "block fetcher request: {}", request)
+            }
+            ParticipatingEvent::BlockHeaderFetcherRequest(request) => {
+                write!(f, "block header fetcher request: {}", request)
+            }
+            ParticipatingEvent::TrieOrChunkFetcherRequest(request) => {
+                write!(f, "trie or chunk fetcher request: {}", request)
+            }
+            ParticipatingEvent::BlockByHeightFetcherRequest(request) => {
+                write!(f, "block by height fetcher request: {}", request)
+            }
+            ParticipatingEvent::BlockHeaderByHeightFetcherRequest(request) => {
+                write!(f, "block header by height fetcher request: {}", request)
+            }
+            ParticipatingEvent::BlockAndDeploysFetcherRequest(request) => {
+                write!(f, "block and deploys fetcher request: {}", request)
+            }
+            ParticipatingEvent::DeployFetcherRequest(request) => {
+                write!(f, "deploy fetcher request: {}", request)
+            }
+            ParticipatingEvent::FinalizedApprovalsFetcherRequest(request) => {
+                write!(f, "finalized approvals fetcher request: {}", request)
+            }
+            ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => {
+                write!(f, "block headers batch fetcher request: {}", request)
             }
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
@@ -444,6 +512,7 @@ pub(crate) struct ParticipatingInitConfig {
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) joining_outcome: JoiningOutcome,
+    pub(super) chain_sync_metrics: chain_synchronizer::Metrics,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) node_startup_instant: Instant,
@@ -489,12 +558,18 @@ pub(crate) struct Reactor {
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent,
     chain_synchronizer: ChainSynchronizer<ParticipatingEvent>,
+    block_by_hash_fetcher: Fetcher<Block>,
+    block_header_by_hash_fetcher: Fetcher<BlockHeader>,
+    trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
+    block_by_height_fetcher: Fetcher<BlockWithMetadata>,
+    block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
+    block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
+    finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
+    block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     diagnostics_port: DiagnosticsPort,
-
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
     memory_metrics: MemoryMetrics,
-
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
 }
@@ -538,6 +613,7 @@ impl reactor::Reactor for Reactor {
             storage,
             mut contract_runtime,
             joining_outcome,
+            chain_sync_metrics,
             event_stream_server,
             small_network_identity,
             node_startup_instant,
@@ -548,14 +624,14 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
         let mut effects = Effects::new();
         info!(?joining_outcome, "handling joining outcome");
-        let latest_block_header = match joining_outcome {
+        let highest_block_header = match joining_outcome {
             JoiningOutcome::ShouldExitForUpgrade => {
                 error!("invalid joining outcome to transition to participating reactor");
                 return Err(Error::InvalidJoiningOutcome);
             }
             JoiningOutcome::Synced {
-                latest_block_header,
-            } => latest_block_header,
+                highest_block_header,
+            } => highest_block_header,
             JoiningOutcome::RanUpgradeOrGenesis {
                 block_and_execution_effects:
                     BlockAndExecutionEffects {
@@ -564,6 +640,7 @@ impl reactor::Reactor for Reactor {
                         maybe_step_effect_and_upcoming_era_validators,
                     },
                 validators_to_sign_immediate_switch_block,
+                highest_block_header,
             } => {
                 // The outcome of joining in this case caused a new switch block to be created, so
                 // we need to emit the effects which would have been created by that execution, but
@@ -622,7 +699,7 @@ impl reactor::Reactor for Reactor {
                     );
                 }
 
-                block.header().clone()
+                highest_block_header
             }
         };
 
@@ -660,13 +737,14 @@ impl reactor::Reactor for Reactor {
             NodeState::Participating,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
-        let deploy_fetcher = Fetcher::new(
-            "deploy",
+        let fetcher_builder = FetcherBuilder::new(
             config.fetcher,
             registry,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
-        )?;
+        );
+
+        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
+        let deploy_fetcher = fetcher_builder.build("deploy")?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -677,7 +755,7 @@ impl reactor::Reactor for Reactor {
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
-            latest_block_header.height() + 1,
+            highest_block_header.height() + 1,
             chainspec.as_ref(),
             config.block_proposer,
         )?;
@@ -688,7 +766,7 @@ impl reactor::Reactor for Reactor {
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
-            config.network,
+            config.network.clone(),
             Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
@@ -703,14 +781,14 @@ impl reactor::Reactor for Reactor {
 
         let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            latest_block_header.next_block_era_id(),
+            highest_block_header.next_block_era_id(),
             storage.root_path(),
             our_secret_key,
             our_public_key,
             config.consensus,
             effect_builder,
             chainspec.clone(),
-            &latest_block_header,
+            &highest_block_header,
             next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
@@ -723,12 +801,12 @@ impl reactor::Reactor for Reactor {
         ));
 
         contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
-            &latest_block_header,
+            &highest_block_header,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
         ))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
-        let linear_chain = linear_chain::LinearChainComponent::new(
+        let linear_chain = LinearChainComponent::new(
             registry,
             protocol_version,
             chainspec.core_config.auction_delay,
@@ -738,6 +816,30 @@ impl reactor::Reactor for Reactor {
             chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
 
+        let (chain_synchronizer, chain_synchronizer_effects) =
+            ChainSynchronizer::<ParticipatingEvent>::new(
+                chainspec.clone(),
+                config.node.clone(),
+                config.network.clone(),
+                next_upgrade_activation_point,
+                chain_sync_metrics,
+                effect_builder,
+            )?;
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::ChainSynchronizer,
+            chain_synchronizer_effects,
+        ));
+
+        let block_by_hash_fetcher = fetcher_builder.build("block")?;
+        let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
+        let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
+        let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
+        let block_header_and_finality_signatures_by_height_fetcher =
+            fetcher_builder.build("block_header_by_height")?;
+        let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
+        let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
+        let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
+
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::SmallNetwork,
             small_network_effects,
@@ -746,17 +848,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
-
-        let chain_synchronizer = ChainSynchronizer::new(
-            chainspec.clone(),
-            config.node.clone(),
-            config.network.clone(),
-            next_upgrade_activation_point,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
-            effect_builder,
-            false,
-            registry,
-        )?;
 
         Ok((
             Reactor {
@@ -777,6 +868,14 @@ impl reactor::Reactor for Reactor {
                 block_validator,
                 linear_chain,
                 chain_synchronizer,
+                block_by_hash_fetcher,
+                block_header_by_hash_fetcher,
+                trie_or_chunk_fetcher,
+                block_by_height_fetcher,
+                block_header_and_finality_signatures_by_height_fetcher,
+                block_and_deploys_fetcher,
+                finalized_approvals_fetcher,
+                block_headers_batch_fetcher,
                 diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
@@ -859,6 +958,51 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::ChainSynchronizer(event) => reactor::wrap_effects(
+                ParticipatingEvent::ChainSynchronizer,
+                self.chain_synchronizer
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockFetcher,
+                self.block_by_hash_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockHeaderFetcher,
+                self.block_header_by_hash_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::TrieOrChunkFetcher,
+                self.trie_or_chunk_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockByHeightFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockByHeightFetcher,
+                self.block_by_height_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockHeaderByHeightFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockHeaderByHeightFetcher,
+                self.block_header_and_finality_signatures_by_height_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockAndDeploysFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockAndDeploysFetcher,
+                self.block_and_deploys_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::FinalizedApprovalsFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::FinalizedApprovalsFetcher,
+                self.finalized_approvals_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockHeadersBatchFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockHeadersBatchFetcher,
+                self.block_headers_batch_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::DiagnosticsPort(event) => reactor::wrap_effects(
                 ParticipatingEvent::DiagnosticsPort,
                 self.diagnostics_port
@@ -874,10 +1018,52 @@ impl reactor::Reactor for Reactor {
                 let event = ParticipatingEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
-            ParticipatingEvent::DeployFetcherRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                ParticipatingEvent::DeployFetcher(req.into()),
+            ParticipatingEvent::BlockFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::BlockFetcher,
+                self.block_by_hash_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::BlockHeaderFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::BlockHeaderFetcher,
+                self.block_header_by_hash_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::TrieOrChunkFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::TrieOrChunkFetcher,
+                self.trie_or_chunk_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::BlockByHeightFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::BlockByHeightFetcher,
+                self.block_by_height_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::BlockHeaderByHeightFetcherRequest(request) => {
+                reactor::wrap_effects(
+                    ParticipatingEvent::BlockHeaderByHeightFetcher,
+                    self.block_header_and_finality_signatures_by_height_fetcher
+                        .handle_event(effect_builder, rng, request.into()),
+                )
+            }
+            ParticipatingEvent::BlockAndDeploysFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::BlockAndDeploysFetcher,
+                self.block_and_deploys_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::DeployFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::DeployFetcher,
+                self.deploy_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::FinalizedApprovalsFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::FinalizedApprovalsFetcher,
+                self.finalized_approvals_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::BlockHeadersBatchFetcher,
+                self.block_headers_batch_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
             ),
             ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
                 effect_builder,
@@ -1154,6 +1340,12 @@ impl reactor::Reactor for Reactor {
                     linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
                 );
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event = ParticipatingEvent::ChainSynchronizer(
+                    chain_synchronizer::Event::GotUpgradeActivationPoint(
+                        next_upgrade.activation_point(),
+                    ),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => self.dispatch_event(
@@ -1182,96 +1374,19 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
-                // TODO: Code to be refactored, we do not want to handle all this logic inside the
-                //       routing function.
-                let event = match message {
-                    NetResponse::Deploy(ref serialized_item) => {
-                        let deploy: Box<Deploy> = match bincode::deserialize::<
-                            FetchedOrNotFound<Deploy, DeployHash>,
-                        >(serialized_item)
-                        {
-                            Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                            Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                                warn!(
-                                    "peer did not have deploy with hash {}: {}",
-                                    sender, deploy_hash
-                                );
-                                return Effects::new();
-                            }
-                            Err(error) => {
-                                error!("failed to decode deploy from {}: {}", sender, error);
-                                return Effects::new();
-                            }
-                        };
-
-                        ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
-                            deploy,
-                            source: Source::Peer(sender),
-                            maybe_responder: None,
-                        })
-                    }
-                    NetResponse::FinalizedApprovals(_) => {
-                        debug!(
-                            "cannot handle get response for finalized approvals from {}",
-                            sender
-                        );
-                        return Effects::new();
-                    }
-                    NetResponse::Block(_) => {
-                        error!(
-                            "cannot handle get response for block-by-hash from {}",
-                            sender
-                        );
-                        return Effects::new();
-                    }
-                    NetResponse::GossipedAddress(_) => {
-                        error!(
-                            "cannot handle get response for gossiped-address from {}",
-                            sender
-                        );
-                        return Effects::new();
-                    }
-                    NetResponse::BlockAndMetadataByHeight(_) => {
-                        error!(
-                            "cannot handle get response for block-by-height from {}",
-                            sender
-                        );
-                        return Effects::new();
-                    }
-                    NetResponse::BlockHeaderByHash(_) => {
-                        error!(
-                            "cannot handle get response for block-header-by-hash from {}",
-                            sender
-                        );
-                        return Effects::new();
-                    }
-                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                        error!(
-                            "cannot handle get response for \
-                            block-header-and-finality-signatures-by-height from {}",
-                            sender
-                        );
-                        return Effects::new();
-                    }
-                    NetResponse::BlockAndDeploys(_) => {
-                        error!(
-                            "cannot handle get response for \
-                            block-and-deploys from {}",
-                            sender
-                        );
-
-                        return Effects::new();
-                    }
-                    NetResponse::BlockHeadersBatch(_) => {
-                        error!(
-                            ?sender,
-                            "cannot handle get response for block-headers-batch",
-                        );
-                        return Effects::new();
-                    }
-                };
-
-                self.dispatch_event(effect_builder, rng, event)
+                let verifiable_chunked_hash_activation = self
+                    .chainspec_loader
+                    .chainspec()
+                    .protocol_config
+                    .verifiable_chunked_hash_activation;
+                reactor::handle_get_response(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    message,
+                    verifiable_chunked_hash_activation,
+                )
             }
             ParticipatingEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
                 ParticipatingEvent::ContractRuntime,
@@ -1283,9 +1398,18 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, demand.into()),
             ),
-            ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
-                error!("cannot handle get response for read-trie from {}", sender);
-                Effects::new()
+            ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
+                reactor::handle_fetch_response::<Self, TrieOrChunk>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    &message.0,
+                    self.chainspec_loader
+                        .chainspec()
+                        .protocol_config
+                        .verifiable_chunked_hash_activation,
+                )
             }
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
@@ -1320,7 +1444,7 @@ impl reactor::Reactor for Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    fn node_id(&self) -> crate::types::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }

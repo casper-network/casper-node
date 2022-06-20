@@ -1,36 +1,45 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+};
 
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
+use casper_types::PublicKey;
 
-use super::Error;
+use super::{Error, FastSyncOutcome};
 use crate::{
     contract_runtime::{BlockAndExecutionEffects, BlockExecutionError},
-    types::{ActivationPoint, BlockHash, BlockHeader},
+    types::{ActivationPoint, BlockHeader},
 };
 
 #[derive(Debug, Serialize)]
 pub(crate) enum Event {
-    /// The result of getting the highest block from storage.
-    HighestBlockHash(Option<BlockHash>),
-    /// The result of the sync task.
-    SyncResult(Result<BlockHeader, Error>),
+    /// The result of running the fast sync task.
+    FastSyncResult(Result<FastSyncOutcome, Error>),
     /// The result of contract runtime running the genesis process.
     CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
     /// The result of contract runtime running the upgrade process.
     UpgradeResult {
-        upgrade_block_header: BlockHeader,
+        switch_block_header_before_upgrade: BlockHeader,
+        is_emergency_upgrade: bool,
         #[serde(skip_serializing)]
         result: Result<UpgradeSuccess, engine_state::Error>,
     },
     /// The result of executing a finalized block.
     ExecuteImmediateSwitchBlockResult {
-        maybe_upgrade_block_header: Option<BlockHeader>,
+        is_emergency_upgrade: bool,
         #[serde(skip_serializing)]
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     },
-
+    /// The result of running the fast sync task again after an emergency upgrade.
+    FastSyncAfterEmergencyUpgradeResult {
+        #[serde(skip_serializing)]
+        immediate_switch_block_and_exec_effects: BlockAndExecutionEffects,
+        validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
+        result: Result<FastSyncOutcome, Error>,
+    },
     /// A new upgrade activation point was announced.
     GotUpgradeActivationPoint(ActivationPoint),
 }
@@ -38,14 +47,8 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::HighestBlockHash(Some(block_hash)) => {
-                write!(formatter, "highest block hash {}", block_hash)
-            }
-            Event::HighestBlockHash(None) => {
-                write!(formatter, "no highest block hash")
-            }
-            Event::SyncResult(result) => {
-                write!(formatter, "sync result: {:?}", result)
+            Event::FastSyncResult(result) => {
+                write!(formatter, "fast sync result: {:?}", result)
             }
             Event::CommitGenesisResult(result) => {
                 write!(formatter, "commit genesis result: {:?}", result)
@@ -58,6 +61,16 @@ impl Display for Event {
                     formatter,
                     "execute immediate switch block result: {:?}",
                     result
+                )
+            }
+            Event::FastSyncAfterEmergencyUpgradeResult {
+                result: fast_sync_result,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "fast sync after emergency upgrade result: {:?}",
+                    fast_sync_result
                 )
             }
             Event::GotUpgradeActivationPoint(activation_point) => {

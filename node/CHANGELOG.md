@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
-* Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
+* Add `sync_to_genesis` to `[node]` config section, which if set to `true` will cause the node to retrieve all blocks, deploys and global state back to genesis while running in participating mode.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 * A diagnostic port can now be enabled via the `[diagnostics_port]` section in the configuration file. See the `README.md` for details.
