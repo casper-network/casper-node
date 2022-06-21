@@ -350,7 +350,7 @@ fn transfer_to_account_multiple_native_transfers(
         }
     }
     if use_scratch {
-        builder.write_scratch_to_lmdb();
+        builder.write_scratch_to_db();
     }
     // flush to disk only after entire block (simulates manual_sync_enabled=true config entry)
     builder.flush_environment();

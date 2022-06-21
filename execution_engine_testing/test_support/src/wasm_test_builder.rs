@@ -59,7 +59,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
+            Bids, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights, WithdrawPurses,
             ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
             METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
@@ -359,7 +359,7 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
+    /// You MUST call write_scratch_to_db to flush these changes to LmdbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
@@ -400,12 +400,12 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Commit scratch to global state, and reset the scratch cache.
-    pub fn write_scratch_to_lmdb(&mut self) -> &mut Self {
+    pub fn write_scratch_to_db(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         if let Some(scratch) = self.scratch_engine_state.take() {
             let new_state_root = self
                 .engine_state
-                .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
+                .write_scratch_to_db(prestate_hash, scratch.into_inner())
                 .unwrap();
             self.post_state_hash = Some(new_state_root);
         }
@@ -888,11 +888,23 @@ where
         Some(exec_results.iter().map(Rc::clone).collect())
     }
 
-    /// Returns the results of a specific exec.
-    pub fn get_exec_result(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
+    /// Returns the results of all execs.
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result` instead")]
+    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
+        &self.exec_results
+    }
+
+    /// Returns the owned results of a specific exec.
+    pub fn get_exec_result_owned(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.get(index)?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
+    }
+
+    /// Returns the results of a specific exec.
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
+    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
+        self.exec_results.get(index)
     }
 
     /// Returns a count of exec results.
@@ -1056,7 +1068,7 @@ where
     /// Returns a `Vec<Gas>` representing execution consts.
     pub fn exec_costs(&self, index: usize) -> Vec<Gas> {
         let exec_results = self
-            .get_exec_result(index)
+            .get_exec_result_owned(index)
             .expect("should have exec response");
         utils::get_exec_costs(exec_results)
     }
@@ -1092,7 +1104,7 @@ where
 
     /// Returns the error message of the last exec.
     pub fn exec_error_message(&self, index: usize) -> Option<String> {
-        let response = self.get_exec_result(index)?;
+        let response = self.get_exec_result_owned(index)?;
         Some(utils::get_error_message(response))
     }
 
@@ -1160,7 +1172,7 @@ where
     }
 
     /// Gets [`WithdrawPurses`].
-    pub fn get_withdraws(&mut self) -> WithdrawPurses {
+    pub fn get_withdraw_purses(&mut self) -> WithdrawPurses {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -1188,6 +1200,25 @@ where
         }
 
         ret
+    }
+
+    /// Gets [`UnbondingPurses`].
+    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+        let withdraw_purses = self.get_withdraw_purses();
+        let unbonding_purses: UnbondingPurses = withdraw_purses
+            .iter()
+            .map(|(key, withdraw_purse)| {
+                (
+                    key.to_owned(),
+                    withdraw_purse
+                        .iter()
+                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
+                        .collect::<Vec<UnbondingPurse>>(),
+                )
+            })
+            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
+        unbonding_purses
     }
 
     /// Gets all `[Key::Balance]`s in global state.

@@ -6,7 +6,7 @@
 use std::str;
 
 use async_trait::async_trait;
-use casper_execution_engine::core::engine_state;
+use casper_execution_engine::core::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
@@ -125,43 +125,45 @@ impl RpcWithParams for SpeculativeExec {
             )),
             Err(error) => {
                 let rpc_error = match error {
-                    engine_state::Error::RootNotFound(_) => {
-                        Error::new(ErrorCode::NoSuchStateRoot, "")
-                    }
-                    engine_state::Error::WasmPreprocessing(error) => {
+                    EngineStateError::RootNotFound(_) => Error::new(ErrorCode::NoSuchStateRoot, ""),
+                    EngineStateError::WasmPreprocessing(error) => {
                         Error::new(ErrorCode::InvalidDeploy, &format!("{}", error))
                     }
-                    engine_state::Error::InvalidDeployItemVariant(error) => {
+                    EngineStateError::InvalidDeployItemVariant(error) => {
                         Error::new(ErrorCode::InvalidDeploy, &error)
                     }
-                    engine_state::Error::InvalidProtocolVersion(_) => Error::new(
+                    EngineStateError::InvalidProtocolVersion(_) => Error::new(
                         ErrorCode::InvalidDeploy,
                         &format!("deploy used invalid protocol version {}", error),
                     ),
-                    engine_state::Error::Deploy => Error::new(ErrorCode::InvalidDeploy, ""),
-                    engine_state::Error::Genesis(_)
-                    | engine_state::Error::WasmSerialization(_)
-                    | engine_state::Error::Exec(_)
-                    | engine_state::Error::Storage(_)
-                    | engine_state::Error::Authorization
-                    | engine_state::Error::InsufficientPayment
-                    | engine_state::Error::GasConversionOverflow
-                    | engine_state::Error::Finalization
-                    | engine_state::Error::Bytesrepr(_)
-                    | engine_state::Error::Mint(_)
-                    | engine_state::Error::InvalidKeyVariant
-                    | engine_state::Error::ProtocolUpgrade(_)
-                    | engine_state::Error::CommitError(_)
-                    | engine_state::Error::MissingSystemContractRegistry
-                    | engine_state::Error::MissingSystemContractHash(_)
-                    | engine_state::Error::RuntimeStackOverflow
-                    | engine_state::Error::FailedToGetWithdrawKeys
-                    | engine_state::Error::FailedToGetStoredWithdraws
-                    | engine_state::Error::FailedToGetWithdrawPurses
-                    | engine_state::Error::FailedToRetrieveUnbondingDelay
-                    | engine_state::Error::FailedToRetrieveEraId => {
+                    EngineStateError::Deploy => Error::new(ErrorCode::InvalidDeploy, ""),
+                    EngineStateError::Genesis(_)
+                    | EngineStateError::WasmSerialization(_)
+                    | EngineStateError::Exec(_)
+                    | EngineStateError::Storage(_)
+                    | EngineStateError::Authorization
+                    | EngineStateError::InsufficientPayment
+                    | EngineStateError::GasConversionOverflow
+                    | EngineStateError::Finalization
+                    | EngineStateError::Bytesrepr(_)
+                    | EngineStateError::Mint(_)
+                    | EngineStateError::InvalidKeyVariant
+                    | EngineStateError::ProtocolUpgrade(_)
+                    | EngineStateError::CommitError(_)
+                    | EngineStateError::MissingSystemContractRegistry
+                    | EngineStateError::MissingSystemContractHash(_)
+                    | EngineStateError::RuntimeStackOverflow
+                    | EngineStateError::FailedToGetWithdrawKeys
+                    | EngineStateError::FailedToGetStoredWithdraws
+                    | EngineStateError::FailedToGetWithdrawPurses
+                    | EngineStateError::FailedToRetrieveUnbondingDelay
+                    | EngineStateError::FailedToRetrieveEraId => {
                         Error::new(ReservedErrorCode::InternalError, &format!("{}", error))
                     }
+                    _ => Error::new(
+                        ReservedErrorCode::InternalError,
+                        &format!("Unhandled engine state error: {}", error),
+                    ),
                 };
                 Err(rpc_error)
             }

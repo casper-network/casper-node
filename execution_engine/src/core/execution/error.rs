@@ -16,6 +16,7 @@ use crate::{
 
 /// Possible execution errors.
 #[derive(Error, Debug, Clone)]
+#[non_exhaustive]
 pub enum Error {
     /// WASM interpreter error.
     #[error("Interpreter error: {}", _0)]
