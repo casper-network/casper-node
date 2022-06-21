@@ -3004,13 +3004,21 @@ mod tests {
         );
     }
 
-    struct TestBlock {
+    // Utility struct that can be turned into an iterator that generates
+    // continuous and descending blocks (i.e. blocks that have consecutive height
+    // and parent hashes are correctly set). The height of the first block
+    // in a series is choosen randomly.
+    //
+    // Additionally, this struct allows to generate switch blocks at a specific location in the
+    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
+    // cause the 2nd and 4th blocks to be switch blocks.
+    struct TestBlockSpec {
         block: Block,
         rng: TestRng,
         switch_block_indices: Option<Vec<u64>>,
     }
 
-    impl TestBlock {
+    impl TestBlockSpec {
         fn new(test_rng: TestRng, switch_block_indices: Option<Vec<u64>>) -> Self {
             let mut rng = test_rng;
             let block = Block::random(&mut rng);
@@ -3094,7 +3102,7 @@ mod tests {
     #[test]
     fn test_block_iter() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, None);
+        let test_block = TestBlockSpec::new(rng, None);
         let mut block_batch = test_block.into_iter().take(100);
         let mut parent_block: Block = block_batch.next().unwrap();
         for current_block in block_batch {
@@ -3117,7 +3125,7 @@ mod tests {
         let switch_block_indices = vec![0, 10, 76];
 
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, Some(switch_block_indices.clone()));
+        let test_block = TestBlockSpec::new(rng, Some(switch_block_indices.clone()));
         let block_batch: Vec<_> = test_block.into_iter().take(100).collect();
 
         let base_height = block_batch.first().expect("should have block").height();
@@ -3138,7 +3146,7 @@ mod tests {
     #[test]
     fn block_batch_is_continuous_and_descending() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, None);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3182,7 +3190,7 @@ mod tests {
     #[test]
     fn block_headers_batch_from_vec() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, None);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
         let mut batch = test_block_iter
@@ -3220,7 +3228,7 @@ mod tests {
         );
 
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, None);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3266,7 +3274,7 @@ mod tests {
     #[test]
     fn block_headers_batch_validate() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, None);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3351,7 +3359,7 @@ mod tests {
         let switch_block_indices = vec![1, 5];
 
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng, Some(switch_block_indices.clone()));
+        let test_block = TestBlockSpec::new(rng, Some(switch_block_indices.clone()));
 
         let mut test_block_iter = test_block.into_iter();
 
