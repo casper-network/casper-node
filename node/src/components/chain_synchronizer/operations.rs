@@ -45,6 +45,8 @@ use crate::{
     utils::work_queue::WorkQueue,
 };
 
+const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
+
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
 /// is dropped, the specified gauge is updated with the duration since the scope was entered.
@@ -1388,6 +1390,32 @@ impl BlockSignaturesCollector {
     }
 }
 
+// Fetches the finality signatures from the given peer. In case of timeout, it'll
+// retry up to `retries` times. Other errors interrupt the process immediately.
+async fn fetch_finality_signatures_with_retry(
+    block_hash: BlockHash,
+    peer: NodeId,
+    retries: usize,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<FetchedData<BlockSignatures>, FetcherError<BlockSignatures>> {
+    for _ in 0..retries {
+        let maybe_signatures = ctx
+            .effect_builder
+            .fetch::<BlockSignatures>(block_hash, peer)
+            .await;
+        match maybe_signatures {
+            Ok(result) => return Ok(result),
+            Err(FetcherError::TimedOut { .. }) => continue,
+            Err(_) => return maybe_signatures,
+        }
+    }
+
+    Err(FetcherError::TimedOut {
+        id: block_hash,
+        peer,
+    })
+}
+
 async fn fetch_finality_signatures_by_block_hash(
     block_hash: BlockHash,
     validator_weights: &BTreeMap<PublicKey, U512>,
@@ -1402,11 +1430,14 @@ async fn fetch_finality_signatures_by_block_hash(
     let mut sig_collector = BlockSignaturesCollector::new();
 
     for peer in peer_list {
-        let maybe_signatures = match ctx
-            .effect_builder
-            .fetch::<BlockSignatures>(block_hash, peer)
-            .await
-        {
+        let fetched_signatures = fetch_finality_signatures_with_retry(
+            block_hash,
+            peer,
+            FINALITY_SIGNATURE_FETCH_RETRY_COUNT,
+            ctx,
+        )
+        .await;
+        let maybe_signatures = match fetched_signatures {
             Ok(FetchedData::FromStorage { item, .. }) => {
                 trace!(
                     ?block_hash,
