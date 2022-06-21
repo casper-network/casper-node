@@ -91,6 +91,12 @@ impl Metrics {
             EXPONENTIAL_BUCKET_COUNT,
         )?;
 
+        // Start from 1 millsecond
+        // Factor by 2
+        // After 10 elements we get to 1s.
+        // Anything above that should be a warning signal.
+        let tiny_buckets = prometheus::exponential_buckets(0.001, 2.0, 10)?;
+
         let chain_height = IntGauge::new(CHAIN_HEIGHT_NAME, CHAIN_HEIGHT_HELP)?;
         registry.register(Box::new(chain_height.clone()))?;
 
@@ -156,19 +162,19 @@ impl Metrics {
                 registry,
                 GET_TRIE_NAME,
                 GET_TRIE_HELP,
-                common_buckets.clone(),
+                tiny_buckets.clone(),
             )?,
             put_trie: utils::register_histogram_metric(
                 registry,
                 PUT_TRIE_NAME,
                 PUT_TRIE_HELP,
-                common_buckets.clone(),
+                tiny_buckets.clone(),
             )?,
             missing_trie_keys: utils::register_histogram_metric(
                 registry,
                 MISSING_TRIE_KEYS_NAME,
                 MISSING_TRIE_KEYS_HELP,
-                common_buckets.clone(),
+                tiny_buckets,
             )?,
             chain_height,
             exec_block: utils::register_histogram_metric(

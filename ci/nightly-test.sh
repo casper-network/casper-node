@@ -75,6 +75,7 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=10 skip_setup=true
 }
 
+start_run_teardown "client.sh"
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
 start_run_teardown "itst06.sh"

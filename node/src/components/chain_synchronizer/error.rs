@@ -71,16 +71,6 @@ pub(crate) enum Error {
     #[error(transparent)]
     FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
 
-    #[error(
-        "executed block is not the same as downloaded block. \
-         executed block: {executed_block:?}, \
-         downloaded block: {downloaded_block:?}"
-    )]
-    ExecutedBlockIsNotTheSameAsDownloadedBlock {
-        executed_block: Box<Block>,
-        downloaded_block: Box<Block>,
-    },
-
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),
 

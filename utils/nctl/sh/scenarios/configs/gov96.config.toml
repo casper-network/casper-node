@@ -277,6 +277,13 @@ qps_limit = 100
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
 
+# Address to which the speculative execution endpoint binds to.
+speculative_execution_address = "0.0.0.0:7778"
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+# Setting to 0 disables the endpoint.
+speculative_execution_qps_limit = 0
 
 # ==============================================
 # Configuration options for the REST HTTP server

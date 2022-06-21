@@ -42,7 +42,7 @@ const MAX_EVENT_COUNT: u32 = 100_000_000;
 const BUFFER_LENGTH: u32 = EVENT_COUNT / 2;
 /// The maximum amount of time to wait for a test server to complete.  If this time is exceeded, the
 /// test has probably hung, and should be deemed to have failed.
-const MAX_TEST_TIME: Duration = Duration::from_secs(1);
+const MAX_TEST_TIME: Duration = Duration::from_secs(2);
 /// The duration of the sleep called between each event being sent by the server.
 const DELAY_BETWEEN_EVENTS: Duration = Duration::from_millis(1);
 
