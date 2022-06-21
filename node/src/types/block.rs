@@ -3379,4 +3379,25 @@ mod tests {
 
         assert_eq!(expected_switch_block_height, actual_switch_block_height);
     }
+
+    #[test]
+    fn returns_no_latest_switch_block_when_absent() {
+        let rng = TestRng::new();
+        let test_block = TestBlockSpec::new(rng, None);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(10)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+        batch.reverse();
+
+        let batch = BlockHeadersBatch::new(batch);
+
+        let actual_switch_block_height = batch.latest_switch_block_header();
+
+        assert!(actual_switch_block_height.is_none());
+    }
 }
