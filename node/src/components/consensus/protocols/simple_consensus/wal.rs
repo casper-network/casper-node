@@ -176,6 +176,8 @@ impl<C: Context> ReadWal<C> {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::from_fn;
+
     use crate::components::consensus::{
         cl_context::{ClContext, Keypair},
         protocols::common,
@@ -193,8 +195,7 @@ mod tests {
     static ALICE_PUBLIC_KEY: Lazy<PublicKey> =
         Lazy::new(|| PublicKey::from(Lazy::force(&ALICE_SECRET_KEY)));
 
-    #[test]
-    fn test_read_write_wal() {
+    fn create_message_fn() -> Box<dyn Fn(RoundId, Content<ClContext>) -> SignedMessage<ClContext>> {
         let alice_keypair = Keypair::from(std::sync::Arc::new(
             SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).unwrap(),
         ));
@@ -206,7 +207,7 @@ mod tests {
             weights.iter().cloned().collect(),
         );
         let instance_id = ClContext::hash(INSTANCE_ID_DATA);
-        let create_message = |round_id, content: Content<ClContext>| {
+        Box::new(move |round_id, content: Content<ClContext>| {
             let validator_idx = validators.get_index(alice_keypair.public_key()).unwrap();
             SignedMessage::sign_new(
                 round_id,
@@ -215,7 +216,14 @@ mod tests {
                 validator_idx,
                 &alice_keypair,
             )
-        };
+        })
+    }
+
+    #[test]
+    // Tests the functionality of the ReadWal and WriteWal by constructing one and manipulating it.
+    fn test_read_write_wal() {
+        // Create a bunch of test entries
+        let create_message = create_message_fn();
         let mut entries = vec![
             Entry::SignedMessage(create_message(0, Content::Vote(true))),
             Entry::SignedMessage(create_message(1, Content::Vote(false))),
@@ -230,30 +238,38 @@ mod tests {
                 create_message(0, Content::Echo(ClContext::hash(&[4u8; 1]))).signature,
             ),
         ];
+
+        // Create a temporary directory which will be removed upon dropping the dir variable,
+        // using it to store the WAL file.
         let dir = tempdir().unwrap();
         let path = dir.path().join("wal");
-        let mut read_wal: ReadWal<ClContext> = ReadWal::new(&path).unwrap();
-        matches!(read_wal.read_next_entry(), Ok(None));
+
+        let read_entries = || {
+            let mut read_wal: ReadWal<ClContext> = ReadWal::new(&path).unwrap();
+            from_fn(move || read_wal.read_next_entry().unwrap()).collect::<Vec<_>>()
+        };
+
+        assert_eq!(read_entries(), vec![]);
+
+        // Record all of the test entries into the WAL file
         let mut write_wal: WriteWal<ClContext> = WriteWal::new(&path).unwrap();
-        for entry in entries.iter() {
+
+        entries.iter().for_each(move |entry| {
             write_wal.record_entry(entry).unwrap();
-        }
+        });
 
-        let mut read_entries = vec![];
+        // Assure that the entries were properly written
+        assert_eq!(entries, read_entries());
 
+        // Now, we go through and corrupt each entry and ensure that its actually removed by the
+        // ReadWal when we fail to read it.
         loop {
-            match read_wal.read_next_entry().unwrap() {
-                Some(entry) => read_entries.push(entry),
-                None => break,
-            }
-        }
-
-        assert_eq!(entries, read_entries);
-
-        loop {
+            // If there are no more entries, we're done
             if entries.len() == 0 {
                 break;
             }
+
+            // We create a File in order to drop the last byte from the file
             let mut file = OpenOptions::new()
                 .append(true)
                 .create(true)
@@ -264,20 +280,14 @@ mod tests {
             let position = file.stream_position().unwrap();
             file.set_len(position).unwrap();
 
+            // We pop the entry off from our in-memory list of entries, then check if that equals
+            // the on-disk WAL
             entries.pop().unwrap();
 
-            let mut read_wal: ReadWal<ClContext> = ReadWal::new(&path).unwrap();
-
-            let mut read_entries = vec![];
-
-            loop {
-                match read_wal.read_next_entry().unwrap() {
-                    Some(entry) => read_entries.push(entry),
-                    None => break,
-                }
-            }
-
-            assert_eq!(entries, read_entries);
+            assert_eq!(entries, read_entries());
         }
+
+        // Finally, we assure that there are no more entries at all in the WAL
+        assert_eq!(entries, read_entries());
     }
 }
