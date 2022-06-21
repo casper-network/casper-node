@@ -5,9 +5,9 @@ use num::rational::Ratio;
 
 use crate::{components::consensus::error::FinalitySignatureError, types::BlockSignatures};
 
-/// Computes the lower bound for the fraction of weight of signatures that will be considered
+/// Computes the quorum for the fraction of weight of signatures that will be considered
 /// sufficient.
-fn lower_bound(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
+fn quorum_fraction(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
     (finality_threshold_fraction + 1) / 2
 }
 
@@ -30,7 +30,7 @@ pub(crate) fn check_sufficient_finality_signatures(
                     trusted_validator_weights: trusted_validator_weights.clone(),
                     block_signatures: Box::new(block_signatures.clone()),
                     bogus_validator_public_key: Box::new(public_key.clone()),
-                })
+                });
             }
             Some(validator_weight) => {
                 if minimum_weight.map_or(true, |min_w| *validator_weight < min_w) {
@@ -49,11 +49,11 @@ pub(crate) fn check_sufficient_finality_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = lower_bound(finality_threshold_fraction);
+    let quorum_fraction = quorum_fraction(finality_threshold_fraction);
     // Verify: signature_weight / total_weight >= lower_bound
     // Equivalent to the following
-    if signature_weight * U512::from(*lower_bound.denom())
-        <= total_weight * U512::from(*lower_bound.numer())
+    if signature_weight * U512::from(*quorum_fraction.denom())
+        <= total_weight * U512::from(*quorum_fraction.numer())
     {
         return Err(FinalitySignatureError::InsufficientWeightForFinality {
             trusted_validator_weights: trusted_validator_weights.clone(),
@@ -66,8 +66,8 @@ pub(crate) fn check_sufficient_finality_signatures(
 
     // Verify: the total weight decreased by the smallest weight of a single signature should be
     // below threshold (anti-spam countermeasure).
-    if weight_minus_minimum * U512::from(*lower_bound.denom())
-        > total_weight * U512::from(*lower_bound.numer())
+    if weight_minus_minimum * U512::from(*quorum_fraction.denom())
+        > total_weight * U512::from(*quorum_fraction.numer())
     {
         return Err(FinalitySignatureError::TooManySignatures {
             trusted_validator_weights: trusted_validator_weights.clone(),
@@ -93,7 +93,7 @@ pub(crate) fn get_minimal_set_of_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = lower_bound(finality_threshold_fraction);
+    let lower_bound = quorum_fraction(finality_threshold_fraction);
 
     let mut sig_weights: Vec<_> = block_signatures
         .proofs
@@ -150,7 +150,10 @@ mod tests {
         EraId, PublicKey, SecretKey, U512,
     };
 
-    use crate::types::{BlockHash, BlockSignatures};
+    use crate::{
+        components::consensus::error::FinalitySignatureError,
+        types::{BlockHash, BlockSignatures},
+    };
 
     use super::{check_sufficient_finality_signatures, get_minimal_set_of_signatures};
 
@@ -229,5 +232,85 @@ mod tests {
         test_number_of_validators(&mut rng, 8, ftt, 6);
         test_number_of_validators(&mut rng, 9, ftt, 7);
         test_number_of_validators(&mut rng, 10, ftt, 7);
+    }
+
+    #[test]
+    fn finality_signatures_sufficiency() {
+        let mut rng = TestRng::new();
+
+        // Total validator weights is 12 (1 for each validator).
+        let (validators, validator_weights) = generate_validators(20);
+
+        let finality_threshold_fraction = Ratio::new_raw(1, 3);
+
+        // for 20 validators with 20 total validator weight,
+        //   and `finality_threshold_fraction` = 1/3 (~=  6.666)
+        //   and the `quorum fraction` = 2/3         (~= 13.333)
+        //
+        // we need signaturess of weight:
+        //   - 13 or less for `InsufficientWeightForFinality`
+        //   - 14 for Ok
+        //   - 15 or more for `TooManySignatures`
+
+        let insufficient = create_signatures(&mut rng, &validators, 13);
+        let just_enough_weight = create_signatures(&mut rng, &validators, 14);
+        let too_many = create_signatures(&mut rng, &validators, 15);
+
+        let result = check_sufficient_finality_signatures(
+            &validator_weights,
+            finality_threshold_fraction,
+            &insufficient,
+        );
+        assert!(matches!(
+            result,
+            Err(FinalitySignatureError::InsufficientWeightForFinality { .. })
+        ));
+
+        let result = check_sufficient_finality_signatures(
+            &validator_weights,
+            finality_threshold_fraction,
+            &just_enough_weight,
+        );
+        assert!(result.is_ok());
+
+        let result = check_sufficient_finality_signatures(
+            &validator_weights,
+            finality_threshold_fraction,
+            &too_many,
+        );
+        assert!(matches!(
+            result,
+            Err(FinalitySignatureError::TooManySignatures { .. })
+        ));
+    }
+
+    #[test]
+    fn detects_bogus_validator() {
+        let mut rng = TestRng::new();
+
+        let (validators, validator_weights) = generate_validators(20);
+        let finality_threshold_fraction = Ratio::new_raw(1, 3);
+
+        // Generate correct signatures.
+        let mut signatures = create_signatures(&mut rng, &validators, 14);
+        let result = check_sufficient_finality_signatures(
+            &validator_weights,
+            finality_threshold_fraction,
+            &signatures,
+        );
+        assert!(result.is_ok());
+
+        // Smuggle a bogus proof in.
+        let (_, pub_key) = generate_ed25519_keypair();
+        signatures.insert_proof(pub_key, *signatures.proofs.iter().next().unwrap().1);
+        let result = check_sufficient_finality_signatures(
+            &validator_weights,
+            finality_threshold_fraction,
+            &signatures,
+        );
+        assert!(matches!(
+            result,
+            Err(FinalitySignatureError::BogusValidator { .. })
+        ));
     }
 }
