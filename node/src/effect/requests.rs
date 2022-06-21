@@ -436,14 +436,14 @@ pub(crate) enum StorageRequest {
     },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
-        /// The hash for the request
+        /// The hash for the request.
         block_hash: BlockHash,
         /// Responder to call with the result.
         responder: Responder<Option<BlockSignatures>>,
     },
     /// Get sufficient finality signatures for a Block hash.
     GetSufficientBlockSignatures {
-        /// The hash for the request
+        /// The hash for the request.
         block_hash: BlockHash,
         /// Responder to call with the result.
         responder: Responder<Option<BlockSignatures>>,

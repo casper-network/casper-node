@@ -1145,6 +1145,7 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 
 // Fetches headers starting from `trusted_block` till the Genesis.
+// Returns the block header of the heighest switch block, if available.
 async fn fetch_headers_till_genesis(
     trusted_block: &Block,
     ctx: &ChainSyncContext<'_>,
