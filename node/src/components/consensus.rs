@@ -50,7 +50,7 @@ use crate::{
     types::{BlockHash, BlockHeader, BlockPayload, NodeId},
     NodeRng,
 };
-use protocols::{highway::HighwayProtocol, simple_consensus::SimpleConsensus};
+use protocols::{highway::HighwayProtocol, zug::Zug};
 
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};

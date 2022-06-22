@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::components::consensus::{
     highway_core::validators::ValidatorIndex,
-    protocols::simple_consensus::{Fault, RoundId, SimpleConsensus},
+    protocols::zug::{Fault, RoundId, Zug},
     traits::Context,
 };
 
@@ -34,7 +34,7 @@ impl ParticipationStatus {
     /// Returns a `Status` for a validator unless they are honest and online.
     pub(super) fn for_index<C: Context + 'static>(
         idx: ValidatorIndex,
-        sc: &SimpleConsensus<C>,
+        sc: &Zug<C>,
     ) -> Option<ParticipationStatus> {
         if let Some(fault) = sc.faults.get(&idx) {
             return Some(match fault {

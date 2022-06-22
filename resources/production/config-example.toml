@@ -68,9 +68,9 @@ max_execution_delay = 3
 
 
 # ==========================================
-# Configuration options for simple consensus
+# Configuration options for Zug
 # ==========================================
-[consensus.simple_consensus]
+[consensus.zug]
 
 # If the current era's protocol state has not progressed for this long, shut down.
 # '0sec' means it is disabled and we never shutdown due to lack of progress.

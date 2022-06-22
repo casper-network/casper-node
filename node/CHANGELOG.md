@@ -53,7 +53,7 @@ All notable changes to this project will be documented in this file.  The format
 * The network handshake now contains the hash of the chainspec used and will be successful only if they match.
 * Add an `identity` option to load existing network identity certificates signed by a CA.
 * Make consensus settings non-optional. A value 0 disables them.
-* Add a `[consensus.simple_consensus]` section to `config.toml` for the simple consensus protocol.
+* Add a `[consensus.zug]` section to `config.toml` for the Zug protocol.
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 * Move `finality_threshold_fraction` from the `highway` to the `core` section in the chainspec.
 * Move `max_execution_delay` from the `highway` to the `consensus` section in the `config.toml`.

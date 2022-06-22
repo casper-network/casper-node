@@ -5,7 +5,7 @@ use casper_types::{TimeDiff, Timestamp};
 
 use crate::components::consensus::{highway_core::Weight, traits::Context};
 
-/// Protocol parameters for `SimpleConsensus`.
+/// Protocol parameters for `Zug`.
 #[derive(Debug, DataSize, Clone, Serialize)]
 pub(crate) struct Params<C>
 where
@@ -20,7 +20,7 @@ where
 }
 
 impl<C: Context> Params<C> {
-    /// Creates a new set of `SimpleConsensus` protocol parameters.
+    /// Creates a new set of `Zug` protocol parameters.
     pub(crate) fn new(
         instance_id: C::InstanceId,
         min_block_time: TimeDiff,

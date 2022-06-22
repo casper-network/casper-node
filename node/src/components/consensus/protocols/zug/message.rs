@@ -8,7 +8,7 @@ use casper_types::Timestamp;
 use crate::components::consensus::{
     consensus_protocol::ProposedBlock,
     highway_core::validators::ValidatorIndex,
-    protocols::simple_consensus::RoundId,
+    protocols::zug::RoundId,
     traits::{Context, ValidatorSecret},
 };
 

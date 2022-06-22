@@ -74,12 +74,11 @@ impl CoreConfig {
             return false;
         }
 
-        let block_time = 16000; // TODO
-
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.  Warn only.
         if self.era_duration.millis() > 0
-            && self.era_duration.millis() < self.minimum_era_height * block_time
+            && self.era_duration.millis()
+                < self.minimum_era_height * self.minimum_block_time.millis()
         {
             warn!("era duration is less than minimum era height * round length!");
         }

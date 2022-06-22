@@ -25,14 +25,14 @@ use crate::{
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
 
-/// Creates a new `SimpleConsensus` instance.
+/// Creates a new `Zug` instance.
 ///
 /// The random seed is selected so that the leader sequence starts with `seq`.
-pub(crate) fn new_test_simple_consensus<I1, I2, T>(
+pub(crate) fn new_test_zug<I1, I2, T>(
     weights: I1,
     init_faulty: I2,
     seq: &[ValidatorIndex],
-) -> SimpleConsensus<ClContext>
+) -> Zug<ClContext>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
     I2: IntoIterator<Item = PublicKey>,
@@ -55,7 +55,7 @@ where
     let seed = leader_sequence::find_seed(seq, &weights_vmap, &leaders);
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
-    SimpleConsensus::<ClContext>::new(
+    Zug::<ClContext>::new(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_faulty.into_iter().collect(),
@@ -345,7 +345,7 @@ fn abc_weights(
 /// The fork is resolved in Alice's favor: Round 0 becomes skippable and round 2 committed, so
 /// Alice's two blocks become finalized.
 #[test]
-fn simple_consensus_no_fault() {
+fn zug_no_fault() {
     testing::init_logging();
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 30, 10);
@@ -358,7 +358,7 @@ fn simple_consensus_no_fault() {
 
     // The first round leaders are Bob, Alice, Alice, Carol, Carol.
     let leader_seq = &[bob_idx, alice_idx, alice_idx, carol_idx, carol_idx];
-    let mut sc_c = new_test_simple_consensus(weights.clone(), vec![], leader_seq);
+    let mut sc_c = new_test_zug(weights.clone(), vec![], leader_seq);
     let dir = tempdir().unwrap();
     sc_c.open_wal(dir.path().join("wal"), timestamp);
 
@@ -529,7 +529,7 @@ fn simple_consensus_no_fault() {
 
     info!("restoring protocol now");
 
-    let mut sc = new_test_simple_consensus(weights, vec![], leader_seq);
+    let mut sc = new_test_zug(weights, vec![], leader_seq);
     sc.open_wal(dir.path().join("wal"), timestamp);
     let outcomes = sc.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
     let proposals123 = [(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)];
@@ -543,14 +543,14 @@ fn simple_consensus_no_fault() {
 /// faulty. Alice proposes a few blocks but can't finalize them alone. Once Bob double-signs, he
 /// counts towards every quorum and Alice's messages suffice to finalize her blocks.
 #[test]
-fn simple_consensus_faults() {
+fn zug_faults() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 10, 30);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leaders are Carol, Alice, Alice.
-    let mut sc = new_test_simple_consensus(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
+    let mut sc = new_test_zug(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -613,7 +613,7 @@ fn simple_consensus_faults() {
 
 /// Tests that a `SyncState` message is periodically sent to a random peer.
 #[test]
-fn simple_consensus_sends_sync_state() {
+fn zug_sends_sync_state() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(50, 40, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -621,7 +621,7 @@ fn simple_consensus_sends_sync_state() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_zug(weights, vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -722,7 +722,7 @@ fn simple_consensus_sends_sync_state() {
 
 /// Tests that we respond to a `SyncState` message with the missing signatures.
 #[test]
-fn simple_consensus_handles_sync_state() {
+fn zug_handles_sync_state() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(50, 40, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -730,7 +730,7 @@ fn simple_consensus_handles_sync_state() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_zug(weights, vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -843,12 +843,7 @@ fn simple_consensus_handles_sync_state() {
 
 #[test]
 fn test_validator_bit_field() {
-    fn test_roundtrip(
-        sc: &SimpleConsensus<ClContext>,
-        first: u32,
-        indexes: Vec<u32>,
-        expected: Vec<u32>,
-    ) {
+    fn test_roundtrip(sc: &Zug<ClContext>, first: u32, indexes: Vec<u32>, expected: Vec<u32>) {
         let field = sc.validator_bit_field(
             ValidatorIndex(first),
             indexes.iter().map(|i| ValidatorIndex(*i)),
@@ -874,8 +869,8 @@ fn test_validator_bit_field() {
         })
         .collect();
 
-    let sc100 = new_test_simple_consensus(weights100, vec![], &[]);
-    let sc250 = new_test_simple_consensus(weights250, vec![], &[]);
+    let sc100 = new_test_zug(weights100, vec![], &[]);
+    let sc250 = new_test_zug(weights250, vec![], &[]);
 
     test_roundtrip(&sc100, 50, vec![], vec![]);
     test_roundtrip(&sc250, 50, vec![], vec![]);
@@ -904,7 +899,7 @@ fn test_quorum() {
         let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
         let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
-        let mut sc = new_test_simple_consensus(weights, vec![], &[]);
+        let mut sc = new_test_zug(weights, vec![], &[]);
 
         // The threshold is the highest number that's below 2/3 of the weight.
         assert_eq!(a, sc.quorum_threshold().0);
@@ -939,7 +934,7 @@ fn update_proposal_timeout() {
     let mut rng = crate::new_rng();
 
     let (weights, _validators) = abc_weights(1, 2, 3);
-    let mut sc = new_test_simple_consensus(weights, vec![], &[]);
+    let mut sc = new_test_zug(weights, vec![], &[]);
     let _outcomes = sc.handle_timer(Timestamp::from(100000), TIMER_ID_UPDATE, &mut rng);
 
     let round_start = sc.current_round_start;
