@@ -45,6 +45,7 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
+    borrow::Cow,
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
@@ -528,9 +529,7 @@ impl Storage {
                 data,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                txn.put(self.state_store_db, &key, &data, WriteFlags::default())?;
-                txn.commit()?;
+                self.write_state_store(&key, &data)?;
                 Ok(responder.respond(()).ignore())
             }
             StateStoreRequest::Load { key, responder } => {
@@ -540,7 +539,8 @@ impl Storage {
         }
     }
 
-    /// Reads from the state storage DB.
+    /// Reads from the state storage database.
+    ///
     /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
     /// May also fail with storage errors.
     fn read_state_store<K: AsRef<[u8]>>(
@@ -554,6 +554,24 @@ impl Storage {
             Err(err) => return Err(err.into()),
         };
         Ok(bytes)
+    }
+
+    /// Writes a key to the state storage database.
+    // See note below why `key` and `data` are not `&[u8]`s.
+    fn write_state_store(
+        &self,
+        key: &Cow<'static, [u8]>,
+        data: &Vec<u8>,
+    ) -> Result<(), FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+
+        // Note: The interface of `lmdb` seems suboptimal: `&K` and `&V` could simply be `&[u8]` for
+        //       simplicity. At the very least it seems to be missing a `?Sized` trait bound. For
+        //       this reason, we need to use actual sized types in the function signature above.
+        txn.put(self.state_store_db, key, data, WriteFlags::default())?;
+        txn.commit()?;
+
+        Ok(())
     }
 
     /// Returns the path to the storage folder.
