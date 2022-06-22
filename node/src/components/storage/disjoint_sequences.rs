@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use itertools::Itertools;
 use tracing::trace;
@@ -162,6 +163,73 @@ impl DisjointSequences {
     #[cfg(test)]
     pub(crate) fn sequences(&self) -> &Vec<Sequence> {
         &self.sequences
+    }
+}
+
+impl FromBytes for Sequence {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (high, bytes) = u64::from_bytes(bytes)?;
+        let (low, bytes) = u64::from_bytes(bytes)?;
+
+        Ok((Sequence { high, low }, bytes))
+    }
+}
+
+impl ToBytes for Sequence {
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = Vec::new();
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        self.high.serialized_length() + self.low.serialized_length()
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.high.write_bytes(writer)?;
+        self.low.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for DisjointSequences {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        Vec::<Sequence>::from_bytes(bytes)
+            .map(|(sequences, remainder)| (DisjointSequences { sequences }, remainder))
+    }
+
+    #[inline]
+    fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), bytesrepr::Error> {
+        Vec::<Sequence>::from_vec(bytes)
+            .map(|(sequences, remainder)| (DisjointSequences { sequences }, remainder))
+    }
+}
+
+impl ToBytes for DisjointSequences {
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.sequences.to_bytes()
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        self.sequences.serialized_length()
+    }
+
+    fn into_bytes(self) -> Result<Vec<u8>, bytesrepr::Error>
+    where
+        Self: Sized,
+    {
+        self.sequences.into_bytes()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.sequences.write_bytes(writer)
     }
 }
 
@@ -331,5 +399,36 @@ mod tests {
             disjoint_sequences.highest_sequence(),
             Some(&Sequence { low: 8, high: 9 })
         );
+    }
+
+    #[test]
+    fn roundtrip_to_bytes() {
+        let mut disjoint_sequences = DisjointSequences::default();
+
+        disjoint_sequences.extend([4, 5, 6, 7, 8]);
+        disjoint_sequences.extend([15, 16, 17, 18, 19, 20]);
+
+        // should be represented logically as [(20 to 15), (8 to 4)] and serialize to a sequence of
+        // `2u32 20u64 15u64 8u64 4u64`.
+
+        let expected = [
+            0x02, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let actual = disjoint_sequences.to_bytes().expect("seralization failed");
+        assert_eq!(expected.as_slice(), &actual);
+
+        let expected_inner_state = disjoint_sequences.sequences;
+        let (restored, remainder) =
+            DisjointSequences::from_bytes(&actual).expect("deserialization failed");
+        assert!(remainder.is_empty());
+
+        let (restored2, remainder) =
+            DisjointSequences::from_vec(actual).expect("deserialization failed");
+        assert!(remainder.is_empty());
+
+        assert_eq!(restored.sequences, expected_inner_state);
+        assert_eq!(restored2.sequences, expected_inner_state);
     }
 }
