@@ -119,7 +119,7 @@ pub fn execute_finalized_block(
             )?;
 
             state_root_hash =
-                engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -138,7 +138,7 @@ pub fn execute_finalized_block(
             // Finally, the new state-root-hash from the cumulative changes to global state is
             // returned when they are written to LMDB.
             state_root_hash =
-                engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
             None
         };
 

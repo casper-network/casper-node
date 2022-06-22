@@ -398,5 +398,5 @@ pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &
         .with_next_era_id(builder.get_era().successor())
         .build();
     builder.step_with_scratch(step_request);
-    builder.write_scratch_to_lmdb();
+    builder.write_scratch_to_db();
 }

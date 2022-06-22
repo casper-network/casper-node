@@ -87,7 +87,9 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder.get_exec_result(1).expect("should have a response");
+    let response = builder
+        .get_exec_result_owned(1)
+        .expect("should have a response");
     let error_message = utils::get_error_message(response);
 
     // Error::UnbondTooLarge,

@@ -1246,6 +1246,14 @@ impl reactor::Reactor for Reactor {
                             block-and-deploys from {}",
                             sender
                         );
+
+                        return Effects::new();
+                    }
+                    NetResponse::BlockHeadersBatch(_) => {
+                        error!(
+                            ?sender,
+                            "cannot handle get response for block-headers-batch",
+                        );
                         return Effects::new();
                     }
                 };

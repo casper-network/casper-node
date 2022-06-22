@@ -91,7 +91,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
         .expect_success()
         .commit();
 
-    let exec_result = builder.get_exec_result(1).unwrap();
+    let exec_result = builder.get_exec_result_owned(1).unwrap();
     assert_eq!(exec_result.len(), 1);
     let journal = exec_result[0].execution_journal();
 

@@ -146,10 +146,10 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
-        NodeId,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
     },
     utils::{SharedFlag, Source},
 };
@@ -2090,6 +2090,61 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::StoreFinalizedApprovals {
                 deploy_hash,
                 finalized_approvals,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores a batch of block headers in storage.
+    ///
+    /// Any previously stored block headers with matching hash will be overwritten.
+    pub(crate) async fn put_block_headers_batch_to_storage(
+        self,
+        block_headers: Vec<BlockHeader>,
+    ) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutHeadersBatch {
+                block_headers,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Reads batch of block headers from the storage.
+    pub(crate) async fn get_block_header_batch_from_storage(
+        self,
+        block_headers_id: BlockHeadersBatchId,
+    ) -> Option<BlockHeadersBatch>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHeadersBatch {
+                block_headers_id,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_hash_by_height_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockHash>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHashByHeight {
+                block_height,
                 responder,
             },
             QueueKind::Regular,
