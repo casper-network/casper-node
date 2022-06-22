@@ -1,13 +1,13 @@
 //@ts-nocheck
 import * as CL from "../../../../contract_as/assembly";
-import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
-import {fromBytesString} from "../../../../contract_as/assembly/bytesrepr";
-import {Key} from "../../../../contract_as/assembly/key";
-import {Pair} from "../../../../contract_as/assembly/pair";
-import {URef} from "../../../../contract_as/assembly/uref";
-import {Pair} from "../../../../contract_as/assembly/pair";
-import {createPurse} from "../../../../contract_as/assembly/purse";
-import {CLType, CLTypeTag} from "../../../../contract_as/assembly/clvalue";
+import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
+import { fromBytesString } from "../../../../contract_as/assembly/bytesrepr";
+import { Key } from "../../../../contract_as/assembly/key";
+import { Pair } from "../../../../contract_as/assembly/pair";
+import { URef } from "../../../../contract_as/assembly/uref";
+import { Pair } from "../../../../contract_as/assembly/pair";
+import { createPurse } from "../../../../contract_as/assembly/purse";
+import { CLType, CLTypeTag } from "../../../../contract_as/assembly/clvalue";
 import * as CreatePurse01 from "../../create-purse-01/assembly";
 
 const ENTRY_FUNCTION_NAME = "delegate";
@@ -37,13 +37,13 @@ export function call(): void {
   entryPoints.addEntryPoint(entryPoint);
 
   let doNothingPackageHash = CL.getKey(DO_NOTHING_PACKAGE_HASH_KEY_NAME);
-  if (doNothingPackageHash === null) {
+  if (!doNothingPackageHash) {
     Error.fromErrorCode(ErrorCode.None).revert();
     return;
   }
 
   let doNothingURef = CL.getKey(DO_NOTHING_ACCESS_KEY_NAME);
-  if (doNothingURef === null) {
+  if (!doNothingURef) {
     Error.fromErrorCode(ErrorCode.None).revert();
     return;
   }

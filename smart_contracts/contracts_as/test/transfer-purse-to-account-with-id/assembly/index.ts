@@ -1,16 +1,16 @@
 //@ts-nocheck
 import * as CL from "../../../../contract_as/assembly";
-import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
-import {U512} from "../../../../contract_as/assembly/bignum";
-import {getMainPurse} from "../../../../contract_as/assembly/account";
-import {Key} from "../../../../contract_as/assembly/key";
-import {putKey} from "../../../../contract_as/assembly";
-import {CLValue} from "../../../../contract_as/assembly/clvalue";
-import {getPurseBalance, transferFromPurseToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
-import {URef} from "../../../../contract_as/assembly/uref";
-import {Option} from "../../../../contract_as/assembly/option";
-import {fromBytesU64} from "../../../../contract_as/assembly/bytesrepr";
-import {Ref} from "../../../../contract_as/assembly/ref";
+import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
+import { U512 } from "../../../../contract_as/assembly/bignum";
+import { getMainPurse } from "../../../../contract_as/assembly/account";
+import { Key } from "../../../../contract_as/assembly/key";
+import { putKey } from "../../../../contract_as/assembly";
+import { CLValue } from "../../../../contract_as/assembly/clvalue";
+import { getPurseBalance, transferFromPurseToAccount, TransferredTo } from "../../../../contract_as/assembly/purse";
+import { URef } from "../../../../contract_as/assembly/uref";
+import { Option } from "../../../../contract_as/assembly/option";
+import { fromBytesU64 } from "../../../../contract_as/assembly/bytesrepr";
+import { Ref } from "../../../../contract_as/assembly/ref";
 
 
 const TRANSFER_RESULT_UREF_NAME = "transfer_result";
@@ -20,7 +20,7 @@ const ARG_TARGET = "target";
 const ARG_AMOUNT = "amount";
 const ARG_ID = "id";
 
-enum CustomError{
+enum CustomError {
     MissingAmountArg = 1,
     InvalidAmountArg = 2,
     MissingDestinationAccountArg = 3,
@@ -40,7 +40,7 @@ export function delegate(): void {
         const maybeIdBytes = maybeOptionalId.unwrap();
         maybeId = new Ref(fromBytesU64(maybeIdBytes).unwrap());
     }
-    
+
     if (amountResult.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidAmountArg).revert();
         return;
@@ -59,14 +59,14 @@ export function delegate(): void {
                 break;
         }
     }
-    
+
     if (result.isErr) {
         message = "Err(ApiError::Mint(InsufficientFunds) [65024])";
     }
     const transferResultKey = Key.create(CLValue.fromString(message));
     putKey(TRANSFER_RESULT_UREF_NAME, <Key>transferResultKey);
     const maybeBalance = getPurseBalance(mainPurse);
-    if (maybeBalance === null) {
+    if (!maybeBalance) {
         Error.fromUserError(<u16>CustomError.UnableToGetBalance).revert();
         return;
     }

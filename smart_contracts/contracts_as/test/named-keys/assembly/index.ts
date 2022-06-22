@@ -1,9 +1,9 @@
 import * as CL from "../../../../contract_as/assembly";
-import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
-import {Key} from "../../../../contract_as/assembly/key";
-import {fromBytesString} from "../../../../contract_as/assembly/bytesrepr";
-import {U512} from "../../../../contract_as/assembly/bignum";
-import {CLValue} from "../../../../contract_as/assembly/clvalue";
+import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
+import { Key } from "../../../../contract_as/assembly/key";
+import { fromBytesString } from "../../../../contract_as/assembly/bytesrepr";
+import { U512 } from "../../../../contract_as/assembly/bignum";
+import { CLValue } from "../../../../contract_as/assembly/clvalue";
 
 const COMMAND_CREATE_UREF1 = "create-uref1";
 const COMMAND_CREATE_UREF2 = "create-uref2";
@@ -26,20 +26,20 @@ export function call(): void {
 
   if (command == COMMAND_CREATE_UREF1) {
     let helloWorldKey = Key.create(CLValue.fromString("Hello, world!"));
-    if (helloWorldKey === null) {
+    if (!helloWorldKey) {
       Error.fromUserError(4464 + 1).revert();
       return;
     }
-    CL.putKey("hello-world", helloWorldKey);
+    CL.putKey("hello-world", <Key>helloWorldKey);
   }
 
   else if (command == COMMAND_CREATE_UREF2) {
     let newBigValueKey = Key.create(CLValue.fromU512(U512.MAX_VALUE));
-    if (newBigValueKey === null) {
+    if (!newBigValueKey) {
       Error.fromUserError(4464 + 4).revert();
       return;
     }
-    CL.putKey("big-value", newBigValueKey);
+    CL.putKey("big-value", <Key>newBigValueKey);
   }
 
   else if (command == COMMAND_REMOVE_UREF1) {
@@ -80,7 +80,7 @@ export function call(): void {
 
     // Read data through dedicated FFI function
     let uref1 = CL.getKey("hello-world");
-    if (uref1 === null) {
+    if (!uref1) {
       Error.fromErrorCode(ErrorCode.GetKey).revert();
       return;
     }
@@ -103,12 +103,12 @@ export function call(): void {
   else if (command == COMMAND_TEST_READ_UREF2) {
     // Get the big value back
     let bigValueKey = CL.getKey("big-value");
-    if (bigValueKey === null) {
+    if (!bigValueKey) {
       Error.fromErrorCode(ErrorCode.GetKey).revert();
       return;
     }
     let bigValueBytes = bigValueKey.read();
-    if (bigValueBytes === null) {
+    if (!bigValueBytes) {
       Error.fromUserError(4464 + 12).revert();
       return;
     }
@@ -127,14 +127,14 @@ export function call(): void {
   else if (command == COMMAND_INCREASE_UREF2) {
     // Get the big value back
     let bigValueKey = CL.getKey("big-value");
-    if (bigValueKey === null) {
+    if (!bigValueKey) {
       Error.fromErrorCode(ErrorCode.GetKey).revert();
       return;
     }
     // Increase by 1
     bigValueKey.add(CLValue.fromU512(U512.fromU64(1)));
     let newBigValueBytes = bigValueKey.read();
-    if (newBigValueBytes === null) {
+    if (!newBigValueBytes) {
       Error.fromUserError(4464 + 15).revert();
       return;
     }
@@ -152,7 +152,7 @@ export function call(): void {
   else if (command == COMMAND_OVERWRITE_UREF2) {
     // Get the big value back
     let bigValueKey = CL.getKey("big-value");
-    if (bigValueKey === null) {
+    if (!bigValueKey) {
       Error.fromErrorCode(ErrorCode.GetKey).revert();
       return;
     }
@@ -160,7 +160,7 @@ export function call(): void {
     bigValueKey.write(CLValue.fromU512(U512.fromU64(123456789)));
 
     let newBigValueBytes = bigValueKey.read();
-    if (newBigValueBytes === null) {
+    if (!newBigValueBytes) {
       Error.fromUserError(4464 + 18).revert();
       return;
     }

@@ -1,13 +1,13 @@
 //@ts-nocheck
 import * as CL from "../../../../contract_as/assembly";
-import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
-import {fromBytesString} from "../../../../contract_as/assembly/bytesrepr";
-import {Key} from "../../../../contract_as/assembly/key";
-import {CLValue, CLType, CLTypeTag} from "../../../../contract_as/assembly/clvalue";
-import {URef} from "../../../../contract_as/assembly/uref";
-import {createPurse} from "../../../../contract_as/assembly/purse";
+import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
+import { fromBytesString } from "../../../../contract_as/assembly/bytesrepr";
+import { Key } from "../../../../contract_as/assembly/key";
+import { CLValue, CLType, CLTypeTag } from "../../../../contract_as/assembly/clvalue";
+import { URef } from "../../../../contract_as/assembly/uref";
+import { createPurse } from "../../../../contract_as/assembly/purse";
 import { checkItemsEqual } from "../../../../contract_as/assembly/utils";
-import {Pair} from "../../../../contract_as/assembly/pair";
+import { Pair } from "../../../../contract_as/assembly/pair";
 
 const METHOD_ADD = "add";
 const METHOD_REMOVE = "remove";
@@ -58,7 +58,7 @@ export function delegate(): void {
 export function call(): void {
   let contractPackageHash = CL.getNamedArg(ARG_CONTRACT_PACKAGE);
   let accessKey = CL.getKey(ACCESS_KEY_NAME);
-  if (accessKey === null) {
+  if (!accessKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
@@ -69,20 +69,20 @@ export function call(): void {
   addArgs.push(new Pair(ARG_PURSE_NAME, new CLType(CLTypeTag.String)));
 
   let add = new CL.EntryPoint(
-        METHOD_ADD,
-        addArgs,
-        new CLType(CLTypeTag.Unit),
-        new CL.PublicAccess(),
-        CL.EntryPointType.Contract,
-    );
+    METHOD_ADD,
+    addArgs,
+    new CLType(CLTypeTag.Unit),
+    new CL.PublicAccess(),
+    CL.EntryPointType.Contract,
+  );
   entryPoints.addEntryPoint(add);
 
   let version = new CL.EntryPoint(
-      METHOD_VERSION,
-      new Array<Pair<String, CLType>>(),
-      new CLType(CLTypeTag.String),
-      new CL.PublicAccess(),
-      CL.EntryPointType.Contract,
+    METHOD_VERSION,
+    new Array<Pair<String, CLType>>(),
+    new CLType(CLTypeTag.String),
+    new CL.PublicAccess(),
+    CL.EntryPointType.Contract,
   );
   entryPoints.addEntryPoint(version);
 
@@ -106,7 +106,7 @@ export function call(): void {
   CL.putKey(PURSE_HOLDER_STORED_CONTRACT_NAME, Key.fromHash(newResult.contractHash));
 
   let newVersionKey = Key.create(CLValue.fromString(NEW_VERSION));
-  if (newVersionKey === null) {
+  if (!newVersionKey) {
     Error.fromErrorCode(ErrorCode.Formatting).revert();
     return;
   }

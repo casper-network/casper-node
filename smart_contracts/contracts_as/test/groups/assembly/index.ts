@@ -71,14 +71,14 @@ export function restricted_standard_payment(): void {
 
   let amountBytes = CL.getNamedArg("amount");
   if (amountBytes === null) {
-      Error.fromErrorCode(ErrorCode.MissingArgument).revert();
-      return;
+    Error.fromErrorCode(ErrorCode.MissingArgument).revert();
+    return;
   }
 
   let amountResult = U512.fromBytes(amountBytes);
   if (amountResult.hasError()) {
-      Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
-      return;
+    Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
+    return;
   }
 
   let amount = amountResult.value;
@@ -95,10 +95,10 @@ export function restricted_standard_payment(): void {
   let paymentPurse = paymentPurseResult.value;
 
   let err = transferFromPurseToPurse(getMainPurse(), paymentPurse, amount);
-    if (err !== null) {
-      err.revert();
-      return;
-    }
+  if (err !== null) {
+    err.revert();
+    return;
+  }
 
 
 }
@@ -113,9 +113,9 @@ export function call_restricted_entry_points(): void {
 
 function createGroup(packageHash: Uint8Array): URef {
   let key = Key.create(CLValue.fromU64(0));
-  if (key === null) {
+  if (!key) {
     Error.fromErrorCode(ErrorCode.Formatting).revert();
-    return <URef>unreachable();
+    throw 0;
   }
 
   CL.putKey("saved_uref", key);
@@ -131,7 +131,7 @@ function createGroup(packageHash: Uint8Array): URef {
 
   if (newURefs.length != 1) {
     Error.fromUserError(4464 + 1000 + 1).revert();
-    return <URef>unreachable();
+    throw 0;
   }
   return newURefs[0];
 }
@@ -266,9 +266,8 @@ function installVersion1(
   restrictedURef: URef,
 ): void {
   let contractVariable = Key.create(CLValue.fromI32(0));
-  if (contractVariable === null) {
+  if (!contractVariable) {
     Error.fromErrorCode(ErrorCode.Formatting).revert();
-    unreachable();
     return;
   }
 
