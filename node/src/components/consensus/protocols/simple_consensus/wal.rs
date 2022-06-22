@@ -265,7 +265,7 @@ mod tests {
         // ReadWal when we fail to read it.
         loop {
             // If there are no more entries, we're done
-            if entries.len() == 0 {
+            if entries.is_empty() {
                 break;
             }
 
