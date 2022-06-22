@@ -1111,12 +1111,6 @@ impl Storage {
             } => responder
                 .respond(self.read_block_headers_batch(&block_headers_id)?)
                 .ignore(),
-            StorageRequest::GetBlockHashByHeight {
-                block_height,
-                responder,
-            } => responder
-                .respond(self.get_block_hash_by_height(block_height)?)
-                .ignore(),
         })
     }
 
@@ -1295,14 +1289,6 @@ impl Storage {
                     .map(|deploys| BlockAndDeploys { block, deploys }))
             }
         }
-    }
-
-    /// Retrieves block hash by height.
-    fn get_block_hash_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockHash>, FatalStorageError> {
-        Ok(self.block_height_index.get(&height).cloned())
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
