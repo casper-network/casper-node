@@ -1398,6 +1398,7 @@ async fn fetch_finality_signatures_by_block_header(
     block_header: BlockHeader,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Option<BlockSignatures>, Error> {
+    let start = Timestamp::now();
     let mut peer_list = ctx
         .effect_builder
         .get_fully_connected_non_joiner_peers()
@@ -1473,6 +1474,8 @@ async fn fetch_finality_signatures_by_block_header(
             }
         }
     }
+    ctx.metrics
+        .observe_fetch_finality_signatures_duration_seconds(start);
     Ok(sig_collector.into_inner())
 }
 
