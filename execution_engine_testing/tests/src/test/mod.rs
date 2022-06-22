@@ -3,8 +3,10 @@ mod chainspec_registry;
 mod check_transfer_success;
 mod contract_api;
 mod contract_context;
+#[cfg(not(feature = "use-as-wasm"))]
 mod counter;
 mod deploy;
+mod examples;
 mod explorer;
 mod gas_counter;
 mod get_balance;
