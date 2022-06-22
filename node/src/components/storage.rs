@@ -35,6 +35,7 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+mod disjoint_sequences;
 mod error;
 mod lmdb_ext;
 mod object_pool;
@@ -77,6 +78,7 @@ pub(crate) use crate::effect::requests::StorageRequest;
 use crate::{
     components::{consensus, fetcher::FetchedOrNotFound, Component},
     effect::{
+        announcements::BlockCompletedAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
         requests::{NetworkRequest, StateStoreRequest},
         EffectBuilder, EffectExt, Effects,
@@ -99,6 +101,8 @@ pub use error::FatalStorageError;
 use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
+
+use self::disjoint_sequences::DisjointSequences;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -202,6 +206,8 @@ pub struct Storage {
     /// The height of the highest block from which this node has an unbroken sequence of full
     /// blocks stored (and the corresponding global state).
     lowest_available_block_height: u64,
+    /// Runs of completed blocks known in storage.
+    completed_blocks: DisjointSequences,
     /// Highest block available when storage is constructed.
     highest_block_at_startup: u64,
     /// Whether or not memory deduplication is enabled.
@@ -231,6 +237,8 @@ pub(crate) enum Event {
     /// Incoming state storage request.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Block completion announcement.
+    BlockCompletedAnnouncement(BlockCompletedAnnouncement),
 }
 
 impl Display for Event {
@@ -239,6 +247,7 @@ impl Display for Event {
             Event::StorageRequest(req) => req.fmt(f),
             Event::NetRequestIncoming(incoming) => incoming.fmt(f),
             Event::StateStoreRequest(req) => req.fmt(f),
+            Event::BlockCompletedAnnouncement(ann) => ann.fmt(f),
         }
     }
 }
@@ -285,6 +294,7 @@ where
             Event::StateStoreRequest(req) => {
                 self.handle_state_store_request::<REv>(effect_builder, req)
             }
+            Event::BlockCompletedAnnouncement(ann) => self.handle_block_completed_announcement(ann),
         };
 
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
@@ -472,6 +482,9 @@ impl Storage {
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
+        // TODO: Persist and load disjoint sequences.
+        let completed_blocks = DisjointSequences::default();
+
         Ok(Self {
             root,
             env,
@@ -491,6 +504,7 @@ impl Storage {
             switch_block_era_id_index,
             deploy_hash_index,
             lowest_available_block_height,
+            completed_blocks,
             highest_block_at_startup,
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
@@ -1100,6 +1114,15 @@ impl Storage {
                 .respond(self.get_block_hash_by_height(block_height)?)
                 .ignore(),
         })
+    }
+
+    fn handle_block_completed_announcement(
+        &mut self,
+        BlockCompletedAnnouncement { block_height }: BlockCompletedAnnouncement,
+    ) -> Result<Effects<Event>, FatalStorageError> {
+        self.completed_blocks.insert(block_height);
+
+        Ok(Effects::new())
     }
 
     /// Put a single deploy into storage.
