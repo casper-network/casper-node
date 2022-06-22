@@ -3,6 +3,8 @@ use super::*;
 use std::{collections::BTreeSet, sync::Arc};
 
 use casper_types::{PublicKey, SecretKey, Timestamp, U512};
+use tempfile::tempdir;
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -17,6 +19,7 @@ use crate::{
         },
         traits::Context,
     },
+    testing,
     types::BlockPayload,
 };
 
@@ -349,15 +352,21 @@ fn abc_weights(
 /// Alice's two blocks become finalized.
 #[test]
 fn simple_consensus_no_fault() {
+    testing::init_logging();
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 30, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
     let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
+    let sender = *ALICE_NODE_ID;
+
+    let mut timestamp = Timestamp::from(100000);
 
     // The first round leaders are Bob, Alice, Alice, Carol, Carol.
     let leader_seq = &[bob_idx, alice_idx, alice_idx, carol_idx, carol_idx];
-    let mut sc_c = new_test_simple_consensus(weights, vec![], leader_seq);
+    let mut sc_c = new_test_simple_consensus(weights.clone(), vec![], leader_seq);
+    let dir = tempdir().unwrap();
+    sc_c.open_wal(dir.path().join("wal"), timestamp);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -367,9 +376,6 @@ fn simple_consensus_no_fault() {
 
     let block_time = sc_c.params.min_block_time();
     let proposal_timeout = sc_c.proposal_timeout();
-
-    let sender = *ALICE_NODE_ID;
-    let mut timestamp = Timestamp::from(100000);
 
     let proposal0 = Proposal::<ClContext> {
         timestamp,
@@ -526,6 +532,15 @@ fn simple_consensus_no_fault() {
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
     expect_finalized(&outcomes, &[(&proposal3, 2)]);
     assert!(sc_c.finalized_switch_block());
+
+    info!("restoring protocol now");
+
+    let mut sc = new_test_simple_consensus(weights, vec![], leader_seq);
+    sc.open_wal(dir.path().join("wal"), timestamp);
+    let outcomes = sc.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    let proposals123 = [(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)];
+    expect_finalized(&outcomes, &proposals123);
+    assert!(sc.finalized_switch_block());
 }
 
 /// Tests that a faulty validator counts towards every quorum.
@@ -608,6 +623,7 @@ fn simple_consensus_standstill_alert() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(60, 30, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let mut timestamp = Timestamp::from(100000);
 
     // The first round leader is Alice.
     let mut sc_c = new_test_simple_consensus(weights, vec![], &[alice_idx]);
@@ -615,11 +631,12 @@ fn simple_consensus_standstill_alert() {
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
 
+    let dir = tempdir().unwrap();
+    sc_c.open_wal(dir.path().join("wal"), timestamp);
     sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
 
     let timeout = sc_c.config.standstill_timeout.expect("standstill timeout");
     let sender = *ALICE_NODE_ID;
-    let mut timestamp = Timestamp::from(100000);
 
     let proposal0 = Proposal::<ClContext> {
         timestamp,
