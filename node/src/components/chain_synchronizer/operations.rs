@@ -2112,13 +2112,13 @@ mod tests {
 
     #[test]
     fn validates_signatures_sufficiency_for_sync_to_genesis() {
-        let consensus_verdics = Ok(());
+        let consensus_verdict = Ok(());
         assert!(are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdics
+            consensus_verdict
         ));
 
         let mut rng = TestRng::new();
-        let consensus_verdics = Err(FinalitySignatureError::TooManySignatures {
+        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2130,10 +2130,10 @@ mod tests {
             finality_threshold_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdics
+            consensus_verdict
         ));
 
-        let consensus_verdics = Err(FinalitySignatureError::InsufficientWeightForFinality {
+        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2144,10 +2144,10 @@ mod tests {
             finality_threshold_fraction: Ratio::new_raw(1, 2),
         });
         assert!(!are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdics
+            consensus_verdict
         ));
 
-        let consensus_verdics = Err(FinalitySignatureError::BogusValidator {
+        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2156,7 +2156,7 @@ mod tests {
             bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
         });
         assert!(!are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdics
+            consensus_verdict
         ));
     }
 }
