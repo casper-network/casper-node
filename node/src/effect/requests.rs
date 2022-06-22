@@ -45,12 +45,14 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
-    effect::Responder,
+    contract_runtime::SpeculativeExecutionState,
+    effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals,
+        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
         FinalizedBlock, Item, NodeId, StatusFeed,
     },
     utils::{DisplayIter, Source},
@@ -99,7 +101,7 @@ pub(crate) enum NetworkRequest<P> {
         respond_after_queueing: bool,
         /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
-        responder: Responder<()>,
+        auto_closing_responder: AutoClosingResponder<()>,
     },
     /// Send a message on the network to all peers.
     /// Note: This request is deprecated and should be phased out, as not every network
@@ -109,7 +111,7 @@ pub(crate) enum NetworkRequest<P> {
         payload: Box<P>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<()>,
+        auto_closing_responder: AutoClosingResponder<()>,
     },
     /// Gossip a message to a random subset of peers.
     Gossip {
@@ -122,7 +124,7 @@ pub(crate) enum NetworkRequest<P> {
         exclude: HashSet<NodeId>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<HashSet<NodeId>>,
+        auto_closing_responder: AutoClosingResponder<HashSet<NodeId>>,
     },
 }
 
@@ -139,27 +141,30 @@ impl<P> NetworkRequest<P> {
                 dest,
                 payload,
                 respond_after_queueing,
-                responder,
+                auto_closing_responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
                 respond_after_queueing,
-                responder,
+                auto_closing_responder,
             },
-            NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
+            NetworkRequest::Broadcast {
+                payload,
+                auto_closing_responder,
+            } => NetworkRequest::Broadcast {
                 payload: Box::new(wrap_payload(*payload)),
-                responder,
+                auto_closing_responder,
             },
             NetworkRequest::Gossip {
                 payload,
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             } => NetworkRequest::Gossip {
                 payload: Box::new(wrap_payload(*payload)),
                 count,
                 exclude,
-                responder,
+                auto_closing_responder,
             },
         }
     }
@@ -260,6 +265,13 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
+    /// Store given block and its deploys.
+    PutBlockAndDeploys {
+        /// Block to be stored.
+        block: Box<BlockAndDeploys>,
+        /// Responder to call on success.  Failure is a fatal error.
+        responder: Responder<()>,
+    },
     /// Retrieve block with given hash.
     GetBlock {
         /// Hash of block to be retrieved.
@@ -267,6 +279,14 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve block and deploys with given hash.
+    GetBlockAndDeploys {
+        /// Hash of block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<BlockAndDeploys>>,
     },
     /// Retrieve highest block.
     GetHighestBlock {
@@ -387,7 +407,7 @@ pub(crate) enum StorageRequest {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadata)>>,
+        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>>,
     },
     /// Retrieve block and its metadata by its hash.
     GetBlockAndMetadataByHash {
@@ -437,6 +457,26 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Store a batch of block headers.
+    PutHeadersBatch {
+        /// Batch of block headers to be stored.
+        block_headers: Vec<BlockHeader>,
+        /// Responder to call with the result, if true then the block headers were successfully
+        /// stored.
+        responder: Responder<bool>,
+    },
+    /// Read batch of block headers by their heights.
+    GetHeadersBatch {
+        block_headers_id: BlockHeadersBatchId,
+        responder: Responder<Option<BlockHeadersBatch>>,
+    },
+    /// Read block hash by its height.
+    GetBlockHashByHeight {
+        /// Block's height.
+        block_height: u64,
+        /// Responder to call when complete.
+        responder: Responder<Option<BlockHash>>,
+    },
     /// Update the lowest available block height in storage.
     // Note - this is a request rather than an announcement as the chain synchronizer needs to
     // ensure the request has been completed before it can exit, i.e. it awaits the response.
@@ -469,7 +509,20 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutBlockAndDeploys {
+                block: block_deploys,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "put block and deploys {}",
+                    block_deploys.block.hash()
+                )
+            }
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
+                write!(formatter, "get block and deploys {}", block_hash)
+            }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetHighestBlockHeader { .. } => {
                 write!(formatter, "get highest block header")
@@ -567,6 +620,17 @@ impl Display for StorageRequest {
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
+            }
+            StorageRequest::PutHeadersBatch { .. } => {
+                write!(formatter, "put block headers batch to storage")
+            }
+            StorageRequest::GetHeadersBatch {
+                block_headers_id, ..
+            } => {
+                write!(formatter, "get block headers batch: {}", block_headers_id)
+            }
+            StorageRequest::GetBlockHashByHeight { block_height, .. } => {
+                write!(formatter, "read block hash by height: {}", block_height)
             }
         }
     }
@@ -735,7 +799,7 @@ pub(crate) enum RpcRequest {
         /// Whether to return finalized approvals.
         finalized_approvals: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadata)>>,
+        responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
     },
     /// Return the connected peers.
     GetPeers {
@@ -751,6 +815,16 @@ pub(crate) enum RpcRequest {
     GetAvailableBlockRange {
         /// Responder to call with the result.
         responder: Responder<AvailableBlockRange>,
+    },
+    /// Executs a deploy against a specified block, returning the effects.
+    /// Does not commit the effects. This is a "read-only" action.
+    SpeculativeDeployExecute {
+        /// Block header representing the state on top of which we will run the deploy.
+        block_header: BlockHeader,
+        /// Deploy to execute.
+        deploy: Box<Deploy>,
+        /// Responder.
+        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
     },
 }
 
@@ -812,6 +886,7 @@ impl Display for RpcRequest {
             RpcRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range")
             }
+            RpcRequest::SpeculativeDeployExecute { .. } => write!(formatter, "execute deploy"),
         }
     }
 }
@@ -972,6 +1047,15 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
+    /// Execute deploys without commiting results
+    SpeculativeDeployExecution {
+        /// Hash of a block on top of which to execute the deploy.
+        execution_prestate: SpeculativeExecutionState,
+        /// Deploy to execute.
+        deploy: Box<Deploy>,
+        /// Results
+        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -1038,6 +1122,18 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
                 write!(formatter, "Find missing descendant trie keys: {}", trie_key)
+            }
+            ContractRuntimeRequest::SpeculativeDeployExecution {
+                execution_prestate,
+                deploy,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "Execute {} on {}",
+                    deploy.id(),
+                    execution_prestate.state_root_hash
+                )
             }
         }
     }

@@ -27,7 +27,7 @@ fn should_run_ee_532_get_uref_regression_test() {
         .commit();
 
     let deploy_result = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("should have exec response")
         .get(0)
         .cloned()

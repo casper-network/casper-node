@@ -46,7 +46,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         .exec(exec_request)
         .expect_success()
         .commit()
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let account_1_request =
@@ -56,7 +56,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let account_1_response = builder
         .exec(account_1_request)
         .commit()
-        .get_exec_result(1)
+        .get_exec_result_owned(1)
         .expect("there should be a response");
 
     let error_message = utils::get_error_message(account_1_response);
@@ -136,7 +136,7 @@ fn should_forward_payment_execution_runtime_error() {
     );
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let execution_result = utils::get_success_result(&response);
@@ -205,7 +205,7 @@ fn should_forward_payment_execution_gas_limit_error() {
     );
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let execution_result = utils::get_success_result(&response);
@@ -250,7 +250,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         .commit();
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let execution_result = utils::get_success_result(&response);
@@ -301,7 +301,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     );
 
     let response = builder
-        .get_exec_result(0)
+        .get_exec_result_owned(0)
         .expect("there should be a response");
 
     let success_result = utils::get_success_result(&response);

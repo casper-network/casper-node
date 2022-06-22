@@ -18,7 +18,8 @@
 # 13. Waits for the auction delay to take effect.
 # 14. Asserts non-genesis validator is NO LONGER an active validator.
 # 15. Asserts delegatee is NO LONGER in auction info.
-# 16. Successful test cleanup.
+# 16. Run Health Checks
+# 17. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -26,6 +27,7 @@
 
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -60,6 +62,7 @@ function _main()
     _step_14
     _step_15
     _step_16
+    _step_17
 }
 
 # Step 01: Start network from pre-built stage.
@@ -79,7 +82,8 @@ function _step_01()
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
             chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_3.chainspec.toml.in" \
-            accounts_path="$NCTL/sh/scenarios/accounts_toml/upgrade_scenario_3.accounts.toml"
+            accounts_path="$NCTL/sh/scenarios/accounts_toml/upgrade_scenario_3.accounts.toml" \
+            config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_3.config.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -88,8 +92,7 @@ function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
 
-    sleep 60.0
-    await_until_era_n 1
+    do_await_genesis_era_to_complete 'false'
 }
 
 # Step 03: Add bid non-genesis node and start
@@ -203,10 +206,14 @@ function _step_08()
     log_step_upgrades 8 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_3.chainspec.toml.in"
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" \
+        stage="$STAGE_ID" \
+        verbose=false \
+        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_3.chainspec.toml.in" \
+        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_3.config.toml"
 
     log "... awaiting 2 eras + 1 block"
-    await_n_eras '2' 'true' '5.0'
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 }
 
@@ -386,10 +393,24 @@ function _step_15()
     fi
 }
 
-# Step 16: Terminate.
+# Step 16: Run NCTL health checks
 function _step_16()
 {
-    log_step_upgrades 16 "test successful - tidying up"
+    # restarts=6 - Nodes that upgrade
+    log_step_upgrades 16 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=6 \
+            ejections=0
+}
+
+# Step 17: Terminate.
+function _step_17()
+{
+    log_step_upgrades 17 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

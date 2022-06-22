@@ -321,10 +321,7 @@ fn should_successfully_prune() {
 
     // pending => finalized
     let block = BlockPayload::new(
-        vec![DeployWithApprovals::new(
-            *deploy1.id(),
-            deploy1.approvals().clone(),
-        )],
+        vec![DeployWithApprovals::from(&deploy1)],
         vec![],
         vec![],
         false,
@@ -399,8 +396,8 @@ fn should_keep_track_of_unhandled_deploys() {
     // But we DO mark it as finalized, by it's hash
     let block = BlockPayload::new(
         vec![
-            DeployWithApprovals::new(*deploy1.id(), deploy1.approvals().clone()),
-            DeployWithApprovals::new(*deploy2.id(), deploy2.approvals().clone()),
+            DeployWithApprovals::from(&deploy1),
+            DeployWithApprovals::from(&deploy2),
         ],
         vec![],
         vec![],

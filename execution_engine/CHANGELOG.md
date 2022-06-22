@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+
+
 ## [Unreleased]
 
 ### Added
@@ -23,10 +25,18 @@ All notable changes to this project will be documented in this file.  The format
 * Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
 * Lift the temporary limit of the size of individual values stored in global state.
 * Lift the temporary limit of the global maximum delegator capacity.
+* Providing incorrect Wasm for execution will cause the default 2.5CSPR to be charged.
 
 
 
-## 1.5.0
+## 2.0.0 - 2022-05-11
+
+### Changed
+* Change contract runtime to allow caching global state changes during execution of a single block, also avoiding writing interstitial data to global state.
+
+
+
+## 1.5.0 - 2022-04-05
 
 ### Changed
 * Temporarily limit the size of individual values stored in global state.

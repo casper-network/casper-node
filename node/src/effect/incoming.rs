@@ -14,7 +14,7 @@ use crate::{
     types::{FinalitySignature, NodeId, Tag},
 };
 
-use super::Responder;
+use super::AutoClosingResponder;
 
 /// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]
@@ -40,7 +40,7 @@ pub struct DemandIncoming<M> {
     /// The wrapped demand.
     pub(crate) request_msg: M,
     /// Responder to send the answer down through.
-    pub(crate) responder: Responder<Option<Message>>,
+    pub(crate) auto_closing_responder: AutoClosingResponder<Message>,
 }
 
 impl<M> Display for DemandIncoming<M>
@@ -95,10 +95,14 @@ pub(crate) enum NetRequest {
     GossipedAddress(Vec<u8>),
     /// Request for a block by its height in the linear chain.
     BlockAndMetadataByHeight(Vec<u8>),
+    /// Request for a block and its deploys by hash.
+    BlockAndDeploys(Vec<u8>),
     /// Request for a block header by its hash.
     BlockHeaderByHash(Vec<u8>),
     /// Request for a block header and its finality signatures by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
+    /// Request for a batch of block headers.
+    BlockHeadersBatch(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -115,6 +119,8 @@ impl Display for NetRequest {
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("request for block header and finality signatures by height")
             }
+            NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
+            NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
         }
     }
 }
@@ -134,6 +140,8 @@ impl NetRequest {
             NetRequest::BlockAndMetadataByHeight(ref id) => id,
             NetRequest::BlockHeaderByHash(ref id) => id,
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
+            NetRequest::BlockAndDeploys(ref id) => id,
+            NetRequest::BlockHeadersBatch(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -154,6 +162,8 @@ impl NetRequest {
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 Tag::BlockHeaderAndFinalitySignaturesByHeight
             }
+            NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
+            NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
         }
     }
 }
@@ -187,6 +197,10 @@ pub(crate) enum NetResponse {
     BlockHeaderByHash(Arc<[u8]>),
     /// Response of a block header and its finality signatures by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight(Arc<[u8]>),
+    /// Response for a block and its deploys.
+    BlockAndDeploys(Arc<[u8]>),
+    /// Response of a block headers batch.
+    BlockHeadersBatch(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -214,6 +228,8 @@ impl Display for NetResponse {
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("response, block header and finality signatures by height")
             }
+            NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
+            NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
         }
     }
 }

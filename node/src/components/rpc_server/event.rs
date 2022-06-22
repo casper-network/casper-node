@@ -13,7 +13,7 @@ use casper_types::{system::auction::EraValidators, Transfer};
 use crate::{
     effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
-    types::{BlockHash, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, NodeId},
+    types::{BlockHash, BlockWithMetadata, Deploy, DeployHash, DeployMetadataExt, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -44,8 +44,8 @@ pub(crate) enum Event {
     },
     GetDeployResult {
         hash: DeployHash,
-        result: Box<Option<(Deploy, DeployMetadata)>>,
-        main_responder: Responder<Option<(Deploy, DeployMetadata)>>,
+        result: Box<Option<(Deploy, DeployMetadataExt)>>,
+        main_responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
     },
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,

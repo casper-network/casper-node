@@ -11,6 +11,7 @@ const DEFAULT_GAS_MODULE_NAME: &str = "env";
 
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
+#[non_exhaustive]
 pub enum PreprocessingError {
     /// Unable to deserialize Wasm bytes.
     Deserialize(String),

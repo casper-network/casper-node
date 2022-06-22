@@ -99,7 +99,7 @@ use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -416,7 +416,7 @@ where
         &self,
         dest: NodeId,
         msg: Arc<Message<P>>,
-        opt_responder: Option<Responder<()>>,
+        opt_responder: Option<AutoClosingResponder<()>>,
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
@@ -891,7 +891,7 @@ where
                         dest,
                         payload,
                         respond_after_queueing,
-                        responder,
+                        auto_closing_responder,
                     } => {
                         // We're given a message to send. Pass on the responder so that confirmation
                         // can later be given once the message has actually been buffered.
@@ -899,27 +899,30 @@ where
 
                         if respond_after_queueing {
                             self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
-                            responder.respond(()).ignore()
+                            auto_closing_responder.respond(()).ignore()
                         } else {
                             self.send_message(
                                 *dest,
                                 Arc::new(Message::Payload(*payload)),
-                                Some(responder),
+                                Some(auto_closing_responder),
                             );
                             Effects::new()
                         }
                     }
-                    NetworkRequest::Broadcast { payload, responder } => {
+                    NetworkRequest::Broadcast {
+                        payload,
+                        auto_closing_responder,
+                    } => {
                         // We're given a message to broadcast.
                         self.net_metrics.broadcast_requests.inc();
                         self.broadcast_message(Arc::new(Message::Payload(*payload)));
-                        responder.respond(()).ignore()
+                        auto_closing_responder.respond(()).ignore()
                     }
                     NetworkRequest::Gossip {
                         payload,
                         count,
                         exclude,
-                        responder,
+                        auto_closing_responder,
                     } => {
                         // We're given a message to gossip.
                         let sent_to = self.gossip_message(
@@ -928,7 +931,7 @@ where
                             count,
                             exclude,
                         );
-                        responder.respond(sent_to).ignore()
+                        auto_closing_responder.respond(sent_to).ignore()
                     }
                 }
             }

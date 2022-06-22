@@ -31,6 +31,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
+use tracing::{error, warn};
 
 use crate::{
     components::consensus,
@@ -45,7 +46,8 @@ use crate::{
 
 use super::{Item, Tag};
 use crate::types::error::{
-    BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
+    BlockHeaderWithMetadataValidationError, BlockHeadersBatchValidationError,
+    BlockWithMetadataValidationError,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
@@ -500,27 +502,23 @@ impl FinalizedBlock {
     /// Generates a random instance using a `TestRng`, but using the specified values.
     /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
     /// will be used.
-    pub fn random_with_specifics(
+    pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
         is_switch: bool,
-        deploy: Option<&Deploy>,
+        deploys_iter: I,
     ) -> Self {
-        let deploys = match deploy {
-            Some(deploy) => vec![DeployWithApprovals::new(*deploy.id(), BTreeSet::new())],
-            None => {
-                let deploy_count = rng.gen_range(0..11);
-                iter::repeat_with(|| {
-                    DeployWithApprovals::new(
-                        DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
-                        BTreeSet::new(),
-                    )
-                })
-                .take(deploy_count)
-                .collect()
-            }
-        };
+        let mut deploys = deploys_iter
+            .into_iter()
+            .map(DeployWithApprovals::from)
+            .collect::<Vec<_>>();
+        if deploys.is_empty() {
+            let count = rng.gen_range(0..11);
+            deploys.extend(
+                iter::repeat_with(|| DeployWithApprovals::from(&Deploy::random(rng))).take(count),
+            );
+        }
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -681,6 +679,46 @@ impl FromBytes for BlockHash {
         let (hash, remainder) = Digest::from_bytes(bytes)?;
         let block_hash = BlockHash(hash);
         Ok((block_hash, remainder))
+    }
+}
+
+/// Describes a block's hash and height.
+#[derive(
+    Clone, Copy, DataSize, Default, Eq, JsonSchema, Serialize, Deserialize, Debug, PartialEq,
+)]
+pub struct BlockHashAndHeight {
+    /// The hash of the block.
+    #[schemars(description = "The hash of this deploy's block.")]
+    pub block_hash: BlockHash,
+    /// The height of the block.
+    #[schemars(description = "The height of this deploy's block.")]
+    pub block_height: u64,
+}
+
+impl BlockHashAndHeight {
+    pub fn new(block_hash: BlockHash, block_height: u64) -> Self {
+        Self {
+            block_hash,
+            block_height,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            block_hash: BlockHash::random(rng),
+            block_height: rng.gen::<u64>(),
+        }
+    }
+}
+
+impl Display for BlockHashAndHeight {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "hash: {}, height {} ",
+            self.block_hash, self.block_height
+        )
     }
 }
 
@@ -1073,6 +1111,221 @@ impl Item for BlockHeaderWithMetadata {
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         self.block_header.height()
+    }
+}
+#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+/// ID identifying a request for a batch of block headers.
+pub(crate) struct BlockHeadersBatchId {
+    pub highest: u64,
+    pub lowest: u64,
+}
+
+impl BlockHeadersBatchId {
+    pub(crate) fn new(highest: u64, lowest: u64) -> Self {
+        Self { highest, lowest }
+    }
+
+    pub(crate) fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
+        let highest = lowest_known_block_header.height().saturating_sub(1);
+        let lowest = lowest_known_block_header
+            .height()
+            .saturating_sub(max_batch_size);
+
+        Self { highest, lowest }
+    }
+
+    /// Return an iterator over block header heights starting from highest (inclusive) to lowest
+    /// (inclusive).
+    pub(crate) fn iter(&self) -> impl Iterator<Item = u64> {
+        (self.lowest..=self.highest).rev()
+    }
+
+    /// Returns the length of the batch.
+    pub(crate) fn len(&self) -> u64 {
+        self.highest + 1 - self.lowest
+    }
+}
+
+impl Display for BlockHeadersBatchId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block header batch {}..={}", self.highest, self.lowest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct BlockHeadersBatch(Vec<BlockHeader>);
+
+impl BlockHeadersBatch {
+    /// Validates whether received batch is:
+    /// 1) highest block header from the batch has a hash is `latest_known.hash`
+    /// 2) a link of header[n].parent == header[n+1].hash is maintained
+    ///
+    /// Returns lowest block header from the batch or error if batch fails validation.
+    pub(crate) fn validate(
+        &self,
+        batch_id: &BlockHeadersBatchId,
+        earliest_known: &BlockHeader,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<BlockHeader, BlockHeadersBatchValidationError> {
+        let highest_header = self
+            .0
+            .first()
+            .ok_or(BlockHeadersBatchValidationError::BatchEmpty)?;
+
+        if batch_id.len() != self.inner().len() as u64 {
+            return Err(BlockHeadersBatchValidationError::IncorrectLength {
+                expected: batch_id.len(),
+                got: self.inner().len() as u64,
+            });
+        }
+
+        // Check first header first b/c it's cheaper than verifying continuity.
+        let highest_hash = highest_header.hash(verifiable_chunked_hash_activation);
+        if &highest_hash != earliest_known.parent_hash() {
+            return Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
+                expected: *earliest_known.parent_hash(),
+                got: highest_hash,
+            });
+        }
+
+        self.0
+            .last()
+            .cloned()
+            .ok_or(BlockHeadersBatchValidationError::BatchEmpty)
+    }
+
+    /// Tries to create an instance of `BlockHeadersBatch` from a `Vec<BlockHeader>`.
+    ///
+    /// Returns `Some(Self)` if data passes validation, otherwise `None`.
+    pub(crate) fn from_vec(
+        batch: Vec<BlockHeader>,
+        requested_id: &BlockHeadersBatchId,
+    ) -> Option<Self> {
+        match batch.first() {
+            Some(highest) => {
+                if highest.height() != requested_id.highest {
+                    error!(
+                        expected_highest=?requested_id.highest,
+                        got_highest=?highest,
+                        "unexpected highest block header"
+                    );
+                    return None;
+                }
+            }
+            None => {
+                warn!("response cannot be an empty batch");
+                return None;
+            }
+        }
+
+        match batch.last() {
+            Some(lowest) => {
+                if lowest.height() != requested_id.lowest {
+                    error!(
+                        expected_lowest=?requested_id.lowest,
+                        got_lowest=?lowest,
+                        "unexpected lowest block header"
+                    );
+                    return None;
+                }
+            }
+            None => {
+                error!("input cannot be empty");
+                return None;
+            }
+        }
+
+        Some(Self(batch))
+    }
+
+    /// Returns inner value.
+    pub(crate) fn into_inner(self) -> Vec<BlockHeader> {
+        self.0
+    }
+
+    /// Returns a reference to an inner vector of block headers.
+    pub(crate) fn inner(&self) -> &Vec<BlockHeader> {
+        &self.0
+    }
+
+    /// Returns the lowest element from the batch.
+    pub(crate) fn lowest(&self) -> Option<&BlockHeader> {
+        self.0.last()
+    }
+
+    /// Tests whether the block header batch is continuous and in descending order.
+    pub(crate) fn is_continuous_and_descending(
+        batch: &[BlockHeader],
+        verifiable_chunked_hash_activation: EraId,
+    ) -> bool {
+        batch
+            .windows(2)
+            .filter_map(|window| match &window {
+                &[l, r] => Some((l, r)),
+                _ => None,
+            })
+            .all(|(l, r)| {
+                l.height() == r.height() + 1
+                    && l.parent_hash() == &r.hash(verifiable_chunked_hash_activation)
+            })
+    }
+
+    #[cfg(test)]
+    // Test-only constructor allowing creation of otherwise invalid data.
+    fn new(batch: Vec<BlockHeader>) -> Self {
+        Self(batch)
+    }
+}
+
+impl Display for BlockHeadersBatch {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block header batch")
+    }
+}
+
+impl Item for BlockHeadersBatch {
+    type Id = BlockHeadersBatchId;
+
+    type ValidationError = BlockHeadersBatchValidationError;
+
+    const TAG: Tag = Tag::BlockHeaderBatch;
+
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        if self.inner().is_empty() {
+            return Err(BlockHeadersBatchValidationError::BatchEmpty);
+        }
+
+        if !BlockHeadersBatch::is_continuous_and_descending(
+            self.inner(),
+            verifiable_chunked_hash_activation,
+        ) {
+            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
+        }
+
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        let upper_batch_height = self.0.first().map(|h| h.height());
+        let lower_batch_height = self.0.last().map(|h| h.height());
+        if lower_batch_height.is_none() || upper_batch_height.is_none() {
+            // ID should be infallible but it is possible that the `Vec` is empty.
+            // In that case we log an error to indicate something went really wrong and use `(0,0)`.
+            warn!(
+                ?lower_batch_height,
+                ?upper_batch_height,
+                "received header batch is empty"
+            );
+        }
+        BlockHeadersBatchId::new(
+            upper_batch_height.unwrap_or_default(),
+            lower_batch_height.unwrap_or_default(),
+        )
     }
 }
 
@@ -1597,6 +1850,14 @@ impl Block {
         self
     }
 
+    /// Overrides the era end of a block with a `None`, making it a non-switch block.
+    #[cfg(test)]
+    pub fn disable_switch_block(&mut self, verifiable_chunked_hash_activation: EraId) -> &mut Self {
+        let _ = self.header.era_end.take();
+        self.hash = self.header.hash(verifiable_chunked_hash_activation);
+        self
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -1672,19 +1933,19 @@ impl Block {
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
-    pub fn random_with_specifics(
+    pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
         protocol_version: ProtocolVersion,
         is_switch: bool,
         verifiable_chunked_hash_activation: EraId,
-        deploy: Option<&Deploy>,
+        deploys_iter: I,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         let finalized_block =
-            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploy);
+            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
             .clone()
@@ -1843,6 +2104,83 @@ impl Item for BlockWithMetadata {
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         self.block.height()
+    }
+}
+
+#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Wrapper around block and its deploys.
+pub struct BlockAndDeploys {
+    /// Block part.
+    pub block: Block,
+    /// Deploys.
+    pub deploys: Vec<Deploy>,
+}
+
+impl Display for BlockAndDeploys {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block {} and deploys", self.block.hash())
+    }
+}
+
+impl Item for BlockAndDeploys {
+    type Id = BlockHash;
+
+    type ValidationError = BlockValidationError;
+
+    const TAG: Tag = Tag::BlockAndDeploysByHash;
+
+    // false b/c we're not validating finality signatures.
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        let _ = self.block.verify(verifiable_chunked_hash_activation)?;
+        // Validate that we've got all of the deploys we should have gotten, and that their hashes
+        // are valid.
+        for deploy_hash in self
+            .block
+            .deploy_hashes()
+            .iter()
+            .chain(self.block.transfer_hashes().iter())
+        {
+            match self
+                .deploys
+                .iter()
+                .find(|&deploy| deploy.id() == deploy_hash)
+            {
+                Some(deploy) => deploy.has_valid_hash().map_err(|error| {
+                    BlockValidationError::UnexpectedDeployHash {
+                        block: Box::new(self.block.clone()),
+                        invalid_deploy: Box::new(deploy.clone()),
+                        deploy_configuration_failure: error,
+                    }
+                })?,
+                None => {
+                    return Err(BlockValidationError::MissingDeploy {
+                        block: Box::new(self.block.clone()),
+                        missing_deploy: *deploy_hash,
+                    })
+                }
+            }
+        }
+
+        // Check we got no extra deploys.
+        let expected_deploys_count =
+            self.block.deploy_hashes().len() + self.block.transfer_hashes().len();
+        if expected_deploys_count < self.deploys.len() {
+            return Err(BlockValidationError::ExtraDeploys {
+                block: Box::new(self.block.clone()),
+                extra_deploys_count: (self.deploys.len() - expected_deploys_count) as u32,
+            });
+        }
+
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        *self.block.hash()
     }
 }
 
@@ -2119,14 +2457,19 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    #[test]
-    fn block_json_roundtrip() {
-        let mut rng = TestRng::new();
-        let block: Block = Block::random(&mut rng);
-        let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
-        let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
-        let block_deserialized = Block::from(json_block);
-        assert_eq!(block, block_deserialized);
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn block_json_roundtrip() {
+            let mut rng = TestRng::new();
+            let block: Block = Block::random(&mut rng);
+            let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
+            let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
+            let block_deserialized = Block::from(json_block);
+            assert_eq!(block, block_deserialized);
+        }
     }
 }
 
@@ -2255,7 +2598,7 @@ mod tests {
 
     #[test]
     fn random_block_check() {
-        let mut rng = TestRng::from_seed([1u8; 16]);
+        let mut rng = TestRng::new();
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
             let (random_v1_block, verifiable_chunked_hash_activation) = Block::random_v1(&mut rng);
@@ -2271,7 +2614,7 @@ mod tests {
 
     #[test]
     fn block_check_bad_body_hash_sad_path() {
-        let mut rng = TestRng::from_seed([2u8; 16]);
+        let mut rng = TestRng::new();
 
         let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
@@ -2301,7 +2644,7 @@ mod tests {
 
     #[test]
     fn block_check_bad_block_hash_sad_path() {
-        let mut rng = TestRng::from_seed([3u8; 16]);
+        let mut rng = TestRng::new();
 
         let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
@@ -2386,6 +2729,527 @@ mod tests {
         assert_eq!(
             *block.header().body_hash(),
             Digest::hash_slice_rfold(&hashes[..])
+        );
+    }
+
+    #[test]
+    fn good_block_and_deploys_should_validate() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        let deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(5)
+            .collect::<Vec<_>>();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+        let block_and_deploys = BlockAndDeploys { block, deploys };
+
+        block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_or_else(|error| panic!("expected to be valid: {:?}", error));
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_extra_deploy() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        // Create block including only the first set of deploys.
+        let deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(5)
+            .collect::<Vec<_>>();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+
+        // Put both sets of deploys in `BlockAndDeploys`
+        let extra_deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(3)
+            .collect::<Vec<_>>();
+        let block_and_deploys = BlockAndDeploys {
+            block,
+            deploys: deploys
+                .iter()
+                .chain(extra_deploys.iter())
+                .cloned()
+                .collect(),
+        };
+
+        match block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_err()
+        {
+            BlockValidationError::ExtraDeploys {
+                extra_deploys_count,
+                ..
+            } => {
+                assert_eq!(extra_deploys_count, extra_deploys.len() as u32);
+            }
+            _ => panic!("should report extra deploys"),
+        }
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_missing_deploy() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        // Create block including both sets of deploys.
+        let deploys1 = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(3)
+            .collect::<Vec<_>>();
+        let deploys2 = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(2)
+            .collect::<Vec<_>>();
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys1.iter().chain(deploys2.iter()),
+        );
+
+        // Only put first set of deploys in `BlockAndDeploys`
+        let block_and_deploys = BlockAndDeploys {
+            block,
+            deploys: deploys1,
+        };
+
+        match block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_err()
+        {
+            BlockValidationError::MissingDeploy { missing_deploy, .. } => {
+                assert!(deploys2.iter().any(|deploy| *deploy.id() == missing_deploy))
+            }
+            _ => panic!("should report missing deploy"),
+        };
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_bad_block() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        let deploys = vec![Deploy::random(&mut rng)];
+        let mut block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+
+        // Invalidate the block.
+        block.hash = BlockHash::random(&mut rng);
+
+        let block_and_deploys = BlockAndDeploys { block, deploys };
+
+        assert!(matches!(
+            block_and_deploys
+                .validate(verifiable_chunked_hash_activation)
+                .unwrap_err(),
+            BlockValidationError::UnexpectedBlockHash { .. }
+        ));
+    }
+
+    #[test]
+    fn block_and_deploys_should_fail_to_validate_with_bad_deploy() {
+        let mut rng = TestRng::new();
+        let verifiable_chunked_hash_activation = EraId::new(10000);
+
+        // Create an invalid deploy and include in deploy set.
+        let mut bad_deploy = Deploy::random(&mut rng);
+        bad_deploy.invalidate();
+        let deploys = iter::repeat_with(|| Deploy::random(&mut rng))
+            .take(5)
+            .chain(iter::once(bad_deploy.clone()))
+            .collect::<Vec<_>>();
+
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            2,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            deploys.iter(),
+        );
+
+        let block_and_deploys = BlockAndDeploys { block, deploys };
+
+        match block_and_deploys
+            .validate(verifiable_chunked_hash_activation)
+            .unwrap_err()
+        {
+            BlockValidationError::UnexpectedDeployHash { invalid_deploy, .. } => {
+                assert_eq!(*invalid_deploy, bad_deploy);
+            }
+            _ => panic!("should report missing deploy"),
+        };
+    }
+
+    #[test]
+    fn block_headers_batch_id_iter() {
+        let id = BlockHeadersBatchId::new(5, 1);
+        assert_eq!(
+            vec![5u64, 4, 3, 2, 1],
+            id.iter().collect::<Vec<_>>(),
+            ".iter() must return descending order"
+        );
+
+        let id = BlockHeadersBatchId::new(5, 5);
+        assert_eq!(vec![5u64], id.iter().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn block_headers_batch_id_len() {
+        let id = BlockHeadersBatchId::new(5, 1);
+        assert_eq!(id.len(), 5);
+        let id = BlockHeadersBatchId::new(5, 5);
+        assert_eq!(id.len(), 1);
+    }
+
+    #[test]
+    fn block_headers_batch_id_from_known() {
+        let mut rng = TestRng::new();
+        let trusted_block: Block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            100,
+            ProtocolVersion::V1_0_0,
+            false,
+            EraId::new(100),
+            std::iter::empty(),
+        );
+        let trusted_header = trusted_block.take_header();
+
+        let batch_size = 10;
+
+        let id = BlockHeadersBatchId::from_known(&trusted_header, batch_size);
+
+        assert_eq!(
+            BlockHeadersBatchId::new(99, 90),
+            id,
+            "expected batch of proper length and skipping trusted height"
+        );
+
+        let id_saturated = BlockHeadersBatchId::from_known(&trusted_header, 1000);
+        assert_eq!(
+            BlockHeadersBatchId::new(99, 0),
+            id_saturated,
+            "expect batch towards Genesis"
+        );
+
+        let trusted_last = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(0),
+            1,
+            ProtocolVersion::V1_0_0,
+            false,
+            EraId::new(100),
+            std::iter::empty(),
+        );
+
+        let trusted_last_header = trusted_last.take_header();
+
+        let id_last = BlockHeadersBatchId::from_known(&trusted_last_header, batch_size);
+        assert_eq!(
+            BlockHeadersBatchId::new(0, 0),
+            id_last,
+            "expected batch that saturates towards Genesis and doesn't include known height"
+        );
+    }
+
+    struct TestBlock(Block, TestRng);
+
+    impl TestBlock {
+        fn new(test_rng: TestRng) -> Self {
+            let mut rng = test_rng;
+            let init = Block::random(&mut rng);
+            Self(init, rng)
+        }
+
+        fn into_iter(self) -> TestBlockIterator {
+            TestBlockIterator(self.0, self.1)
+        }
+    }
+
+    const NEVER_SWITCH_HASHING: EraId = EraId::new(u64::MAX);
+
+    struct TestBlockIterator(Block, TestRng);
+
+    impl Iterator for TestBlockIterator {
+        type Item = Block;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = Block::new(
+                self.0.id(NEVER_SWITCH_HASHING),
+                self.0.header().accumulated_seed(),
+                *self.0.header().state_root_hash(),
+                FinalizedBlock::random_with_specifics(
+                    &mut self.1,
+                    self.0.header().era_id(),
+                    self.0.header().height() + 1,
+                    false,
+                    std::iter::empty(),
+                ),
+                None,
+                self.0.header().protocol_version(),
+                NEVER_SWITCH_HASHING,
+            )
+            .unwrap();
+            self.0 = next.clone();
+            Some(next)
+        }
+    }
+
+    #[test]
+    fn test_block_iter() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+        let mut block_batch = test_block.into_iter().take(500);
+        let mut parent_block: Block = block_batch.next().unwrap();
+        for current_block in block_batch {
+            assert_eq!(
+                current_block.header().height(),
+                parent_block.header().height() + 1,
+                "height should grow monotonically"
+            );
+            assert_eq!(
+                current_block.header().parent_hash(),
+                &parent_block.id(NEVER_SWITCH_HASHING),
+                "block's parent should point at previous block"
+            );
+            parent_block = current_block;
+        }
+    }
+
+    #[test]
+    fn block_batch_is_continuous_and_descending() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !BlockHeadersBatch::is_continuous_and_descending(
+                batch.as_slice(),
+                NEVER_SWITCH_HASHING
+            ),
+            "should fail b/c not descending"
+        );
+
+        batch.reverse();
+        assert!(BlockHeadersBatch::is_continuous_and_descending(
+            batch.as_slice(),
+            NEVER_SWITCH_HASHING
+        ));
+
+        let next_header = test_block_iter.next().unwrap().take_header();
+        assert!(
+            BlockHeadersBatch::is_continuous_and_descending(&[next_header], NEVER_SWITCH_HASHING),
+            "single block is valid batch"
+        );
+
+        let mut batch_with_holes = vec![test_block_iter.next().unwrap().take_header()];
+        // Skip one block header
+        let _ = test_block_iter.next().unwrap();
+        batch_with_holes.push(test_block_iter.next().unwrap().take_header());
+
+        assert!(!BlockHeadersBatch::is_continuous_and_descending(
+            batch_with_holes.as_slice(),
+            NEVER_SWITCH_HASHING
+        ));
+    }
+
+    #[test]
+    fn block_headers_batch_from_vec() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+        batch.reverse();
+
+        let id = BlockHeadersBatchId::new(batch[0].height(), batch[2].height());
+
+        let block_headers_batch = BlockHeadersBatch::from_vec(batch.clone(), &id);
+        assert!(block_headers_batch.is_some());
+        assert_eq!(block_headers_batch.unwrap().inner(), &batch);
+
+        let missing_highest_batch = batch.clone().into_iter().skip(1).collect::<Vec<_>>();
+        assert!(BlockHeadersBatch::from_vec(missing_highest_batch, &id).is_none());
+
+        let missing_lowest_batch = batch
+            .clone()
+            .into_iter()
+            .rev()
+            .skip(1)
+            .rev()
+            .collect::<Vec<_>>();
+        assert!(BlockHeadersBatch::from_vec(missing_lowest_batch, &id).is_none());
+    }
+
+    #[test]
+    fn block_headers_batch_item_validate() {
+        let empty_batch = BlockHeadersBatch::new(vec![]);
+        assert_eq!(
+            Item::validate(&empty_batch, NEVER_SWITCH_HASHING),
+            Err(BlockHeadersBatchValidationError::BatchEmpty)
+        );
+
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        // Invalid ordering.
+        let invalid_batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(invalid_batch.clone()),
+                NEVER_SWITCH_HASHING
+            ),
+            Err(BlockHeadersBatchValidationError::BatchNotContinuous)
+        );
+
+        let valid_batch = {
+            let mut tmp = invalid_batch;
+            tmp.reverse();
+            tmp
+        };
+
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(valid_batch.clone()),
+                NEVER_SWITCH_HASHING
+            ),
+            Ok(())
+        );
+
+        let single_el_valid = vec![valid_batch[0].clone()];
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(single_el_valid),
+                NEVER_SWITCH_HASHING
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn block_headers_batch_validate() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let headers = {
+            let mut tmp_batch = test_block_iter
+                .by_ref()
+                .take(5)
+                .map(|block| block.take_header())
+                .collect::<Vec<_>>();
+            tmp_batch.reverse();
+            tmp_batch
+        };
+
+        let lowest = headers.last().cloned().unwrap();
+        let (trusted, batch) = (
+            headers.first().cloned().unwrap(),
+            BlockHeadersBatch::new(headers[1..].to_vec()),
+        );
+
+        let batch_id = BlockHeadersBatchId::new(
+            trusted.height() - 1,
+            batch.inner().last().cloned().unwrap().height(),
+        );
+
+        assert_eq!(
+            Ok(lowest),
+            BlockHeadersBatch::validate(&batch, &batch_id, &trusted, NEVER_SWITCH_HASHING)
+        );
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::BatchEmpty),
+            BlockHeadersBatch::validate(
+                &BlockHeadersBatch::new(vec![]),
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
+        );
+
+        let invalid_length_batch = BlockHeadersBatch::new(batch.inner().clone()[1..].to_vec());
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::IncorrectLength {
+                expected: 4,
+                got: 3
+            }),
+            BlockHeadersBatch::validate(
+                &invalid_length_batch,
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
+        );
+
+        let (new_highest, invalid_highest_batch) = {
+            let mut tmp = batch.inner().clone();
+            tmp.reverse();
+            (tmp.first().cloned().unwrap(), BlockHeadersBatch::new(tmp))
+        };
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
+                expected: batch
+                    .inner()
+                    .first()
+                    .cloned()
+                    .unwrap()
+                    .id(NEVER_SWITCH_HASHING),
+                got: new_highest.id(NEVER_SWITCH_HASHING)
+            }),
+            BlockHeadersBatch::validate(
+                &invalid_highest_batch,
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
         );
     }
 }

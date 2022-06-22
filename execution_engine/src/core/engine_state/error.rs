@@ -17,6 +17,7 @@ use crate::{
 
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// Specified state root hash is not found.
     #[error("Root not found: {0}")]

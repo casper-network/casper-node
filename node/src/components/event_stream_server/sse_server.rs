@@ -2,6 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    net::SocketAddr,
     sync::{Arc, RwLock},
 };
 
@@ -22,6 +23,7 @@ use tokio_stream::wrappers::{
 };
 use tracing::{debug, error, info, warn};
 use warp::{
+    addr,
     filters::BoxedFilter,
     path,
     reject::Rejection,
@@ -416,60 +418,70 @@ impl ChannelsAndFilter {
         // new client subscription.
         let (new_subscriber_info_sender, new_subscriber_info_receiver) = mpsc::unbounded_channel();
 
+        let serve = move |path_param: String,
+                          query: HashMap<String, String>,
+                          maybe_remote_address: Option<SocketAddr>| {
+            let remote_address = match maybe_remote_address {
+                Some(address) => address.to_string(),
+                None => "unknown".to_string(),
+            };
+
+            // If we already have the maximum number of subscribers, reject this new one.
+            if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
+                info!(
+                    %remote_address,
+                    %max_concurrent_subscribers,
+                    "event stream server has max subscribers: rejecting new one"
+                );
+                return create_503();
+            }
+
+            // If `path_param` is not a valid string, return a 404.
+            let event_filter = match get_filter(path_param.as_str()) {
+                Some(filter) => filter,
+                None => return create_404(),
+            };
+
+            let start_from = match parse_query(query) {
+                Ok(maybe_id) => maybe_id,
+                Err(error_response) => return error_response,
+            };
+
+            // Create a channel for the client's handler to receive the stream of initial events.
+            let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
+
+            // Supply the server with the sender part of the channel along with the client's
+            // requested starting point.
+            let new_subscriber_info = NewSubscriberInfo {
+                start_from,
+                initial_events_sender,
+            };
+            if new_subscriber_info_sender
+                .send(new_subscriber_info)
+                .is_err()
+            {
+                error!("failed to send new subscriber info");
+            }
+
+            // Create a channel for the client's handler to receive the stream of ongoing events.
+            let ongoing_events_receiver = cloned_broadcaster.subscribe();
+
+            sse::reply(sse::keep_alive().stream(stream_to_client(
+                initial_events_receiver,
+                ongoing_events_receiver,
+                event_filter,
+                remote_address,
+            )))
+            .into_response()
+        };
+
         let sse_filter = warp::get()
             .and(path(SSE_API_ROOT_PATH))
             .and(path::param::<String>())
             .and(path::end())
             .and(warp::query())
-            .map(move |path_param: String, query: HashMap<String, String>| {
-                // If we already have the maximum number of subscribers, reject this new one.
-                if cloned_broadcaster.receiver_count() >= max_concurrent_subscribers as usize {
-                    info!(
-                        %max_concurrent_subscribers,
-                        "event stream server has max subscribers: rejecting new one"
-                    );
-                    return create_503();
-                }
-
-                // If `path_param` is not a valid string, return a 404.
-                let event_filter = match get_filter(path_param.as_str()) {
-                    Some(filter) => filter,
-                    None => return create_404(),
-                };
-
-                let start_from = match parse_query(query) {
-                    Ok(maybe_id) => maybe_id,
-                    Err(error_response) => return error_response,
-                };
-
-                // Create a channel for the client's handler to receive the stream of initial
-                // events.
-                let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
-
-                // Supply the server with the sender part of the channel along with the client's
-                // requested starting point.
-                let new_subscriber_info = NewSubscriberInfo {
-                    start_from,
-                    initial_events_sender,
-                };
-                if new_subscriber_info_sender
-                    .send(new_subscriber_info)
-                    .is_err()
-                {
-                    error!("failed to send new subscriber info");
-                }
-
-                // Create a channel for the client's handler to receive the stream of ongoing
-                // events.
-                let ongoing_events_receiver = cloned_broadcaster.subscribe();
-
-                sse::reply(sse::keep_alive().stream(stream_to_client(
-                    initial_events_receiver,
-                    ongoing_events_receiver,
-                    event_filter,
-                )))
-                .into_response()
-            })
+            .and(addr::remote())
+            .map(serve)
             .or_else(|_| async move { Ok::<_, Rejection>((create_404(),)) })
             .boxed();
 
@@ -499,6 +511,7 @@ fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
     event_filter: &'static [EventFilter],
+    remote_address: String,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
     let initial_stream_ids = Arc::new(RwLock::new(HashSet::new()));
@@ -509,6 +522,7 @@ fn stream_to_client(
     let ongoing_stream = BroadcastStream::new(ongoing_events)
         .filter_map(move |result| {
             let cloned_initial_ids = Arc::clone(&cloned_initial_ids);
+            let remote_address = remote_address.clone();
             async move {
                 match result {
                     Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
@@ -521,12 +535,13 @@ fn stream_to_client(
                         Some(Ok(event))
                     }
                     Ok(BroadcastChannelMessage::Shutdown) => Some(Err(RecvError::Closed)),
-                    Err(BroadcastStreamRecvError::Lagged(amount)) => {
+                    Err(BroadcastStreamRecvError::Lagged(lagged_count)) => {
                         info!(
-                            "client lagged by {} events - dropping event stream connection to client",
-                            amount
+                            %remote_address,
+                            %lagged_count,
+                            "client lagged: dropping event stream connection to client",
                         );
-                        Some(Err(RecvError::Lagged(amount)))
+                        Some(Err(RecvError::Lagged(lagged_count)))
                     }
                 }
             }
@@ -841,6 +856,7 @@ mod tests {
                 initial_events_receiver,
                 ongoing_events_receiver,
                 get_filter(path_filter).unwrap(),
+                "127.0.0.1:3456".to_string(),
             )
             .collect()
             .await;

@@ -57,7 +57,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
+            Bids, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights, WithdrawPurses,
             ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
             METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
@@ -865,11 +865,23 @@ where
         Some(exec_results.iter().map(Rc::clone).collect())
     }
 
-    /// Returns the results of a specific exec.
-    pub fn get_exec_result(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
+    /// Returns the results of all execs.
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result` instead")]
+    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
+        &self.exec_results
+    }
+
+    /// Returns the owned results of a specific exec.
+    pub fn get_exec_result_owned(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.get(index)?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
+    }
+
+    /// Returns the results of a specific exec.
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
+    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
+        self.exec_results.get(index)
     }
 
     /// Returns a count of exec results.
@@ -1033,7 +1045,7 @@ where
     /// Returns a `Vec<Gas>` representing execution consts.
     pub fn exec_costs(&self, index: usize) -> Vec<Gas> {
         let exec_results = self
-            .get_exec_result(index)
+            .get_exec_result_owned(index)
             .expect("should have exec response");
         utils::get_exec_costs(exec_results)
     }
@@ -1069,7 +1081,7 @@ where
 
     /// Returns the error message of the last exec.
     pub fn exec_error_message(&self, index: usize) -> Option<String> {
-        let response = self.get_exec_result(index)?;
+        let response = self.get_exec_result_owned(index)?;
         Some(utils::get_error_message(response))
     }
 
@@ -1137,7 +1149,7 @@ where
     }
 
     /// Gets [`WithdrawPurses`].
-    pub fn get_withdraws(&mut self) -> WithdrawPurses {
+    pub fn get_withdraw_purses(&mut self) -> WithdrawPurses {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -1165,6 +1177,25 @@ where
         }
 
         ret
+    }
+
+    /// Gets [`UnbondingPurses`].
+    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+        let withdraw_purses = self.get_withdraw_purses();
+        let unbonding_purses: UnbondingPurses = withdraw_purses
+            .iter()
+            .map(|(key, withdraw_purse)| {
+                (
+                    key.to_owned(),
+                    withdraw_purse
+                        .iter()
+                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
+                        .collect::<Vec<UnbondingPurse>>(),
+                )
+            })
+            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
+        unbonding_purses
     }
 
     /// Gets all `[Key::Balance]`s in global state.

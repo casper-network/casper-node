@@ -1,4 +1,3 @@
-use lmdb::{DatabaseFlags, Transaction};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -6,7 +5,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tracing::{info, warn};
+
+use lmdb::{DatabaseFlags, Transaction};
+use tracing::{info, trace, warn};
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
@@ -475,7 +476,7 @@ impl StateProvider for DbGlobalState {
                 .count()
         };
         if trie_count == 0 {
-            info!("no need to call missing_trie_keys");
+            trace!("no need to call missing_trie_keys");
             Ok(vec![])
         } else {
             let missing_descendants = missing_trie_keys::<Key, StoredValue, _, Self::Error>(

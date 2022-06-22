@@ -159,6 +159,33 @@ pub mod node_macros {
     });
 }
 
+pub mod json_rpc {
+    use super::*;
+
+    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+        vec![
+            DependentFile::new(
+                "node/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-json-rpc = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "json_rpc/Cargo.toml",
+                MANIFEST_VERSION_REGEX.clone(),
+                replacement,
+            ),
+            DependentFile::new(
+                "json_rpc/src/lib.rs",
+                Regex::new(
+                    r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-json-rpc)/(?:[^"]+)"#,
+                )
+                .unwrap(),
+                replacement_with_slash,
+            ),
+        ]
+    });
+}
+
 pub mod node {
     use super::*;
 

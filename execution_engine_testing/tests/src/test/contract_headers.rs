@@ -108,7 +108,7 @@ fn should_enforce_intended_execution_contexts() {
         .expect("should have package hash");
 
     let _foo = builder
-        .get_exec_result(3)
+        .get_exec_result_owned(3)
         .expect("should have exec response");
 
     let account = builder

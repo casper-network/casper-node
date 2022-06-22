@@ -1,22 +1,17 @@
-use std::{
-    io,
-    path::PathBuf,
-    sync::{PoisonError, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{io, path::PathBuf};
 
 use thiserror::Error;
-use tokio::{sync::AcquireError, task::JoinError};
 use tracing::error;
 
 use casper_hashing::Digest;
 use casper_types::{crypto, EraId};
 
-use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool, Indices};
+use super::lmdb_ext::LmdbExtError;
 use crate::{
     components::consensus::error::FinalitySignatureError,
     types::{
-        error::BlockValidationError, BlockBody, BlockHash, BlockHeader, DeployHash,
-        HashingAlgorithmVersion,
+        error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
+        DeployHash, HashingAlgorithmVersion,
     },
 };
 
@@ -55,13 +50,16 @@ pub enum FatalStorageError {
         /// Deploy hash at which duplicate was found.
         deploy_hash: DeployHash,
         /// First block hash encountered at `deploy_hash`.
-        first: BlockHash,
+        first: BlockHashAndHeight,
         /// Second block hash encountered at `deploy_hash`.
-        second: BlockHash,
+        second: BlockHashAndHeight,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+    /// An internal DB error - blocks should be overwritten.
+    #[error("failed overwriting block")]
+    FailedToOverwriteBlock,
     /// Filesystem error while trying to move file.
     #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
     UnableToMoveFile {
@@ -177,56 +175,12 @@ pub enum FatalStorageError {
         /// The missing deploy hash.
         deploy_hash: DeployHash,
     },
-    /// Locking the indices lock failed due to lock poisoning.
-    ///
-    /// A thread holding the lock has crashed.
-    #[error("indices lock poisoned")]
-    IndicesLockPoisoned,
-    /// Locking the item memory pool lock failed due to lock poisoning.
-    ///
-    /// A thread holding the lock has crashed.
-    #[error("item pool lock poisoned")]
-    ItemPoolLockPoisoned,
-    /// Failed to join the storage background task.
-    #[error("failed to join storage background task")]
-    FailedToJoinBackgroundTask(JoinError),
-    /// The semaphore guarding parallel sync task execution was closed.
-    ///
-    /// This should not happen outside of crashes.
-    #[error("task semaphore was unexpectedly closed")]
-    SemaphoreClosedUnexpectedly(AcquireError),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
 impl From<lmdb::Error> for FatalStorageError {
     fn from(err: lmdb::Error) -> Self {
         LmdbExtError::from(err).into()
-    }
-}
-
-// While we usually avoid blanked `From` impls on errors, the type is specific enough (includes
-// `Indices`) to make an exception to this rule here for both read and write lock poisoning.
-impl<'a> From<PoisonError<RwLockReadGuard<'a, Indices>>> for FatalStorageError {
-    fn from(_: PoisonError<RwLockReadGuard<'a, Indices>>) -> Self {
-        FatalStorageError::IndicesLockPoisoned
-    }
-}
-
-impl<'a> From<PoisonError<RwLockWriteGuard<'a, Indices>>> for FatalStorageError {
-    fn from(_: PoisonError<RwLockWriteGuard<'a, Indices>>) -> Self {
-        FatalStorageError::IndicesLockPoisoned
-    }
-}
-
-impl<'a> From<PoisonError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
-    fn from(_: PoisonError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
-        FatalStorageError::ItemPoolLockPoisoned
-    }
-}
-
-impl<'a> From<PoisonError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
-    fn from(_: PoisonError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
-        FatalStorageError::ItemPoolLockPoisoned
     }
 }
 

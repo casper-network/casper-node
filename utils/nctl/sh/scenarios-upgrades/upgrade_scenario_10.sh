@@ -8,7 +8,8 @@
 # 3. Query auction-info at block height 1.
 # 4. Run through an upgrade
 # 5. Query auction-info at block height 1 and compare with previous result.
-# 6. Successful test cleanup.
+# 6. Run Health Checks
+# 7. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -16,6 +17,7 @@
 
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -39,6 +41,7 @@ function _main()
       _step_04
       _step_05
       _step_06
+      _step_07
 }
 
 # Step 01: Start network from pre-built stage.
@@ -56,7 +59,9 @@ function _step_01()
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID" chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_10.chainspec.toml.in"
+            stage="$STAGE_ID" \
+            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_10.chainspec.toml.in" \
+            config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_10.config.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -65,8 +70,7 @@ function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
 
-    sleep 60.0
-    await_until_era_n 1
+    do_await_genesis_era_to_complete 'false'
 }
 
 # Step 03: Query auction info
@@ -84,10 +88,14 @@ function _step_04()
     log_step_upgrades 4 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_10.chainspec.toml.in"
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" \
+        stage="$STAGE_ID" \
+        verbose=false \
+        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_10.chainspec.toml.in" \
+        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_10.config.toml"
 
     log "... awaiting 2 eras + 1 block"
-    await_n_eras '2' 'true' '5.0'
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 }
 
@@ -105,16 +113,29 @@ function _step_05() {
 
 }
 
-# Step 06: Terminate.
+# Step 06: Run NCTL health checks
 function _step_06()
 {
-    log_step_upgrades 6 "test successful - tidying up"
+    # restarts=5 - Nodes that upgrade
+    log_step_upgrades 9 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=5 \
+            ejections=0
+}
+
+# Step 07: Terminate.
+function _step_07()
+{
+    log_step_upgrades 7 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
     log_break
 }
-
 
 #######################################
 # Returns auction info at a block

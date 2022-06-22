@@ -1313,6 +1313,54 @@ where
 
         debug!("Payment result: {:?}", payment_result);
 
+        // the proposer of the block this deploy is in receives the gas from this deploy execution
+        let proposer_purse = {
+            let proposer_account: Account = match tracking_copy
+                .borrow_mut()
+                .get_account(correlation_id, AccountHash::from(&proposer))
+            {
+                Ok(account) => account,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            };
+            proposer_account.main_purse()
+        };
+
+        let proposer_main_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, proposer_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
+        // If provided wasm file was malformed, we should charge.
+        if should_charge_for_errors_in_wasm(&payment_result) {
+            let error = payment_result
+                .as_error()
+                .cloned()
+                .unwrap_or(Error::InsufficientPayment);
+
+            match ExecutionResult::new_payment_code_error(
+                error,
+                max_payment_cost,
+                account_main_purse_balance,
+                payment_result.cost(),
+                account_main_purse_balance_key,
+                proposer_main_purse_balance_key,
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            }
+        }
+
         let payment_result_cost = payment_result.cost();
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
@@ -1364,34 +1412,6 @@ where
                 .get_purse_balance(correlation_id, purse_balance_key)
             {
                 Ok(balance) => balance,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
-
-        // the proposer of the block this deploy is in receives the gas from this deploy execution
-        let proposer_purse = {
-            let proposer_account: Account = match tracking_copy
-                .borrow_mut()
-                .get_account(correlation_id, AccountHash::from(&proposer))
-            {
-                Ok(account) => account,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-            proposer_account.main_purse()
-        };
-
-        let proposer_main_purse_balance_key = {
-            // Get reward purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_purse.into())
-            {
-                Ok(key) => key,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(error.into()));
                 }
@@ -1503,9 +1523,11 @@ where
             );
         }
 
-        // Session execution was zero cost.
+        // Session execution was zero cost or provided wasm was malformed.
         // Check if the payment purse can cover the minimum floor for session execution.
-        if session_result.cost().is_zero() && payment_purse_balance < max_payment_cost {
+        if (session_result.cost().is_zero() && payment_purse_balance < max_payment_cost)
+            || should_charge_for_errors_in_wasm(&session_result)
+        {
             // When session code structure is valid but still has 0 cost we should propagate the
             // error.
             let error = session_result
@@ -2105,5 +2127,91 @@ where
     fn get_new_system_call_stack(&self) -> RuntimeStack {
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
+    }
+}
+
+fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool {
+    match execution_result {
+        ExecutionResult::Failure {
+            error,
+            transfers: _,
+            cost: _,
+            execution_journal: _,
+        } => match error {
+            Error::Exec(err) => match err {
+                ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
+                ExecError::Storage(_)
+                | ExecError::InvalidContractWasm(_)
+                | ExecError::WasmOptimizer
+                | ExecError::ParityWasm(_)
+                | ExecError::Interpreter(_)
+                | ExecError::BytesRepr(_)
+                | ExecError::NamedKeyNotFound(_)
+                | ExecError::KeyNotFound(_)
+                | ExecError::AccountNotFound(_)
+                | ExecError::TypeMismatch(_)
+                | ExecError::InvalidAccess { .. }
+                | ExecError::ForgedReference(_)
+                | ExecError::URefNotFound(_)
+                | ExecError::FunctionNotFound(_)
+                | ExecError::GasLimit
+                | ExecError::Ret(_)
+                | ExecError::Resolver(_)
+                | ExecError::Revert(_)
+                | ExecError::AddKeyFailure(_)
+                | ExecError::RemoveKeyFailure(_)
+                | ExecError::UpdateKeyFailure(_)
+                | ExecError::SetThresholdFailure(_)
+                | ExecError::SystemContract(_)
+                | ExecError::DeploymentAuthorizationFailure
+                | ExecError::ExpectedReturnValue
+                | ExecError::UnexpectedReturnValue
+                | ExecError::InvalidContext
+                | ExecError::IncompatibleProtocolMajorVersion { .. }
+                | ExecError::CLValue(_)
+                | ExecError::HostBufferEmpty
+                | ExecError::NoActiveContractVersions(_)
+                | ExecError::InvalidContractVersion(_)
+                | ExecError::NoSuchMethod(_)
+                | ExecError::KeyIsNotAURef(_)
+                | ExecError::UnexpectedStoredValueVariant
+                | ExecError::LockedContract(_)
+                | ExecError::InvalidContractPackage(_)
+                | ExecError::InvalidContract(_)
+                | ExecError::MissingArgument { .. }
+                | ExecError::DictionaryItemKeyExceedsLength
+                | ExecError::MissingSystemContractRegistry
+                | ExecError::MissingSystemContractHash(_)
+                | ExecError::RuntimeStackOverflow
+                | ExecError::ValueTooLarge
+                | ExecError::MissingRuntimeStack => false,
+            },
+            Error::WasmPreprocessing(_) => true,
+            Error::WasmSerialization(_) => true,
+            Error::RootNotFound(_)
+            | Error::InvalidProtocolVersion(_)
+            | Error::Genesis(_)
+            | Error::Storage(_)
+            | Error::Authorization
+            | Error::InsufficientPayment
+            | Error::GasConversionOverflow
+            | Error::Deploy
+            | Error::Finalization
+            | Error::Bytesrepr(_)
+            | Error::Mint(_)
+            | Error::InvalidKeyVariant
+            | Error::ProtocolUpgrade(_)
+            | Error::InvalidDeployItemVariant(_)
+            | Error::CommitError(_)
+            | Error::MissingSystemContractRegistry
+            | Error::MissingSystemContractHash(_)
+            | Error::RuntimeStackOverflow
+            | Error::FailedToGetWithdrawKeys
+            | Error::FailedToGetStoredWithdraws
+            | Error::FailedToGetWithdrawPurses
+            | Error::FailedToRetrieveUnbondingDelay
+            | Error::FailedToRetrieveEraId => false,
+        },
+        ExecutionResult::Success { .. } => false,
     }
 }
