@@ -353,7 +353,7 @@ async fn run_equivocator_network() {
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let sc_conf = participating::Config::default().consensus.simple_consensus;
+    let sc_conf = participating::Config::default().consensus.zug;
     let timeout = sc_conf.proposal_timeout * (sc_conf.proposal_grace_period as u64 + 100) / 100;
     let mut maybe_first_message_time = None;
     net.reactors_mut()

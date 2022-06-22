@@ -8,10 +8,7 @@ use casper_types::{PublicKey, SecretKey};
 use crate::{
     components::consensus::{
         era_supervisor::PAST_OPEN_ERAS,
-        protocols::{
-            highway::config::Config as HighwayConfig,
-            simple_consensus::config::Config as SimpleConsensusConfig,
-        },
+        protocols::{highway::config::Config as HighwayConfig, zug::config::Config as ZugConfig},
         EraId,
     },
     types::Chainspec,
@@ -30,8 +27,8 @@ pub(crate) struct Config {
     pub max_execution_delay: u64,
     /// Highway-specific node configuration.
     pub(crate) highway: HighwayConfig,
-    /// SimpleConsensus-specific node configuration.
-    pub(crate) simple_consensus: SimpleConsensusConfig,
+    /// Zug-specific node configuration.
+    pub(crate) zug: ZugConfig,
 }
 
 impl Default for Config {
@@ -40,7 +37,7 @@ impl Default for Config {
             secret_key_path: External::Missing,
             max_execution_delay: 3,
             highway: HighwayConfig::default(),
-            simple_consensus: SimpleConsensusConfig::default(),
+            zug: ZugConfig::default(),
         }
     }
 }

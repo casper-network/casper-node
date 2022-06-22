@@ -1,7 +1,7 @@
 use datasize::DataSize;
 
 use crate::components::consensus::{
-    protocols::simple_consensus::{Content, SignedMessage},
+    protocols::zug::{Content, SignedMessage},
     traits::Context,
 };
 
@@ -16,7 +16,7 @@ where
     C: Context,
 {
     /// The validator was known to be malicious from the beginning. All their messages are
-    /// considered invalid in this `SimpleConsensus` instance.
+    /// considered invalid in this `Zug` instance.
     Banned,
     /// We have direct evidence of the validator's fault: two conflicting signatures.
     Direct(SignedMessage<C>, Content<C>, C::Signature),
