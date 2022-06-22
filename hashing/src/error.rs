@@ -1,8 +1,20 @@
 //! Errors in constructing and validating indexed Merkle proofs, chunks with indexed Merkle proofs.
 use crate::{ChunkWithProof, Digest};
 
+/// Possible hashing errors.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Incorrect digest length {0}, expected length {}.", Digest::LENGTH)]
+    /// The digest length was an incorrect size.
+    IncorrectDigestLength(usize),
+    /// There was a decoding error.
+    #[error("Base16 decode error {0}.")]
+    Base16DecodeError(base16::DecodeError),
+}
+
 /// Error validating a Merkle proof of a chunk.
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MerkleVerificationError {
     /// Index out of bounds.
     #[error("Index out of bounds. Count: {count}, index: {index}")]
@@ -33,6 +45,7 @@ pub enum MerkleVerificationError {
 
 /// Error validating a chunk with proof.
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum ChunkWithProofVerificationError {
     /// Indexed Merkle proof verification error.
     #[error(transparent)]
@@ -61,6 +74,7 @@ pub enum ChunkWithProofVerificationError {
 
 /// Error during the construction of a Merkle proof.
 #[derive(thiserror::Error, Debug, Eq, PartialEq, Clone)]
+#[non_exhaustive]
 pub enum MerkleConstructionError {
     /// Chunk index was out of bounds.
     #[error(

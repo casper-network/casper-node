@@ -11,6 +11,14 @@ function clean_up() {
     local EXIT_CODE=$?
     local STDOUT
     local STDERR
+    local TMP_CLIENT_DIR
+
+    TMP_CLIENT_DIR='/tmp/client'
+
+    if [ -d "$TMP_CLIENT_DIR" ]; then
+        log "Removing client tmp dir..."
+        rm -rf "$TMP_CLIENT_DIR"
+    fi
 
     # Removes DEPLOY_LOG for ITST06/07
     if [ -f "$DEPLOY_LOG" ]; then
@@ -46,9 +54,43 @@ function log_step() {
 }
 
 function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
+    local LOG_STEP=${1:-'true'}
+    local TIMEOUT=${2:-'120'}
+
+    if [ "$LOG_STEP" = "true" ]; then
+        log_step "awaiting genesis era to complete: timeout=$TIMEOUT"
+    fi
+
     while [ "$(get_chain_era)" -lt "1" ]; do
         sleep 1.0
+        TIMEOUT=$((TIMEOUT-1))
+        if [ "$TIMEOUT" = '0' ]; then
+            log "ERROR: Timed out before genesis era completed"
+            exit 1
+        else
+            log "... waiting for genesis era to complete: timeout=$TIMEOUT"
+        fi
+    done
+}
+
+function do_wait_until_era() {
+    local WAIT_FOR_ERA=${1}
+    local LOG_STEP=${2:-'true'}
+    local TIMEOUT=${3:-'120'}
+
+    if [ "$LOG_STEP" = "true" ]; then
+        log_step "waiting until era $WAIT_FOR_ERA: timeout=$TIMEOUT"
+    fi
+
+    while [ "$(get_chain_era)" -lt "$WAIT_FOR_ERA" ]; do
+        sleep 1.0
+        TIMEOUT=$((TIMEOUT-1))
+        if [ "$TIMEOUT" = '0' ]; then
+            log "ERROR: Timed out before reaching era $WAIT_FOR_ERA"
+            exit 1
+        else
+            log "... waiting for era $WAIT_FOR_ERA to complete: timeout=$TIMEOUT"
+        fi
     done
 }
 

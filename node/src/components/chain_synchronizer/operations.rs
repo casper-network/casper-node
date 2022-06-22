@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     mem,
     sync::{
-        atomic::{self, AtomicBool, AtomicI64, Ordering},
+        atomic::{self, AtomicBool, AtomicI64, AtomicU64, Ordering},
         Arc, RwLock,
     },
 };
@@ -16,7 +16,8 @@ use futures::{
 };
 use prometheus::IntGauge;
 use quanta::Instant;
-use tracing::{error, info, trace, warn};
+use tokio::sync::Semaphore;
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
@@ -27,7 +28,7 @@ use casper_types::{
 use super::{metrics::Metrics, Config};
 use crate::{
     components::{
-        chain_synchronizer::error::{Error, FetchTrieError},
+        chain_synchronizer::error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
         consensus::{self},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
@@ -35,9 +36,10 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals,
-        FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
+        BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId,
+        FinalizedBlock, Item, NodeId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -79,6 +81,7 @@ struct ChainSyncContext<'a> {
     filter_count: AtomicI64,
     /// A range of blocks for which we already have all required data stored locally.
     locally_available_block_range_on_start: AvailableBlockRange,
+    trie_fetch_limit: Semaphore,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -96,6 +99,7 @@ impl<'a> ChainSyncContext<'a> {
             bad_peer_list: RwLock::new(VecDeque::new()),
             filter_count: AtomicI64::new(0),
             locally_available_block_range_on_start,
+            trie_fetch_limit: Semaphore::new(config.max_parallel_trie_fetches()),
         }
     }
 
@@ -168,7 +172,7 @@ impl<'a> ChainSyncContext<'a> {
     /// Marks a peer as bad.
     fn mark_bad_peer(&self, peer: NodeId) {
         if self.config.redemption_interval == 0 {
-            info!(%peer, "not marking peer as bad for syncing, redemption is disabled");
+            debug!(%peer, "not marking peer as bad for syncing, redemption is disabled");
             return;
         }
 
@@ -179,7 +183,7 @@ impl<'a> ChainSyncContext<'a> {
 
         // Note: Like `filter_bad_peers`, this may need to be migrated to use sets instead.
         if bad_peer_list.contains(&peer) {
-            info!(%peer, "peer already marked as bad for syncing");
+            debug!(%peer, "peer already marked as bad for syncing");
         } else {
             bad_peer_list.push_back(peer);
             info!(%peer, "marked peer as bad for syncing");
@@ -357,7 +361,7 @@ async fn fetch_and_store_block_header(
         });
     }
 
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for block but have no peers to query for the data.
@@ -388,7 +392,7 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
-    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
     // trying to query a peer for a deploy but have no peers to query for the data.
@@ -698,6 +702,33 @@ async fn fetch_and_store_block_by_hash(
     }
 }
 
+/// Downloads and stores a block with all its deploys.
+async fn fetch_and_store_block_with_deploys_by_hash(
+    block_hash: BlockHash,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>> {
+    let start = Timestamp::now();
+    let fetched_block = fetch_retry_forever::<BlockAndDeploys>(ctx, block_hash).await?;
+    let res = match fetched_block {
+        FetchedData::FromStorage {
+            item: block_and_deploys,
+            ..
+        } => Ok(block_and_deploys),
+        FetchedData::FromPeer {
+            item: block_and_deploys,
+            ..
+        } => {
+            ctx.effect_builder
+                .put_block_and_deploys_to_storage(block_and_deploys.clone())
+                .await;
+            Ok(block_and_deploys)
+        }
+    };
+    ctx.metrics
+        .observe_fetch_block_and_deploys_duration_seconds(start);
+    res
+}
+
 /// A worker task that takes trie keys from a queue and downloads the trie.
 async fn sync_trie_store_worker(
     worker_id: usize,
@@ -706,6 +737,15 @@ async fn sync_trie_store_worker(
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     while let Some(job) = queue.next_job().await {
+        let permit = match ctx.trie_fetch_limit.acquire().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                error!(?worker_id, ?job, "semaphore closed unexpectedly");
+                // We can't fetch any more tries after this.
+                drop(job);
+                return Err(Error::SemaphoreError(error));
+            }
+        };
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
         let child_jobs = fetch_and_store_trie(*job.inner(), ctx)
             .await
@@ -722,22 +762,52 @@ async fn sync_trie_store_worker(
             queue.push_job(child_job);
         }
         drop(job); // Make sure the job gets dropped only when the children are in the queue.
+        drop(permit); // Drop permit to allow other workers to acquire it.
     }
     Ok(())
 }
 
 /// Synchronizes the trie store under a given state root hash.
-async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    // We're querying storage directly and short-circuting here (before using the fetcher)
-    // as joiners don't talk to joiners and in a network comprised only of joining nodes
-    // we would never move past the initial sync since we would wait on fetcher
-    // trying to query a peer for a trie but have no peers to query for the data.
-    if let Ok(Some(_trie)) = ctx.effect_builder.get_trie_full(state_root_hash).await {
+async fn sync_trie_store(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
+    let state_root_hash = *block_header.state_root_hash();
+    trace!(?state_root_hash, "syncing trie store");
+
+    if ctx
+        .locally_available_block_range_on_start
+        .contains(block_header.height())
+    {
+        info!(
+            locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
+            block_height = %block_header.height(),
+            "skipping trie store sync because it is already available locally"
+        );
         return Ok(());
     }
 
-    info!(?state_root_hash, "syncing trie store");
     let start_instant = Timestamp::now();
+
+    // We're querying storage directly and short-circuiting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for a trie but have no peers to query for the data.
+    if ctx
+        .effect_builder
+        .get_trie_full(state_root_hash)
+        .await?
+        .is_some()
+        && ctx
+            .effect_builder
+            .find_missing_descendant_trie_keys(state_root_hash)
+            .await?
+            .is_empty()
+    {
+        ctx.metrics
+            .observe_sync_trie_store_duration_seconds(start_instant);
+        return Ok(());
+    }
 
     // Flag set by a worker when it encounters an error.
     let abort = Arc::new(AtomicBool::new(false));
@@ -790,7 +860,7 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
         .await?;
 
     // Synchronize the trie store for the most recent block header.
-    sync_trie_store(*most_recent_block_header.state_root_hash(), ctx).await?;
+    sync_trie_store(&most_recent_block_header, ctx).await?;
 
     ctx.effect_builder
         .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
@@ -951,7 +1021,7 @@ async fn sync_deploys_and_transfers_and_state(
         ctx,
     )
     .await?;
-    sync_trie_store(*block.header().state_root_hash(), ctx).await
+    sync_trie_store(block.header(), ctx).await
 }
 
 /// Sync to genesis.
@@ -984,7 +1054,10 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
     // era 0.
     let mut trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
-    let trusted_block = *fetch_and_store_block_by_hash(ctx.trusted_hash(), ctx).await?;
+    let BlockAndDeploys {
+        block: trusted_block,
+        deploys: _,
+    } = *fetch_and_store_block_with_deploys_by_hash(ctx.trusted_hash(), ctx).await?;
     sync_deploys_and_transfers_and_state(&trusted_block, ctx).await?;
 
     fetch_to_genesis(&trusted_block, ctx).await?;
@@ -1044,69 +1117,184 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
         "starting fetch to genesis",
     );
 
-    let mut walkback_block = trusted_block.clone();
-    loop {
-        // The available range from storage indicates a range of blocks for which we already have
-        // all the corresponding deploys and global state stored locally.  Skip fetching for such a
-        // range.
-        if ctx
-            .locally_available_block_range_on_start
-            .contains(walkback_block.height())
-        {
-            let maybe_lowest_available_block = ctx
-                .effect_builder
-                .get_block_at_height_with_metadata_from_storage(
-                    ctx.locally_available_block_range_on_start.low(),
-                    false,
-                )
-                .await;
-            if let Some(lowest_available_block) = maybe_lowest_available_block {
-                info!(
-                    skip_to_height = %ctx.locally_available_block_range_on_start.low(),
-                    current_walkback_height = %walkback_block.height(),
-                    "skipping fetch for blocks, deploys and tries in available block range"
-                );
+    fetch_headers_till_genesis(trusted_block, ctx).await?;
 
-                if lowest_available_block.block.height() == 0 {
-                    ctx.effect_builder
-                        .update_lowest_available_block_height_in_storage(0)
-                        .await;
-                    break;
+    fetch_blocks_and_state_since_genesis(ctx).await?;
+
+    // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
+    // trusted block, we can update the lowest available block of the continuous range.
+    ctx.effect_builder
+        .update_lowest_available_block_height_in_storage(0)
+        .await;
+
+    Ok(())
+}
+
+const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
+
+// Fetches headers starting from `trusted_block` till the Genesis.
+async fn fetch_headers_till_genesis(
+    trusted_block: &Block,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
+    let mut lowest_trusted_block_header = trusted_block.header().clone();
+
+    loop {
+        match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
+            Ok(new_lowest) => {
+                if new_lowest.height() % 1_000 == 0 {
+                    info!(?new_lowest, "new lowest trusted block header stored");
                 }
-                walkback_block = *fetch_and_store_block_by_hash(
-                    *lowest_available_block.block.header().parent_hash(),
-                    ctx,
-                )
-                .await?;
-            } else if ctx.locally_available_block_range_on_start != AvailableBlockRange::RANGE_0_0 {
-                // For a first run with no blocks previously stored locally, it is expected that the
-                // reported lowest available block is actually unavailable. In this case the
-                // available range at startup will be [0, 0]. For all other cases, this is an error.
+                lowest_trusted_block_header = new_lowest;
+            }
+            Err(err) => {
+                // If we get an error here it means something must have gone really wrong.
+                // We either get the data from storage or from a peer where we retry ad infinitum if
+                // peer times out or item is absent. The only reason we would end up
+                // here is if fetcher couldn't construct a fetch request.
                 error!(
-                    locally_available_block_range_on_start =
-                        %ctx.locally_available_block_range_on_start,
-                    "failed to get lowest block reported as available"
+                    ?err,
+                    "failed to download block headers batch with infinite retries"
                 );
+                return Err(err.into());
             }
         }
 
-        let walkback_block_height = walkback_block.height();
-        ctx.metrics
-            .chain_sync_block_height_synced
-            .set(walkback_block_height as i64);
-        info!(%walkback_block_height, "syncing block height");
-        sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
-        ctx.effect_builder
-            .update_lowest_available_block_height_in_storage(walkback_block.height())
-            .await;
-        if walkback_block.height() == 0 {
+        if lowest_trusted_block_header.height() == 0 {
             break;
-        } else {
-            walkback_block =
-                *fetch_and_store_block_by_hash(*walkback_block.header().parent_hash(), ctx).await?;
         }
     }
     Ok(())
+}
+
+// Fetches a batch of block headers, validates and stores in storage.
+// Returns either an error or lowest valid block in the chain.
+async fn fetch_block_headers_batch(
+    lowest_trusted_block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
+    let batch_id =
+        BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
+
+    loop {
+        let fetched_headers_data: FetchedData<BlockHeadersBatch> =
+            fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
+        match fetched_headers_data {
+            FetchedData::FromStorage { item } => {
+                return item
+                    .lowest()
+                    .cloned()
+                    .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
+            }
+            FetchedData::FromPeer { item, peer } => {
+                match BlockHeadersBatch::validate(
+                    &*item,
+                    &batch_id,
+                    lowest_trusted_block_header,
+                    ctx.config.verifiable_chunked_hash_activation(),
+                ) {
+                    Ok(new_lowest) => {
+                        info!(?batch_id, ?peer, "received valid batch of headers");
+                        ctx.effect_builder
+                            .put_block_headers_batch_to_storage(item.into_inner())
+                            .await;
+                        return Ok(new_lowest);
+                    }
+                    Err(err) => {
+                        error!(
+                            ?err,
+                            ?peer,
+                            ?batch_id,
+                            "block headers batch failed validation. Trying next peer..."
+                        );
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
+async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    info!("syncing blocks and deploys and state since Genesis");
+
+    // NOTE: Currently there's no good way to read the known, highest *FULL* block.
+    // Full means that we have:
+    //  * the block header
+    //  * the block body
+    //  * the trie
+    // Since we fetch and store each of these independently, we might crash midway through the
+    // process and have partial data. We could reindex storages on startup but that had proven to
+    // take 30min+ in the past. We need to prioritize correctness over performance so we
+    // choose to "re-sync" from Genesis, even if it means we will go through thousands of blocks
+    // that we already have. Hopefully, local checks will be fast enough.
+    let latest_height_requested: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+
+    let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_block_fetches())
+        .map(|worker_id| fetch_block_worker(worker_id, latest_height_requested.clone(), ctx))
+        .collect();
+
+    while let Some(result) = workers.next().await {
+        result?; // Return the error if a download failed.
+    }
+
+    Ok(())
+}
+
+async fn fetch_block_worker(
+    worker_id: usize,
+    latest_height_requested: Arc<AtomicU64>,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(), Error> {
+    let trusted_block_height = ctx.trusted_block_header().height();
+    loop {
+        let next_block_height = latest_height_requested.fetch_add(1, Ordering::SeqCst);
+        if next_block_height >= trusted_block_height {
+            info!(%worker_id, ?next_block_height, ?trusted_block_height, "fetch-block worker finished");
+            return Ok(());
+        }
+
+        let block_hash = ctx
+            .effect_builder
+            .get_block_hash_by_height_from_storage(next_block_height)
+            .await
+            .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
+
+        if next_block_height % 1_000 == 0 {
+            info!(
+                worker_id,
+                ?block_hash,
+                ?next_block_height,
+                "syncing block and deploys"
+            );
+        }
+        match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
+            Ok(fetched_block) => {
+                trace!(?block_hash, "downloaded block and deploys");
+                // We want to download the trie only when we know we have the block.
+                if let Err(error) = sync_trie_store(fetched_block.block.header(), ctx).await {
+                    error!(
+                        ?error,
+                        ?block_hash,
+                        "failed to download trie with infinite retries"
+                    );
+                    return Err(error);
+                }
+                ctx.metrics.chain_sync_blocks_synced.inc();
+            }
+            Err(err) => {
+                // We're using `fetch_retry_forever` internally so we should never get
+                // an error other than `FetcherError::CouldNotConstructGetRequest` that we don't
+                // want to retry.
+                error!(
+                    ?err,
+                    ?block_hash,
+                    "failed to download block with infinite retries"
+                );
+            }
+        }
+    }
 }
 
 /// Runs the chain synchronization task.
@@ -1235,7 +1423,9 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
         if ctx.trusted_block_header().is_switch_block()
             && ctx.trusted_block_header().next_block_era_id() == last_emergency_restart_era
         {
-            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
+            info!("synchronizing trie store before committing emergency upgrade");
+            sync_trie_store(ctx.trusted_block_header(), ctx).await?;
+            info!("finished synchronizing before committing emergency upgrade");
             return Ok(true);
         }
     }
@@ -1264,7 +1454,9 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
         .await?;
 
         if fetch_and_store_next_result.is_none() {
-            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
+            info!("synchronizing trie store before committing upgrade");
+            sync_trie_store(ctx.trusted_block_header(), ctx).await?;
+            info!("finished synchronizing before committing upgrade");
             return Ok(true);
         }
     }
@@ -1295,10 +1487,6 @@ async fn retry_execution_with_approvals_from_peer(
         )
         .await?)
 }
-
-/// Maximum number of times the node will try to download finalized approvals from a single peer in
-/// an attempt to find a set of approvals matching the block execution results.
-const APPROVAL_FETCH_RETRIES: usize = 2;
 
 async fn execute_blocks(
     most_recent_block_header: &BlockHeader,
@@ -1370,16 +1558,15 @@ async fn execute_blocks(
             )
             .await?;
 
-        if block != *block_and_execution_effects.block() {
+        let mut blocks_match = block == *block_and_execution_effects.block();
+
+        while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            // Retry up to two times.
-            let mut success = false;
             for peer in ctx
                 .effect_builder
                 .get_fully_connected_non_joiner_peers()
                 .await
                 .into_iter()
-                .take(APPROVAL_FETCH_RETRIES)
             {
                 info!(block_hash=%block.hash(), "start - re-executing finalized block");
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
@@ -1392,8 +1579,8 @@ async fn execute_blocks(
                 )
                 .await?;
                 info!(block_hash=%block.hash(), "finish - re-executing finalized block");
-                if block == *block_and_execution_effects.block() {
-                    success = true;
+                blocks_match = block == *block_and_execution_effects.block();
+                if blocks_match {
                     break;
                 } else {
                     warn!(
@@ -1404,23 +1591,16 @@ async fn execute_blocks(
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                 }
             }
-            if success {
-                // matching now! store new approval sets for the deploys
-                for deploy in deploys.into_iter().chain(transfers.into_iter()) {
-                    ctx.effect_builder
-                        .store_finalized_approvals(
-                            *deploy.id(),
-                            FinalizedApprovals::new(deploy.approvals().clone()),
-                        )
-                        .await;
-                }
-            } else {
-                // didn't work again - give up
-                return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
-                    executed_block: Box::new(Block::from(block_and_execution_effects)),
-                    downloaded_block: Box::new(block.clone()),
-                });
-            }
+        }
+
+        // matching now! store new approval sets for the deploys
+        for deploy in deploys.into_iter().chain(transfers.into_iter()) {
+            ctx.effect_builder
+                .store_finalized_approvals(
+                    *deploy.id(),
+                    FinalizedApprovals::new(deploy.approvals().clone()),
+                )
+                .await;
         }
 
         most_recent_block_header = block.take_header();

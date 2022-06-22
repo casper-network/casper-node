@@ -243,10 +243,10 @@ impl Reactor {
             let engine_state = Arc::clone(contract_runtime.engine_state());
             // We need to be synchronous here, ensures migration (of just the highest block) is
             // complete before proceeding.
-            match storage.read_highest_block_header()? {
-                Some(highest_block_header) => {
+            match storage.read_highest_block()? {
+                Some(highest_block) => {
                     engine_state.migrate_state_root_to_rocksdb_if_needed(
-                        *highest_block_header.state_root_hash(),
+                        *highest_block.state_root_hash(),
                         false,
                     )?;
                 }

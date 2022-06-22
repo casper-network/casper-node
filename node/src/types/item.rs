@@ -10,7 +10,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use thiserror::Error;
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-use casper_hashing::{error::ChunkWithProofVerificationError, Digest};
+use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::EraId;
 
 use crate::types::{BlockHash, BlockHeader};
@@ -48,6 +48,10 @@ pub enum Tag {
     BlockHeaderAndFinalitySignaturesByHeight,
     /// A trie or chunk from the global Merkle tree in the execution engine.
     TrieOrChunk,
+    /// A full block and its deploys.
+    BlockAndDeploysByHash,
+    /// A batch of block headers requested by their lower and upper height indices.
+    BlockHeaderBatch,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

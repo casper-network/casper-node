@@ -9,6 +9,7 @@ use casper_types::TimeDiff;
 const DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES: u32 = 5000;
 /// Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
 const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
+const DEFAULT_MAX_PARALLEL_BLOCK_FETCHES: u32 = 50;
 const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
 
@@ -22,6 +23,9 @@ pub struct NodeConfig {
 
     /// Maximum number of deploys to fetch in parallel.
     pub max_parallel_deploy_fetches: u32,
+
+    /// Maximum number of blocks to fetch in parallel.
+    pub max_parallel_block_fetches: u32,
 
     /// Maximum number of trie nodes to fetch in parallel.
     pub max_parallel_trie_fetches: u32,
@@ -42,6 +46,7 @@ impl Default for NodeConfig {
         NodeConfig {
             trusted_hash: None,
             max_parallel_deploy_fetches: DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES,
+            max_parallel_block_fetches: DEFAULT_MAX_PARALLEL_BLOCK_FETCHES,
             max_parallel_trie_fetches: DEFAULT_MAX_PARALLEL_TRIE_FETCHES,
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
             sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,

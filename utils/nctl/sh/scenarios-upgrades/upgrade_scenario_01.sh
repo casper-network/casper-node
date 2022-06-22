@@ -16,6 +16,7 @@
 
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -43,6 +44,7 @@ function _main()
     _step_07
     _step_08 "$INITIAL_PROTOCOL_VERSION"
     _step_09
+    _step_10
 }
 
 # Step 01: Start network from pre-built stage.
@@ -61,7 +63,8 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
         stage="$STAGE_ID" \
-        chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_1.chainspec.toml.in"
+        chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_1.chainspec.toml.in" \
+        config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_1.config.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -70,8 +73,7 @@ function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
 
-    sleep 10.0
-    await_until_era_n 1 'true'
+    do_await_genesis_era_to_complete 'false'
 }
 
 # Step 03: Populate global state -> native + wasm transfers.
@@ -104,10 +106,14 @@ function _step_05()
     log_step_upgrades 5 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_1.chainspec.toml.in"
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" \
+        stage="$STAGE_ID" \
+        verbose=false \
+        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_1.chainspec.toml.in" \
+        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_1.config.toml"
 
     log "... awaiting 2 eras + 1 block"
-    await_n_eras 2 'true' '2.0'
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 }
 
@@ -290,10 +296,24 @@ function _step_08()
     done
 }
 
-# Step 09: Terminate.
+# Step 09: Run NCTL health checks
 function _step_09()
 {
-    log_step_upgrades 9 "test successful - tidying up"
+    # restarts=5 - Nodes that upgrade
+    log_step_upgrades 9 "running health checks"
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='0' \
+            equivocators='0' \
+            doppels='0' \
+            crashes=0 \
+            restarts=5 \
+            ejections=0
+}
+
+# Step 10: Terminate.
+function _step_10()
+{
+    log_step_upgrades 10 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

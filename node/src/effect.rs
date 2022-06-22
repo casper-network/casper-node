@@ -101,6 +101,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
+    mem,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -108,7 +109,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
@@ -141,31 +142,28 @@ use crate::{
         fetcher::FetchResult,
         small_network::FromIncoming,
     },
+    contract_runtime::SpeculativeExecutionState,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
     },
     utils::{SharedFlag, Source},
 };
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
     ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement,
 };
+use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
-};
-
-use self::{
-    announcements::QueueDumpFormat,
-    diagnostics_port::DumpConsensusStateRequest,
-    requests::{BeginGossipRequest, StateStoreRequest},
+    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
+    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -195,6 +193,60 @@ pub(crate) struct Responder<T> {
     is_shutting_down: SharedFlag,
 }
 
+/// A responder that will automatically send a `None` on drop.
+#[must_use]
+#[derive(DataSize, Debug)]
+pub(crate) struct AutoClosingResponder<T>(Responder<Option<T>>);
+
+impl<T> AutoClosingResponder<T> {
+    /// Creates a new auto closing responder from a responder of `Option<T>`.
+    pub(crate) fn from_opt_responder(responder: Responder<Option<T>>) -> Self {
+        AutoClosingResponder(responder)
+    }
+
+    /// Extracts the inner responder.
+    fn into_inner(mut self) -> Responder<Option<T>> {
+        let is_shutting_down = self.0.is_shutting_down;
+        mem::replace(
+            &mut self.0,
+            Responder {
+                sender: None,
+                is_shutting_down,
+            },
+        )
+    }
+}
+
+impl<T: Debug> AutoClosingResponder<T> {
+    /// Send `Some(data)` to the origin of the request.
+    pub(crate) async fn respond(self, data: T) {
+        self.into_inner().respond(Some(data)).await
+    }
+
+    /// Send `None` to the origin of the request.
+    pub(crate) async fn respond_none(self) {
+        self.into_inner().respond(None).await
+    }
+}
+
+impl<T> Drop for AutoClosingResponder<T> {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.sender.take() {
+            debug!(
+                sending_value = %self.0,
+                "responding None by dropping auto-close responder"
+            );
+            // We still haven't answered, send an answer.
+            if let Err(_unsent_value) = sender.send(None) {
+                debug!(
+                    unsent_value = %self.0,
+                    "failed to auto-close responder, ignoring"
+                )
+            }
+        }
+    }
+}
+
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
@@ -216,10 +268,7 @@ impl<T: 'static + Send> Responder<T> {
     }
 }
 
-impl<T> Responder<T>
-where
-    T: Debug,
-{
+impl<T: Debug> Responder<T> {
     /// Send `data` to the origin of the request.
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
@@ -276,11 +325,14 @@ impl<T> Drop for Responder<T> {
 }
 
 impl<T> Serialize for Responder<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&format!("{:?}", self))
+    }
+}
+
+impl<T> Serialize for AutoClosingResponder<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
     }
 }
 
@@ -615,11 +667,11 @@ impl<REv> EffectBuilder<REv> {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
                 respond_after_queueing: false,
-                responder,
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
-        .await
+        .await;
     }
 
     /// Enqueues a network message.
@@ -635,11 +687,11 @@ impl<REv> EffectBuilder<REv> {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
                 respond_after_queueing: true,
-                responder,
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
-        .await
+        .await;
     }
 
     /// Broadcasts a network message.
@@ -652,11 +704,11 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| NetworkRequest::Broadcast {
                 payload: Box::new(payload),
-                responder,
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
-        .await
+        .await;
     }
 
     /// Gossips a network message.
@@ -680,11 +732,12 @@ impl<REv> EffectBuilder<REv> {
                 payload: Box::new(payload),
                 count,
                 exclude,
-                responder,
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
         .await
+        .unwrap_or_default()
     }
 
     /// Gets a map of the current network peers to their socket addresses.
@@ -926,6 +979,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Puts the given block and its deploys into the store.
+    pub(crate) async fn put_block_and_deploys_to_storage(self, block: Box<BlockAndDeploys>)
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockAndDeploys { block, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block from the linear block store.
     pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<Block>
     where
@@ -933,6 +998,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its deploys from the store.
+    pub(crate) async fn get_block_and_deploys_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockAndDeploys>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndDeploys {
                 block_hash,
                 responder,
             },
@@ -1271,7 +1354,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>
     where
         REv: From<StorageRequest>,
     {
@@ -2007,6 +2090,82 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::StoreFinalizedApprovals {
                 deploy_hash,
                 finalized_approvals,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores a batch of block headers in storage.
+    ///
+    /// Any previously stored block headers with matching hash will be overwritten.
+    pub(crate) async fn put_block_headers_batch_to_storage(
+        self,
+        block_headers: Vec<BlockHeader>,
+    ) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutHeadersBatch {
+                block_headers,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Reads batch of block headers from the storage.
+    pub(crate) async fn get_block_header_batch_from_storage(
+        self,
+        block_headers_id: BlockHeadersBatchId,
+    ) -> Option<BlockHeadersBatch>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHeadersBatch {
+                block_headers_id,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_hash_by_height_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockHash>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHashByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests execution of a single deploy, without commiting its effects.
+    /// Inteded to be used for debugging & discovery purposes.
+    pub(crate) async fn speculative_execute_deploy(
+        self,
+        execution_prestate: SpeculativeExecutionState,
+        deploy: Deploy,
+    ) -> Result<Option<ExecutionResult>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
+                execution_prestate,
+                deploy: Box::new(deploy),
                 responder,
             },
             QueueKind::Regular,
