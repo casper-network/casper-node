@@ -124,6 +124,8 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
 const MAX_DB_COUNT: u32 = 12;
+/// Key under which completed blocks are to be stored.
+const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -483,10 +485,7 @@ impl Storage {
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
-        // TODO: Persist and load disjoint sequences.
-        let completed_blocks = DisjointSequences::default();
-
-        Ok(Self {
+        let mut component = Self {
             root,
             env,
             block_header_db,
@@ -505,14 +504,29 @@ impl Storage {
             switch_block_era_id_index,
             deploy_hash_index,
             lowest_available_block_height,
-            completed_blocks,
+            completed_blocks: Default::default(),
             highest_block_at_startup,
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
-        })
+        };
+
+        match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
+            Some(raw) => {
+                let (sequences, _) = DisjointSequences::from_vec(raw)
+                    .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
+                // We can restore the previous state.
+                component.completed_blocks = sequences;
+            }
+            None => {
+                // No state so far. Leave empty.
+                // TODO: Reconstruct state from contract runtime?
+            }
+        }
+
+        Ok(component)
     }
 
     /// Handles a state store request.
@@ -1140,7 +1154,13 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError> {
         self.completed_blocks.insert(block_height);
 
-        Ok(Effects::new())
+        let serialized = self
+            .completed_blocks
+            .to_bytes()
+            .map_err(FatalStorageError::UnexpectedSerializationFailure)?;
+        self.write_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY), &serialized)?;
+
+        Ok(Default::default())
     }
 
     /// Put a single deploy into storage.
