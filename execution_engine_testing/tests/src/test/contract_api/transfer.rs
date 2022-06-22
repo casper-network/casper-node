@@ -458,7 +458,7 @@ fn should_fail_when_insufficient_funds() {
         .commit();
 
     let exec_results = builder
-        .get_exec_result(2)
+        .get_exec_result_owned(2)
         .expect("should have exec response");
     assert_eq!(exec_results.len(), 1);
     let exec_result = exec_results[0].as_error().expect("should have error");

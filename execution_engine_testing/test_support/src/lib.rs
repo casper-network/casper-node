@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/2.1.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/2.2.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -65,6 +65,12 @@ pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 /// Default maximum number of associated keys.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+/// Default max serialized size of `StoredValue`s.
+#[deprecated(
+    since = "2.3.0",
+    note = "not used in `casper-execution-engine` config anymore"
+)]
+pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.

@@ -12,11 +12,14 @@ max_parallel_deploy_fetches = 5000
 # Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
 max_parallel_trie_fetches = 5000
 
+# Maximum number of fetch-block tasks to run in parallel during chain synchronization.
+max_parallel_block_fetches = 50
+
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'
 
 # How often between sync attempts to redeem a bad node.
-sync_peer_redemption_interval = 10_000
+sync_peer_redemption_interval = 0
 
 # Whether to synchronize all data back to genesis when joining.
 sync_to_genesis = true
@@ -418,7 +421,7 @@ get_remainder_timeout = '5sec'
 # The timeout duration for a single fetcher request, i.e. for a single fetcher message
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-get_from_peer_timeout = '3sec'
+get_from_peer_timeout = '10sec'
 
 
 # ========================================================

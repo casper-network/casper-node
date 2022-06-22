@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use serde::Serialize;
 use thiserror::Error;
-use tokio::task::JoinError;
+use tokio::{sync::AcquireError, task::JoinError};
 
 use casper_execution_engine::{
     core::{engine_state, engine_state::GetEraValidatorsError},
@@ -14,8 +14,8 @@ use casper_types::{EraId, ProtocolVersion};
 use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata,
-        Deploy, FinalizedApprovalsWithId,
+        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
     },
 };
 
@@ -52,6 +52,9 @@ pub(crate) enum Error {
 
     #[error("no such block hash: {bogus_block_hash}")]
     NoSuchBlockHash { bogus_block_hash: BlockHash },
+
+    #[error("no such block height: {0} encountered during syncing to Genesis")]
+    NoSuchBlockHeight(u64),
 
     #[error(transparent)]
     BlockHeaderFetcher(#[from] FetcherError<BlockHeader>),
@@ -136,6 +139,22 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         FetchTrieError,
     ),
+
+    /// Error fetching block headers batch.
+    #[error(transparent)]
+    FetchHeadersBatch(
+        #[from]
+        #[serde(skip_serializing)]
+        FetchBlockHeadersBatchError,
+    ),
+
+    /// Semaphore closed unexpectedly.
+    #[error(transparent)]
+    SemaphoreError(
+        #[from]
+        #[serde(skip_serializing)]
+        AcquireError,
+    ),
 }
 
 #[derive(Error, Debug)]
@@ -157,4 +176,14 @@ pub(crate) enum FetchTrieError {
          by a peer somehow. Trie digest: {digest:?}"
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum FetchBlockHeadersBatchError {
+    /// Fetcher error
+    #[error(transparent)]
+    FetchError(#[from] FetcherError<BlockHeadersBatch>),
+
+    #[error("Batch from storage was empty")]
+    EmptyBatchFromStorage,
 }

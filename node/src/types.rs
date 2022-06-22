@@ -28,7 +28,8 @@ pub use block::{
     MerkleLinkedListNode,
 };
 pub(crate) use block::{
-    BlockHashAndHeight, BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata,
+    BlockHashAndHeight, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+    BlockPayload, BlockWithMetadata,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};

@@ -69,8 +69,9 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
-        DeployHash, ExitCode, FinalizedApprovalsWithId, NodeId, NodeState,
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId, NodeId,
+        NodeState,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -148,6 +149,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
 
+    /// Block headers batch fetcher event.
+    #[from]
+    BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
+
     /// Deploy acceptor event.
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
@@ -208,6 +213,10 @@ pub(crate) enum JoinerEvent {
     FinalizedApprovalsFetcherRequest(
         #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
     ),
+
+    /// Block headers batch fetcher request.
+    #[from]
+    BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
 
     /// Address gossip request.
     #[from]
@@ -326,6 +335,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::DeployFetcher(_) => "DeployFetcher",
             JoinerEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
             JoinerEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
+            JoinerEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
@@ -366,6 +376,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             JoinerEvent::DeployGossiper(_) => "DeployGossiper",
             JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            JoinerEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
         }
     }
 }
@@ -509,6 +520,12 @@ impl Display for JoinerEvent {
             JoinerEvent::BlockAndDeploysFetcherRequest(req) => {
                 write!(f, "block and deploys fetcher request: {}", req)
             }
+            JoinerEvent::BlockHeadersBatchFetcher(inner) => {
+                write!(f, "block headers batch fetcher event: {}", inner)
+            }
+            JoinerEvent::BlockHeadersBatchFetcherRequest(inner) => {
+                write!(f, "block headers batch fetch request: {}", inner)
+            }
         }
     }
 }
@@ -534,6 +551,7 @@ pub(crate) struct Reactor {
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     diagnostics_port: DiagnosticsPort,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
+    block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -661,6 +679,7 @@ impl reactor::Reactor for Reactor {
             fetcher_builder.build("block_header_by_height")?;
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
         let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
+        let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
@@ -694,6 +713,7 @@ impl reactor::Reactor for Reactor {
                 finalized_approvals_fetcher,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
+                block_headers_batch_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
                 block_and_deploys_fetcher,
                 trie_or_chunk_fetcher,
@@ -812,6 +832,11 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockHeaderFetcher,
                 self.block_header_by_hash_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::BlockHeadersBatchFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::BlockHeadersBatchFetcher,
+                self.block_headers_batch_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::DeployFetcherRequest(request) => self.dispatch_event(
@@ -1052,6 +1077,11 @@ impl reactor::Reactor for Reactor {
                 // We never process any deploys onwards, so we can ignore successful gossip outcome
                 Effects::new()
             }
+            JoinerEvent::BlockHeadersBatchFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockHeadersBatchFetcher(request.into()),
+            ),
         }
     }
 
@@ -1175,6 +1205,16 @@ impl Reactor {
             }
             NetResponse::BlockAndDeploys(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, BlockAndDeploys>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::BlockHeadersBatch(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeadersBatch>(
                     self,
                     effect_builder,
                     rng,

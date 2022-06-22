@@ -54,7 +54,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
         .expect_success()
         .commit();
 
-    let last_result = builder.get_exec_result(0).unwrap();
+    let last_result = builder.get_exec_result_owned(0).unwrap();
     let last_result = &last_result[0];
 
     assert!(last_result.as_error().is_none(), "{:?}", last_result);
@@ -116,7 +116,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
     )
     .expect("gas overflow");
 
-    let last_result = builder.get_exec_result(0).unwrap();
+    let last_result = builder.get_exec_result_owned(0).unwrap();
     let last_result = &last_result[0];
     assert_eq!(
         balance_before - wasmless_transfer_motes.value(),
@@ -182,7 +182,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
         balance_after
     );
 
-    let last_result = builder.get_exec_result(0).unwrap();
+    let last_result = builder.get_exec_result_owned(0).unwrap();
     let last_result = &last_result[0];
     assert_eq!(last_result.cost(), wasmless_transfer_gas_cost);
 
