@@ -62,8 +62,8 @@ use crate::{
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
-            StateStoreRequest, StorageRequest,
+            MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+            RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -162,6 +162,9 @@ pub(crate) enum ParticipatingEvent {
     /// Storage request.
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Mark block as complete request.
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     /// Address gossip request.
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
@@ -279,6 +282,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
             ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
@@ -374,6 +378,9 @@ impl Display for ParticipatingEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
+            ParticipatingEvent::MarkBlockCompletedRequest(req) => {
+                write!(f, "mark block completed request: {}", req)
+            }
             ParticipatingEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             ParticipatingEvent::DeployFetcherRequest(req) => {
                 write!(f, "deploy fetcher request: {}", req)
@@ -886,6 +893,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ChainspecLoader(req.into()),
             ),
             ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),

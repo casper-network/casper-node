@@ -1607,6 +1607,9 @@ async fn execute_blocks(
                 )
                 .await;
         }
+        ctx.effect_builder
+            .mark_block_completed(block_and_execution_effects.block().height())
+            .await;
 
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
