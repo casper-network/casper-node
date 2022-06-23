@@ -80,8 +80,7 @@ use crate::{
     components::{consensus, fetcher::FetchedOrNotFound, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
-        requests::MarkBlockCompletedRequest,
-        requests::{NetworkRequest, StateStoreRequest},
+        requests::{MarkBlockCompletedRequest, NetworkRequest, StateStoreRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
