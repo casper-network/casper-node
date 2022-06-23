@@ -7,7 +7,7 @@ use casper_types::Timestamp;
 
 use crate::components::consensus::{
     consensus_protocol::ProposedBlock,
-    protocols::simple_consensus::RoundId,
+    protocols::zug::RoundId,
     traits::{Context, ValidatorSecret},
     utils::ValidatorIndex,
 };

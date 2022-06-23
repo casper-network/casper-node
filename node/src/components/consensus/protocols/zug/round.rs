@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{
-        protocols::simple_consensus::message::{Content, Proposal},
+        protocols::zug::message::{Content, Proposal},
         traits::Context,
         utils::{ValidatorIndex, ValidatorMap},
     },

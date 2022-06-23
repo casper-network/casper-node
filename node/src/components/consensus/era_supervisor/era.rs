@@ -13,7 +13,7 @@ use casper_types::{PublicKey, Timestamp, U512};
 use crate::components::consensus::{
     cl_context::ClContext,
     consensus_protocol::{ConsensusProtocol, ProposedBlock},
-    protocols::{highway::HighwayProtocol, simple_consensus::SimpleConsensus},
+    protocols::{highway::HighwayProtocol, zug::Zug},
 };
 
 const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
@@ -190,18 +190,16 @@ impl DataSize for Era {
                 } else {
                     (*highway).estimate_heap_size()
                 }
-            } else if let Some(simple_consensus) =
-                any_ref.downcast_ref::<SimpleConsensus<ClContext>>()
-            {
+            } else if let Some(zug) = any_ref.downcast_ref::<Zug<ClContext>>() {
                 if *CASPER_ENABLE_DETAILED_CONSENSUS_METRICS {
-                    let detailed = (*simple_consensus).estimate_detailed_heap_size();
+                    let detailed = (*zug).estimate_detailed_heap_size();
                     match serde_json::to_string(&detailed) {
                         Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
                         Err(err) => warn!(%err, "error encoding consensus memory metrics"),
                     }
                     detailed.total()
                 } else {
-                    (*simple_consensus).estimate_heap_size()
+                    (*zug).estimate_heap_size()
                 }
             } else {
                 warn!("could not downcast consensus protocol to determine heap allocation size");

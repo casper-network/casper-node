@@ -40,7 +40,7 @@ use crate::{
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, HighwayProtocol,
-            NewBlockPayload, ReactorEventT, ResolveValidity, SimpleConsensus, TimerId,
+            NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
         },
         storage::Storage,
     },
@@ -444,7 +444,7 @@ impl EraSupervisor {
                 seed,
                 now,
             ),
-            ConsensusProtocolName::Zug => SimpleConsensus::new_boxed(
+            ConsensusProtocolName::Zug => Zug::new_boxed(
                 instance_id,
                 validators.clone(),
                 &faulty,

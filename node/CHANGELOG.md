@@ -39,7 +39,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add new JSON RPC endpoint `/speculative_exec` that accepts a deploy and a block hash and executes that deploy, returning the execution effects.
 * Add `speculative_execution_address` to `rpc_server` section in `config.toml` to control address which the speculative execution server binds to.
 * Add `speculative_execution_qps_limit` to `rpc_server` section in `config.toml` to control requests per second the node handles. Setting to 0 disbles the endpoint.
-* Add a `[consensus.simple_consensus]` section to `config.toml` for the simple consensus protocol.
+* Add a `[consensus.zug]` section to `config.toml` for the Zug protocol.
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 
 ### Changed

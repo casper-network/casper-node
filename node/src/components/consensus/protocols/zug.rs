@@ -1,4 +1,4 @@
-//! # A simple consensus protocol.
+//! # The Zug consensus protocol.
 //!
 //! This protocol requires that at most _f_ out of _n > 3 f_ validators (by weight) are faulty. It
 //! also assumes that there is an upper bound for the network delay: how long a message sent by a
@@ -143,7 +143,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
 
 /// Contains the state required for the protocol.
 #[derive(Debug, DataSize)]
-pub(crate) struct SimpleConsensus<C>
+pub(crate) struct Zug<C>
 where
     C: Context,
 {
@@ -194,8 +194,8 @@ where
     write_wal: Option<WriteWal<C>>,
 }
 
-impl<C: Context + 'static> SimpleConsensus<C> {
-    /// Creates a new [`SimpleConsensus`] instance.
+impl<C: Context + 'static> Zug<C> {
+    /// Creates a new [`Zug`] instance.
     #[allow(clippy::too_many_arguments)]
     fn new(
         instance_id: C::InstanceId,
@@ -208,7 +208,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         era_start_time: Timestamp,
         seed: u64,
         _now: Timestamp,
-    ) -> SimpleConsensus<C> {
+    ) -> Zug<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
         let active: ValidatorMap<_> = weights.iter().map(|_| None).collect();
@@ -218,11 +218,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         // timeout times the grace period factor: This is what we would settle on if proposals
         // always got accepted exactly after one minimum timeout.
         let proposal_timeout_millis = prev_cp
-            .and_then(|cp| cp.as_any().downcast_ref::<SimpleConsensus<C>>())
+            .and_then(|cp| cp.as_any().downcast_ref::<Zug<C>>())
             .map(|sc| sc.proposal_timeout_millis)
             .unwrap_or_else(|| {
-                config.simple_consensus.proposal_timeout.millis() as f64
-                    * (config.simple_consensus.proposal_grace_period as f64 / 100.0 + 1.0)
+                config.zug.proposal_timeout.millis() as f64
+                    * (config.zug.proposal_grace_period as f64 / 100.0 + 1.0)
             });
 
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
@@ -237,7 +237,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         info!(
             %instance_id, %era_start_time, %proposal_timeout_millis,
-            "initializing SimpleConsensus instance",
+            "initializing Zug instance",
         );
 
         let params = Params::new(
@@ -249,7 +249,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             protocols::common::ftt::<C>(core_config.finality_threshold_fraction, &validators),
         );
 
-        SimpleConsensus {
+        Zug {
             leader_sequence,
             proposals_waiting_for_parent: HashMap::new(),
             proposals_waiting_for_validation: HashMap::new(),
@@ -261,7 +261,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             evidence_only: false,
             faults,
             active,
-            config: config.simple_consensus.clone(),
+            config: config.zug.clone(),
             params,
             proposal_timeout_millis,
             validators,
@@ -274,7 +274,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
-    /// Creates a new boxed [`SimpleConsensus`] instance.
+    /// Creates a new boxed [`Zug`] instance.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
@@ -1829,7 +1829,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 }
 
-impl<C> ConsensusProtocol<C> for SimpleConsensus<C>
+impl<C> ConsensusProtocol<C> for Zug<C>
 where
     C: Context + 'static,
 {

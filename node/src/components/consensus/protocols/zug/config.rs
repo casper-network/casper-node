@@ -4,7 +4,7 @@ use datasize::DataSize;
 
 use casper_types::{serde_option_time_diff, TimeDiff};
 
-/// `SimpleConsensus`-specific configuration.
+/// `Zug`-specific configuration.
 /// *Note*: This is *not* protocol configuration that has to be the same on all nodes.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
