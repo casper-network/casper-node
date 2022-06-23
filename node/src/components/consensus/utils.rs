@@ -7,6 +7,7 @@ use crate::{components::consensus::error::FinalitySignatureError, types::BlockSi
 
 /// Validates the signatures by checking if public keys in
 /// proofs matches the validators public key.
+// TODO: Move this function to `chain_synchronizer` module.
 pub(crate) fn validate_finality_signatures(
     signatures: &BlockSignatures,
     validator_weights: &BTreeMap<PublicKey, U512>,

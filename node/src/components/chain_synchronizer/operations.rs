@@ -1473,6 +1473,7 @@ fn get_era_id_for_validators_retrieval(
     era_id: &EraId,
     last_emergency_restart: Option<EraId>,
 ) -> EraId {
+    // TODO: This function needs to handle multiple emergency restarts.
     if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
         // For eras > 0 which are not the last emergency restart eras we need to use validator set
         // from the previous era
