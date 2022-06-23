@@ -31,6 +31,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
+use tracing::{error, warn};
 
 use crate::{
     components::consensus,
@@ -45,7 +46,8 @@ use crate::{
 
 use super::{Item, Tag};
 use crate::types::error::{
-    BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
+    BlockHeaderWithMetadataValidationError, BlockHeadersBatchValidationError,
+    BlockWithMetadataValidationError,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
@@ -1109,6 +1111,221 @@ impl Item for BlockHeaderWithMetadata {
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         self.block_header.height()
+    }
+}
+#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+/// ID identifying a request for a batch of block headers.
+pub(crate) struct BlockHeadersBatchId {
+    pub highest: u64,
+    pub lowest: u64,
+}
+
+impl BlockHeadersBatchId {
+    pub(crate) fn new(highest: u64, lowest: u64) -> Self {
+        Self { highest, lowest }
+    }
+
+    pub(crate) fn from_known(lowest_known_block_header: &BlockHeader, max_batch_size: u64) -> Self {
+        let highest = lowest_known_block_header.height().saturating_sub(1);
+        let lowest = lowest_known_block_header
+            .height()
+            .saturating_sub(max_batch_size);
+
+        Self { highest, lowest }
+    }
+
+    /// Return an iterator over block header heights starting from highest (inclusive) to lowest
+    /// (inclusive).
+    pub(crate) fn iter(&self) -> impl Iterator<Item = u64> {
+        (self.lowest..=self.highest).rev()
+    }
+
+    /// Returns the length of the batch.
+    pub(crate) fn len(&self) -> u64 {
+        self.highest + 1 - self.lowest
+    }
+}
+
+impl Display for BlockHeadersBatchId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block header batch {}..={}", self.highest, self.lowest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct BlockHeadersBatch(Vec<BlockHeader>);
+
+impl BlockHeadersBatch {
+    /// Validates whether received batch is:
+    /// 1) highest block header from the batch has a hash is `latest_known.hash`
+    /// 2) a link of header[n].parent == header[n+1].hash is maintained
+    ///
+    /// Returns lowest block header from the batch or error if batch fails validation.
+    pub(crate) fn validate(
+        &self,
+        batch_id: &BlockHeadersBatchId,
+        earliest_known: &BlockHeader,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<BlockHeader, BlockHeadersBatchValidationError> {
+        let highest_header = self
+            .0
+            .first()
+            .ok_or(BlockHeadersBatchValidationError::BatchEmpty)?;
+
+        if batch_id.len() != self.inner().len() as u64 {
+            return Err(BlockHeadersBatchValidationError::IncorrectLength {
+                expected: batch_id.len(),
+                got: self.inner().len() as u64,
+            });
+        }
+
+        // Check first header first b/c it's cheaper than verifying continuity.
+        let highest_hash = highest_header.hash(verifiable_chunked_hash_activation);
+        if &highest_hash != earliest_known.parent_hash() {
+            return Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
+                expected: *earliest_known.parent_hash(),
+                got: highest_hash,
+            });
+        }
+
+        self.0
+            .last()
+            .cloned()
+            .ok_or(BlockHeadersBatchValidationError::BatchEmpty)
+    }
+
+    /// Tries to create an instance of `BlockHeadersBatch` from a `Vec<BlockHeader>`.
+    ///
+    /// Returns `Some(Self)` if data passes validation, otherwise `None`.
+    pub(crate) fn from_vec(
+        batch: Vec<BlockHeader>,
+        requested_id: &BlockHeadersBatchId,
+    ) -> Option<Self> {
+        match batch.first() {
+            Some(highest) => {
+                if highest.height() != requested_id.highest {
+                    error!(
+                        expected_highest=?requested_id.highest,
+                        got_highest=?highest,
+                        "unexpected highest block header"
+                    );
+                    return None;
+                }
+            }
+            None => {
+                warn!("response cannot be an empty batch");
+                return None;
+            }
+        }
+
+        match batch.last() {
+            Some(lowest) => {
+                if lowest.height() != requested_id.lowest {
+                    error!(
+                        expected_lowest=?requested_id.lowest,
+                        got_lowest=?lowest,
+                        "unexpected lowest block header"
+                    );
+                    return None;
+                }
+            }
+            None => {
+                error!("input cannot be empty");
+                return None;
+            }
+        }
+
+        Some(Self(batch))
+    }
+
+    /// Returns inner value.
+    pub(crate) fn into_inner(self) -> Vec<BlockHeader> {
+        self.0
+    }
+
+    /// Returns a reference to an inner vector of block headers.
+    pub(crate) fn inner(&self) -> &Vec<BlockHeader> {
+        &self.0
+    }
+
+    /// Returns the lowest element from the batch.
+    pub(crate) fn lowest(&self) -> Option<&BlockHeader> {
+        self.0.last()
+    }
+
+    /// Tests whether the block header batch is continuous and in descending order.
+    pub(crate) fn is_continuous_and_descending(
+        batch: &[BlockHeader],
+        verifiable_chunked_hash_activation: EraId,
+    ) -> bool {
+        batch
+            .windows(2)
+            .filter_map(|window| match &window {
+                &[l, r] => Some((l, r)),
+                _ => None,
+            })
+            .all(|(l, r)| {
+                l.height() == r.height() + 1
+                    && l.parent_hash() == &r.hash(verifiable_chunked_hash_activation)
+            })
+    }
+
+    #[cfg(test)]
+    // Test-only constructor allowing creation of otherwise invalid data.
+    fn new(batch: Vec<BlockHeader>) -> Self {
+        Self(batch)
+    }
+}
+
+impl Display for BlockHeadersBatch {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block header batch")
+    }
+}
+
+impl Item for BlockHeadersBatch {
+    type Id = BlockHeadersBatchId;
+
+    type ValidationError = BlockHeadersBatchValidationError;
+
+    const TAG: Tag = Tag::BlockHeaderBatch;
+
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        if self.inner().is_empty() {
+            return Err(BlockHeadersBatchValidationError::BatchEmpty);
+        }
+
+        if !BlockHeadersBatch::is_continuous_and_descending(
+            self.inner(),
+            verifiable_chunked_hash_activation,
+        ) {
+            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
+        }
+
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        let upper_batch_height = self.0.first().map(|h| h.height());
+        let lower_batch_height = self.0.last().map(|h| h.height());
+        if lower_batch_height.is_none() || upper_batch_height.is_none() {
+            // ID should be infallible but it is possible that the `Vec` is empty.
+            // In that case we log an error to indicate something went really wrong and use `(0,0)`.
+            warn!(
+                ?lower_batch_height,
+                ?upper_batch_height,
+                "received header batch is empty"
+            );
+        }
+        BlockHeadersBatchId::new(
+            upper_batch_height.unwrap_or_default(),
+            lower_batch_height.unwrap_or_default(),
+        )
     }
 }
 
@@ -2687,5 +2904,352 @@ mod tests {
             }
             _ => panic!("should report missing deploy"),
         };
+    }
+
+    #[test]
+    fn block_headers_batch_id_iter() {
+        let id = BlockHeadersBatchId::new(5, 1);
+        assert_eq!(
+            vec![5u64, 4, 3, 2, 1],
+            id.iter().collect::<Vec<_>>(),
+            ".iter() must return descending order"
+        );
+
+        let id = BlockHeadersBatchId::new(5, 5);
+        assert_eq!(vec![5u64], id.iter().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn block_headers_batch_id_len() {
+        let id = BlockHeadersBatchId::new(5, 1);
+        assert_eq!(id.len(), 5);
+        let id = BlockHeadersBatchId::new(5, 5);
+        assert_eq!(id.len(), 1);
+    }
+
+    #[test]
+    fn block_headers_batch_id_from_known() {
+        let mut rng = TestRng::new();
+        let trusted_block: Block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(1),
+            100,
+            ProtocolVersion::V1_0_0,
+            false,
+            EraId::new(100),
+            std::iter::empty(),
+        );
+        let trusted_header = trusted_block.take_header();
+
+        let batch_size = 10;
+
+        let id = BlockHeadersBatchId::from_known(&trusted_header, batch_size);
+
+        assert_eq!(
+            BlockHeadersBatchId::new(99, 90),
+            id,
+            "expected batch of proper length and skipping trusted height"
+        );
+
+        let id_saturated = BlockHeadersBatchId::from_known(&trusted_header, 1000);
+        assert_eq!(
+            BlockHeadersBatchId::new(99, 0),
+            id_saturated,
+            "expect batch towards Genesis"
+        );
+
+        let trusted_last = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(0),
+            1,
+            ProtocolVersion::V1_0_0,
+            false,
+            EraId::new(100),
+            std::iter::empty(),
+        );
+
+        let trusted_last_header = trusted_last.take_header();
+
+        let id_last = BlockHeadersBatchId::from_known(&trusted_last_header, batch_size);
+        assert_eq!(
+            BlockHeadersBatchId::new(0, 0),
+            id_last,
+            "expected batch that saturates towards Genesis and doesn't include known height"
+        );
+    }
+
+    struct TestBlock(Block, TestRng);
+
+    impl TestBlock {
+        fn new(test_rng: TestRng) -> Self {
+            let mut rng = test_rng;
+            let init = Block::random(&mut rng);
+            Self(init, rng)
+        }
+
+        fn into_iter(self) -> TestBlockIterator {
+            TestBlockIterator(self.0, self.1)
+        }
+    }
+
+    const NEVER_SWITCH_HASHING: EraId = EraId::new(u64::MAX);
+
+    struct TestBlockIterator(Block, TestRng);
+
+    impl Iterator for TestBlockIterator {
+        type Item = Block;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = Block::new(
+                self.0.id(NEVER_SWITCH_HASHING),
+                self.0.header().accumulated_seed(),
+                *self.0.header().state_root_hash(),
+                FinalizedBlock::random_with_specifics(
+                    &mut self.1,
+                    self.0.header().era_id(),
+                    self.0.header().height() + 1,
+                    false,
+                    std::iter::empty(),
+                ),
+                None,
+                self.0.header().protocol_version(),
+                NEVER_SWITCH_HASHING,
+            )
+            .unwrap();
+            self.0 = next.clone();
+            Some(next)
+        }
+    }
+
+    #[test]
+    fn test_block_iter() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+        let mut block_batch = test_block.into_iter().take(500);
+        let mut parent_block: Block = block_batch.next().unwrap();
+        for current_block in block_batch {
+            assert_eq!(
+                current_block.header().height(),
+                parent_block.header().height() + 1,
+                "height should grow monotonically"
+            );
+            assert_eq!(
+                current_block.header().parent_hash(),
+                &parent_block.id(NEVER_SWITCH_HASHING),
+                "block's parent should point at previous block"
+            );
+            parent_block = current_block;
+        }
+    }
+
+    #[test]
+    fn block_batch_is_continuous_and_descending() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !BlockHeadersBatch::is_continuous_and_descending(
+                batch.as_slice(),
+                NEVER_SWITCH_HASHING
+            ),
+            "should fail b/c not descending"
+        );
+
+        batch.reverse();
+        assert!(BlockHeadersBatch::is_continuous_and_descending(
+            batch.as_slice(),
+            NEVER_SWITCH_HASHING
+        ));
+
+        let next_header = test_block_iter.next().unwrap().take_header();
+        assert!(
+            BlockHeadersBatch::is_continuous_and_descending(&[next_header], NEVER_SWITCH_HASHING),
+            "single block is valid batch"
+        );
+
+        let mut batch_with_holes = vec![test_block_iter.next().unwrap().take_header()];
+        // Skip one block header
+        let _ = test_block_iter.next().unwrap();
+        batch_with_holes.push(test_block_iter.next().unwrap().take_header());
+
+        assert!(!BlockHeadersBatch::is_continuous_and_descending(
+            batch_with_holes.as_slice(),
+            NEVER_SWITCH_HASHING
+        ));
+    }
+
+    #[test]
+    fn block_headers_batch_from_vec() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+        let mut batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+        batch.reverse();
+
+        let id = BlockHeadersBatchId::new(batch[0].height(), batch[2].height());
+
+        let block_headers_batch = BlockHeadersBatch::from_vec(batch.clone(), &id);
+        assert!(block_headers_batch.is_some());
+        assert_eq!(block_headers_batch.unwrap().inner(), &batch);
+
+        let missing_highest_batch = batch.clone().into_iter().skip(1).collect::<Vec<_>>();
+        assert!(BlockHeadersBatch::from_vec(missing_highest_batch, &id).is_none());
+
+        let missing_lowest_batch = batch
+            .clone()
+            .into_iter()
+            .rev()
+            .skip(1)
+            .rev()
+            .collect::<Vec<_>>();
+        assert!(BlockHeadersBatch::from_vec(missing_lowest_batch, &id).is_none());
+    }
+
+    #[test]
+    fn block_headers_batch_item_validate() {
+        let empty_batch = BlockHeadersBatch::new(vec![]);
+        assert_eq!(
+            Item::validate(&empty_batch, NEVER_SWITCH_HASHING),
+            Err(BlockHeadersBatchValidationError::BatchEmpty)
+        );
+
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        // Invalid ordering.
+        let invalid_batch = test_block_iter
+            .by_ref()
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(invalid_batch.clone()),
+                NEVER_SWITCH_HASHING
+            ),
+            Err(BlockHeadersBatchValidationError::BatchNotContinuous)
+        );
+
+        let valid_batch = {
+            let mut tmp = invalid_batch;
+            tmp.reverse();
+            tmp
+        };
+
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(valid_batch.clone()),
+                NEVER_SWITCH_HASHING
+            ),
+            Ok(())
+        );
+
+        let single_el_valid = vec![valid_batch[0].clone()];
+        assert_eq!(
+            Item::validate(
+                &BlockHeadersBatch::new(single_el_valid),
+                NEVER_SWITCH_HASHING
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn block_headers_batch_validate() {
+        let rng = TestRng::new();
+        let test_block = TestBlock::new(rng);
+
+        let mut test_block_iter = test_block.into_iter();
+
+        let headers = {
+            let mut tmp_batch = test_block_iter
+                .by_ref()
+                .take(5)
+                .map(|block| block.take_header())
+                .collect::<Vec<_>>();
+            tmp_batch.reverse();
+            tmp_batch
+        };
+
+        let lowest = headers.last().cloned().unwrap();
+        let (trusted, batch) = (
+            headers.first().cloned().unwrap(),
+            BlockHeadersBatch::new(headers[1..].to_vec()),
+        );
+
+        let batch_id = BlockHeadersBatchId::new(
+            trusted.height() - 1,
+            batch.inner().last().cloned().unwrap().height(),
+        );
+
+        assert_eq!(
+            Ok(lowest),
+            BlockHeadersBatch::validate(&batch, &batch_id, &trusted, NEVER_SWITCH_HASHING)
+        );
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::BatchEmpty),
+            BlockHeadersBatch::validate(
+                &BlockHeadersBatch::new(vec![]),
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
+        );
+
+        let invalid_length_batch = BlockHeadersBatch::new(batch.inner().clone()[1..].to_vec());
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::IncorrectLength {
+                expected: 4,
+                got: 3
+            }),
+            BlockHeadersBatch::validate(
+                &invalid_length_batch,
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
+        );
+
+        let (new_highest, invalid_highest_batch) = {
+            let mut tmp = batch.inner().clone();
+            tmp.reverse();
+            (tmp.first().cloned().unwrap(), BlockHeadersBatch::new(tmp))
+        };
+
+        assert_eq!(
+            Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
+                expected: batch
+                    .inner()
+                    .first()
+                    .cloned()
+                    .unwrap()
+                    .id(NEVER_SWITCH_HASHING),
+                got: new_highest.id(NEVER_SWITCH_HASHING)
+            }),
+            BlockHeadersBatch::validate(
+                &invalid_highest_batch,
+                &batch_id,
+                &trusted,
+                NEVER_SWITCH_HASHING
+            )
+        );
     }
 }

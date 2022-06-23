@@ -10,6 +10,7 @@ use crate::storage::{error::in_memory, global_state::CommitError};
 
 /// Error enum representing possible error states in LMDB interactions.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     /// LMDB error returned from underlying `lmdb` crate.
     #[error(transparent)]

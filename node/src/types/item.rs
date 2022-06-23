@@ -50,6 +50,8 @@ pub enum Tag {
     TrieOrChunk,
     /// A full block and its deploys.
     BlockAndDeploysByHash,
+    /// A batch of block headers requested by their lower and upper height indices.
+    BlockHeaderBatch,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

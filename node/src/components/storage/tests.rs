@@ -424,7 +424,6 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     for verifiable_chunked_hash_activation in verifiable_chunked_hash_activations {
         thread::spawn(move || {
             let mut harness = ComponentHarness::default();
-            // Separate registry for each storage in the loop.
 
             let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
@@ -1393,7 +1392,6 @@ fn should_hard_reset() {
 #[test]
 fn should_create_subdir_named_after_network() {
     let harness = ComponentHarness::default();
-
     let cfg = new_config(&harness);
 
     let network_name = "test";

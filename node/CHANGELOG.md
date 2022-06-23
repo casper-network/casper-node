@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+
 ## [Unreleased]
 
 ### Added
@@ -79,6 +80,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
+
+
+
+## 1.4.6
+
+### Changed
+* Update dependencies to make use of scratch global state in the contract runtime.
 
 
 

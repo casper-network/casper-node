@@ -1,5 +1,5 @@
 use datasize::DataSize;
-use prometheus::{self, Histogram, IntGauge, Registry};
+use prometheus::{self, Histogram, IntCounter, IntGauge, Registry};
 
 use casper_types::Timestamp;
 
@@ -65,9 +65,9 @@ pub(super) struct Metrics {
     /// Time in seconds of fetching block with deploys during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_block_and_deploys_duration_seconds: Histogram,
-    /// Integer representing a height of a block that we've successfully downloaded.
+    /// Integer representing number of blocks that we've successfully downloaded.
     #[data_size(skip)]
-    pub(super) chain_sync_block_height_synced: IntGauge,
+    pub(super) chain_sync_blocks_synced: IntCounter,
     /// Registry stored to allow deregistration later.
     #[data_size(skip)]
     registry: Registry,
@@ -130,10 +130,10 @@ impl Metrics {
                 "time in seconds of fetching the initial trusted block header during chain sync",
             )?;
 
-        let chain_sync_block_height_synced = IntGauge::new(
-                "chain_sync_block_height_synced",
-                "height of a block we've synchronized. May go decrease during syncing to Genesis and then increase when catching up."
-            )?;
+        let chain_sync_blocks_synced = IntCounter::new(
+            "chain_sync_blocks_synced",
+            "Number of full blocks we've synchronized.",
+        )?;
 
         let buckets = prometheus::exponential_buckets(
             SYNC_TRIE_OR_DEPLOY_BUCKET_START,
@@ -168,7 +168,7 @@ impl Metrics {
         registry.register(Box::new(
             chain_sync_era_supervisor_init_duration_seconds.clone(),
         ))?;
-        registry.register(Box::new(chain_sync_block_height_synced.clone()))?;
+        registry.register(Box::new(chain_sync_blocks_synced.clone()))?;
         registry.register(Box::new(chain_sync_execute_blocks_duration_seconds.clone()))?;
         registry.register(Box::new(
             chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds.clone(),
@@ -206,7 +206,7 @@ impl Metrics {
                 "time in seconds of fetching block and all of its deploys",
                 buckets,
             )?,
-            chain_sync_block_height_synced,
+            chain_sync_blocks_synced,
             registry: registry.clone(),
         })
     }
