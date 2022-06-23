@@ -1482,14 +1482,23 @@ async fn fetch_finality_signatures_by_block_header(
 }
 
 /// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
-    if *era_id != EraId::from(0) {
-        // For eras > 0 we need to use validator set from the previous era.
+fn get_era_id_for_validators_retrieval(
+    era_id: &EraId,
+    last_emergency_restart: Option<EraId>,
+) -> EraId {
+    if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
+        // For eras > 0 we need to use validator set from the previous era
         *era_id - 1
     } else {
-        // In case of Era=0 there's no previous era, but since validators never change during
+        // When we're in era 0 or in the era of last emergency restart we
+        // use that era as a source for validators, because
+        //
+        // 1) If we're in Era 0 there's no previous era, but since validators never change during
         // that era we can safely use the Era 0's switch block.
-        EraId::from(0)
+        //
+        // 2) In case of being in last emergency restart era, we cannot trust validators from the
+        // previous era.
+        *era_id
     }
 }
 
@@ -2093,22 +2102,40 @@ mod tests {
     fn gets_correct_era_id_for_validators() {
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0))
+            get_era_id_for_validators_retrieval(&EraId::from(0), None)
         );
 
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1))
+            get_era_id_for_validators_retrieval(&EraId::from(1), None)
         );
 
         assert_eq!(
             EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2))
+            get_era_id_for_validators_retrieval(&EraId::from(2), None)
         );
 
         assert_eq!(
             EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000))
+            get_era_id_for_validators_retrieval(&EraId::from(1000), None)
+        );
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators_when_emergency_restart() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0), Some(EraId::from(7)))
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1), Some(EraId::from(2)))
+        );
+
+        assert_eq!(
+            EraId::from(2),
+            get_era_id_for_validators_retrieval(&EraId::from(2), Some(EraId::from(2)))
         );
     }
 
