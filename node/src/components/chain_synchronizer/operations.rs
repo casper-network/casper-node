@@ -1318,12 +1318,7 @@ impl BlockSignaturesCollector {
         Self(None)
     }
 
-    fn add_signatures(&mut self, maybe_signatures: Option<BlockSignatures>) {
-        let signatures = match maybe_signatures {
-            Some(sigs) => sigs,
-            None => return,
-        };
-
+    fn add(&mut self, signatures: BlockSignatures) {
         match &mut self.0 {
             None => {
                 self.0 = Some(signatures);
@@ -1435,10 +1430,10 @@ async fn fetch_finality_signatures_by_block_header(
             Err(_) => None,
         };
 
-        sig_collector.add_signatures(maybe_signatures);
-
-        let era_for_validators_retrieval =
-            get_era_id_for_validators_retrieval(&block_header.era_id());
+        let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
+            &block_header.era_id(),
+            ctx.config.last_emergency_restart(),
+        );
 
         let maybe_switch_block_of_previous_era = ctx
             .effect_builder
@@ -1449,6 +1444,14 @@ async fn fetch_finality_signatures_by_block_header(
             Some(switch_block_of_previous_era) => {
                 match switch_block_of_previous_era.next_era_validator_weights() {
                     Some(validator_weights) => {
+                        if let Some(signatures) = maybe_signatures {
+                            consensus::validate_finality_signatures(
+                                &signatures,
+                                validator_weights,
+                            )?;
+                            sig_collector.add(signatures);
+                        }
+
                         if sig_collector.check_if_sufficient(
                             validator_weights,
                             ctx.config.finality_threshold_fraction(),
@@ -1487,17 +1490,18 @@ fn get_era_id_for_validators_retrieval(
     last_emergency_restart: Option<EraId>,
 ) -> EraId {
     if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
-        // For eras > 0 we need to use validator set from the previous era
+        // For eras > 0 which are not the last emergency restart eras we need to use validator set
+        // from the previous era
         *era_id - 1
     } else {
         // When we're in era 0 or in the era of last emergency restart we
-        // use that era as a source for validators, because
+        // use that era as a source for validators, because:
         //
         // 1) If we're in Era 0 there's no previous era, but since validators never change during
         // that era we can safely use the Era 0's switch block.
         //
-        // 2) In case of being in last emergency restart era, we cannot trust validators from the
-        // previous era.
+        // 2) In case of being in last emergency restart era, the validators from the previous era
+        // may no longer be valid.
         *era_id
     }
 }

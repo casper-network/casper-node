@@ -12,7 +12,10 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
-    components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
+    components::{
+        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
+        fetcher::FetcherError,
+    },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
@@ -73,6 +76,13 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
+
+    #[error(transparent)]
+    FinalitySignatures(
+        #[from]
+        #[serde(skip_serializing)]
+        FinalitySignatureError,
+    ),
 
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),
