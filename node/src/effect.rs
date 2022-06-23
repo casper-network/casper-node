@@ -1221,18 +1221,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Updates the lowest available block height in storage.
-    pub(crate) async fn update_lowest_available_block_height_in_storage(self, height: u64)
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::UpdateLowestAvailableBlockHeight { height, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the height range of fully available blocks (not just block headers).
     pub(crate) async fn get_available_block_range_from_storage(self) -> AvailableBlockRange
     where

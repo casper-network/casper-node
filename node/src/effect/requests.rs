@@ -477,17 +477,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call when complete.
         responder: Responder<Option<BlockHash>>,
     },
-    /// Update the lowest available block height in storage.
-    // Note - this is a request rather than an announcement as the chain synchronizer needs to
-    // ensure the request has been completed before it can exit, i.e. it awaits the response.
-    // Otherwise, the joiner reactor might exit before handling the announcement and it would go
-    // un-actioned.
-    UpdateLowestAvailableBlockHeight {
-        /// The new height.
-        height: u64,
-        /// Responder to call when complete.
-        responder: Responder<()>,
-    },
     /// Retrieve the height range of fully available blocks (not just block headers). Returns
     /// `[u64::MAX, u64::MAX]` when there are no sequences.
     GetAvailableBlockRange {
@@ -606,13 +595,6 @@ impl Display for StorageRequest {
                     formatter,
                     "get block and sufficient finality signatures by height: {}",
                     block_height
-                )
-            }
-            StorageRequest::UpdateLowestAvailableBlockHeight { height, .. } => {
-                write!(
-                    formatter,
-                    "update lowest available block height to {}",
-                    height
                 )
             }
             StorageRequest::GetAvailableBlockRange { .. } => {

@@ -234,6 +234,7 @@ pub(crate) enum Event {
     #[from]
     StateStoreRequest(StateStoreRequest),
     /// Block completion announcement.
+    #[from]
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
 }
 
@@ -1099,12 +1100,6 @@ impl Storage {
             } => responder
                 .respond(self.put_block_headers(block_headers)?)
                 .ignore(),
-            StorageRequest::UpdateLowestAvailableBlockHeight {
-                height: _,
-                responder: _,
-            } => {
-                todo!("to be replace with the BlockCompletedAnnouncement")
-            }
             StorageRequest::GetAvailableBlockRange { responder } => {
                 responder.respond(self.get_available_block_range()).ignore()
             }
