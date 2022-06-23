@@ -1343,10 +1343,11 @@ impl BlockSignaturesCollector {
     ) -> bool {
         self.0.as_ref().map_or(false, |sigs| {
             are_signatures_sufficient_for_sync_to_genesis(
-                consensus::check_sufficient_finality_signatures(
+                consensus::check_sufficient_finality_signatures_with_quorum_formula(
                     validator_weights,
                     finality_threshold_fraction,
                     sigs,
+                    std::convert::identity,
                 ),
             )
         })

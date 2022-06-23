@@ -11,15 +11,20 @@ fn quorum_fraction(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
     (finality_threshold_fraction + 1) / 2
 }
 
-/// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
-/// error if it doesn't, or if one of the signatures does not belong to a validator.
+/// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold which is
+/// calculated using the provided quorum formula. Returns an error if it doesn't, or if one of the
+/// signatures does not belong to a validator.
 ///
 /// This does _not_ cryptographically verify the signatures.
-pub(crate) fn check_sufficient_finality_signatures(
+pub(crate) fn check_sufficient_finality_signatures_with_quorum_formula<F>(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
     block_signatures: &BlockSignatures,
-) -> Result<(), FinalitySignatureError> {
+    quorum_formula: F,
+) -> Result<(), FinalitySignatureError>
+where
+    F: Fn(Ratio<u64>) -> Ratio<u64>,
+{
     // Calculate the weight of the signatures
     let mut signature_weight: U512 = U512::zero();
     let mut minimum_weight: Option<U512> = None;
@@ -49,7 +54,7 @@ pub(crate) fn check_sufficient_finality_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let quorum_fraction = quorum_fraction(finality_threshold_fraction);
+    let quorum_fraction = (quorum_formula)(finality_threshold_fraction);
     // Verify: signature_weight / total_weight >= lower_bound
     // Equivalent to the following
     if signature_weight * U512::from(*quorum_fraction.denom())
@@ -80,6 +85,23 @@ pub(crate) fn check_sufficient_finality_signatures(
     }
 
     Ok(())
+}
+
+/// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
+/// error if it doesn't, or if one of the signatures does not belong to a validator.
+///
+/// This does _not_ cryptographically verify the signatures.
+pub(crate) fn check_sufficient_finality_signatures(
+    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+    block_signatures: &BlockSignatures,
+) -> Result<(), FinalitySignatureError> {
+    check_sufficient_finality_signatures_with_quorum_formula(
+        trusted_validator_weights,
+        finality_threshold_fraction,
+        block_signatures,
+        quorum_fraction,
+    )
 }
 
 pub(crate) fn get_minimal_set_of_signatures(
