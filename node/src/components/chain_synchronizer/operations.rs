@@ -1424,7 +1424,9 @@ async fn fetch_finality_signatures_by_block_header(
                     ?peer,
                     "did not get FinalitySignatures from peer, got from storage instead",
                 );
-                Some(*item)
+                ctx.metrics
+                    .observe_fetch_finality_signatures_duration_seconds(start);
+                return Ok(Some(*item));
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 trace!(?block_header_hash, ?peer, "fetched FinalitySignatures");
