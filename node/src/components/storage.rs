@@ -533,7 +533,7 @@ impl Storage {
                 data,
                 responder,
             } => {
-                self.write_state_store(&key, &data)?;
+                self.write_state_store(key, &data)?;
                 Ok(responder.respond(()).ignore())
             }
             StateStoreRequest::Load { key, responder } => {
@@ -564,7 +564,7 @@ impl Storage {
     // See note below why `key` and `data` are not `&[u8]`s.
     fn write_state_store(
         &self,
-        key: &Cow<'static, [u8]>,
+        key: Cow<'static, [u8]>,
         data: &Vec<u8>,
     ) -> Result<(), FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
@@ -572,7 +572,7 @@ impl Storage {
         // Note: The interface of `lmdb` seems suboptimal: `&K` and `&V` could simply be `&[u8]` for
         //       simplicity. At the very least it seems to be missing a `?Sized` trait bound. For
         //       this reason, we need to use actual sized types in the function signature above.
-        txn.put(self.state_store_db, key, data, WriteFlags::default())?;
+        txn.put(self.state_store_db, &key, data, WriteFlags::default())?;
         txn.commit()?;
 
         Ok(())
@@ -1154,7 +1154,7 @@ impl Storage {
             .completed_blocks
             .to_bytes()
             .map_err(FatalStorageError::UnexpectedSerializationFailure)?;
-        self.write_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY), &serialized)
+        self.write_state_store(Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY), &serialized)
     }
 
     /// Put a single deploy into storage.

@@ -66,6 +66,7 @@ impl Sequence {
     }
 
     /// Returns `true` if a sequence contains the value.
+    #[cfg(test)]
     pub(super) fn contains(&self, value: u64) -> bool {
         value >= self.low && value <= self.high
     }
@@ -172,6 +173,7 @@ impl DisjointSequences {
     }
 
     /// Inserts multiple values produced by the given interator.
+    #[cfg(test)]
     pub(super) fn extend<T>(&mut self, iter: T)
     where
         T: IntoIterator<Item = u64>,
@@ -182,11 +184,6 @@ impl DisjointSequences {
     /// Returns the highest sequence, or `None` if there are no sequences.
     pub(super) fn highest_sequence(&self) -> Option<&Sequence> {
         self.sequences.first()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn sequences(&self) -> &Vec<Sequence> {
-        &self.sequences
     }
 }
 
