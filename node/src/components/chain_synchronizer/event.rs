@@ -29,6 +29,7 @@ pub(crate) enum Event {
     },
     /// The result of executing a finalized block.
     ExecuteImmediateSwitchBlockResult {
+        maybe_switch_block_header_before_upgrade: Option<BlockHeader>,
         is_emergency_upgrade: bool,
         #[serde(skip_serializing)]
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,

@@ -315,6 +315,7 @@ where
 
                 self.execute_immediate_switch_block(
                     effect_builder,
+                    None,
                     initial_pre_state,
                     finalized_block,
                     false,
@@ -359,8 +360,16 @@ where
                     initial_pre_state.next_block_height(),
                     PublicKey::System,
                 );
+                // If this is an emergency upgrade, we don't need to pass the switch block from just
+                // before the upgrade, as it's only used to derive the list of validators to sign
+                // the immediate switch block, and for an emergency upgrade that list is the same as
+                // its own `next_era_validators` collection.
+                let maybe_switch_block_header_before_upgrade =
+                    (!is_emergency_upgrade).then(|| switch_block_header_before_upgrade);
+
                 self.execute_immediate_switch_block(
                     effect_builder,
+                    maybe_switch_block_header_before_upgrade,
                     initial_pre_state,
                     finalized_block,
                     is_emergency_upgrade,
@@ -379,6 +388,7 @@ where
     fn execute_immediate_switch_block(
         &self,
         effect_builder: EffectBuilder<REv>,
+        maybe_switch_block_header_before_upgrade: Option<BlockHeader>,
         initial_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
         is_emergency_upgrade: bool,
@@ -402,6 +412,7 @@ where
             Ok(block_and_execution_effects)
         }
         .event(move |result| Event::ExecuteImmediateSwitchBlockResult {
+            maybe_switch_block_header_before_upgrade,
             is_emergency_upgrade,
             result,
         })
@@ -410,6 +421,7 @@ where
     fn handle_execute_immediate_switch_block_result(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        maybe_switch_block_header_before_upgrade: Option<BlockHeader>,
         is_emergency_upgrade: bool,
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     ) -> Effects<Event> {
@@ -421,26 +433,29 @@ where
             }
         };
 
-        let validators_to_sign_immediate_switch_block =
-            match immediate_switch_block_and_exec_effects
-                .block
-                .header()
-                .era_end()
-            {
-                Some(era_end) => era_end
-                    .next_era_validator_weights()
-                    .keys()
-                    .cloned()
-                    .collect(),
-                None => {
-                    error!("upgrade/genesis immediate switch block missing era end");
-                    return fatal!(
-                        effect_builder,
-                        "upgrade/genesis immediate switch block missing era end"
-                    )
-                    .ignore();
-                }
-            };
+        // If the switch block before the immediate switch block is `None`, we use the
+        // `next_era_validators` of the immediate switch block to sign it.  This is the case at
+        // genesis and for an emergency upgrade.
+        let maybe_era_end = maybe_switch_block_header_before_upgrade
+            .as_ref()
+            .unwrap_or_else(|| immediate_switch_block_and_exec_effects.block.header())
+            .era_end();
+
+        let validators_to_sign_immediate_switch_block = match maybe_era_end {
+            Some(era_end) => era_end
+                .next_era_validator_weights()
+                .keys()
+                .cloned()
+                .collect(),
+            None => {
+                error!("upgrade/genesis switch block missing era end");
+                return fatal!(
+                    effect_builder,
+                    "upgrade/genesis switch block missing era end"
+                )
+                .ignore();
+            }
+        };
 
         // For an emergency upgrade, we always execute/commit locally rather than syncing over it.
         // This means we should try fast syncing again if this was an emergency upgrade.
@@ -564,10 +579,12 @@ where
                 result,
             ),
             Event::ExecuteImmediateSwitchBlockResult {
+                maybe_switch_block_header_before_upgrade,
                 is_emergency_upgrade,
                 result,
             } => self.handle_execute_immediate_switch_block_result(
                 effect_builder,
+                maybe_switch_block_header_before_upgrade,
                 is_emergency_upgrade,
                 result,
             ),
