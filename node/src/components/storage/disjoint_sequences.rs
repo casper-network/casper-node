@@ -5,8 +5,6 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::trace;
 
-use crate::types::AvailableBlockRange;
-
 /// The outcome of an attempt to insert a value into a `Sequence`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum InsertOutcome {

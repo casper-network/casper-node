@@ -33,6 +33,16 @@ impl AvailableBlockRange {
     /// An `AvailableRange` of [0, 0].
     pub const RANGE_0_0: AvailableBlockRange = AvailableBlockRange { low: 0, high: 0 };
 
+    /// Constructs a new `AvailableBlockRange` with the given limits.
+    #[cfg(test)]
+    pub fn new(low: u64, high: u64) -> Self {
+        assert!(
+            low <= high,
+            "cannot construct available block range with low > high"
+        );
+        AvailableBlockRange { low, high }
+    }
+
     /// Returns `true` if `height` is within the range.
     pub fn contains(&self, height: u64) -> bool {
         height >= self.low && height <= self.high
