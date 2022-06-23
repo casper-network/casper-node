@@ -2153,23 +2153,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_block_hash_by_height_from_storage(
-        self,
-        block_height: u64,
-    ) -> Option<BlockHash>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHashByHeight {
-                block_height,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests execution of a single deploy, without commiting its effects.
     /// Inteded to be used for debugging & discovery purposes.
     pub(crate) async fn speculative_execute_deploy(

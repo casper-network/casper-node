@@ -30,7 +30,7 @@ use super::{metrics::Metrics, Config};
 use crate::{
     components::{
         chain_synchronizer::error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
-        consensus::{self},
+        consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
@@ -1120,18 +1120,8 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
         "starting fetch to genesis",
     );
 
-    let maybe_latest_switch_block_header = fetch_headers_till_genesis(trusted_block, ctx).await?;
-    if let Some(latest_switch_block_header) = maybe_latest_switch_block_header {
-        if let Some(validator_weights) = latest_switch_block_header.next_era_validator_weights() {
-            info!(switch_block_height = %latest_switch_block_header.height(), "using validator weights");
-            fetch_blocks_and_state_and_finality_signatures_since_genesis(validator_weights, ctx)
-                .await?;
-        } else {
-            return Err(Error::FoundSwitchBlockWithoutValidatorWeights);
-        }
-    } else {
-        return Err(Error::NoSwitchBlocksFound);
-    }
+    fetch_headers_till_genesis(trusted_block, ctx).await?;
+    fetch_blocks_and_state_and_finality_signatures_since_genesis(ctx).await?;
 
     // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
     // trusted block, we can update the lowest available block of the continuous range.
@@ -1145,34 +1135,19 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 
 // Fetches headers starting from `trusted_block` till the Genesis.
-// Returns the block header of the heighest switch block, if available.
 async fn fetch_headers_till_genesis(
     trusted_block: &Block,
     ctx: &ChainSyncContext<'_>,
-) -> Result<Option<BlockHeader>, Error> {
+) -> Result<(), Error> {
     let mut lowest_trusted_block_header = trusted_block.header().clone();
-
-    let mut latest_switch_block_header_global: Option<BlockHeader> = None;
 
     loop {
         match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
-            Ok((new_lowest, latest_switch_block_header_in_batch)) => {
+            Ok(new_lowest) => {
                 if new_lowest.height() % 1_000 == 0 {
                     info!(?new_lowest, "new lowest trusted block header stored");
                 }
                 lowest_trusted_block_header = new_lowest;
-                match (
-                    latest_switch_block_header_global,
-                    &latest_switch_block_header_in_batch,
-                ) {
-                    (Some(previous_highest_switch_block_header), Some(new_switch_block_header))
-                        if new_switch_block_header.height()
-                            > previous_highest_switch_block_header.height() =>
-                    {
-                        latest_switch_block_header_global = Some(new_switch_block_header.clone())
-                    }
-                    _ => latest_switch_block_header_global = latest_switch_block_header_in_batch,
-                }
             }
             Err(err) => {
                 // If we get an error here it means something must have gone really wrong.
@@ -1191,16 +1166,15 @@ async fn fetch_headers_till_genesis(
             break;
         }
     }
-    Ok(latest_switch_block_header_global)
+    Ok(())
 }
 
 // Fetches a batch of block headers, validates and stores in storage.
-// Returns either an error or a tuple of lowest valid block in the chain and the highest switch
-// block header, if available in batch.
+// Returns either an error or lowest valid block in the chain.
 async fn fetch_block_headers_batch(
     lowest_trusted_block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_>,
-) -> Result<(BlockHeader, Option<BlockHeader>), FetchBlockHeadersBatchError> {
+) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
     let batch_id =
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
 
@@ -1209,11 +1183,10 @@ async fn fetch_block_headers_batch(
             fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
         match fetched_headers_data {
             FetchedData::FromStorage { item } => {
-                let lowest = item
+                return item
                     .lowest()
                     .cloned()
-                    .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)?;
-                return Ok((lowest, item.latest_switch_block_header().cloned()));
+                    .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
             }
             FetchedData::FromPeer { item, peer } => {
                 match BlockHeadersBatch::validate(
@@ -1224,11 +1197,10 @@ async fn fetch_block_headers_batch(
                 ) {
                     Ok(new_lowest) => {
                         info!(?batch_id, ?peer, "received valid batch of headers");
-                        let latest_validator_weights = item.latest_switch_block_header().cloned();
                         ctx.effect_builder
                             .put_block_headers_batch_to_storage(item.into_inner())
                             .await;
-                        return Ok((new_lowest, latest_validator_weights));
+                        return Ok(new_lowest);
                     }
                     Err(err) => {
                         error!(
@@ -1247,7 +1219,6 @@ async fn fetch_block_headers_batch(
 
 // Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
 async fn fetch_blocks_and_state_and_finality_signatures_since_genesis(
-    validator_weights: &BTreeMap<PublicKey, U512>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     info!("syncing blocks and deploys and state since Genesis");
@@ -1265,14 +1236,7 @@ async fn fetch_blocks_and_state_and_finality_signatures_since_genesis(
     let latest_height_requested: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
     let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_block_fetches())
-        .map(|worker_id| {
-            fetch_block_worker(
-                worker_id,
-                latest_height_requested.clone(),
-                validator_weights.clone(),
-                ctx,
-            )
-        })
+        .map(|worker_id| fetch_block_worker(worker_id, latest_height_requested.clone(), ctx))
         .collect();
 
     while let Some(result) = workers.next().await {
@@ -1285,7 +1249,6 @@ async fn fetch_blocks_and_state_and_finality_signatures_since_genesis(
 async fn fetch_block_worker(
     worker_id: usize,
     latest_height_requested: Arc<AtomicU64>,
-    validator_weights: BTreeMap<PublicKey, U512>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     let trusted_block_height = ctx.trusted_block_header().height();
@@ -1296,28 +1259,30 @@ async fn fetch_block_worker(
             return Ok(());
         }
 
-        let block_hash = ctx
+        let block_header = ctx
             .effect_builder
-            .get_block_hash_by_height_from_storage(next_block_height)
+            .get_block_header_at_height_from_storage(next_block_height, false)
             .await
             .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
+
+        let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
 
         if next_block_height % 1_000 == 0 {
             info!(
                 worker_id,
-                ?block_hash,
+                ?block_header_hash,
                 ?next_block_height,
                 "syncing block and deploys"
             );
         }
-        match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
+        match fetch_and_store_block_with_deploys_by_hash(block_header_hash, ctx).await {
             Ok(fetched_block) => {
-                trace!(?block_hash, "downloaded block and deploys");
+                trace!(?block_header_hash, "downloaded block and deploys");
                 // We want to download the trie only when we know we have the block.
                 if let Err(error) = sync_trie_store(fetched_block.block.header(), ctx).await {
                     error!(
                         ?error,
-                        ?block_hash,
+                        ?block_header_hash,
                         "failed to download trie with infinite retries"
                     );
                     return Err(error);
@@ -1330,14 +1295,14 @@ async fn fetch_block_worker(
                 // want to retry.
                 error!(
                     ?err,
-                    ?block_hash,
+                    ?block_header_hash,
                     "failed to download block with infinite retries"
                 );
             }
         }
 
         if let Some(finality_signatures) =
-            fetch_finality_signatures_by_block_hash(block_hash, &validator_weights, ctx).await
+            fetch_finality_signatures_by_block_header(block_header, ctx).await?
         {
             ctx.effect_builder
                 .put_signatures_to_storage(finality_signatures)
@@ -1377,17 +1342,29 @@ impl BlockSignaturesCollector {
         finality_threshold_fraction: Ratio<u64>,
     ) -> bool {
         self.0.as_ref().map_or(false, |sigs| {
-            consensus::check_sufficient_finality_signatures(
-                validator_weights,
-                finality_threshold_fraction,
-                sigs,
+            are_signatures_sufficient_for_sync_to_genesis(
+                consensus::check_sufficient_finality_signatures(
+                    validator_weights,
+                    finality_threshold_fraction,
+                    sigs,
+                ),
             )
-            .is_ok()
         })
     }
 
     fn into_inner(self) -> Option<BlockSignatures> {
         self.0
+    }
+}
+
+// Returns true if the output from consensus can be interpreted
+// as sufficient finality signatures for the sync to genesis process.
+fn are_signatures_sufficient_for_sync_to_genesis(
+    consensus_verdict: Result<(), FinalitySignatureError>,
+) -> bool {
+    match consensus_verdict {
+        Ok(_) | Err(FinalitySignatureError::TooManySignatures { .. }) => true,
+        Err(_) => false,
     }
 }
 
@@ -1417,11 +1394,11 @@ async fn fetch_finality_signatures_with_retry(
     })
 }
 
-async fn fetch_finality_signatures_by_block_hash(
-    block_hash: BlockHash,
-    validator_weights: &BTreeMap<PublicKey, U512>,
+async fn fetch_finality_signatures_by_block_header(
+    block_header: BlockHeader,
     ctx: &ChainSyncContext<'_>,
-) -> Option<BlockSignatures> {
+) -> Result<Option<BlockSignatures>, Error> {
+    let start = Timestamp::now();
     let mut peer_list = ctx
         .effect_builder
         .get_fully_connected_non_joiner_peers()
@@ -1430,9 +1407,11 @@ async fn fetch_finality_signatures_by_block_hash(
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
+    let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+
     for peer in peer_list {
         let fetched_signatures = fetch_finality_signatures_with_retry(
-            block_hash,
+            block_header_hash,
             peer,
             FINALITY_SIGNATURE_FETCH_RETRY_COUNT,
             ctx,
@@ -1441,14 +1420,14 @@ async fn fetch_finality_signatures_by_block_hash(
         let maybe_signatures = match fetched_signatures {
             Ok(FetchedData::FromStorage { item, .. }) => {
                 trace!(
-                    ?block_hash,
+                    ?block_header_hash,
                     ?peer,
                     "did not get FinalitySignatures from peer, got from storage instead",
                 );
                 Some(*item)
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                trace!(?block_hash, ?peer, "fetched FinalitySignatures");
+                trace!(?block_header_hash, ?peer, "fetched FinalitySignatures");
                 Some(*item)
             }
             Err(_) => None,
@@ -1456,14 +1435,60 @@ async fn fetch_finality_signatures_by_block_hash(
 
         sig_collector.add_signatures(maybe_signatures);
 
-        if sig_collector
-            .check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction())
-        {
-            break;
+        let era_for_validators_retrieval =
+            get_era_id_for_validators_retrieval(&block_header.era_id());
+
+        let maybe_switch_block_of_previous_era = ctx
+            .effect_builder
+            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+            .await;
+
+        match maybe_switch_block_of_previous_era {
+            Some(switch_block_of_previous_era) => {
+                match switch_block_of_previous_era.next_era_validator_weights() {
+                    Some(validator_weights) => {
+                        if sig_collector.check_if_sufficient(
+                            validator_weights,
+                            ctx.config.finality_threshold_fraction(),
+                        ) {
+                            info!(
+                                ?block_header_hash,
+                                height = block_header.height(),
+                                ?era_for_validators_retrieval,
+                                "fetched sufficient finalty signatures"
+                            );
+                            break;
+                        }
+                    }
+                    None => {
+                        return Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                            trusted_header: block_header,
+                        });
+                    }
+                }
+            }
+            None => {
+                return Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                    trusted_header: block_header,
+                });
+            }
         }
     }
+    ctx.metrics
+        .observe_fetch_finality_signatures_duration_seconds(start);
+    Ok(sig_collector.into_inner())
+}
 
-    sig_collector.into_inner()
+/// Returns the EraId whose switch block should be used to obtain validator weights.
+fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
+    if *era_id != EraId::from(0) {
+        // For eras > 0 we need to use validator set from the previous era.
+        *era_id - 1
+    } else {
+        // In case of Era=0 there's no previous era, but since validators never change during
+        // that era we can safely use the Era 0's switch block.
+        EraId::from(0)
+    }
 }
 
 /// Runs the chain synchronization task.
@@ -2060,5 +2085,78 @@ mod tests {
             }
             result => panic!("expected future block version error, got {:?}", result),
         }
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0))
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1))
+        );
+
+        assert_eq!(
+            EraId::from(1),
+            get_era_id_for_validators_retrieval(&EraId::from(2))
+        );
+
+        assert_eq!(
+            EraId::from(999),
+            get_era_id_for_validators_retrieval(&EraId::from(1000))
+        );
+    }
+
+    #[test]
+    fn validates_signatures_sufficiency_for_sync_to_genesis() {
+        let consensus_verdict = Ok(());
+        assert!(are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
+
+        let mut rng = TestRng::new();
+        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            signature_weight: Box::new(U512::from(0u16)),
+            weight_minus_minimum: Box::new(U512::from(0u16)),
+            total_validator_weight: Box::new(U512::from(0u16)),
+            finality_threshold_fraction: Ratio::new_raw(1, 2),
+        });
+        assert!(are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
+
+        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            signature_weight: Box::new(U512::from(0u16)),
+            total_validator_weight: Box::new(U512::from(0u16)),
+            finality_threshold_fraction: Ratio::new_raw(1, 2),
+        });
+        assert!(!are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
+
+        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
+        });
+        assert!(!are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
     }
 }

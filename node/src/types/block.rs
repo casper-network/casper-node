@@ -1157,13 +1157,6 @@ impl Display for BlockHeadersBatchId {
 pub(crate) struct BlockHeadersBatch(Vec<BlockHeader>);
 
 impl BlockHeadersBatch {
-    /// Returns the header of the latest switch block available in the batch.
-    pub(crate) fn latest_switch_block_header(&self) -> Option<&BlockHeader> {
-        self.0
-            .iter()
-            .find(|block_header| block_header.is_switch_block())
-    }
-
     /// Validates whether received batch is:
     /// 1) highest block header from the batch has a hash is `latest_known.hash`
     /// 2) a link of header[n].parent == header[n+1].hash is maintained
@@ -3352,52 +3345,5 @@ mod tests {
                 NEVER_SWITCH_HASHING
             )
         );
-    }
-
-    #[test]
-    fn returns_latest_switch_block() {
-        let switch_block_indices = vec![1, 5];
-
-        let rng = TestRng::new();
-        let test_block = TestBlockSpec::new(rng, Some(switch_block_indices.clone()));
-
-        let mut test_block_iter = test_block.into_iter();
-
-        let mut batch = test_block_iter
-            .by_ref()
-            .take(10)
-            .map(|block| block.take_header())
-            .collect::<Vec<_>>();
-        let base_height = batch.first().unwrap().height();
-        batch.reverse();
-
-        let expected_switch_block_height = base_height + switch_block_indices.last().unwrap();
-
-        let batch = BlockHeadersBatch::new(batch);
-
-        let actual_switch_block_height = batch.latest_switch_block_header().unwrap().height();
-
-        assert_eq!(expected_switch_block_height, actual_switch_block_height);
-    }
-
-    #[test]
-    fn returns_no_latest_switch_block_when_absent() {
-        let rng = TestRng::new();
-        let test_block = TestBlockSpec::new(rng, None);
-
-        let mut test_block_iter = test_block.into_iter();
-
-        let mut batch = test_block_iter
-            .by_ref()
-            .take(10)
-            .map(|block| block.take_header())
-            .collect::<Vec<_>>();
-        batch.reverse();
-
-        let batch = BlockHeadersBatch::new(batch);
-
-        let actual_switch_block_height = batch.latest_switch_block_header();
-
-        assert!(actual_switch_block_height.is_none());
     }
 }
