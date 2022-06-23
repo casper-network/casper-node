@@ -1440,42 +1440,26 @@ async fn fetch_finality_signatures_by_block_header(
             .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
             .await;
 
-        match maybe_switch_block_of_previous_era {
-            Some(switch_block_of_previous_era) => {
-                match switch_block_of_previous_era.next_era_validator_weights() {
-                    Some(validator_weights) => {
-                        if let Some(signatures) = maybe_signatures {
-                            consensus::validate_finality_signatures(
-                                &signatures,
-                                validator_weights,
-                            )?;
-                            sig_collector.add(signatures);
+        let validator_weights = maybe_switch_block_of_previous_era
+            .as_ref()
+            .and_then(BlockHeader::next_era_validator_weights)
+            .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                trusted_header: block_header.clone(),
+            })?;
+        if let Some(signatures) = maybe_signatures {
+            consensus::validate_finality_signatures(&signatures, validator_weights)?;
+            sig_collector.add(signatures);
 
-                            if sig_collector.check_if_sufficient(
-                                validator_weights,
-                                ctx.config.finality_threshold_fraction(),
-                            ) {
-                                info!(
-                                    ?block_header_hash,
-                                    height = block_header.height(),
-                                    ?era_for_validators_retrieval,
-                                    "fetched sufficient finalty signatures"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                    None => {
-                        return Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                            trusted_header: block_header,
-                        });
-                    }
-                }
-            }
-            None => {
-                return Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                    trusted_header: block_header,
-                });
+            if sig_collector
+                .check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction())
+            {
+                info!(
+                    ?block_header_hash,
+                    height = block_header.height(),
+                    ?era_for_validators_retrieval,
+                    "fetched sufficient finalty signatures"
+                );
+                break;
             }
         }
     }
