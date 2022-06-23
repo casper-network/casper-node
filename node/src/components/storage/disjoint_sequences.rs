@@ -30,17 +30,20 @@ pub(super) struct Sequence {
 }
 
 impl Sequence {
+    /// Constructs a new sequence using the bounds of `a` and `b`.
+    ///
+    /// `low` and `high` will be automatically determined.
+    pub(super) fn new(a: u64, b: u64) -> Self {
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        Sequence { low, high }
+    }
+
     /// Constructs a new sequence containing only `value`.
-    fn new(value: u64) -> Self {
+    fn single(value: u64) -> Self {
         Sequence {
             high: value,
             low: value,
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn new_with_bounds(low: u64, high: u64) -> Self {
-        Sequence { high, low }
     }
 
     /// Tries to insert `value` into the sequence.
@@ -87,6 +90,15 @@ pub(super) struct DisjointSequences {
 }
 
 impl DisjointSequences {
+    /// Constructs disjoint sequences from one initial sequence.
+    ///
+    /// Note: Use [`Default::default()`] to create an empty set of sequences.
+    pub(super) fn new(initial_sequence: Sequence) -> Self {
+        DisjointSequences {
+            sequences: vec![initial_sequence],
+        }
+    }
+
     /// Inserts `value` into the appropriate sequence and merges sequences if required.
     ///
     /// Note, this method is efficient where `value` is one greater than the current highest value.
@@ -137,7 +149,9 @@ impl DisjointSequences {
         }
 
         if let Some(index_to_insert) = maybe_insertion_index {
-            let _ = self.sequences.insert(index_to_insert, Sequence::new(value));
+            let _ = self
+                .sequences
+                .insert(index_to_insert, Sequence::single(value));
         }
 
         if let Some(index_to_remove) = maybe_removal_index {
@@ -245,7 +259,7 @@ impl From<Vec<u64>> for DisjointSequences {
             .batching(|iter| match iter.next() {
                 None => None,
                 Some(low) => {
-                    let mut sequence = Sequence::new(low);
+                    let mut sequence = Sequence::single(low);
                     while let Some(i) = iter.peek() {
                         if *i == sequence.high + 1 {
                             sequence.high = iter.next().unwrap();
@@ -292,15 +306,31 @@ mod tests {
     }
 
     #[test]
+    fn new_should_order_elements() {
+        let one = Sequence::new(1, 1);
+        let two = Sequence::new(1, 2);
+        let three = Sequence::new(2, 1);
+
+        assert_eq!(one.low, 1);
+        assert_eq!(one.high, 1);
+
+        assert_eq!(two.low, 1);
+        assert_eq!(two.high, 2);
+
+        assert_eq!(three.low, 1);
+        assert_eq!(three.high, 2);
+    }
+
+    #[test]
     fn check_contains() {
         // Single item sequence
-        let seq = Sequence::new_with_bounds(1, 1);
+        let seq = Sequence::new(1, 1);
         assert!(!seq.contains(0));
         assert!(seq.contains(1));
         assert!(!seq.contains(2));
 
         // Mutliple item sequence
-        let seq = Sequence::new_with_bounds(1, 2);
+        let seq = Sequence::new(1, 2);
         assert!(!seq.contains(0));
         assert!(seq.contains(1));
         assert!(seq.contains(2));
