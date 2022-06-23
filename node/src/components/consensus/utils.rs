@@ -173,7 +173,9 @@ mod tests {
     };
 
     use crate::{
-        components::consensus::error::FinalitySignatureError,
+        components::consensus::{
+            check_sufficient_finality_signatures_with_quorum_formula, error::FinalitySignatureError,
+        },
         types::{BlockHash, BlockSignatures},
     };
 
@@ -299,6 +301,63 @@ mod tests {
             &validator_weights,
             finality_threshold_fraction,
             &too_many,
+        );
+        assert!(matches!(
+            result,
+            Err(FinalitySignatureError::TooManySignatures { .. })
+        ));
+    }
+
+    #[test]
+    fn finality_signatures_sufficiency_with_quorum_formula() {
+        let mut rng = TestRng::new();
+
+        // Total validator weights is 12 (1 for each validator).
+        let (validators, validator_weights) = generate_validators(20);
+
+        let finality_threshold_fraction = Ratio::new_raw(1, 3);
+
+        // `identity` function is transparent, so the calculated quorum fraction will be equal to
+        // the `finality_threshold_fraction`.
+        let custom_quorum_formula = std::convert::identity;
+
+        // for 20 validators with 20 total validator weight,
+        //   and `finality_threshold_fraction` = 1/3 (~=  6.666)
+        //   and the `quorum fraction` = 1/3         (~=  6.666)
+        //
+        // we need signaturess of weight:
+        //   - 6 or less for `InsufficientWeightForFinality`
+        //   - 7 for Ok
+        //   - 8 or more for `TooManySignatures`
+
+        let insufficient = create_signatures(&mut rng, &validators, 6);
+        let just_enough_weight = create_signatures(&mut rng, &validators, 7);
+        let too_many = create_signatures(&mut rng, &validators, 8);
+
+        let result = check_sufficient_finality_signatures_with_quorum_formula(
+            &validator_weights,
+            finality_threshold_fraction,
+            &insufficient,
+            custom_quorum_formula,
+        );
+        assert!(matches!(
+            result,
+            Err(FinalitySignatureError::InsufficientWeightForFinality { .. })
+        ));
+
+        let result = check_sufficient_finality_signatures_with_quorum_formula(
+            &validator_weights,
+            finality_threshold_fraction,
+            &just_enough_weight,
+            custom_quorum_formula,
+        );
+        assert!(result.is_ok());
+
+        let result = check_sufficient_finality_signatures_with_quorum_formula(
+            &validator_weights,
+            finality_threshold_fraction,
+            &too_many,
+            custom_quorum_formula,
         );
         assert!(matches!(
             result,
