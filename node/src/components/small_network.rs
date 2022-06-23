@@ -678,7 +678,7 @@ where
                     self.update_joining_set(peer_id, is_joiner);
                 }
 
-                let joiner_id = if is_joiner {
+                let remote_joiner_id = if is_joiner {
                     Some((peer_addr, peer_id))
                 } else {
                     None
@@ -691,7 +691,7 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
-                        joiner_id,
+                        remote_joiner_id,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {

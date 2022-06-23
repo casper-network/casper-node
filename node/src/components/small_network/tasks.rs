@@ -672,17 +672,19 @@ pub(super) async fn message_sender<P>(
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
-    joiner_id: Option<(SocketAddr, NodeId)>,
+    remote_joiner_id: Option<(SocketAddr, NodeId)>,
 ) where
     P: Payload,
 {
     while let Some((message, opt_responder)) = queue.recv().await {
         counter.dec();
 
-        if let Some((ref addr, ref node_id)) = joiner_id {
+        if let Some((ref addr, ref node_id)) = remote_joiner_id {
             if message.payload_is_unsafe_for_joiners() {
-                // We should never receive this kind of message here.
-                error!(kind=%message.classify(), %addr, %node_id, "sending trie request to joiner");
+                // We should never attempt to send an unsafe message to a peer that we know is a
+                // joiner. Since "unsafe" does usually not mean immediately catastrophic, we attempt
+                // to carry on, but warn loudly.
+                error!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
             }
         }
 
