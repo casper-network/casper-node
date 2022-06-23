@@ -79,8 +79,8 @@ pub(crate) use crate::effect::requests::StorageRequest;
 use crate::{
     components::{consensus, fetcher::FetchedOrNotFound, Component},
     effect::{
-        announcements::BlockCompletedAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
+        requests::MarkBlockCompletedRequest,
         requests::{NetworkRequest, StateStoreRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -234,7 +234,7 @@ pub(crate) enum Event {
     #[from]
     StateStoreRequest(StateStoreRequest),
     /// Block completion announcement.
-    BlockCompletedAnnouncement(BlockCompletedAnnouncement),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
 }
 
 impl Display for Event {
@@ -243,7 +243,7 @@ impl Display for Event {
             Event::StorageRequest(req) => req.fmt(f),
             Event::NetRequestIncoming(incoming) => incoming.fmt(f),
             Event::StateStoreRequest(req) => req.fmt(f),
-            Event::BlockCompletedAnnouncement(ann) => ann.fmt(f),
+            Event::MarkBlockCompletedRequest(req) => req.fmt(f),
         }
     }
 }
@@ -290,7 +290,7 @@ where
             Event::StateStoreRequest(req) => {
                 self.handle_state_store_request::<REv>(effect_builder, req)
             }
-            Event::BlockCompletedAnnouncement(ann) => self.handle_block_completed_announcement(ann),
+            Event::MarkBlockCompletedRequest(req) => self.handle_mark_block_completed_request(req),
         };
 
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
@@ -1140,14 +1140,17 @@ impl Storage {
     }
 
     /// Handles a [`BlockCompletedAnnouncement`].
-    fn handle_block_completed_announcement(
+    fn handle_mark_block_completed_request(
         &mut self,
-        BlockCompletedAnnouncement { block_height }: BlockCompletedAnnouncement,
+        MarkBlockCompletedRequest {
+            block_height,
+            responder,
+        }: MarkBlockCompletedRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;
 
-        Ok(Default::default())
+        Ok(responder.respond(()).ignore())
     }
 
     /// Persists the completed blocks disjoint sequences state to the database.

@@ -164,25 +164,6 @@ impl Display for DeployAcceptorAnnouncement {
     }
 }
 
-/// An announces of the completion of a block at a specific height.
-///
-/// A block is considered complete if
-///
-/// * the block header and the actual block are persisted in storage,
-/// * all of its deploys are persisted in storage, and
-/// * the global state root the block refers to has no missing dependencies locally.
-#[derive(Debug, Serialize)]
-pub(crate) struct BlockCompletedAnnouncement {
-    /// Height of the block that was completed.
-    pub block_height: u64,
-}
-
-impl Display for BlockCompletedAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block completed: height {}", self.block_height)
-    }
-}
-
 /// A block proposer announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockProposerAnnouncement {
