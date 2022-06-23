@@ -1450,19 +1450,19 @@ async fn fetch_finality_signatures_by_block_header(
                                 validator_weights,
                             )?;
                             sig_collector.add(signatures);
-                        }
 
-                        if sig_collector.check_if_sufficient(
-                            validator_weights,
-                            ctx.config.finality_threshold_fraction(),
-                        ) {
-                            info!(
-                                ?block_header_hash,
-                                height = block_header.height(),
-                                ?era_for_validators_retrieval,
-                                "fetched sufficient finalty signatures"
-                            );
-                            break;
+                            if sig_collector.check_if_sufficient(
+                                validator_weights,
+                                ctx.config.finality_threshold_fraction(),
+                            ) {
+                                info!(
+                                    ?block_header_hash,
+                                    height = block_header.height(),
+                                    ?era_for_validators_retrieval,
+                                    "fetched sufficient finalty signatures"
+                                );
+                                break;
+                            }
                         }
                     }
                     None => {
