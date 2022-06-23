@@ -5,6 +5,8 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::trace;
 
+use crate::types::AvailableBlockRange;
+
 /// The outcome of an attempt to insert a value into a `Sequence`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum InsertOutcome {
@@ -22,11 +24,11 @@ enum InsertOutcome {
 
 /// Represents a continuous sequence of `u64`s.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, DataSize, Ord, PartialOrd)]
-pub(super) struct Sequence {
+pub(crate) struct Sequence {
     /// The upper bound (inclusive) of the sequence.
-    pub(super) high: u64,
+    high: u64,
     /// The lower bound (inclusive) of the sequence.
-    pub(super) low: u64,
+    low: u64,
 }
 
 impl Sequence {
@@ -68,6 +70,16 @@ impl Sequence {
     /// Returns `true` if a sequence contains the value.
     pub(super) fn contains(&self, value: u64) -> bool {
         value >= self.low && value <= self.high
+    }
+
+    /// Returns the inclusive high end of the sequence.
+    pub(crate) fn high(&self) -> u64 {
+        self.high
+    }
+
+    /// Returns the inclusive low end of the sequence.
+    pub(crate) fn low(&self) -> u64 {
+        self.low
     }
 }
 

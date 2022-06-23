@@ -35,7 +35,7 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
-mod disjoint_sequences;
+pub(crate) mod disjoint_sequences;
 mod error;
 mod lmdb_ext;
 mod object_pool;
@@ -108,9 +108,6 @@ use self::disjoint_sequences::DisjointSequences;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
-/// The key in the state store DB under which the storage component's
-/// `lowest_available_block_height` field is persisted.
-const KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT: &str = "lowest_available_block_height";
 
 /// One Gibibyte.
 const GIB: usize = 1024 * 1024 * 1024;
@@ -207,13 +204,8 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes and heights of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
-    /// The height of the highest block from which this node has an unbroken sequence of full
-    /// blocks stored (and the corresponding global state).
-    lowest_available_block_height: u64,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
-    /// Highest block available when storage is constructed.
-    highest_block_at_startup: u64,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
@@ -454,23 +446,6 @@ impl Storage {
         drop(cursor);
         block_txn.commit()?;
 
-        let mut lowest_available_block_height = {
-            let mut txn = env.begin_ro_txn()?;
-            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
-                .unwrap_or_default()
-        };
-        let highest_block_at_startup = block_height_index
-            .keys()
-            .last()
-            .copied()
-            .unwrap_or_default();
-        if let Err(error) =
-            AvailableBlockRange::new(lowest_available_block_height, highest_block_at_startup)
-        {
-            error!(%error);
-            lowest_available_block_height = highest_block_at_startup;
-        }
-
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
         initialize_block_body_v1_db(
@@ -504,9 +479,7 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
-            lowest_available_block_height,
             completed_blocks: Default::default(),
-            highest_block_at_startup,
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
@@ -1126,13 +1099,15 @@ impl Storage {
             } => responder
                 .respond(self.put_block_headers(block_headers)?)
                 .ignore(),
-            StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
-                self.update_lowest_available_block_height(height)?;
-                responder.respond(()).ignore()
+            StorageRequest::UpdateLowestAvailableBlockHeight {
+                height: _,
+                responder: _,
+            } => {
+                todo!("to be replace with the BlockCompletedAnnouncement")
             }
-            StorageRequest::GetAvailableBlockRange { responder } => responder
-                .respond(self.get_available_block_range()?)
-                .ignore(),
+            StorageRequest::GetAvailableBlockRange { responder } => {
+                responder.respond(self.get_available_block_range()).ignore()
+            }
             StorageRequest::StoreFinalizedApprovals {
                 ref deploy_hash,
                 ref finalized_approvals,
@@ -2025,76 +2000,17 @@ impl Storage {
         only_from_available_block_range: bool,
     ) -> Result<bool, FatalStorageError> {
         if only_from_available_block_range {
-            Ok(self.get_available_block_range()?.contains(block_height))
+            Ok(self.get_available_block_range().contains(block_height))
         } else {
             Ok(true)
         }
     }
 
-    fn get_available_block_range(&self) -> Result<AvailableBlockRange, FatalStorageError> {
-        let high = self
-            .block_height_index
-            .keys()
-            .last()
-            .copied()
-            .unwrap_or_default();
-        let low = self.lowest_available_block_height;
-        match AvailableBlockRange::new(low, high) {
-            Ok(range) => Ok(range),
-            Err(error) => {
-                error!(%error);
-                Ok(AvailableBlockRange::default())
-            }
+    fn get_available_block_range(&self) -> AvailableBlockRange {
+        match self.completed_blocks.highest_sequence() {
+            Some(&seq) => seq.into(),
+            None => AvailableBlockRange::RANGE_0_0,
         }
-    }
-
-    fn update_lowest_available_block_height(
-        &mut self,
-        new_height: u64,
-    ) -> Result<(), FatalStorageError> {
-        // We should update the value if
-        // * it wasn't already stored, or
-        // * the new value is lower than the available range at startup, or
-        // * the new value is 2 or more higher than (after pruning due to hard-reset) the available
-        //   range at startup, as that would mean there's a gap of at least one block with
-        //   unavailable global state.
-        let should_update = {
-            let mut txn = self.env.begin_ro_txn()?;
-            match txn.get_value_bytesrepr::<_, u64>(
-                self.state_store_db,
-                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
-            )? {
-                Some(height) => {
-                    new_height < height || new_height > self.highest_block_at_startup + 1
-                }
-                None => true,
-            }
-        };
-
-        if !should_update {
-            return Ok(());
-        }
-
-        if self.block_height_index.contains_key(&new_height) {
-            let mut txn = self.env.begin_rw_txn()?;
-            txn.put_value_bytesrepr::<_, u64>(
-                self.state_store_db,
-                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
-                &new_height,
-                true,
-            )?;
-            txn.commit()?;
-            self.lowest_available_block_height = new_height;
-        } else {
-            error!(
-                %new_height,
-                "failed to update lowest_available_block_height as not in height index"
-            );
-            // We don't need to return a fatal error here as an invalid
-            // `lowest_available_block_height` is not a critical error.
-        }
-
-        Ok(())
     }
 }
 

@@ -5,19 +5,8 @@ use std::fmt::{self, Display, Formatter};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use tracing::error;
 
-/// An error returned by attempting to construct an [`AvailableBlockRange`] where the low value
-/// exceeds the high.
-#[derive(
-    Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Error,
-)]
-#[error("invalid available block range [low: {}, high: {}]", .low, .high)]
-pub struct AvailableBlockRangeError {
-    low: u64,
-    high: u64,
-}
+use crate::storage::disjoint_sequences::Sequence;
 
 /// An unbroken, inclusive range of blocks.
 #[derive(
@@ -31,19 +20,18 @@ pub struct AvailableBlockRange {
     high: u64,
 }
 
+impl From<Sequence> for AvailableBlockRange {
+    fn from(sequence: Sequence) -> Self {
+        AvailableBlockRange {
+            low: sequence.low(),
+            high: sequence.high(),
+        }
+    }
+}
+
 impl AvailableBlockRange {
     /// An `AvailableRange` of [0, 0].
     pub const RANGE_0_0: AvailableBlockRange = AvailableBlockRange { low: 0, high: 0 };
-
-    /// Returns a new `AvailableBlockRange`.
-    pub fn new(low: u64, high: u64) -> Result<Self, AvailableBlockRangeError> {
-        if low > high {
-            let error = AvailableBlockRangeError { low, high };
-            error!("{}", error);
-            return Err(error);
-        }
-        Ok(AvailableBlockRange { low, high })
-    }
 
     /// Returns `true` if `height` is within the range.
     pub fn contains(&self, height: u64) -> bool {
@@ -58,15 +46,6 @@ impl AvailableBlockRange {
     /// Returns the high value.
     pub fn high(&self) -> u64 {
         self.high
-    }
-}
-
-impl Default for AvailableBlockRange {
-    fn default() -> Self {
-        AvailableBlockRange {
-            low: u64::MAX,
-            high: u64::MAX,
-        }
     }
 }
 
