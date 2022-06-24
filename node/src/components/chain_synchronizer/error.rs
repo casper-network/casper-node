@@ -41,6 +41,9 @@ pub(crate) enum Error {
         maybe_last_emergency_restart_era_id: Option<EraId>,
     },
 
+    #[error("cannot get switch block for era: {era_id}")]
+    NoSwitchBlockForEra { era_id: EraId },
+
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
          {block_header_with_future_version:?}"

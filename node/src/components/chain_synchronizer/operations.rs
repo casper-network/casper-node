@@ -1448,14 +1448,16 @@ async fn fetch_finality_signatures_by_block_header(
             ctx.config.last_emergency_restart(),
         );
 
-        let maybe_switch_block_of_previous_era = ctx
+        let switch_block_of_previous_era = ctx
             .effect_builder
             .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-            .await;
+            .await
+            .ok_or(Error::NoSwitchBlockForEra {
+                era_id: era_for_validators_retrieval,
+            })?;
 
-        let validator_weights = maybe_switch_block_of_previous_era
-            .as_ref()
-            .and_then(BlockHeader::next_era_validator_weights)
+        let validator_weights = switch_block_of_previous_era
+            .next_era_validator_weights()
             .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
                 trusted_header: block_header.clone(),
             })?;
