@@ -1412,6 +1412,7 @@ async fn fetch_finality_signatures_by_block_header(
             ctx,
         )
         .await;
+        
         let maybe_signatures = match fetched_signatures {
             Ok(FetchedData::FromStorage { item, .. }) => {
                 trace!(
