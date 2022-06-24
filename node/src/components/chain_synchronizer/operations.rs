@@ -34,7 +34,7 @@ use crate::{
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
-    effect::{requests::FetcherRequest, EffectBuilder, EffectExt},
+    effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
@@ -1469,9 +1469,7 @@ async fn fetch_finality_signatures_by_block_header(
                 height = block_header.height(),
                 "peer sent invalid finality signatures, banning peer"
             );
-            ctx.effect_builder
-                .announce_disconnect_from_peer(peer)
-                .ignore::<JoinerEvent>();
+            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
 
             // Try with next peer.
             continue;
