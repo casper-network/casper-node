@@ -139,6 +139,16 @@ impl<'a> ChainSyncContext<'a> {
             .hash(self.config.verifiable_chunked_hash_activation())
     }
 
+    /// Returns fully connected peers that are known to be not banned.
+    async fn get_filtered_fully_connected_non_joiner_peers(&self) -> Vec<NodeId> {
+        let mut peer_list = self
+            .effect_builder
+            .get_fully_connected_non_joiner_peers()
+            .await;
+        self.filter_bad_peers(&mut peer_list);
+        peer_list
+    }
+
     /// Removes known bad peers from a given peer list.
     ///
     /// Automatically redeems the oldest bad peer after `redemption_interval` filterings.
@@ -221,13 +231,7 @@ where
     JoinerEvent: From<FetcherRequest<T>>,
 {
     loop {
-        let mut new_peer_list = ctx
-            .effect_builder
-            .get_fully_connected_non_joiner_peers()
-            .await;
-        ctx.filter_bad_peers(&mut new_peer_list);
-
-        for peer in new_peer_list {
+        for peer in ctx.get_filtered_fully_connected_non_joiner_peers().await {
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
@@ -558,10 +562,7 @@ where
     // fetch the data.
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = ctx
-            .effect_builder
-            .get_fully_connected_non_joiner_peers()
-            .await;
+        peers = ctx.get_filtered_fully_connected_non_joiner_peers().await;
         if !peers.is_empty() {
             break;
         }
@@ -1456,11 +1457,7 @@ async fn fetch_and_store_finality_signatures_by_block_header(
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
     let start = Timestamp::now();
-    let mut peer_list = ctx
-        .effect_builder
-        .get_fully_connected_non_joiner_peers()
-        .await;
-    ctx.filter_bad_peers(&mut peer_list);
+    let peer_list = ctx.get_filtered_fully_connected_non_joiner_peers().await;
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
@@ -1810,8 +1807,7 @@ async fn execute_blocks(
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
             for peer in ctx
-                .effect_builder
-                .get_fully_connected_non_joiner_peers()
+                .get_filtered_fully_connected_non_joiner_peers()
                 .await
                 .into_iter()
             {
