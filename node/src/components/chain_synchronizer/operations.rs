@@ -862,10 +862,6 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(&most_recent_block_header, ctx).await?;
 
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
-        .await;
-
     Ok((trusted_key_block_info, most_recent_block_header))
 }
 
@@ -1012,6 +1008,8 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
 }
 
 /// Downloads and saves the deploys and transfers for a block.
+///
+/// This function assumes that the block along with its header has been persisted to storage.
 async fn sync_deploys_and_transfers_and_state(
     block: &Block,
     ctx: &ChainSyncContext<'_>,
@@ -1021,7 +1019,13 @@ async fn sync_deploys_and_transfers_and_state(
         ctx,
     )
     .await?;
-    sync_trie_store(block.header(), ctx).await
+    sync_trie_store(block.header(), ctx).await?;
+
+    ctx.effect_builder
+        .mark_block_completed(block.height())
+        .await;
+
+    Ok(())
 }
 
 /// Sync to genesis.
@@ -1120,12 +1124,6 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
     fetch_headers_till_genesis(trusted_block, ctx).await?;
 
     fetch_blocks_and_state_since_genesis(ctx).await?;
-
-    // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
-    // trusted block, we can update the lowest available block of the continuous range.
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(0)
-        .await;
 
     Ok(())
 }
@@ -1281,6 +1279,9 @@ async fn fetch_block_worker(
                     );
                     return Err(error);
                 }
+                ctx.effect_builder
+                    .mark_block_completed(fetched_block.block.height())
+                    .await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
@@ -1602,6 +1603,9 @@ async fn execute_blocks(
                 )
                 .await;
         }
+        ctx.effect_builder
+            .mark_block_completed(block_and_execution_effects.block().height())
+            .await;
 
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
