@@ -441,7 +441,9 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<Option<BlockSignatures>>,
     },
-    /// Get sufficient finality signatures for a Block hash.
+    /// Gets finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
     GetSufficientBlockSignatures {
         /// The hash for the request.
         block_hash: BlockHash,

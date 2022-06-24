@@ -1096,7 +1096,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested sufficient signatures for a given block hash.
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
     pub(crate) async fn get_sufficient_signatures_from_storage(
         self,
         block_hash: BlockHash,
