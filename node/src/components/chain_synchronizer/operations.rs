@@ -862,10 +862,6 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(&most_recent_block_header, ctx).await?;
 
-    ctx.effect_builder
-        .mark_block_completed(most_recent_block_header.height())
-        .await;
-
     Ok((trusted_key_block_info, most_recent_block_header))
 }
 
