@@ -436,7 +436,16 @@ pub(crate) enum StorageRequest {
     },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
-        /// The hash for the request
+        /// The hash for the request.
+        block_hash: BlockHash,
+        /// Responder to call with the result.
+        responder: Responder<Option<BlockSignatures>>,
+    },
+    /// Gets finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
+    GetSufficientBlockSignatures {
+        /// The hash for the request.
         block_hash: BlockHash,
         /// Responder to call with the result.
         responder: Responder<Option<BlockSignatures>>,
@@ -469,13 +478,6 @@ pub(crate) enum StorageRequest {
     GetHeadersBatch {
         block_headers_id: BlockHeadersBatchId,
         responder: Responder<Option<BlockHeadersBatch>>,
-    },
-    /// Read block hash by its height.
-    GetBlockHashByHeight {
-        /// Block's height.
-        block_height: u64,
-        /// Responder to call when complete.
-        responder: Responder<Option<BlockHash>>,
     },
     /// Retrieve the height range of fully available blocks (not just block headers). Returns
     /// `[u64::MAX, u64::MAX]` when there are no sequences.
@@ -568,6 +570,13 @@ impl Display for StorageRequest {
                     block_hash
                 )
             }
+            StorageRequest::GetSufficientBlockSignatures { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get sufficient finality signatures for block hash {}",
+                    block_hash
+                )
+            }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
@@ -610,9 +619,6 @@ impl Display for StorageRequest {
                 block_headers_id, ..
             } => {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
-            }
-            StorageRequest::GetBlockHashByHeight { block_height, .. } => {
-                write!(formatter, "read block hash by height: {}", block_height)
             }
         }
     }

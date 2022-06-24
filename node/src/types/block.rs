@@ -1113,6 +1113,7 @@ impl Item for BlockHeaderWithMetadata {
         self.block_header.height()
     }
 }
+
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 /// ID identifying a request for a batch of block headers.
 pub(crate) struct BlockHeadersBatchId {
@@ -1651,6 +1652,24 @@ impl Display for BlockSignatures {
             self.era_id,
             self.proofs.len()
         )
+    }
+}
+
+impl Item for BlockSignatures {
+    type Id = BlockHash;
+    type ValidationError = crypto::Error;
+    const TAG: Tag = Tag::FinalitySignaturesByHash;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.block_hash
     }
 }
 
@@ -2978,45 +2997,97 @@ mod tests {
         );
     }
 
-    struct TestBlock(Block, TestRng);
+    // Utility struct that can be turned into an iterator that generates
+    // continuous and descending blocks (i.e. blocks that have consecutive height
+    // and parent hashes are correctly set). The height of the first block
+    // in a series is choosen randomly.
+    //
+    // Additionally, this struct allows to generate switch blocks at a specific location in the
+    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
+    // cause the 2nd and 4th blocks to be switch blocks.
+    struct TestBlockSpec {
+        block: Block,
+        rng: TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+    }
 
-    impl TestBlock {
-        fn new(test_rng: TestRng) -> Self {
+    impl TestBlockSpec {
+        fn new(test_rng: TestRng, switch_block_indices: Option<Vec<u64>>) -> Self {
             let mut rng = test_rng;
-            let init = Block::random(&mut rng);
-            Self(init, rng)
+            let block = Block::random(&mut rng);
+            Self {
+                block,
+                rng,
+                switch_block_indices,
+            }
         }
 
         fn into_iter(self) -> TestBlockIterator {
-            TestBlockIterator(self.0, self.1)
+            let block_height = self.block.height();
+            TestBlockIterator {
+                block: self.block,
+                rng: self.rng,
+                switch_block_indices: self.switch_block_indices.map(|switch_block_indices| {
+                    switch_block_indices
+                        .iter()
+                        .map(|index| index + block_height)
+                        .collect()
+                }),
+            }
         }
     }
 
     const NEVER_SWITCH_HASHING: EraId = EraId::new(u64::MAX);
 
-    struct TestBlockIterator(Block, TestRng);
+    struct TestBlockIterator {
+        block: Block,
+        rng: TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+    }
 
     impl Iterator for TestBlockIterator {
         type Item = Block;
 
         fn next(&mut self) -> Option<Self::Item> {
+            let (is_switch_block, validators) = match &self.switch_block_indices {
+                Some(switch_block_indices)
+                    if switch_block_indices.contains(&self.block.height()) =>
+                {
+                    let secret_keys: Vec<SecretKey> = iter::repeat_with(|| {
+                        SecretKey::ed25519_from_bytes(
+                            self.rng.gen::<[u8; SecretKey::ED25519_LENGTH]>(),
+                        )
+                        .unwrap()
+                    })
+                    .take(4)
+                    .collect();
+                    let validators: BTreeMap<_, _> = secret_keys
+                        .iter()
+                        .map(|sk| (PublicKey::from(sk), 100.into()))
+                        .collect();
+
+                    (true, Some(validators))
+                }
+                Some(_) | None => (false, None),
+            };
+
             let next = Block::new(
-                self.0.id(NEVER_SWITCH_HASHING),
-                self.0.header().accumulated_seed(),
-                *self.0.header().state_root_hash(),
+                self.block.id(NEVER_SWITCH_HASHING),
+                self.block.header().accumulated_seed(),
+                *self.block.header().state_root_hash(),
                 FinalizedBlock::random_with_specifics(
-                    &mut self.1,
-                    self.0.header().era_id(),
-                    self.0.header().height() + 1,
-                    false,
+                    &mut self.rng,
+                    self.block.header().era_id(),
+                    self.block.header().height() + 1,
+                    is_switch_block,
                     std::iter::empty(),
                 ),
-                None,
-                self.0.header().protocol_version(),
+                validators,
+                self.block.header().protocol_version(),
                 NEVER_SWITCH_HASHING,
             )
             .unwrap();
-            self.0 = next.clone();
+            self.block = next.clone();
             Some(next)
         }
     }
@@ -3024,8 +3095,8 @@ mod tests {
     #[test]
     fn test_block_iter() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
-        let mut block_batch = test_block.into_iter().take(500);
+        let test_block = TestBlockSpec::new(rng, None);
+        let mut block_batch = test_block.into_iter().take(100);
         let mut parent_block: Block = block_batch.next().unwrap();
         for current_block in block_batch {
             assert_eq!(
@@ -3043,9 +3114,32 @@ mod tests {
     }
 
     #[test]
+    fn test_block_iter_creates_switch_blocks() {
+        let switch_block_indices = vec![0, 10, 76];
+
+        let rng = TestRng::new();
+        let test_block = TestBlockSpec::new(rng, Some(switch_block_indices.clone()));
+        let block_batch: Vec<_> = test_block.into_iter().take(100).collect();
+
+        let base_height = block_batch.first().expect("should have block").height();
+
+        for block in block_batch {
+            if switch_block_indices
+                .iter()
+                .map(|index| index + base_height)
+                .any(|index| index == block.height())
+            {
+                assert!(block.header().is_switch_block())
+            } else {
+                assert!(!block.header().is_switch_block())
+            }
+        }
+    }
+
+    #[test]
     fn block_batch_is_continuous_and_descending() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3089,7 +3183,7 @@ mod tests {
     #[test]
     fn block_headers_batch_from_vec() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
         let mut batch = test_block_iter
@@ -3127,7 +3221,7 @@ mod tests {
         );
 
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3173,7 +3267,7 @@ mod tests {
     #[test]
     fn block_headers_batch_validate() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 

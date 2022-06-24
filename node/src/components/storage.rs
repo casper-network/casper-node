@@ -25,11 +25,6 @@
 //! * Storing a deploy or block that already exists (same hash) is fine and will silently be
 //!   accepted.
 //!
-//! ## Indices
-//!
-//! The current implementation keeps only in-memory indices, which are not persisted, based upon the
-//! estimate that they are reasonably quick to rebuild on start-up and do not take up much memory.
-//!
 //! ## Errors
 //!
 //! The storage component itself is panic free and in general reports three classes of errors:
@@ -728,6 +723,19 @@ impl Storage {
                     opt_item,
                 )?)
             }
+            NetRequest::FinalitySignatures(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
+
+                let opt_item = self.read_finality_signatures(&item_id)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
         }
     }
 
@@ -1053,6 +1061,16 @@ impl Storage {
                     .respond(self.get_finality_signatures(&mut txn, &block_hash)?)
                     .ignore()
             }
+            StorageRequest::GetSufficientBlockSignatures {
+                block_hash,
+                responder,
+            } => {
+                let result = self.get_sufficient_finality_signatures_by_hash(
+                    &mut self.env.begin_ro_txn()?,
+                    &block_hash,
+                )?;
+                responder.respond(result).ignore()
+            }
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
@@ -1123,12 +1141,6 @@ impl Storage {
                 responder,
             } => responder
                 .respond(self.read_block_headers_batch(&block_headers_id)?)
-                .ignore(),
-            StorageRequest::GetBlockHashByHeight {
-                block_height,
-                responder,
-            } => responder
-                .respond(self.get_block_hash_by_height(block_height)?)
                 .ignore(),
         })
     }
@@ -1331,14 +1343,6 @@ impl Storage {
                     .map(|deploys| BlockAndDeploys { block, deploys }))
             }
         }
-    }
-
-    /// Retrieves block hash by height.
-    fn get_block_hash_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockHash>, FatalStorageError> {
-        Ok(self.block_height_index.get(&height).cloned())
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1740,13 +1744,22 @@ impl Storage {
         Ok(txn.get_value(self.transfer_db, block_hash)?)
     }
 
-    /// Retrieves finality signatures for a block with a given block hash
+    /// Retrieves finality signatures for a block with a given block hash.
     fn get_finality_signatures<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         Ok(txn.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Retrieves finality signatures for a block with a given block hash.
+    fn read_finality_signatures(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockSignatures>, FatalStorageError> {
+        let mut tx = self.env.begin_ro_txn()?;
+        self.get_finality_signatures(&mut tx, block_hash)
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
@@ -1869,7 +1882,7 @@ impl Storage {
         }))
     }
 
-    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// Retrieves finality signatures for a block with a given header; returns `None` if they
     /// are less than the fault tolerance threshold or if the block is from before the most recent
     /// emergency upgrade.
     fn get_sufficient_finality_signatures<Tx: Transaction>(
@@ -1924,6 +1937,24 @@ impl Storage {
         // `block_signatures` is already an `Option`, which is `None` if there weren't enough
         // signatures to bring the total weight over the threshold.
         Ok(block_signatures)
+    }
+
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
+    fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockSignatures>, FatalStorageError> {
+        // Needed to know what era the block was in, so that we can check what the validators were
+        // and figure out if the signatures are sufficient.
+        let block_header = match self.read_block_header_by_hash(block_hash)? {
+            Some(header) => header,
+            None => return Ok(None),
+        };
+
+        self.get_sufficient_finality_signatures(tx, &block_header)
     }
 
     /// Retrieves a deploy from the deploy store.

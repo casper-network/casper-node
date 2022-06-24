@@ -1116,6 +1116,26 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
+    pub(crate) async fn get_sufficient_signatures_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSufficientBlockSignatures {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts a block header to storage.
     pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
     where
@@ -2136,23 +2156,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetHeadersBatch {
                 block_headers_id,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    pub(crate) async fn get_block_hash_by_height_from_storage(
-        self,
-        block_height: u64,
-    ) -> Option<BlockHash>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHashByHeight {
-                block_height,
                 responder,
             },
             QueueKind::Regular,

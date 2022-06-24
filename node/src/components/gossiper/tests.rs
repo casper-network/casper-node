@@ -413,7 +413,8 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)
-                | NetResponse::BlockHeadersBatch(_)) => {
+                | NetResponse::BlockHeadersBatch(_)
+                | NetResponse::FinalitySignatures(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
                 }
             },
