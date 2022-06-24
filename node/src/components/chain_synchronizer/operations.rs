@@ -1446,6 +1446,7 @@ async fn fetch_finality_signatures_by_block_header(
             .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
                 trusted_header: block_header.clone(),
             })?;
+            
         if let Some(signatures) = maybe_signatures {
             consensus::validate_finality_signatures(&signatures, validator_weights)?;
             sig_collector.add(signatures);
