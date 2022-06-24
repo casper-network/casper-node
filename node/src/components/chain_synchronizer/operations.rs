@@ -1457,7 +1457,7 @@ async fn fetch_finality_signatures_by_block_header(
                     ?block_header_hash,
                     height = block_header.height(),
                     ?era_for_validators_retrieval,
-                    "fetched sufficient finalty signatures"
+                    "fetched sufficient finality signatures"
                 );
                 break;
             }
