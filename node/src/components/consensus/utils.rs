@@ -5,7 +5,7 @@ use num::rational::Ratio;
 
 use crate::{components::consensus::error::FinalitySignatureError, types::BlockSignatures};
 
-// Validates the signatures by checking if public keys in
+/// Validates the signatures by checking if public keys in
 /// proofs matches the validators public key.
 // TODO: Move this function to `chain_synchronizer` module.
 pub(crate) fn validate_finality_signatures(
@@ -303,7 +303,7 @@ mod tests {
     fn finality_signatures_sufficiency() {
         let mut rng = TestRng::new();
 
-        // Total validator weights is 12 (1 for each validator).
+        // Total validator weights is 20 (1 for each validator).
         let (validators, validator_weights) = generate_validators(20);
 
         let finality_threshold_fraction = Ratio::new_raw(1, 3);
@@ -353,7 +353,7 @@ mod tests {
     fn finality_signatures_sufficiency_with_quorum_formula() {
         let mut rng = TestRng::new();
 
-        // Total validator weights is 12 (1 for each validator).
+        // Total validator weights is 20 (1 for each validator).
         let (validators, validator_weights) = generate_validators(20);
 
         let finality_threshold_fraction = Ratio::new_raw(1, 3);
