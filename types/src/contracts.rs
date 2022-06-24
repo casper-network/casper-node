@@ -780,6 +780,14 @@ impl ContractPackage {
             && self.versions.contains_key(&contract_version_key)
     }
 
+    /// Returns `true` if the given contract hash exists and is enabled.
+    pub fn is_contract_enabled(&self, contract_hash: &ContractHash) -> bool {
+        match self.find_contract_version_key_by_hash(contract_hash) {
+            Some(version_key) => !self.disabled_versions.contains(version_key),
+            None => false,
+        }
+    }
+
     /// Insert a new contract version; the next sequential version number will be issued.
     pub fn insert_contract_version(
         &mut self,
@@ -806,6 +814,16 @@ impl ContractPackage {
         }
 
         Ok(())
+    }
+
+    fn find_contract_version_key_by_hash(
+        &self,
+        contract_hash: &ContractHash,
+    ) -> Option<&ContractVersionKey> {
+        self.versions
+            .iter()
+            .filter_map(|(k, v)| if v == contract_hash { Some(k) } else { None })
+            .next()
     }
 
     /// Returns reference to all of this contract's versions.
@@ -1668,10 +1686,20 @@ mod tests {
         const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
         let mut contract_package = make_contract_package();
 
+        assert!(
+            !contract_package.is_contract_enabled(&CONTRACT_HASH),
+            "nonexisting contract contract should return false"
+        );
+
         assert_eq!(
             contract_package.disable_contract_version(CONTRACT_HASH),
             Err(Error::ContractNotFound),
             "should return contract not found error"
+        );
+
+        assert!(
+            !contract_package.is_contract_enabled(&CONTRACT_HASH),
+            "disabling missing contract shouldnt change outcome"
         );
 
         let next_version = contract_package.insert_contract_version(1, CONTRACT_HASH);
@@ -1680,10 +1708,20 @@ mod tests {
             "version should exist and be enabled"
         );
 
+        assert!(
+            contract_package.is_contract_enabled(&CONTRACT_HASH),
+            "contract should be enabled"
+        );
+
         assert_eq!(
             contract_package.disable_contract_version(CONTRACT_HASH),
             Ok(()),
             "should be able to disable version"
+        );
+
+        assert!(
+            !contract_package.is_contract_enabled(&CONTRACT_HASH),
+            "contract should be disabled"
         );
 
         assert_eq!(

@@ -272,7 +272,10 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(_)
+            casper_execution_engine::core::engine_state::Error::Exec(
+                casper_execution_engine::core::execution::Error::DisabledContract(disabled_contract_hash)
+            )
+            if disabled_contract_hash == contract_hash_v1
         ),
         "Expected invalid contract version, found {:?}",
         error,
@@ -295,7 +298,10 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(_)
+            casper_execution_engine::core::engine_state::Error::Exec(
+                casper_execution_engine::core::execution::Error::DisabledContract(disabled_contract_hash)
+            )
+            if disabled_contract_hash == contract_hash_v1
         ),
         "Expected invalid contract version, found {:?}",
         error,
@@ -332,7 +338,10 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(_)
+            casper_execution_engine::core::engine_state::Error::Exec(
+                casper_execution_engine::core::execution::Error::DisabledContract(disabled_contract_hash)
+            )
+            if disabled_contract_hash == contract_hash_v1
         ),
         "Expected invalid contract version, found {:?}",
         error,
