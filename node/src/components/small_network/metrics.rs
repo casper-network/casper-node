@@ -107,6 +107,11 @@ pub(super) struct Metrics {
     /// Count of incoming messages with other payload.
     pub(super) in_count_other: IntCounter,
 
+    /// Number of trie requests accepted for processing.
+    pub(super) requests_for_trie_accepted: IntCounter,
+    /// Number of trie requests finished (successful or unsuccessful).
+    pub(super) requests_for_trie_finished: IntCounter,
+
     /// Total time spent delaying outgoing traffic to non-validators due to limiter, in seconds.
     pub(super) accumulated_outgoing_limiter_delay: Counter,
     /// Total time spent delaying incoming traffic from non-validators due to limiter, in seconds.
@@ -302,6 +307,15 @@ impl Metrics {
             "volume in bytes of incoming messages with other payload",
         )?;
 
+        let requests_for_trie_accepted = IntCounter::new(
+            "requests_for_trie_accepted",
+            "number of trie requests accepted for processing",
+        )?;
+        let requests_for_trie_finished = IntCounter::new(
+            "requests_for_trie_finished",
+            "number of trie requests finished, successful or not",
+        )?;
+
         let accumulated_outgoing_limiter_delay = Counter::new(
             "accumulated_outgoing_limiter_delay",
             "seconds spent delaying outgoing traffic to non-validators due to limiter, in seconds",
@@ -363,6 +377,9 @@ impl Metrics {
         registry.register(Box::new(in_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(in_bytes_other.clone()))?;
 
+        registry.register(Box::new(requests_for_trie_accepted.clone()))?;
+        registry.register(Box::new(requests_for_trie_finished.clone()))?;
+
         registry.register(Box::new(accumulated_outgoing_limiter_delay.clone()))?;
         registry.register(Box::new(accumulated_incoming_limiter_delay.clone()))?;
 
@@ -413,6 +430,8 @@ impl Metrics {
             in_bytes_block_transfer,
             in_bytes_trie_transfer,
             in_bytes_other,
+            requests_for_trie_accepted,
+            requests_for_trie_finished,
             accumulated_outgoing_limiter_delay,
             accumulated_incoming_limiter_delay,
             registry: registry.clone(),
@@ -521,6 +540,24 @@ impl Metrics {
             out_state_loopback: self.out_state_loopback.clone(),
         }
     }
+
+    /// Records that a trie request has been started.
+    pub(super) fn record_trie_request_start(this: &Weak<Self>) {
+        if let Some(metrics) = this.upgrade() {
+            metrics.requests_for_trie_accepted.inc();
+        } else {
+            debug!("not recording metrics, component already shut down");
+        }
+    }
+
+    /// Records that a trie request has ended.
+    pub(super) fn record_trie_request_end(this: &Weak<Self>) {
+        if let Some(metrics) = this.upgrade() {
+            metrics.requests_for_trie_finished.inc();
+        } else {
+            debug!("not recording metrics, component already shut down");
+        }
+    }
 }
 
 impl Drop for Metrics {
@@ -576,6 +613,9 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.in_bytes_block_transfer);
         unregister_metric!(self.registry, self.in_bytes_trie_transfer);
         unregister_metric!(self.registry, self.in_bytes_other);
+
+        unregister_metric!(self.registry, self.requests_for_trie_accepted);
+        unregister_metric!(self.registry, self.requests_for_trie_finished);
 
         unregister_metric!(self.registry, self.accumulated_outgoing_limiter_delay);
         unregister_metric!(self.registry, self.accumulated_incoming_limiter_delay);

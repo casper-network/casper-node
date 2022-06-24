@@ -548,109 +548,112 @@ where
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
-    let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Ok(msg) => {
-                    trace!(%msg, "message received");
+    let read_messages =
+        async move {
+            while let Some(msg_result) = stream.next().await {
+                match msg_result {
+                    Ok(msg) => {
+                        trace!(%msg, "message received");
 
-                    let effect_builder = EffectBuilder::new(context.event_queue);
+                        let effect_builder = EffectBuilder::new(context.event_queue);
 
-                    match msg.try_into_demand(effect_builder, peer_id) {
-                        Ok((event, wait_for_response)) => {
-                            // Note: For now, demands bypass the limiter, as we expect the
-                            //       backpressure to handle this instead.
+                        match msg.try_into_demand(effect_builder, peer_id) {
+                            Ok((event, wait_for_response)) => {
+                                // Note: For now, demands bypass the limiter, as we expect the
+                                //       backpressure to handle this instead.
 
-                            // Acquire a permit. If we are handling too many demands at this
-                            // time, this will block, halting the processing of new message,
-                            // thus letting the peer they have reached their maximum allowance.
-                            let in_flight = demands_in_flight
-                                .clone()
-                                .acquire_owned()
-                                .await
-                                // Note: Since the semaphore is reference counted, it must
-                                //       explicitly be closed for acquisition to fail, which we
-                                //       never do. If this happens, there is a bug in the code;
-                                //       we exit with an error and close the connection.
-                                .map_err(|_| {
-                                    io::Error::new(
-                                        io::ErrorKind::Other,
-                                        "demand limiter semaphore closed unexpectedly",
-                                    )
-                                })?;
+                                // Acquire a permit. If we are handling too many demands at this
+                                // time, this will block, halting the processing of new message,
+                                // thus letting the peer they have reached their maximum allowance.
+                                let in_flight = demands_in_flight
+                                    .clone()
+                                    .acquire_owned()
+                                    .await
+                                    // Note: Since the semaphore is reference counted, it must
+                                    //       explicitly be closed for acquisition to fail, which we
+                                    //       never do. If this happens, there is a bug in the code;
+                                    //       we exit with an error and close the connection.
+                                    .map_err(|_| {
+                                        io::Error::new(
+                                            io::ErrorKind::Other,
+                                            "demand limiter semaphore closed unexpectedly",
+                                        )
+                                    })?;
 
-                            // Spawn a future that will eventually send the returned message. It
-                            // will essentially buffer the response.
-                            tokio::spawn(async move {
-                                if let Some(payload) = wait_for_response.await {
-                                    // Send message and await its return. `send_message` should
-                                    // only return when the message has been buffered, if the
-                                    // peer is not accepting data, we will block here until the
-                                    // send buffer has sufficient room.
-                                    effect_builder.send_message(peer_id, payload).await;
+                                Metrics::record_trie_request_start(&context.net_metrics);
 
-                                    // Note: We could short-circuit the event queue here and
-                                    //       directly insert into the outgoing message queue,
-                                    //       which may be potential performance improvement.
-                                }
+                                let net_metrics = context.net_metrics.clone();
+                                // Spawn a future that will eventually send the returned message. It
+                                // will essentially buffer the response.
+                                tokio::spawn(async move {
+                                    if let Some(payload) = wait_for_response.await {
+                                        // Send message and await its return. `send_message` should
+                                        // only return when the message has been buffered, if the
+                                        // peer is not accepting data, we will block here until the
+                                        // send buffer has sufficient room.
+                                        effect_builder.send_message(peer_id, payload).await;
 
-                                // Missing else: The handler of the demand did not deem it
-                                // worthy a response. Just drop it.
+                                        // Note: We could short-circuit the event queue here and
+                                        //       directly insert into the outgoing message queue,
+                                        //       which may be potential performance improvement.
+                                    }
 
-                                // After we have either successfully buffered the message for
-                                // sending, failed to do so or did not have a message to send
-                                // out, we consider the request handled and free up the permit.
-                                drop(in_flight);
-                            });
+                                    // Missing else: The handler of the demand did not deem it
+                                    // worthy a response. Just drop it.
 
-                            // Schedule the created event.
-                            context
-                                .event_queue
-                                .schedule::<REv>(event, QueueKind::NetworkDemand)
-                                .await;
-                        }
-                        Err(msg) => {
-                            // We've received a non-demand message. Ensure we have the proper amount
-                            // of resources, then push it to the reactor.
-                            limiter
-                                .request_allowance(
-                                    msg.payload_incoming_resource_estimate(
+                                    // After we have either successfully buffered the message for
+                                    // sending, failed to do so or did not have a message to send
+                                    // out, we consider the request handled and free up the permit.
+                                    Metrics::record_trie_request_end(&net_metrics);
+                                    drop(in_flight);
+                                });
+
+                                // Schedule the created event.
+                                context
+                                    .event_queue
+                                    .schedule::<REv>(event, QueueKind::NetworkDemand)
+                                    .await;
+                            }
+                            Err(msg) => {
+                                // We've received a non-demand message. Ensure we have the proper amount
+                                // of resources, then push it to the reactor.
+                                limiter
+                                    .request_allowance(msg.payload_incoming_resource_estimate(
                                         &context.payload_weights,
-                                    ),
-                                )
-                                .await;
+                                    ))
+                                    .await;
 
-                            let queue_kind = if msg.is_low_priority() {
-                                QueueKind::NetworkLowPriority
-                            } else {
-                                QueueKind::NetworkIncoming
-                            };
+                                let queue_kind = if msg.is_low_priority() {
+                                    QueueKind::NetworkLowPriority
+                                } else {
+                                    QueueKind::NetworkIncoming
+                                };
 
-                            context
-                                .event_queue
-                                .schedule(
-                                    Event::IncomingMessage {
-                                        peer_id: Box::new(peer_id),
-                                        msg: Box::new(msg),
-                                        span: span.clone(),
-                                    },
-                                    queue_kind,
-                                )
-                                .await;
+                                context
+                                    .event_queue
+                                    .schedule(
+                                        Event::IncomingMessage {
+                                            peer_id: Box::new(peer_id),
+                                            msg: Box::new(msg),
+                                            span: span.clone(),
+                                        },
+                                        queue_kind,
+                                    )
+                                    .await;
+                            }
                         }
                     }
-                }
-                Err(err) => {
-                    warn!(
-                        err = display_error(&err),
-                        "receiving message failed, closing connection"
-                    );
-                    return Err(err);
+                    Err(err) => {
+                        warn!(
+                            err = display_error(&err),
+                            "receiving message failed, closing connection"
+                        );
+                        return Err(err);
+                    }
                 }
             }
-        }
-        Ok(())
-    };
+            Ok(())
+        };
 
     let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
 
