@@ -34,7 +34,7 @@ use crate::{
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
-    effect::{requests::FetcherRequest, EffectBuilder},
+    effect::{requests::FetcherRequest, EffectBuilder, EffectExt},
     reactor::joiner::JoinerEvent,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
@@ -1412,7 +1412,7 @@ async fn fetch_finality_signatures_by_block_header(
             ctx,
         )
         .await;
-        
+
         let maybe_signatures = match fetched_signatures {
             Ok(FetchedData::FromStorage { item, .. }) => {
                 trace!(
@@ -1447,9 +1447,24 @@ async fn fetch_finality_signatures_by_block_header(
             .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
                 trusted_header: block_header.clone(),
             })?;
-            
+
         if let Some(signatures) = maybe_signatures {
-            consensus::validate_finality_signatures(&signatures, validator_weights)?;
+            if let Err(err) =
+                consensus::validate_finality_signatures(&signatures, validator_weights)
+            {
+                warn!(
+                    ?peer,
+                    ?err,
+                    height = block_header.height(),
+                    "peer sent invalid finality signatures, banning peer"
+                );
+                ctx.effect_builder
+                    .announce_disconnect_from_peer(peer)
+                    .ignore::<JoinerEvent>();
+
+                // Try with next peer.
+                continue;
+            }
             sig_collector.add(signatures);
 
             if sig_collector
