@@ -5,8 +5,8 @@ use casper_engine_test_support::{
 use casper_types::{Key, RuntimeArgs, StoredValue};
 
 const COUNT_KEY: &str = "count";
-const COUNTER_DEFINE_CONTRACT: &str = "counter_define.wasm";
-const COUNTER_CALL_CONTRACT: &str = "counter_call.wasm";
+const COUNTER_INSTALLER_WASM: &str = "counter_installer.wasm";
+const INCREMENT_COUNTER_WASM: &str = "increment_counter.wasm";
 const COUNTER_KEY: &str = "counter";
 
 #[ignore]
@@ -17,7 +17,7 @@ fn should_run_counter_example() {
 
     let install_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        COUNTER_DEFINE_CONTRACT,
+        COUNTER_INSTALLER_WASM,
         RuntimeArgs::default(),
     )
     .build();
@@ -32,7 +32,7 @@ fn should_run_counter_example() {
 
     let call_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        COUNTER_CALL_CONTRACT,
+        INCREMENT_COUNTER_WASM,
         RuntimeArgs::default(),
     )
     .build();

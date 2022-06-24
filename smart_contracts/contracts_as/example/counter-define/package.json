@@ -1,9 +1,0 @@
-{
-  "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -o ../../../../target_as/counter_define.wasm --disable bulk-memory --optimize --use abort=",
-    "asbuild": "npm run asbuild:optimized"
-  },
-  "devDependencies": {
-    "assemblyscript": "^0.8.1"
-  }
-}

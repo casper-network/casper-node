@@ -5,7 +5,7 @@ use casper_engine_test_support::{
 use casper_types::{runtime_args, Key, RuntimeArgs, StoredValue};
 
 const HELLO_WORLD_CONTRACT: &str = "hello_world.wasm";
-const KEY: &str = "special";
+const KEY: &str = "special_value";
 const ARG_MESSAGE: &str = "message";
 const MESSAGE_VALUE: &str = "Hello, world!";
 

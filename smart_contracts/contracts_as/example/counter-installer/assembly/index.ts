@@ -82,7 +82,7 @@ export function call(): void {
 
   // The current version of the contract will be reachable through named keys
   const versionURef = Key.create(CLValue.fromI32(result.contractVersion));
-  if (versionURef === null) {
+  if (!versionURef) {
     return;
   }
   CL.putKey(CONTRACT_VERSION_KEY, versionURef);

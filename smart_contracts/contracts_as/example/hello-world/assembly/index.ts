@@ -6,7 +6,7 @@ import { arrayToTyped } from "../../../../contract_as/assembly/utils";
 import { Key } from "../../../../contract_as/assembly/key"
 import { addAssociatedKey, AddKeyFailure, ActionType, setActionThreshold, SetThresholdFailure } from "../../../../contract_as/assembly/account";
 
-const KEY = "special"
+const KEY = "special_value"
 const ARG_MESSAGE = "message";
 
 function store(value: String): void {
