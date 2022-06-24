@@ -73,6 +73,15 @@ impl<P: Payload> Message<P> {
         }
     }
 
+    /// Returns whether or not the payload is unsafe for joiner consumption.
+    #[inline]
+    pub(super) fn payload_is_unsafe_for_joiners(&self) -> bool {
+        match self {
+            Message::Handshake { .. } => false,
+            Message::Payload(payload) => payload.is_unsafe_for_joiners(),
+        }
+    }
+
     /// Attempts to create a demand-event from this message.
     ///
     /// Succeeds if the outer message contains a payload that can be converd into a demand.
@@ -325,6 +334,11 @@ pub(crate) trait Payload:
     fn is_low_priority(&self) -> bool {
         false
     }
+
+    /// Indicates a message is not safe to send to a joiner.
+    ///
+    /// This functionality should be removed once multiplexed networking lands.
+    fn is_unsafe_for_joiners(&self) -> bool;
 }
 
 /// Network message conversion support.
