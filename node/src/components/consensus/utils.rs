@@ -252,10 +252,14 @@ mod tests {
 
         // Smuggle a bogus proof in.
         let (_, pub_key) = generate_ed25519_keypair();
-        signatures.insert_proof(pub_key, *signatures.proofs.iter().next().unwrap().1);
+        signatures.insert_proof(pub_key.clone(), *signatures.proofs.iter().next().unwrap().1);
         assert!(matches!(
             validate_finality_signatures(&signatures, &weights),
-            Err(FinalitySignatureError::BogusValidator { .. })
+            Err(FinalitySignatureError::BogusValidator {
+                trusted_validator_weights: _,
+                block_signatures,
+                bogus_validator_public_key
+            }) if *bogus_validator_public_key == pub_key && *block_signatures == signatures
         ));
     }
 
