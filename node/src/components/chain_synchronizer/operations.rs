@@ -1305,6 +1305,11 @@ async fn fetch_block_worker(
     }
 }
 
+enum HandleSignaturesResult {
+    ContinueFetching,
+    HaveSufficient,
+}
+
 struct BlockSignaturesCollector(Option<BlockSignatures>);
 
 impl BlockSignaturesCollector {
@@ -1343,6 +1348,68 @@ impl BlockSignaturesCollector {
 
     fn into_inner(self) -> Option<BlockSignatures> {
         self.0
+    }
+
+    /// Handles the new signatures fetched from peer.
+    /// The signatures are validated. In case they don't pass validation, the peer is disconnected
+    /// and the `ContinueFetching` is returned. Valid signatures are added to the buffer and then
+    /// checked for sufficiency. If they are sufficient `HaveSufficient` is returned, otherwise
+    /// `ContinueFetching` is returned.
+    async fn handle_incoming_signatures(
+        &mut self,
+        block_header: &BlockHeader,
+        signatures: BlockSignatures,
+        peer: NodeId,
+        ctx: &ChainSyncContext<'_>,
+    ) -> Result<HandleSignaturesResult, Error> {
+        if signatures.proofs.is_empty() {
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+
+        let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
+            &block_header.era_id(),
+            ctx.config.last_emergency_restart(),
+        );
+
+        let switch_block_of_previous_era = ctx
+            .effect_builder
+            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+            .await
+            .ok_or(Error::NoSwitchBlockForEra {
+                era_id: era_for_validators_retrieval,
+            })?;
+
+        let validator_weights = switch_block_of_previous_era
+            .next_era_validator_weights()
+            .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                trusted_header: block_header.clone(),
+            })?;
+
+        if let Err(err) = consensus::validate_finality_signatures(&signatures, validator_weights) {
+            warn!(
+                ?peer,
+                ?err,
+                height = block_header.height(),
+                "peer sent invalid finality signatures, banning peer"
+            );
+            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+
+            // Try with next peer.
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+        self.add(signatures);
+
+        if self.check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction()) {
+            info!(
+                block_header_hash =
+                    ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
+                height = block_header.height(),
+                ?era_for_validators_retrieval,
+                "fetched sufficient finality signatures"
+            );
+            return Ok(HandleSignaturesResult::HaveSufficient);
+        }
+        Ok(HandleSignaturesResult::ContinueFetching)
     }
 }
 
@@ -1435,50 +1502,13 @@ async fn fetch_and_store_finality_signatures_by_block_header(
             }
         };
 
-        let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
-            &block_header.era_id(),
-            ctx.config.last_emergency_restart(),
-        );
-
-        let switch_block_of_previous_era = ctx
-            .effect_builder
-            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-            .await
-            .ok_or(Error::NoSwitchBlockForEra {
-                era_id: era_for_validators_retrieval,
-            })?;
-
-        let validator_weights = switch_block_of_previous_era
-            .next_era_validator_weights()
-            .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                trusted_header: block_header.clone(),
-            })?;
-
-        if let Err(err) = consensus::validate_finality_signatures(&signatures, validator_weights) {
-            warn!(
-                ?peer,
-                ?err,
-                height = block_header.height(),
-                "peer sent invalid finality signatures, banning peer"
-            );
-            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
-
-            // Try with next peer.
-            continue;
-        }
-        sig_collector.add(signatures);
-
-        if sig_collector
-            .check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction())
+        match sig_collector
+            .handle_incoming_signatures(&block_header, signatures, peer, ctx)
+            .await?
         {
-            info!(
-                ?block_header_hash,
-                height = block_header.height(),
-                ?era_for_validators_retrieval,
-                "fetched sufficient finality signatures"
-            );
-            break;
-        }
+            HandleSignaturesResult::ContinueFetching => continue,
+            HandleSignaturesResult::HaveSufficient => break,
+        };
     }
     ctx.metrics
         .observe_fetch_finality_signatures_duration_seconds(start);
