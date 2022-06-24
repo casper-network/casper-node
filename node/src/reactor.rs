@@ -55,12 +55,12 @@ use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry}
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
+use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 use casper_types::EraId;
-use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
     components::{deploy_acceptor, fetcher, fetcher::FetchedOrNotFound},
@@ -74,7 +74,11 @@ use crate::{
         BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId, Item, NodeId,
     },
     unregister_metric,
-    utils::{self, SharedFlag, Source, WeightedRoundRobin},
+    utils::{
+        self,
+        rlimit::{Limit, OpenFiles, ResourceLimit},
+        SharedFlag, Source, WeightedRoundRobin,
+    },
     NodeRng, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
@@ -83,7 +87,6 @@ use crate::{
     types::{Chainspec, ChainspecRawBytes},
 };
 pub(crate) use queue_kind::QueueKind;
-use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -972,30 +975,41 @@ where
         + From<fetcher::Event<BlockHeaderWithMetadata>>
         + From<fetcher::Event<BlockAndDeploys>>
         + From<fetcher::Event<BlockHeadersBatch>>
+        + From<fetcher::Event<Deploy>>
         + From<BlocklistAnnouncement>,
 {
     match message {
         NetResponse::Deploy(ref serialized_item) => {
-            let deploy: Box<Deploy> = match bincode::deserialize::<
-                FetchedOrNotFound<Deploy, DeployHash>,
-            >(serialized_item)
-            {
-                Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+            // Incoming Deploys should be routed to the `DeployAcceptor` rather than directly to the
+            // `DeployFetcher`.
+            let event = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                serialized_item,
+            ) {
+                Ok(FetchedOrNotFound::Fetched(deploy)) => {
+                    <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
+                        deploy: Box::new(deploy),
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    })
+                }
                 Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                    warn!(?sender, ?deploy_hash, "peer did not have deploy",);
-                    return Effects::new();
+                    info!(%sender, ?deploy_hash, "peer did not have deploy",);
+                    <R as Reactor>::Event::from(fetcher::Event::<Deploy>::AbsentRemotely {
+                        id: deploy_hash,
+                        peer: sender,
+                    })
                 }
                 Err(error) => {
-                    error!(?sender, ?error, "failed to decode deploy");
-                    return Effects::new();
+                    warn!(
+                        %sender,
+                        %error,
+                        "received a deploy item we couldn't parse, banning peer",
+                    );
+                    return effect_builder
+                        .announce_disconnect_from_peer(sender)
+                        .ignore();
                 }
             };
-
-            let event = <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
-                deploy,
-                source: Source::Peer(sender),
-                maybe_responder: None,
-            });
             <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
         }
         NetResponse::FinalizedApprovals(ref serialized_item) => {
