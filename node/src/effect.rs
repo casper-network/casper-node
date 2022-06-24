@@ -163,7 +163,8 @@ use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
     ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
+    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -820,6 +821,25 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Request that a block with a specific height be marked completed.
+    ///
+    /// Completion means that the block itself (along with its header) and all of its deploys have
+    /// been persisted to storage and its global state root hash is missing no dependencies in the
+    /// global state.
+    pub(crate) async fn mark_block_completed(self, block_height: u64)
+    where
+        REv: From<MarkBlockCompletedRequest>,
+    {
+        self.make_request(
+            |responder| MarkBlockCompletedRequest {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Announces that the HTTP API server has received a deploy.
     pub(crate) async fn announce_deploy_received(
         self,
@@ -1096,7 +1116,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested sufficient signatures for a given block hash.
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
     pub(crate) async fn get_sufficient_signatures_from_storage(
         self,
         block_hash: BlockHash,
@@ -1214,18 +1236,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Updates the lowest available block height in storage.
-    pub(crate) async fn update_lowest_available_block_height_in_storage(self, height: u64)
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::UpdateLowestAvailableBlockHeight { height, responder },
             QueueKind::Regular,
         )
         .await

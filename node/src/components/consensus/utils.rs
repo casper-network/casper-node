@@ -5,6 +5,25 @@ use num::rational::Ratio;
 
 use crate::{components::consensus::error::FinalitySignatureError, types::BlockSignatures};
 
+// Validates the signatures by checking if public keys in
+/// proofs matches the validators public key.
+// TODO: Move this function to `chain_synchronizer` module.
+pub(crate) fn validate_finality_signatures(
+    signatures: &BlockSignatures,
+    validator_weights: &BTreeMap<PublicKey, U512>,
+) -> Result<(), FinalitySignatureError> {
+    for (public_key, _) in signatures.proofs.iter() {
+        if validator_weights.get(public_key).is_none() {
+            return Err(FinalitySignatureError::BogusValidator {
+                trusted_validator_weights: validator_weights.clone(),
+                block_signatures: Box::new(signatures.clone()),
+                bogus_validator_public_key: Box::new(public_key.clone()),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Computes the quorum for the fraction of weight of signatures that will be considered
 /// sufficient.
 fn quorum_fraction(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
@@ -173,13 +192,14 @@ mod tests {
     };
 
     use crate::{
-        components::consensus::{
-            check_sufficient_finality_signatures_with_quorum_formula, error::FinalitySignatureError,
-        },
+        components::consensus::{error::FinalitySignatureError, validate_finality_signatures},
         types::{BlockHash, BlockSignatures},
     };
 
-    use super::{check_sufficient_finality_signatures, get_minimal_set_of_signatures};
+    use super::{
+        check_sufficient_finality_signatures,
+        check_sufficient_finality_signatures_with_quorum_formula, get_minimal_set_of_signatures,
+    };
 
     fn generate_validators(
         n_validators: usize,
@@ -245,6 +265,27 @@ mod tests {
         let minimal_set = minimal_set.unwrap();
         assert_eq!(minimal_set.proofs.len(), threshold);
         assert!(check_sufficient_finality_signatures(&weights, ftt, &minimal_set).is_ok());
+    }
+
+    #[test]
+    fn validates_finality_signatures() {
+        let mut rng = TestRng::new();
+
+        let (keys, weights) = generate_validators(3);
+        let mut signatures = create_signatures(&mut rng, &keys, 3);
+        assert!(validate_finality_signatures(&signatures, &weights).is_ok());
+
+        // Smuggle a bogus proof in.
+        let (_, pub_key) = generate_ed25519_keypair();
+        signatures.insert_proof(pub_key.clone(), *signatures.proofs.iter().next().unwrap().1);
+        assert!(matches!(
+            validate_finality_signatures(&signatures, &weights),
+            Err(FinalitySignatureError::BogusValidator {
+                trusted_validator_weights: _,
+                block_signatures,
+                bogus_validator_public_key
+            }) if *bogus_validator_public_key == pub_key && *block_signatures == signatures
+        ));
     }
 
     #[test]

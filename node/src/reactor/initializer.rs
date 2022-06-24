@@ -25,7 +25,8 @@ use crate::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, MarkBlockCompletedRequest,
+            NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -72,6 +73,10 @@ pub(crate) enum Event {
     #[from]
     StorageRequest(StorageRequest),
 
+    /// Mark block as complete request.
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+
     /// Contract runtime request.
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
@@ -105,6 +110,7 @@ impl ReactorEvent for Event {
             Event::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
             Event::StorageRequest(_) => "StorageRequest",
+            Event::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             Event::ContractRuntime(_) => "ContractRuntime",
             Event::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             Event::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -124,6 +130,9 @@ impl Display for Event {
             }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
+            Event::MarkBlockCompletedRequest(req) => {
+                write!(formatter, "mark block completed request: {}", req)
+            }
             Event::ContractRuntime(event) => write!(formatter, "contract runtime event: {}", event),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(formatter, "chainspec loader announcement: {}", ann)
@@ -314,6 +323,10 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event.into()),
             ),
             Event::StorageRequest(req) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            Event::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),

@@ -55,8 +55,8 @@ use crate::{
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
-            FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest,
+            FetcherRequest, MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest,
+            NetworkRequest, RestRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -173,6 +173,10 @@ pub(crate) enum JoinerEvent {
     /// Storage request.
     #[from]
     StorageRequest(StorageRequest),
+
+    /// Mark block as complete request.
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
 
     /// Diagnostics port event.
     #[from]
@@ -372,6 +376,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockAndDeploysFetcherRequest(_) => "BlockAndDeploysFetcherRequest",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             JoinerEvent::StorageRequest(_) => "StorageRequest",
+            JoinerEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
             JoinerEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             JoinerEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
@@ -438,6 +443,9 @@ impl Display for JoinerEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             JoinerEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
+            JoinerEvent::MarkBlockCompletedRequest(req) => {
+                write!(f, "mark block as completed request: {}", req)
+            }
             JoinerEvent::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             JoinerEvent::BlockFetcherRequest(request) => {
                 write!(f, "block fetcher request: {}", request)
@@ -874,6 +882,10 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::FinalizedApprovalsFetcher(request.into()),
             ),
             JoinerEvent::StorageRequest(req) => reactor::wrap_effects(
+                JoinerEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            JoinerEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 JoinerEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),

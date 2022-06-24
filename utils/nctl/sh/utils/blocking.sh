@@ -9,22 +9,43 @@
 #######################################
 function await_n_eras()
 {
-    local OFFSET=${1}
-    local EMIT_LOG=${2:-false}
+    local OFFSET=${1:-'1'}
+    local EMIT_LOG=${2:-'false'}
     local SLEEP_INTERVAL=${3:-'20.0'}
     local NODE_ID=${4:-''}
+    local TIME_OUT=${5:-''}
     local CURRENT
     local FUTURE
+    local LOG_OUTPUT
 
     CURRENT=$(get_chain_era "$NODE_ID")
     FUTURE=$((CURRENT + OFFSET))
 
     while [ "$CURRENT" -lt "$FUTURE" ];
     do
-        if [ "$EMIT_LOG" = true ]; then
-            log "current era = $CURRENT :: future era = $FUTURE ... sleeping $SLEEP_INTERVAL seconds"
+
+        LOG_OUTPUT="current era = $CURRENT :: future era = $FUTURE :: sleeping $SLEEP_INTERVAL seconds"
+
+        if [ "$EMIT_LOG" = true ] && [ ! -z "$TIME_OUT" ]; then
+            log "$LOG_OUTPUT :: timeout = $TIME_OUT seconds"
+        elif [ "$EMIT_LOG" = true ]; then
+            log "$LOG_OUTPUT"
         fi
+
         sleep "$SLEEP_INTERVAL"
+
+        if [ ! -z "$TIME_OUT" ]; then
+            # Using jq since its required by NCTL anyway to do this floating point arith
+            # ... done to maintain backwards compatibility
+            TIME_OUT=$(jq -n "$TIME_OUT-$SLEEP_INTERVAL")
+
+            if [ "$TIME_OUT" -le "0" ]; then
+                log "ERROR: Timed out before reaching future era = $FUTURE"
+                # https://stackoverflow.com/a/54344104
+                return 1 2>/dev/null
+            fi
+        fi
+
         CURRENT=$(get_chain_era "$NODE_ID")
     done
 

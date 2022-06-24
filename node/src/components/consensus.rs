@@ -59,7 +59,7 @@ pub(crate) use protocols::highway::HighwayProtocol;
 
 pub(crate) use utils::{
     check_sufficient_finality_signatures, check_sufficient_finality_signatures_with_quorum_formula,
-    get_minimal_set_of_signatures,
+    get_minimal_set_of_signatures, validate_finality_signatures,
 };
 pub(crate) use validator_change::ValidatorChange;
 

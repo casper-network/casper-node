@@ -164,7 +164,7 @@ impl Display for DeployAcceptorAnnouncement {
     }
 }
 
-// A block proposer announcement.
+/// A block proposer announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockProposerAnnouncement {
     /// Hashes of the deploys that expired.

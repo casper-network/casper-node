@@ -361,6 +361,9 @@ impl ChainSynchronizer {
             effect_builder
                 .put_block_to_storage(block_and_execution_effects.block.clone())
                 .await;
+            effect_builder
+                .mark_block_completed(block_and_execution_effects.block.height())
+                .await;
             Ok(block_and_execution_effects)
         }
         .event(|result| Event::ExecuteImmediateSwitchBlockResult {

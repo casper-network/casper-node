@@ -865,10 +865,6 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(&most_recent_block_header, ctx).await?;
 
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
-        .await;
-
     Ok((trusted_key_block_info, most_recent_block_header))
 }
 
@@ -1015,6 +1011,8 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
 }
 
 /// Downloads and saves the deploys and transfers for a block.
+///
+/// This function assumes that the block along with its header has been persisted to storage.
 async fn sync_deploys_and_transfers_and_state(
     block: &Block,
     ctx: &ChainSyncContext<'_>,
@@ -1024,7 +1022,13 @@ async fn sync_deploys_and_transfers_and_state(
         ctx,
     )
     .await?;
-    sync_trie_store(block.header(), ctx).await
+    sync_trie_store(block.header(), ctx).await?;
+
+    ctx.effect_builder
+        .mark_block_completed(block.height())
+        .await;
+
+    Ok(())
 }
 
 /// Sync to genesis.
@@ -1122,12 +1126,6 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
 
     fetch_headers_till_genesis(trusted_block, ctx).await?;
     fetch_blocks_and_state_and_finality_signatures_since_genesis(ctx).await?;
-
-    // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
-    // trusted block, we can update the lowest available block of the continuous range.
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(0)
-        .await;
 
     Ok(())
 }
@@ -1287,6 +1285,9 @@ async fn fetch_block_worker(
                     );
                     return Err(error);
                 }
+                ctx.effect_builder
+                    .mark_block_completed(fetched_block.block.height())
+                    .await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
@@ -1301,14 +1302,13 @@ async fn fetch_block_worker(
             }
         }
 
-        if let Some(finality_signatures) =
-            fetch_finality_signatures_by_block_header(block_header, ctx).await?
-        {
-            ctx.effect_builder
-                .put_signatures_to_storage(finality_signatures)
-                .await;
-        };
+        fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
     }
+}
+
+enum HandleSignaturesResult {
+    ContinueFetching,
+    HaveSufficient,
 }
 
 struct BlockSignaturesCollector(Option<BlockSignatures>);
@@ -1318,12 +1318,7 @@ impl BlockSignaturesCollector {
         Self(None)
     }
 
-    fn add_signatures(&mut self, maybe_signatures: Option<BlockSignatures>) {
-        let signatures = match maybe_signatures {
-            Some(sigs) => sigs,
-            None => return,
-        };
-
+    fn add(&mut self, signatures: BlockSignatures) {
         match &mut self.0 {
             None => {
                 self.0 = Some(signatures);
@@ -1355,6 +1350,68 @@ impl BlockSignaturesCollector {
 
     fn into_inner(self) -> Option<BlockSignatures> {
         self.0
+    }
+
+    /// Handles the new signatures fetched from peer.
+    /// The signatures are validated. In case they don't pass validation, the peer is disconnected
+    /// and the `ContinueFetching` is returned. Valid signatures are added to the buffer and then
+    /// checked for sufficiency. If they are sufficient `HaveSufficient` is returned, otherwise
+    /// `ContinueFetching` is returned.
+    async fn handle_incoming_signatures(
+        &mut self,
+        block_header: &BlockHeader,
+        signatures: BlockSignatures,
+        peer: NodeId,
+        ctx: &ChainSyncContext<'_>,
+    ) -> Result<HandleSignaturesResult, Error> {
+        if signatures.proofs.is_empty() {
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+
+        let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
+            &block_header.era_id(),
+            ctx.config.last_emergency_restart(),
+        );
+
+        let switch_block_of_previous_era = ctx
+            .effect_builder
+            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+            .await
+            .ok_or(Error::NoSwitchBlockForEra {
+                era_id: era_for_validators_retrieval,
+            })?;
+
+        let validator_weights = switch_block_of_previous_era
+            .next_era_validator_weights()
+            .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                trusted_header: block_header.clone(),
+            })?;
+
+        if let Err(err) = consensus::validate_finality_signatures(&signatures, validator_weights) {
+            warn!(
+                ?peer,
+                ?err,
+                height = block_header.height(),
+                "peer sent invalid finality signatures, banning peer"
+            );
+            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+
+            // Try with next peer.
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+        self.add(signatures);
+
+        if self.check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction()) {
+            info!(
+                block_header_hash =
+                    ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
+                height = block_header.height(),
+                ?era_for_validators_retrieval,
+                "fetched sufficient finality signatures"
+            );
+            return Ok(HandleSignaturesResult::HaveSufficient);
+        }
+        Ok(HandleSignaturesResult::ContinueFetching)
     }
 }
 
@@ -1395,10 +1452,10 @@ async fn fetch_finality_signatures_with_retry(
     })
 }
 
-async fn fetch_finality_signatures_by_block_header(
+async fn fetch_and_store_finality_signatures_by_block_header(
     block_header: BlockHeader,
     ctx: &ChainSyncContext<'_>,
-) -> Result<Option<BlockSignatures>, Error> {
+) -> Result<(), Error> {
     let start = Timestamp::now();
     let mut peer_list = ctx
         .effect_builder
@@ -1418,77 +1475,73 @@ async fn fetch_finality_signatures_by_block_header(
             ctx,
         )
         .await;
-        let maybe_signatures = match fetched_signatures {
-            Ok(FetchedData::FromStorage { item, .. }) => {
+
+        let signatures = match fetched_signatures {
+            Ok(FetchedData::FromStorage { .. }) => {
                 trace!(
                     ?block_header_hash,
                     ?peer,
-                    "did not get FinalitySignatures from peer, got from storage instead",
+                    "fetched FinalitySignatures from storage",
                 );
-                Some(*item)
+                return Ok(());
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                trace!(?block_header_hash, ?peer, "fetched FinalitySignatures");
-                Some(*item)
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    "fetched FinalitySignatures from peer"
+                );
+                *item
             }
-            Err(_) => None,
+            Err(err) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    ?err,
+                    "error fetching FinalitySignatures"
+                );
+                continue;
+            }
         };
 
-        sig_collector.add_signatures(maybe_signatures);
-
-        let era_for_validators_retrieval =
-            get_era_id_for_validators_retrieval(&block_header.era_id());
-
-        let maybe_switch_block_of_previous_era = ctx
-            .effect_builder
-            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-            .await;
-
-        match maybe_switch_block_of_previous_era {
-            Some(switch_block_of_previous_era) => {
-                match switch_block_of_previous_era.next_era_validator_weights() {
-                    Some(validator_weights) => {
-                        if sig_collector.check_if_sufficient(
-                            validator_weights,
-                            ctx.config.finality_threshold_fraction(),
-                        ) {
-                            info!(
-                                ?block_header_hash,
-                                height = block_header.height(),
-                                ?era_for_validators_retrieval,
-                                "fetched sufficient finalty signatures"
-                            );
-                            break;
-                        }
-                    }
-                    None => {
-                        return Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                            trusted_header: block_header,
-                        });
-                    }
-                }
-            }
-            None => {
-                return Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                    trusted_header: block_header,
-                });
-            }
-        }
+        match sig_collector
+            .handle_incoming_signatures(&block_header, signatures, peer, ctx)
+            .await?
+        {
+            HandleSignaturesResult::ContinueFetching => continue,
+            HandleSignaturesResult::HaveSufficient => break,
+        };
     }
     ctx.metrics
         .observe_fetch_finality_signatures_duration_seconds(start);
-    Ok(sig_collector.into_inner())
+    if let Some(finality_signatures) = sig_collector.into_inner() {
+        ctx.effect_builder
+            .put_signatures_to_storage(finality_signatures)
+            .await;
+    }
+    Ok(())
 }
 
 /// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
-    if *era_id != EraId::from(0) {
-        // For eras > 0 we need to use validator set from the previous era.
+fn get_era_id_for_validators_retrieval(
+    era_id: &EraId,
+    last_emergency_restart: Option<EraId>,
+) -> EraId {
+    // TODO: This function needs to handle multiple emergency restarts.
+    if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
+        // For eras > 0 which are not the last emergency restart eras we need to use validator set
+        // from the previous era
         *era_id - 1
     } else {
-        // In case of Era=0 there's no previous era, but since validators never change during
+        // When we're in era 0 or in the era of last emergency restart we
+        // use that era as a source for validators, because:
+        //
+        // 1) If we're in Era 0 there's no previous era, but since validators never change during
         // that era we can safely use the Era 0's switch block.
-        EraId::from(0)
+        //
+        // 2) In case of being in last emergency restart era, the validators from the previous era
+        // may no longer be valid.
+        *era_id
     }
 }
 
@@ -1797,6 +1850,9 @@ async fn execute_blocks(
                 )
                 .await;
         }
+        ctx.effect_builder
+            .mark_block_completed(block_and_execution_effects.block().height())
+            .await;
 
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
@@ -2092,22 +2148,40 @@ mod tests {
     fn gets_correct_era_id_for_validators() {
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0))
+            get_era_id_for_validators_retrieval(&EraId::from(0), None)
         );
 
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1))
+            get_era_id_for_validators_retrieval(&EraId::from(1), None)
         );
 
         assert_eq!(
             EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2))
+            get_era_id_for_validators_retrieval(&EraId::from(2), None)
         );
 
         assert_eq!(
             EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000))
+            get_era_id_for_validators_retrieval(&EraId::from(1000), None)
+        );
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators_when_emergency_restart() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0), Some(EraId::from(7)))
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1), Some(EraId::from(2)))
+        );
+
+        assert_eq!(
+            EraId::from(2),
+            get_era_id_for_validators_retrieval(&EraId::from(2), Some(EraId::from(2)))
         );
     }
 
