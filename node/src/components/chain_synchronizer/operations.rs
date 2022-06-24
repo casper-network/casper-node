@@ -1301,13 +1301,7 @@ async fn fetch_block_worker(
             }
         }
 
-        if let Some(finality_signatures) =
-            fetch_finality_signatures_by_block_header(block_header, ctx).await?
-        {
-            ctx.effect_builder
-                .put_signatures_to_storage(finality_signatures)
-                .await;
-        };
+        fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
     }
 }
 
@@ -1389,10 +1383,10 @@ async fn fetch_finality_signatures_with_retry(
     })
 }
 
-async fn fetch_finality_signatures_by_block_header(
+async fn fetch_and_store_finality_signatures_by_block_header(
     block_header: BlockHeader,
     ctx: &ChainSyncContext<'_>,
-) -> Result<Option<BlockSignatures>, Error> {
+) -> Result<(), Error> {
     let start = Timestamp::now();
     let mut peer_list = ctx
         .effect_builder
@@ -1414,15 +1408,13 @@ async fn fetch_finality_signatures_by_block_header(
         .await;
 
         let signatures = match fetched_signatures {
-            Ok(FetchedData::FromStorage { item, .. }) => {
+            Ok(FetchedData::FromStorage { .. }) => {
                 trace!(
                     ?block_header_hash,
                     ?peer,
                     "fetched FinalitySignatures from storage",
                 );
-                ctx.metrics
-                    .observe_fetch_finality_signatures_duration_seconds(start);
-                return Ok(Some(*item));
+                return Ok(());
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 trace!(
@@ -1490,7 +1482,12 @@ async fn fetch_finality_signatures_by_block_header(
     }
     ctx.metrics
         .observe_fetch_finality_signatures_duration_seconds(start);
-    Ok(sig_collector.into_inner())
+    if let Some(finality_signatures) = sig_collector.into_inner() {
+        ctx.effect_builder
+            .put_signatures_to_storage(finality_signatures)
+            .await;
+    }
+    Ok(())
 }
 
 /// Returns the EraId whose switch block should be used to obtain validator weights.
