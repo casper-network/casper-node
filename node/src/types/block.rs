@@ -1741,6 +1741,12 @@ impl Block {
         })
     }
 
+    pub(crate) fn mark_after_emergency_upgrade(&mut self) {
+        // accumulated seed being equal to the parent hash will mean that the block is an immediate
+        // switch block created right after an emergency upgrade
+        self.header.accumulated_seed = *self.header.parent_hash.inner();
+    }
+
     pub(crate) fn new_from_header_and_body(
         header: BlockHeader,
         body: BlockBody,
