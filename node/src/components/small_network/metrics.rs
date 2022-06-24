@@ -420,7 +420,7 @@ impl Metrics {
     }
 
     /// Records an outgoing payload.
-    pub(crate) fn record_payload_out(this: &mut Weak<Self>, kind: MessageKind, size: u64) {
+    pub(crate) fn record_payload_out(this: &Weak<Self>, kind: MessageKind, size: u64) {
         if let Some(metrics) = this.upgrade() {
             match kind {
                 MessageKind::Protocol => {
@@ -466,7 +466,7 @@ impl Metrics {
     }
 
     /// Records an incoming payload.
-    pub(crate) fn record_payload_in(this: &mut Weak<Self>, kind: MessageKind, size: u64) {
+    pub(crate) fn record_payload_in(this: &Weak<Self>, kind: MessageKind, size: u64) {
         if let Some(metrics) = this.upgrade() {
             match kind {
                 MessageKind::Protocol => {
