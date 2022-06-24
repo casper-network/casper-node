@@ -1418,17 +1418,29 @@ async fn fetch_finality_signatures_by_block_header(
                 trace!(
                     ?block_header_hash,
                     ?peer,
-                    "did not get FinalitySignatures from peer, got from storage instead",
+                    "fetched FinalitySignatures from storage",
                 );
                 ctx.metrics
                     .observe_fetch_finality_signatures_duration_seconds(start);
                 return Ok(Some(*item));
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                trace!(?block_header_hash, ?peer, "fetched FinalitySignatures");
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    "fetched FinalitySignatures from peer"
+                );
                 Some(*item)
             }
-            Err(_) => None,
+            Err(err) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    ?err,
+                    "error fetching FinalitySignatures"
+                );
+                continue;
+            }
         };
 
         let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
