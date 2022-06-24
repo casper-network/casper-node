@@ -1413,7 +1413,7 @@ async fn fetch_finality_signatures_by_block_header(
         )
         .await;
 
-        let maybe_signatures = match fetched_signatures {
+        let signatures = match fetched_signatures {
             Ok(FetchedData::FromStorage { item, .. }) => {
                 trace!(
                     ?block_header_hash,
@@ -1430,7 +1430,7 @@ async fn fetch_finality_signatures_by_block_header(
                     ?peer,
                     "fetched FinalitySignatures from peer"
                 );
-                Some(*item)
+                *item
             }
             Err(err) => {
                 trace!(
@@ -1462,36 +1462,32 @@ async fn fetch_finality_signatures_by_block_header(
                 trusted_header: block_header.clone(),
             })?;
 
-        if let Some(signatures) = maybe_signatures {
-            if let Err(err) =
-                consensus::validate_finality_signatures(&signatures, validator_weights)
-            {
-                warn!(
-                    ?peer,
-                    ?err,
-                    height = block_header.height(),
-                    "peer sent invalid finality signatures, banning peer"
-                );
-                ctx.effect_builder
-                    .announce_disconnect_from_peer(peer)
-                    .ignore::<JoinerEvent>();
+        if let Err(err) = consensus::validate_finality_signatures(&signatures, validator_weights) {
+            warn!(
+                ?peer,
+                ?err,
+                height = block_header.height(),
+                "peer sent invalid finality signatures, banning peer"
+            );
+            ctx.effect_builder
+                .announce_disconnect_from_peer(peer)
+                .ignore::<JoinerEvent>();
 
-                // Try with next peer.
-                continue;
-            }
-            sig_collector.add(signatures);
+            // Try with next peer.
+            continue;
+        }
+        sig_collector.add(signatures);
 
-            if sig_collector
-                .check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction())
-            {
-                info!(
-                    ?block_header_hash,
-                    height = block_header.height(),
-                    ?era_for_validators_retrieval,
-                    "fetched sufficient finality signatures"
-                );
-                break;
-            }
+        if sig_collector
+            .check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction())
+        {
+            info!(
+                ?block_header_hash,
+                height = block_header.height(),
+                ?era_for_validators_retrieval,
+                "fetched sufficient finality signatures"
+            );
+            break;
         }
     }
     ctx.metrics
