@@ -579,6 +579,9 @@ where
                                     )
                                 })?;
 
+                            Metrics::record_trie_request_start(&context.net_metrics);
+
+                            let net_metrics = context.net_metrics.clone();
                             // Spawn a future that will eventually send the returned message. It
                             // will essentially buffer the response.
                             tokio::spawn(async move {
@@ -600,6 +603,7 @@ where
                                 // After we have either successfully buffered the message for
                                 // sending, failed to do so or did not have a message to send
                                 // out, we consider the request handled and free up the permit.
+                                Metrics::record_trie_request_end(&net_metrics);
                                 drop(in_flight);
                             });
 

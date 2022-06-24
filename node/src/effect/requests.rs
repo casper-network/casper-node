@@ -479,17 +479,6 @@ pub(crate) enum StorageRequest {
         block_headers_id: BlockHeadersBatchId,
         responder: Responder<Option<BlockHeadersBatch>>,
     },
-    /// Update the lowest available block height in storage.
-    // Note - this is a request rather than an announcement as the chain synchronizer needs to
-    // ensure the request has been completed before it can exit, i.e. it awaits the response.
-    // Otherwise, the joiner reactor might exit before handling the announcement and it would go
-    // un-actioned.
-    UpdateLowestAvailableBlockHeight {
-        /// The new height.
-        height: u64,
-        /// Responder to call when complete.
-        responder: Responder<()>,
-    },
     /// Retrieve the height range of fully available blocks (not just block headers). Returns
     /// `[u64::MAX, u64::MAX]` when there are no sequences.
     GetAvailableBlockRange {
@@ -617,13 +606,6 @@ impl Display for StorageRequest {
                     block_height
                 )
             }
-            StorageRequest::UpdateLowestAvailableBlockHeight { height, .. } => {
-                write!(
-                    formatter,
-                    "update lowest available block height to {}",
-                    height
-                )
-            }
             StorageRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range",)
             }
@@ -639,6 +621,31 @@ impl Display for StorageRequest {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
             }
         }
+    }
+}
+
+/// A request to mark a block at a specific height completed.
+///
+/// A block is considered complete if
+///
+/// * the block header and the actual block are persisted in storage,
+/// * all of its deploys are persisted in storage, and
+/// * the global state root the block refers to has no missing dependencies locally.
+
+// Note - this is a request rather than an announcement as the chain synchronizer needs to ensure
+// the request has been completed before it can exit, i.e. it awaits the response. Otherwise, the
+// joiner reactor might exit before handling the announcement and it would go un-actioned.
+#[derive(Debug, Serialize)]
+pub(crate) struct MarkBlockCompletedRequest {
+    /// Height of the block that was completed.
+    pub block_height: u64,
+    /// Responder indicating that the change has been recorded.
+    pub responder: Responder<()>,
+}
+
+impl Display for MarkBlockCompletedRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block completed: height {}", self.block_height)
     }
 }
 

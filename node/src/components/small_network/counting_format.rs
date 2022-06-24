@@ -130,6 +130,7 @@ where
 
         let deserialized = F::deserialize(projection, src)?;
         let msg_kind = deserialized.classify();
+        Metrics::record_payload_in(this.metrics, msg_kind, msg_size);
 
         let trace_id = this
             .connection_id
