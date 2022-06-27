@@ -819,6 +819,9 @@ pub struct BlockHeader {
     state_root_hash: Digest,
     body_hash: Digest,
     random_bit: bool,
+    /// The seed for the sequence of leaders accumulated from random_bits. If it is equal to the
+    /// parent hash, it means that the block is an immediate switch block created right after an
+    /// emergency upgrade.
     accumulated_seed: Digest,
     era_end: Option<EraEnd>,
     timestamp: Timestamp,
@@ -1741,10 +1744,15 @@ impl Block {
         })
     }
 
-    pub(crate) fn mark_after_emergency_upgrade(&mut self) {
+    pub(crate) fn mark_after_emergency_upgrade(
+        &mut self,
+        verifiable_chunked_hash_activation: EraId,
+    ) {
         // accumulated seed being equal to the parent hash will mean that the block is an immediate
         // switch block created right after an emergency upgrade
         self.header.accumulated_seed = *self.header.parent_hash.inner();
+        // changing the seed changes the header hash!
+        self.hash = self.header.hash(verifiable_chunked_hash_activation);
     }
 
     pub(crate) fn new_from_header_and_body(
