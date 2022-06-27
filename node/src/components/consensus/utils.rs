@@ -201,6 +201,8 @@ mod tests {
         check_sufficient_finality_signatures_with_quorum_formula, get_minimal_set_of_signatures,
     };
 
+    const TEST_VALIDATOR_WEIGHT: usize = 1;
+
     fn generate_validators(
         n_validators: usize,
     ) -> (BTreeMap<PublicKey, SecretKey>, BTreeMap<PublicKey, U512>) {
@@ -210,7 +212,7 @@ mod tests {
         for _ in 0..n_validators {
             let (secret_key, pub_key) = generate_ed25519_keypair();
             keys.insert(pub_key.clone(), secret_key);
-            weights.insert(pub_key, U512::from(1));
+            weights.insert(pub_key, U512::from(TEST_VALIDATOR_WEIGHT));
         }
 
         (keys, weights)
@@ -301,10 +303,16 @@ mod tests {
 
     #[test]
     fn finality_signatures_sufficiency() {
+        const TOTAL_VALIDATORS: usize = 20;
+        const TOTAL_VALIDATORS_WEIGHT: usize = TOTAL_VALIDATORS * TEST_VALIDATOR_WEIGHT;
+        const INSUFFICIENT_FINALITY_SIGNATURES: usize = 13;
+        const JUST_ENOUGH_FINALITY_SIGNATURES: usize = 14;
+        const TOO_MANY_FINALITY_SIGNATURES: usize = 15;
+
         let mut rng = TestRng::new();
 
         // Total validator weights is 20 (1 for each validator).
-        let (validators, validator_weights) = generate_validators(20);
+        let (validators, validator_weights) = generate_validators(TOTAL_VALIDATORS);
 
         let finality_threshold_fraction = Ratio::new_raw(1, 3);
 
@@ -317,9 +325,11 @@ mod tests {
         //   - 14 for Ok
         //   - 15 or more for `TooManySignatures`
 
-        let insufficient = create_signatures(&mut rng, &validators, 13);
-        let just_enough_weight = create_signatures(&mut rng, &validators, 14);
-        let too_many = create_signatures(&mut rng, &validators, 15);
+        let insufficient =
+            create_signatures(&mut rng, &validators, INSUFFICIENT_FINALITY_SIGNATURES);
+        let just_enough_weight =
+            create_signatures(&mut rng, &validators, JUST_ENOUGH_FINALITY_SIGNATURES);
+        let too_many = create_signatures(&mut rng, &validators, TOO_MANY_FINALITY_SIGNATURES);
 
         let result = check_sufficient_finality_signatures(
             &validator_weights,
@@ -328,7 +338,13 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(FinalitySignatureError::InsufficientWeightForFinality { .. })
+            Err(FinalitySignatureError::InsufficientWeightForFinality {
+                trusted_validator_weights: _,
+                block_signatures: _,
+                signature_weight,
+                total_validator_weight,
+                finality_threshold_fraction: _
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == INSUFFICIENT_FINALITY_SIGNATURES.into()
         ));
 
         let result = check_sufficient_finality_signatures(
@@ -345,16 +361,29 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(FinalitySignatureError::TooManySignatures { .. })
+            Err(FinalitySignatureError::TooManySignatures {
+                trusted_validator_weights: _,
+                block_signatures: _,
+                signature_weight,
+                weight_minus_minimum: _,
+                total_validator_weight,
+                finality_threshold_fraction: _
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == TOO_MANY_FINALITY_SIGNATURES.into()
         ));
     }
 
     #[test]
     fn finality_signatures_sufficiency_with_quorum_formula() {
+        const TOTAL_VALIDATORS: usize = 20;
+        const TOTAL_VALIDATORS_WEIGHT: usize = TOTAL_VALIDATORS * TEST_VALIDATOR_WEIGHT;
+        const INSUFFICIENT_FINALITY_SIGNATURES: usize = 6;
+        const JUST_ENOUGH_FINALITY_SIGNATURES: usize = 7;
+        const TOO_MANY_FINALITY_SIGNATURES: usize = 8;
+
         let mut rng = TestRng::new();
 
         // Total validator weights is 20 (1 for each validator).
-        let (validators, validator_weights) = generate_validators(20);
+        let (validators, validator_weights) = generate_validators(TOTAL_VALIDATORS_WEIGHT);
 
         let finality_threshold_fraction = Ratio::new_raw(1, 3);
 
@@ -363,17 +392,19 @@ mod tests {
         let custom_quorum_formula = std::convert::identity;
 
         // for 20 validators with 20 total validator weight,
-        //   and `finality_threshold_fraction` = 1/3 (~=  6.666)
-        //   and the `quorum fraction` = 1/3         (~=  6.666)
+        //   and `finality_threshold_fraction` = 1/3 (~= 6.666)
+        //   and the `quorum fraction` = 1/3         (~= 6.666)
         //
         // we need signaturess of weight:
         //   - 6 or less for `InsufficientWeightForFinality`
         //   - 7 for Ok
         //   - 8 or more for `TooManySignatures`
 
-        let insufficient = create_signatures(&mut rng, &validators, 6);
-        let just_enough_weight = create_signatures(&mut rng, &validators, 7);
-        let too_many = create_signatures(&mut rng, &validators, 8);
+        let insufficient =
+            create_signatures(&mut rng, &validators, INSUFFICIENT_FINALITY_SIGNATURES);
+        let just_enough_weight =
+            create_signatures(&mut rng, &validators, JUST_ENOUGH_FINALITY_SIGNATURES);
+        let too_many = create_signatures(&mut rng, &validators, TOO_MANY_FINALITY_SIGNATURES);
 
         let result = check_sufficient_finality_signatures_with_quorum_formula(
             &validator_weights,
@@ -383,7 +414,13 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(FinalitySignatureError::InsufficientWeightForFinality { .. })
+            Err(FinalitySignatureError::InsufficientWeightForFinality {
+                trusted_validator_weights: _,
+                block_signatures: _,
+                signature_weight,
+                total_validator_weight,
+                finality_threshold_fraction: _
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == INSUFFICIENT_FINALITY_SIGNATURES.into()
         ));
 
         let result = check_sufficient_finality_signatures_with_quorum_formula(
@@ -402,19 +439,30 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(FinalitySignatureError::TooManySignatures { .. })
+            Err(FinalitySignatureError::TooManySignatures {
+                trusted_validator_weights: _,
+                block_signatures: _,
+                signature_weight,
+                weight_minus_minimum: _,
+                total_validator_weight,
+                finality_threshold_fraction: _
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == TOO_MANY_FINALITY_SIGNATURES.into()
         ));
     }
 
     #[test]
     fn detects_bogus_validator() {
+        const TOTAL_VALIDATORS: usize = 20;
+        const JUST_ENOUGH_FINALITY_SIGNATURES: usize = 14;
+
         let mut rng = TestRng::new();
 
-        let (validators, validator_weights) = generate_validators(20);
+        let (validators, validator_weights) = generate_validators(TOTAL_VALIDATORS);
         let finality_threshold_fraction = Ratio::new_raw(1, 3);
 
         // Generate correct signatures.
-        let mut signatures = create_signatures(&mut rng, &validators, 14);
+        let mut signatures =
+            create_signatures(&mut rng, &validators, JUST_ENOUGH_FINALITY_SIGNATURES);
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
@@ -424,7 +472,7 @@ mod tests {
 
         // Smuggle a bogus proof in.
         let (_, pub_key) = generate_ed25519_keypair();
-        signatures.insert_proof(pub_key, *signatures.proofs.iter().next().unwrap().1);
+        signatures.insert_proof(pub_key.clone(), *signatures.proofs.iter().next().unwrap().1);
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
@@ -432,7 +480,11 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(FinalitySignatureError::BogusValidator { .. })
+            Err(FinalitySignatureError::BogusValidator {
+                trusted_validator_weights: _,
+                block_signatures: _,
+                bogus_validator_public_key
+            })  if *bogus_validator_public_key == pub_key
         ));
     }
 }
