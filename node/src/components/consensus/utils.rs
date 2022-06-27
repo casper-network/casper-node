@@ -25,7 +25,8 @@ pub(crate) fn validate_finality_signatures(
 }
 
 /// Computes the quorum for the fraction of weight of signatures that will be considered
-/// sufficient.
+/// sufficient. This is the lowest weight so that any two sets of validators with that weight have
+/// at least one honest validator in common.
 fn quorum_fraction(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
     (finality_threshold_fraction + 1) / 2
 }
@@ -106,8 +107,9 @@ where
     Ok(())
 }
 
-/// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
-/// error if it doesn't, or if one of the signatures does not belong to a validator.
+/// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold calculated by
+/// the [quorum_fraction] function. Returns an error if it doesn't, or if one of the signatures does
+/// not belong to a validator.
 ///
 /// This does _not_ cryptographically verify the signatures.
 pub(crate) fn check_sufficient_finality_signatures(
