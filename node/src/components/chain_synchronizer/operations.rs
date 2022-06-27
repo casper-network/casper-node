@@ -1339,11 +1339,10 @@ impl BlockSignaturesCollector {
     ) -> bool {
         self.0.as_ref().map_or(false, |sigs| {
             are_signatures_sufficient_for_sync_to_genesis(
-                consensus::check_sufficient_finality_signatures_with_quorum_formula(
+                check_sufficient_finality_signatures_for_sync_to_genesis(
                     validator_weights,
                     finality_threshold_fraction,
                     sigs,
-                    std::convert::identity,
                 ),
             )
         })
@@ -1414,6 +1413,25 @@ impl BlockSignaturesCollector {
         }
         Ok(HandleSignaturesResult::ContinueFetching)
     }
+}
+
+/// In the "sync to genesis" process, we need to consider finality signatures as valid when
+/// their total weight is at least `finality_threshold_fraction` of the total validator weights.
+///
+/// Please note that this is a relaxed requirement compared to the normal (non "sync to genesis")
+/// chain operation where we use the [quorum fraction](consensus::utils::quorum_fraction) calculated
+/// from the `finality_threshold_fraction` parameter.
+fn check_sufficient_finality_signatures_for_sync_to_genesis(
+    validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+    sigs: &BlockSignatures,
+) -> Result<(), FinalitySignatureError> {
+    consensus::check_sufficient_finality_signatures_with_quorum_formula(
+        validator_weights,
+        finality_threshold_fraction,
+        sigs,
+        std::convert::identity,
+    )
 }
 
 // Returns true if the output from consensus can be interpreted
