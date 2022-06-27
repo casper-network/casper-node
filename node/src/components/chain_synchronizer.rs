@@ -346,8 +346,10 @@ impl ChainSynchronizer {
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
         let protocol_version = self.config.protocol_version();
+        let last_emergency_restart = self.config.last_emergency_restart();
+        let verifiable_chunked_hash_activation = self.config.verifiable_chunked_hash_activation();
         async move {
-            let block_and_execution_effects = effect_builder
+            let mut block_and_execution_effects = effect_builder
                 .execute_finalized_block(
                     protocol_version,
                     initial_pre_state,
@@ -356,6 +358,12 @@ impl ChainSynchronizer {
                     vec![],
                 )
                 .await?;
+
+            if last_emergency_restart == Some(block_and_execution_effects.block.header().era_id()) {
+                block_and_execution_effects
+                    .block
+                    .mark_after_emergency_upgrade(verifiable_chunked_hash_activation);
+            }
             // We need to store the block now so that the era supervisor can be properly
             // initialized in the participating reactor's constructor.
             effect_builder
