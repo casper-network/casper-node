@@ -12,7 +12,10 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
-    components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
+    components::{
+        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
+        fetcher::FetcherError,
+    },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
@@ -37,6 +40,9 @@ pub(crate) enum Error {
         trusted_header: Box<BlockHeader>,
         maybe_last_emergency_restart_era_id: Option<EraId>,
     },
+
+    #[error("cannot get switch block for era: {era_id}")]
+    NoSwitchBlockForEra { era_id: EraId },
 
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
@@ -76,6 +82,13 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
+
+    #[error(transparent)]
+    FinalitySignatures(
+        #[from]
+        #[serde(skip_serializing)]
+        FinalitySignatureError,
+    ),
 
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),

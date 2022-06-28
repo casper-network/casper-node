@@ -25,7 +25,8 @@ use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement},
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
+            MarkBlockCompletedRequest, NetworkInfoRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -159,6 +160,7 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<ControlAnnouncement>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     pub(crate) fn joining_outcome(&self) -> Option<&JoiningOutcome> {
@@ -394,8 +396,10 @@ where
         is_emergency_upgrade: bool,
     ) -> Effects<Event> {
         let protocol_version = self.config.protocol_version();
+        let last_emergency_restart = self.config.last_emergency_restart();
+        let verifiable_chunked_hash_activation = self.config.verifiable_chunked_hash_activation();
         async move {
-            let block_and_execution_effects = effect_builder
+            let mut block_and_execution_effects = effect_builder
                 .execute_finalized_block(
                     protocol_version,
                     initial_pre_state,
@@ -404,10 +408,19 @@ where
                     vec![],
                 )
                 .await?;
+
+            if last_emergency_restart == Some(block_and_execution_effects.block.header().era_id()) {
+                block_and_execution_effects
+                    .block
+                    .mark_after_emergency_upgrade(verifiable_chunked_hash_activation);
+            }
             // We need to store the block now so that the era supervisor can be properly
             // initialized in the participating reactor's constructor.
             effect_builder
                 .put_block_to_storage(block_and_execution_effects.block.clone())
+                .await;
+            effect_builder
+                .mark_block_completed(block_and_execution_effects.block.height())
                 .await;
             Ok(block_and_execution_effects)
         }
@@ -551,6 +564,7 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<ControlAnnouncement>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     type Event = Event;

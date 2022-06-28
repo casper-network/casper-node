@@ -159,6 +159,10 @@ impl Payload for Message {
     fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
         0
     }
+
+    fn is_unsafe_for_joiners(&self) -> bool {
+        false
+    }
 }
 
 /// Test reactor.

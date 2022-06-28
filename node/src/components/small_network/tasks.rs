@@ -579,6 +579,9 @@ where
                                     )
                                 })?;
 
+                            Metrics::record_trie_request_start(&context.net_metrics);
+
+                            let net_metrics = context.net_metrics.clone();
                             // Spawn a future that will eventually send the returned message. It
                             // will essentially buffer the response.
                             tokio::spawn(async move {
@@ -600,6 +603,7 @@ where
                                 // After we have either successfully buffered the message for
                                 // sending, failed to do so or did not have a message to send
                                 // out, we consider the request handled and free up the permit.
+                                Metrics::record_trie_request_end(&net_metrics);
                                 drop(in_flight);
                             });
 
@@ -672,11 +676,21 @@ pub(super) async fn message_sender<P>(
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
+    remote_joiner_id: Option<(SocketAddr, NodeId)>,
 ) where
     P: Payload,
 {
     while let Some((message, opt_responder)) = queue.recv().await {
         counter.dec();
+
+        if let Some((ref addr, ref node_id)) = remote_joiner_id {
+            if message.payload_is_unsafe_for_joiners() {
+                // We should never attempt to send an unsafe message to a peer that we know is a
+                // joiner. Since "unsafe" does usually not mean immediately catastrophic, we attempt
+                // to carry on, but warn loudly.
+                error!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
+            }
+        }
 
         let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
             Ok(size) => size as u32,

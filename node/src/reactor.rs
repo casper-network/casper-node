@@ -71,7 +71,8 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId, Item, NodeId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId,
+        Item, NodeId,
     },
     unregister_metric,
     utils::{
@@ -975,6 +976,7 @@ where
         + From<fetcher::Event<BlockHeaderWithMetadata>>
         + From<fetcher::Event<BlockAndDeploys>>
         + From<fetcher::Event<BlockHeadersBatch>>
+        + From<fetcher::Event<BlockSignatures>>
         + From<fetcher::Event<Deploy>>
         + From<BlocklistAnnouncement>,
 {
@@ -1083,6 +1085,16 @@ where
         }
         NetResponse::BlockHeadersBatch(ref serialized_item) => {
             handle_fetch_response::<R, BlockHeadersBatch>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::FinalitySignatures(ref serialized_item) => {
+            handle_fetch_response::<R, BlockSignatures>(
                 reactor,
                 effect_builder,
                 rng,

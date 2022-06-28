@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use rand::Rng;
 
-use casper_types::{AccessRights, CLValue, Key, StoredValue, URef, U512};
+use casper_types::{
+    account::Account, AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
+};
 
 use crate::utils::print_entry;
 
@@ -70,5 +72,21 @@ impl StateTracker {
         self.increase_supply(amount);
 
         new_purse
+    }
+
+    /// Creates a new account for the given public key and seeds it with the given amount of
+    /// tokens.
+    pub fn create_account(&mut self, pub_key: PublicKey, amount: U512) -> Account {
+        let main_purse = self.create_purse(amount);
+
+        let account_hash = pub_key.to_account_hash();
+        let account = Account::create(account_hash, Default::default(), main_purse);
+
+        self.write_entry(
+            Key::Account(account_hash),
+            StoredValue::Account(account.clone()),
+        );
+
+        account
     }
 }

@@ -62,8 +62,8 @@ use crate::{
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
-            StateStoreRequest, StorageRequest,
+            MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+            RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -71,8 +71,8 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, ExitCode, FinalitySignature, FinalizedApprovalsWithId,
-        NodeState,
+        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
+        FinalizedApprovalsWithId, NodeState,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -141,6 +141,8 @@ pub(crate) enum ParticipatingEvent {
     FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
     #[from]
     BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
+    #[from]
+    FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
 
     // Requests
     #[from]
@@ -172,6 +174,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
     #[from]
+    FinalitySignaturesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockSignatures>),
+    #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
@@ -181,6 +185,8 @@ pub(crate) enum ParticipatingEvent {
     ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     #[from]
@@ -275,6 +281,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
             ParticipatingEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
             ParticipatingEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
+            ParticipatingEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
             ParticipatingEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -293,11 +300,15 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockHeadersBatchFetcherRequest(_) => {
                 "BlockHeadersBatchFetcherRequest"
             }
+            ParticipatingEvent::FinalitySignaturesFetcherRequest(_) => {
+                "FinalitySignaturesFetcherRequest"
+            }
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
             ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
@@ -409,6 +420,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlockHeadersBatchFetcher(event) => {
                 write!(f, "block headers batch fetcher: {}", event)
             }
+            ParticipatingEvent::FinalitySignaturesFetcher(event) => {
+                write!(f, "finality signatures fetcher: {}", event)
+            }
             ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
@@ -418,6 +432,9 @@ impl Display for ParticipatingEvent {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
+            ParticipatingEvent::MarkBlockCompletedRequest(req) => {
+                write!(f, "mark block completed request: {}", req)
+            }
             ParticipatingEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             ParticipatingEvent::BlockFetcherRequest(request) => {
                 write!(f, "block fetcher request: {}", request)
@@ -445,6 +462,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => {
                 write!(f, "block headers batch fetcher request: {}", request)
+            }
+            ParticipatingEvent::FinalitySignaturesFetcherRequest(request) => {
+                write!(f, "finality signatures fetcher request: {}", request)
             }
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
@@ -566,6 +586,7 @@ pub(crate) struct Reactor {
     block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
     finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
+    finality_signatures_fetcher: Fetcher<BlockSignatures>,
     diagnostics_port: DiagnosticsPort,
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -839,6 +860,7 @@ impl reactor::Reactor for Reactor {
         let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
+        let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
 
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::SmallNetwork,
@@ -876,6 +898,7 @@ impl reactor::Reactor for Reactor {
                 block_and_deploys_fetcher,
                 finalized_approvals_fetcher,
                 block_headers_batch_fetcher,
+                finality_signatures_fetcher,
                 diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
@@ -1003,6 +1026,11 @@ impl reactor::Reactor for Reactor {
                 self.block_headers_batch_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::FinalitySignaturesFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::FinalitySignaturesFetcher,
+                self.finality_signatures_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::DiagnosticsPort(event) => reactor::wrap_effects(
                 ParticipatingEvent::DiagnosticsPort,
                 self.diagnostics_port
@@ -1065,6 +1093,11 @@ impl reactor::Reactor for Reactor {
                 self.block_headers_batch_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            ParticipatingEvent::FinalitySignaturesFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::FinalitySignaturesFetcher,
+                self.finality_signatures_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -1085,6 +1118,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ChainspecLoader(req.into()),
             ),
             ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),

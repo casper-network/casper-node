@@ -14,6 +14,7 @@ use futures::{
     stream::{futures_unordered::FuturesUnordered, StreamExt},
     TryStreamExt,
 };
+use num::rational::Ratio;
 use prometheus::IntGauge;
 use quanta::Instant;
 use serde::Serialize;
@@ -32,13 +33,15 @@ use crate::{
             error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
             Config, Metrics,
         },
-        consensus::{self},
+        consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{
         announcements::BlocklistAnnouncement,
-        requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest},
+        requests::{
+            ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
+        },
         EffectBuilder,
     },
     storage::StorageRequest,
@@ -50,6 +53,8 @@ use crate::{
     },
     utils::work_queue::WorkQueue,
 };
+
+const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
 
 /// The outcome of `run_fast_sync_task`.
 #[derive(Debug, Serialize)]
@@ -1012,10 +1017,6 @@ where
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(&most_recent_block_header, ctx).await?;
 
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
-        .await;
-
     Ok(most_recent_block_header)
 }
 
@@ -1196,24 +1197,33 @@ where
 }
 
 /// Downloads and saves the deploys and transfers for a block.
+///
+/// This function assumes that the block along with its header has been persisted to storage.
 async fn sync_deploys_and_transfers_and_state<REv>(
     block: &Block,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
 where
     REv: From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<Deploy>>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<StorageRequest>
-        + From<FetcherRequest<Deploy>>
-        + From<NetworkInfoRequest>,
+        + From<NetworkInfoRequest>
+        + From<MarkBlockCompletedRequest>,
 {
     fetch_and_store_deploys(
         block.deploy_hashes().iter().chain(block.transfer_hashes()),
         ctx,
     )
     .await?;
-    sync_trie_store(block.header(), ctx).await
+    sync_trie_store(block.header(), ctx).await?;
+
+    ctx.effect_builder
+        .mark_block_completed(block.height())
+        .await;
+
+    Ok(())
 }
 
 /// Sync to genesis.
@@ -1250,9 +1260,11 @@ where
         + From<FetcherRequest<BlockHeadersBatch>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockSignatures>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_to_genesis_total_duration_seconds);
@@ -1292,6 +1304,7 @@ where
         + From<BlocklistAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
@@ -1335,9 +1348,11 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
         + From<NetworkInfoRequest>
         + From<BlocklistAnnouncement>
-        + From<ContractRuntimeRequest>,
+        + From<ContractRuntimeRequest>
+        + From<MarkBlockCompletedRequest>,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
@@ -1348,14 +1363,7 @@ where
     );
 
     fetch_headers_till_genesis(trusted_block, ctx).await?;
-
-    fetch_blocks_and_state_since_genesis(ctx).await?;
-
-    // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
-    // trusted block, we can update the lowest available block of the continuous range.
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(0)
-        .await;
+    fetch_blocks_and_state_and_finality_signatures_since_genesis(ctx).await?;
 
     Ok(())
 }
@@ -1458,7 +1466,7 @@ where
 }
 
 // Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
-async fn fetch_blocks_and_state_since_genesis<REv>(
+async fn fetch_blocks_and_state_and_finality_signatures_since_genesis<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
 where
@@ -1466,8 +1474,11 @@ where
         + From<NetworkInfoRequest>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
         + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>,
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>,
 {
     info!("syncing blocks and deploys and state since Genesis");
 
@@ -1504,8 +1515,11 @@ where
         + From<NetworkInfoRequest>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
         + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>,
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>,
 {
     let trusted_block_height = ctx.trusted_block_header().height();
     loop {
@@ -1515,32 +1529,37 @@ where
             return Ok(());
         }
 
-        let block_hash = ctx
+        let block_header = ctx
             .effect_builder
-            .get_block_hash_by_height_from_storage(next_block_height)
+            .get_block_header_at_height_from_storage(next_block_height, false)
             .await
             .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
+
+        let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
 
         if next_block_height % 1_000 == 0 {
             info!(
                 worker_id,
-                ?block_hash,
+                ?block_header_hash,
                 ?next_block_height,
                 "syncing block and deploys"
             );
         }
-        match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
+        match fetch_and_store_block_with_deploys_by_hash(block_header_hash, ctx).await {
             Ok(fetched_block) => {
-                trace!(?block_hash, "downloaded block and deploys");
+                trace!(?block_header_hash, "downloaded block and deploys");
                 // We want to download the trie only when we know we have the block.
                 if let Err(error) = sync_trie_store(fetched_block.block.header(), ctx).await {
                     error!(
                         ?error,
-                        ?block_hash,
+                        ?block_header_hash,
                         "failed to download trie with infinite retries"
                     );
                     return Err(error);
                 }
+                ctx.effect_builder
+                    .mark_block_completed(fetched_block.block.height())
+                    .await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
@@ -1549,11 +1568,259 @@ where
                 // want to retry.
                 error!(
                     ?err,
-                    ?block_hash,
+                    ?block_header_hash,
                     "failed to download block with infinite retries"
                 );
             }
         }
+
+        fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
+    }
+}
+
+enum HandleSignaturesResult {
+    ContinueFetching,
+    HaveSufficient,
+}
+
+struct BlockSignaturesCollector(Option<BlockSignatures>);
+
+impl BlockSignaturesCollector {
+    fn new() -> Self {
+        Self(None)
+    }
+
+    fn add(&mut self, signatures: BlockSignatures) {
+        match &mut self.0 {
+            None => {
+                self.0 = Some(signatures);
+            }
+            Some(old_sigs) => {
+                for (pub_key, signature) in signatures.proofs {
+                    old_sigs.insert_proof(pub_key, signature);
+                }
+            }
+        }
+    }
+
+    fn check_if_sufficient(
+        &self,
+        validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+    ) -> bool {
+        self.0.as_ref().map_or(false, |sigs| {
+            are_signatures_sufficient_for_sync_to_genesis(
+                consensus::check_sufficient_finality_signatures(
+                    validator_weights,
+                    finality_threshold_fraction,
+                    sigs,
+                ),
+            )
+        })
+    }
+
+    fn into_inner(self) -> Option<BlockSignatures> {
+        self.0
+    }
+
+    /// Handles the new signatures fetched from peer.
+    /// The signatures are validated. In case they don't pass validation, the peer is disconnected
+    /// and the `ContinueFetching` is returned. Valid signatures are added to the buffer and then
+    /// checked for sufficiency. If they are sufficient `HaveSufficient` is returned, otherwise
+    /// `ContinueFetching` is returned.
+    async fn handle_incoming_signatures<REv>(
+        &mut self,
+        block_header: &BlockHeader,
+        signatures: BlockSignatures,
+        peer: NodeId,
+        ctx: &ChainSyncContext<'_, REv>,
+    ) -> Result<HandleSignaturesResult, Error>
+    where
+        REv: From<StorageRequest> + From<BlocklistAnnouncement>,
+    {
+        if signatures.proofs.is_empty() {
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+
+        let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
+            &block_header.era_id(),
+            ctx.config.last_emergency_restart(),
+        );
+
+        let switch_block_of_previous_era = ctx
+            .effect_builder
+            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+            .await
+            .ok_or(Error::NoSwitchBlockForEra {
+                era_id: era_for_validators_retrieval,
+            })?;
+
+        let validator_weights = switch_block_of_previous_era
+            .next_era_validator_weights()
+            .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                trusted_header: block_header.clone(),
+            })?;
+
+        if let Err(err) = consensus::validate_finality_signatures(&signatures, validator_weights) {
+            warn!(
+                ?peer,
+                ?err,
+                height = block_header.height(),
+                "peer sent invalid finality signatures, banning peer"
+            );
+            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+
+            // Try with next peer.
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+        self.add(signatures);
+
+        if self.check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction()) {
+            info!(
+                block_header_hash =
+                    ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
+                height = block_header.height(),
+                ?era_for_validators_retrieval,
+                "fetched sufficient finality signatures"
+            );
+            return Ok(HandleSignaturesResult::HaveSufficient);
+        }
+        Ok(HandleSignaturesResult::ContinueFetching)
+    }
+}
+
+// Returns true if the output from consensus can be interpreted
+// as sufficient finality signatures for the sync to genesis process.
+fn are_signatures_sufficient_for_sync_to_genesis(
+    consensus_verdict: Result<(), FinalitySignatureError>,
+) -> bool {
+    match consensus_verdict {
+        Ok(_) | Err(FinalitySignatureError::TooManySignatures { .. }) => true,
+        Err(_) => false,
+    }
+}
+
+// Fetches the finality signatures from the given peer. In case of timeout, it'll
+// retry up to `retries` times. Other errors interrupt the process immediately.
+async fn fetch_finality_signatures_with_retry<REv>(
+    block_hash: BlockHash,
+    peer: NodeId,
+    retries: usize,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<FetchedData<BlockSignatures>, FetcherError<BlockSignatures>>
+where
+    REv: From<FetcherRequest<BlockSignatures>>,
+{
+    for _ in 0..retries {
+        let maybe_signatures = ctx
+            .effect_builder
+            .fetch::<BlockSignatures>(block_hash, peer)
+            .await;
+        match maybe_signatures {
+            Ok(result) => return Ok(result),
+            Err(FetcherError::TimedOut { .. }) => continue,
+            Err(_) => return maybe_signatures,
+        }
+    }
+
+    Err(FetcherError::TimedOut {
+        id: block_hash,
+        peer,
+    })
+}
+
+async fn fetch_and_store_finality_signatures_by_block_header<REv>(
+    block_header: BlockHeader,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<BlocklistAnnouncement>,
+{
+    let start = Timestamp::now();
+    let peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+
+    let mut sig_collector = BlockSignaturesCollector::new();
+
+    let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+
+    for peer in peer_list {
+        let fetched_signatures = fetch_finality_signatures_with_retry(
+            block_header_hash,
+            peer,
+            FINALITY_SIGNATURE_FETCH_RETRY_COUNT,
+            ctx,
+        )
+        .await;
+
+        let signatures = match fetched_signatures {
+            Ok(FetchedData::FromStorage { .. }) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    "fetched FinalitySignatures from storage",
+                );
+                return Ok(());
+            }
+            Ok(FetchedData::FromPeer { item, .. }) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    "fetched FinalitySignatures from peer"
+                );
+                *item
+            }
+            Err(err) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    ?err,
+                    "error fetching FinalitySignatures"
+                );
+                continue;
+            }
+        };
+
+        match sig_collector
+            .handle_incoming_signatures(&block_header, signatures, peer, ctx)
+            .await?
+        {
+            HandleSignaturesResult::ContinueFetching => continue,
+            HandleSignaturesResult::HaveSufficient => break,
+        };
+    }
+    ctx.metrics
+        .observe_fetch_finality_signatures_duration_seconds(start);
+    if let Some(finality_signatures) = sig_collector.into_inner() {
+        ctx.effect_builder
+            .put_signatures_to_storage(finality_signatures)
+            .await;
+    }
+    Ok(())
+}
+
+/// Returns the EraId whose switch block should be used to obtain validator weights.
+fn get_era_id_for_validators_retrieval(
+    era_id: &EraId,
+    last_emergency_restart: Option<EraId>,
+) -> EraId {
+    // TODO: This function needs to handle multiple emergency restarts.
+    if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
+        // For eras > 0 which are not the last emergency restart eras we need to use validator set
+        // from the previous era
+        *era_id - 1
+    } else {
+        // When we're in era 0 or in the era of last emergency restart we
+        // use that era as a source for validators, because:
+        //
+        // 1) If we're in Era 0 there's no previous era, but since validators never change during
+        // that era we can safely use the Era 0's switch block.
+        //
+        // 2) In case of being in last emergency restart era, the validators from the previous era
+        // may no longer be valid.
+        *era_id
     }
 }
 
@@ -1577,6 +1844,7 @@ where
         + From<FetcherRequest<FinalizedApprovalsWithId>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     info!("fast syncing chain");
@@ -1653,7 +1921,9 @@ where
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalizedApprovalsWithId>>
         + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockSignatures>>
         + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     info!("starting chain sync to genesis");
@@ -1862,6 +2132,7 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<StorageRequest>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
@@ -1973,6 +2244,9 @@ where
                 )
                 .await;
         }
+        ctx.effect_builder
+            .mark_block_completed(block_and_execution_effects.block().height())
+            .await;
 
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
@@ -2268,5 +2542,96 @@ mod tests {
             }
             result => panic!("expected future block version error, got {:?}", result),
         }
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0), None)
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1), None)
+        );
+
+        assert_eq!(
+            EraId::from(1),
+            get_era_id_for_validators_retrieval(&EraId::from(2), None)
+        );
+
+        assert_eq!(
+            EraId::from(999),
+            get_era_id_for_validators_retrieval(&EraId::from(1000), None)
+        );
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators_when_emergency_restart() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0), Some(EraId::from(7)))
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1), Some(EraId::from(2)))
+        );
+
+        assert_eq!(
+            EraId::from(2),
+            get_era_id_for_validators_retrieval(&EraId::from(2), Some(EraId::from(2)))
+        );
+    }
+
+    #[test]
+    fn validates_signatures_sufficiency_for_sync_to_genesis() {
+        let consensus_verdict = Ok(());
+        assert!(are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
+
+        let mut rng = TestRng::new();
+        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            signature_weight: Box::new(U512::from(0u16)),
+            weight_minus_minimum: Box::new(U512::from(0u16)),
+            total_validator_weight: Box::new(U512::from(0u16)),
+            finality_threshold_fraction: Ratio::new_raw(1, 2),
+        });
+        assert!(are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
+
+        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            signature_weight: Box::new(U512::from(0u16)),
+            total_validator_weight: Box::new(U512::from(0u16)),
+            finality_threshold_fraction: Ratio::new_raw(1, 2),
+        });
+        assert!(!are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
+
+        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
+        });
+        assert!(!are_signatures_sufficient_for_sync_to_genesis(
+            consensus_verdict
+        ));
     }
 }
