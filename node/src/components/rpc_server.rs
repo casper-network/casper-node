@@ -18,6 +18,7 @@ mod config;
 mod event;
 mod http_server;
 pub mod rpcs;
+mod speculative_exec_config;
 mod speculative_exec_server;
 
 use std::{convert::Infallible, fmt::Debug, time::Instant};
@@ -51,6 +52,7 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use event::Event;
+pub use speculative_exec_config::Config as SpeculativeExecConfig;
 
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
@@ -93,6 +95,7 @@ pub(crate) struct RpcServer {
 impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
+        speculative_exec_config: SpeculativeExecConfig,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
@@ -110,15 +113,15 @@ impl RpcServer {
             config.max_body_bytes,
         ));
 
-        // QPS limit set to 0 disables the server.
-        if config.speculative_execution_qps_limit > 0 {
-            let builder = utils::start_listening(&config.speculative_execution_address)?;
+        // Set the speculative execution HTTP server up.
+        if speculative_exec_config.enable_server {
+            let builder = utils::start_listening(&speculative_exec_config.address)?;
             tokio::spawn(speculative_exec_server::run(
                 builder,
                 effect_builder,
                 api_version,
-                config.speculative_execution_qps_limit,
-                config.max_body_bytes,
+                speculative_exec_config.qps_limit,
+                speculative_exec_config.max_body_bytes,
             ));
         }
 

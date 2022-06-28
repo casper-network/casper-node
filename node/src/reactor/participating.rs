@@ -653,6 +653,7 @@ impl reactor::Reactor for Reactor {
         let protocol_version = chainspec.protocol_config.version;
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
+            config.speculative_exec_server.clone(),
             effect_builder,
             protocol_version,
             node_startup_instant,

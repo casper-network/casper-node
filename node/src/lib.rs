@@ -52,12 +52,16 @@ use rand::SeedableRng;
 use signal_hook::{consts::TERM_SIGNALS, flag};
 
 pub(crate) use components::{
-    block_proposer::Config as BlockProposerConfig, consensus::Config as ConsensusConfig,
+    block_proposer::Config as BlockProposerConfig,
+    consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
-    event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
-    gossiper::Config as GossipConfig, rest_server::Config as RestServerConfig,
-    rpc_server::Config as RpcServerConfig, small_network::Config as SmallNetworkConfig,
+    event_stream_server::Config as EventStreamServerConfig,
+    fetcher::Config as FetcherConfig,
+    gossiper::Config as GossipConfig,
+    rest_server::Config as RestServerConfig,
+    rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
+    small_network::Config as SmallNetworkConfig,
 };
 pub(crate) use types::NodeRng;
 
