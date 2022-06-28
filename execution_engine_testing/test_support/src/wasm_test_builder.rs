@@ -70,6 +70,7 @@ use casper_types::{
     DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
     StoredValue, Transfer, TransferAddr, URef, U512,
 };
+use tempfile::TempDir;
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
@@ -78,20 +79,24 @@ use crate::{
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
-const DEFAULT_LMDB_PAGES: usize = 256_000_000;
+pub(crate) const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 
 /// LMDB max readers
 ///
 /// The default value is chosen to be the same as the node itself.
-const DEFAULT_MAX_READERS: u32 = 512;
+pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
 /// Wasm test builder where state is held entirely in memory.
 pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
+
 /// Wasm test builder where state is held in LMDB.
 pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
+
+/// Wasm test builder where Lmdb state is held in a automatically cleaned up temporary directory.
+// pub type TempLmdbWasmTestBuilder = WasmTestBuilder<TemporaryLmdbGlobalState>;
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
@@ -117,6 +122,8 @@ pub struct WasmTestBuilder<S> {
     system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
     global_state_dir: Option<PathBuf>,
+    /// Temporary directory, for implementation that uses one.
+    temp_dir: Option<Rc<TempDir>>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -129,6 +136,12 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::new_with_chainspec(&*PRODUCTION_PATH, None)
+    }
+}
+
+impl Default for LmdbWasmTestBuilder {
+    fn default() -> Self {
+        Self::new_temporary_with_chainspec(&*PRODUCTION_PATH)
     }
 }
 
@@ -148,6 +161,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
+            temp_dir: self.temp_dir.clone(),
         }
     }
 }
@@ -173,6 +187,7 @@ impl InMemoryWasmTestBuilder {
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: None,
+            temp_dir: None,
         }
     }
 
@@ -197,6 +212,23 @@ impl InMemoryWasmTestBuilder {
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
 
         Self::new(global_state, engine_config, post_state_hash)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum GlobalStateMode {
+    /// Creates empty lmdb database with specified flags
+    Create(DatabaseFlags),
+    /// Opens existing database
+    Open(Digest),
+}
+
+impl GlobalStateMode {
+    fn post_state_hash(self) -> Option<Digest> {
+        match self {
+            GlobalStateMode::Create(_) => None,
+            GlobalStateMode::Open(post_state_hash) => Some(post_state_hash),
+        }
     }
 }
 
@@ -239,6 +271,7 @@ impl LmdbWasmTestBuilder {
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
+            temp_dir: None,
         }
     }
 
@@ -292,6 +325,62 @@ impl LmdbWasmTestBuilder {
         Self::open_raw(global_state_path, engine_config, post_state_hash)
     }
 
+    fn create_or_open<T: AsRef<Path>>(
+        global_state_dir: T,
+        engine_config: EngineConfig,
+        mode: GlobalStateMode,
+    ) -> Self {
+        Self::initialize_logging();
+        let page_size = *OS_PAGE_SIZE;
+
+        match mode {
+            GlobalStateMode::Create(_database_flags) => {}
+            GlobalStateMode::Open(_post_state_hash) => {
+                Self::create_global_state_dir(&global_state_dir)
+            }
+        }
+
+        let environment = LmdbEnvironment::new(
+            &global_state_dir,
+            page_size * DEFAULT_LMDB_PAGES,
+            DEFAULT_MAX_READERS,
+            true,
+        )
+        .expect("should create LmdbEnvironment");
+
+        let global_state = match mode {
+            GlobalStateMode::Create(database_flags) => {
+                let trie_store = LmdbTrieStore::new(&environment, None, database_flags)
+                    .expect("should open LmdbTrieStore");
+                LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store))
+                    .expect("should create LmdbGlobalState")
+            }
+            GlobalStateMode::Open(post_state_hash) => {
+                let trie_store =
+                    LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore");
+                LmdbGlobalState::new(Arc::new(environment), Arc::new(trie_store), post_state_hash)
+            }
+        };
+
+        // let global_state = LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store))
+        //     .expect("should create LmdbGlobalState");
+        let engine_state = EngineState::new(global_state, engine_config);
+        WasmTestBuilder {
+            engine_state: Rc::new(engine_state),
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
+            genesis_hash: None,
+            post_state_hash: mode.post_state_hash(),
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            scratch_engine_state: None,
+            system_contract_registry: None,
+            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
+            temp_dir: None,
+        }
+    }
+
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
     /// (e.g. in the Trie and Data stores) rather than creating them.
     /// Differs from `open` in that it doesn't append `GLOBAL_STATE_DIR` to the supplied path.
@@ -300,37 +389,52 @@ impl LmdbWasmTestBuilder {
         engine_config: EngineConfig,
         post_state_hash: Digest,
     ) -> Self {
-        Self::initialize_logging();
-        let page_size = *OS_PAGE_SIZE;
-        Self::create_global_state_dir(&global_state_dir);
-        let environment = Arc::new(
-            LmdbEnvironment::new(
-                &global_state_dir,
-                page_size * DEFAULT_LMDB_PAGES,
-                DEFAULT_MAX_READERS,
-                true,
-            )
-            .expect("should create LmdbEnvironment"),
-        );
-        let trie_store =
-            Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
+        Self::create_or_open(
+            global_state_dir,
+            engine_config,
+            GlobalStateMode::Open(post_state_hash),
+        )
+    }
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
-        let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: Some(post_state_hash),
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            scratch_engine_state: None,
-            system_contract_registry: None,
-            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
-        }
+    /// Creates new temporary lmdb builder with an engine config instance.
+    ///
+    /// Once [`LmdbWasmTestBuilder`] instance goes out of scope a global state directory will be
+    /// removed as well.
+    pub fn new_temporary_with_config(engine_config: EngineConfig) -> Self {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        let database_flags = DatabaseFlags::default();
+
+        let mut builder = Self::create_or_open(
+            temp_dir.path(),
+            engine_config,
+            GlobalStateMode::Create(database_flags),
+        );
+
+        builder.temp_dir = Some(Rc::new(temp_dir));
+
+        builder
+    }
+
+    /// Creates new temporary lmdb builder with a path to a chainspec to load.
+    ///
+    /// Once [`LmdbWasmTestBuilder`] instance goes out of scope a global state directory will be
+    /// removed as well.
+    pub fn new_temporary_with_chainspec<P: AsRef<Path>>(chainspec_path: P) -> Self {
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.core_config.minimum_delegation_amount,
+            chainspec_config.core_config.strict_argument_checking,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+        );
+
+        Self::new_temporary_with_config(engine_config)
     }
 
     fn create_global_state_dir<T: AsRef<Path>>(global_state_path: T) {

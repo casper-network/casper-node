@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, RuntimeArgs};
@@ -120,8 +120,8 @@ fn should_run_stored_named_keys_module_bytes_to_session_to_session() {
     builder.exec(exec_request_1).expect_success().commit();
 }
 
-fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

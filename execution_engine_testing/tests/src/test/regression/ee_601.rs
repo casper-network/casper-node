@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
@@ -27,7 +27,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)

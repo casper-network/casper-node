@@ -2,7 +2,7 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
@@ -52,7 +52,7 @@ fn should_transfer_to_account() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -105,7 +105,7 @@ fn should_transfer_to_public_key() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -156,7 +156,7 @@ fn should_transfer_to_public_key() {
 #[test]
 fn should_transfer_from_purse_to_public_key() {
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -235,7 +235,7 @@ fn should_transfer_from_account_to_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let builder = builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -325,7 +325,7 @@ fn should_transfer_to_existing_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let builder = builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -442,7 +442,7 @@ fn should_fail_when_insufficient_funds() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Exec transfer contract
@@ -469,7 +469,7 @@ fn should_fail_when_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_transfer_total_amount() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

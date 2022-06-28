@@ -5,7 +5,7 @@ use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
@@ -74,13 +74,13 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
     )
 });
 
-fn get_validator_bid(builder: &mut InMemoryWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
+fn get_validator_bid(builder: &mut LmdbWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
     let mut bids: Bids = builder.get_bids();
     bids.remove(&validator)
 }
 
 fn get_delegator_bid(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     validator: PublicKey,
     delegator: PublicKey,
 ) -> Option<Delegator> {
@@ -89,7 +89,7 @@ fn get_delegator_bid(
 }
 
 fn withdraw_bid(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     sender: AccountHash,
     validator: PublicKey,
     amount: U512,
@@ -110,7 +110,7 @@ fn withdraw_bid(
 }
 
 fn undelegate(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     sender: AccountHash,
     delegator: PublicKey,
     validator: PublicKey,
@@ -133,7 +133,7 @@ fn undelegate(
 }
 
 fn get_delegator_staked_amount(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     validator: PublicKey,
     delegator: PublicKey,
 ) -> U512 {
@@ -246,7 +246,7 @@ fn should_distribute_delegation_rate_zero() {
         delegator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -519,7 +519,7 @@ fn should_withdraw_bids_after_distribute() {
         delegator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -829,7 +829,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         delegator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1261,7 +1261,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         validator_3_add_bid_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1672,7 +1672,7 @@ fn should_distribute_delegation_rate_half() {
         delegator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1909,7 +1909,7 @@ fn should_distribute_delegation_rate_full() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -2103,7 +2103,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         delegator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -2340,7 +2340,7 @@ fn should_distribute_by_factor() {
         validator_3_add_bid_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -2566,7 +2566,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         validator_3_add_bid_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -2793,7 +2793,7 @@ fn should_distribute_by_factor_uneven() {
         validator_3_add_bid_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -3095,7 +3095,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         delegator_3_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -3408,7 +3408,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         delegator_1_validator_3_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -3868,7 +3868,7 @@ fn should_increase_total_supply_after_distribute() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -4047,7 +4047,7 @@ fn should_not_create_purses_during_distribute() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -4208,7 +4208,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -4393,7 +4393,7 @@ fn should_not_restake_after_full_unbond() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
@@ -4524,7 +4524,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.

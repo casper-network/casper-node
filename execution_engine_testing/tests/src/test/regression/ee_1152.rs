@@ -2,7 +2,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE,
     TIMESTAMP_MILLIS_INCREMENT,
@@ -79,7 +79,7 @@ fn should_run_ee_1152_regression_test() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 

@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{
@@ -27,8 +27,8 @@ static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SECRET_KEY));
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
 
-fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {
@@ -43,7 +43,7 @@ fn setup() -> InMemoryWasmTestBuilder {
 }
 
 fn exec_and_assert_costs(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     exec_request: ExecuteRequest,
     caller: Account,
     expected_tokens_paid: U512,

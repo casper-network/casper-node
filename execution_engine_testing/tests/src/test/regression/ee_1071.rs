@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::RuntimeArgs;
@@ -18,7 +18,7 @@ fn should_run_ee_1071_regression() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

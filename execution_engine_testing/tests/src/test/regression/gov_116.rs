@@ -4,7 +4,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -98,8 +98,8 @@ static GENESIS_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     tmp
 });
 
-fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn initialize_builder() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
     builder.run_genesis(&run_genesis_request);

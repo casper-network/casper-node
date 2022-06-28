@@ -2,8 +2,8 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
     DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
@@ -80,7 +80,7 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn add_bid_and_withdraw_bid_have_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -215,7 +215,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_system_config,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = {
@@ -318,7 +318,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 #[ignore]
 #[test]
 fn delegate_and_undelegate_have_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -510,7 +510,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_system_config,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -663,7 +663,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 #[ignore]
 #[test]
 fn mint_transfer_has_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -730,7 +730,7 @@ fn mint_transfer_has_expected_costs() {
 #[ignore]
 #[test]
 fn should_charge_for_erroneous_system_contract_calls() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -862,7 +862,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 #[ignore]
 #[test]
 fn should_verify_do_nothing_charges_only_for_standard_payment() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -902,7 +902,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 #[ignore]
 #[test]
 fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 

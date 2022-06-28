@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
@@ -11,7 +11,7 @@ const CONTRACT_REVERT: &str = "revert.wasm";
 #[ignore]
 #[test]
 fn should_not_transfer_above_approved_limit_in_payment_code() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = {

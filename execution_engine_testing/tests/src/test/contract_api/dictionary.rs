@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
@@ -21,8 +21,8 @@ const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
-fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -73,7 +73,7 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
 }
 
 fn query_dictionary_item(
-    builder: &InMemoryWasmTestBuilder,
+    builder: &LmdbWasmTestBuilder,
     key: Key,
     dictionary_name: Option<String>,
     dictionary_item_key: String,
@@ -446,7 +446,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 #[ignore]
 #[test]
 fn dictionary_put_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -489,7 +489,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 #[ignore]
 #[test]
 fn dictionary_get_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -558,7 +558,7 @@ fn should_query_dictionary_items_with_test_builder() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     builder.exec(exec_request).commit().expect_success();
