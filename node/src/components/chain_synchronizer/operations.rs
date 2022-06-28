@@ -1338,10 +1338,12 @@ impl BlockSignaturesCollector {
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
     ) -> Result<(), FinalitySignatureError> {
-        consensus::check_sufficient_finality_signatures(
-            validator_weights,
-            finality_threshold_fraction,
-            self.0.as_ref(),
+        are_signatures_sufficient_for_sync_to_genesis(
+            consensus::check_sufficient_finality_signatures(
+                validator_weights,
+                finality_threshold_fraction,
+                self.0.as_ref(),
+            ),
         )
     }
 
@@ -1350,11 +1352,13 @@ impl BlockSignaturesCollector {
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
     ) -> Result<(), FinalitySignatureError> {
-        consensus::check_sufficient_finality_signatures_with_quorum_formula(
-            validator_weights,
-            finality_threshold_fraction,
-            self.0.as_ref(),
-            std::convert::identity,
+        are_signatures_sufficient_for_sync_to_genesis(
+            consensus::check_sufficient_finality_signatures_with_quorum_formula(
+                validator_weights,
+                finality_threshold_fraction,
+                self.0.as_ref(),
+                std::convert::identity,
+            ),
         )
     }
 
@@ -1395,10 +1399,9 @@ impl BlockSignaturesCollector {
         }
         self.add(signatures);
 
-        if are_signatures_sufficient_for_sync_to_genesis(
-            self.check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction()),
-        )
-        .is_ok()
+        if self
+            .check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction())
+            .is_ok()
         {
             info!(
                 block_header_hash =
@@ -1531,11 +1534,9 @@ async fn fetch_and_store_finality_signatures_by_block_header(
     // finality signatures as valid when their total weight is at least
     // `finality_threshold_fraction` of the total validator weights.
     let (_, validator_weights) = era_validator_weights_for_block(&block_header, ctx).await?;
-    are_signatures_sufficient_for_sync_to_genesis(
-        sig_collector.check_if_sufficient_for_sync_to_genesis(
-            &validator_weights,
-            ctx.config.finality_threshold_fraction(),
-        ),
+    sig_collector.check_if_sufficient_for_sync_to_genesis(
+        &validator_weights,
+        ctx.config.finality_threshold_fraction(),
     )?;
     info!(
         height = block_header.height(),
