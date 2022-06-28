@@ -777,11 +777,7 @@ where
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
             Key::Unbond(_) => true,
-            Key::Dictionary(_) => {
-                // Dictionary is a special case that will not be readable by default, but the access
-                // bits are verified from within API call.
-                false
-            }
+            Key::Dictionary(_) => true,
             Key::SystemContractRegistry => true,
             Key::ChainspecRegistry => true,
         }
@@ -1187,11 +1183,18 @@ where
         }
 
         let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
+        self.read_dictionary_address(dictionary_key)
+    }
 
+    /// Gets a dictionary item key from a dictionary address `Key`.
+    pub(crate) fn read_dictionary_address(
+        &mut self,
+        dictionary_address: Key,
+    ) -> Result<Option<CLValue>, Error> {
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &dictionary_key)
+            .read(self.correlation_id, &dictionary_address)
             .map_err(Into::into)?;
 
         if let Some(stored_value) = maybe_stored_value {

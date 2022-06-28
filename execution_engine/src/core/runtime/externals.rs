@@ -998,6 +998,19 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
+            FunctionIndex::DictionaryReadAddress => {
+                // args(0) = pointer to key in Wasm memory
+                // args(1) = size of key in Wasm memory
+                // args(2) = pointer to output size (output param)
+                let (key_ptr, key_size, output_size_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.read_value,
+                    [key_ptr, key_size, output_size_ptr],
+                )?;
+                let ret = self.read_dictionary_address(key_ptr, key_size, output_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
             FunctionIndex::LoadCallStack => {
                 // args(0) (Output) Pointer to number of elements in the call stack.
                 // args(1) (Output) Pointer to size in bytes of the serialized call stack.

@@ -19,6 +19,7 @@ use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
 const DICTIONARY_WASM: &str = "dictionary.wasm";
 const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
+const DICTIONARY_READ: &str = "dictionary-read-address.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
@@ -648,4 +649,20 @@ fn should_query_dictionary_items_with_test_builder() {
         let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
+}
+
+#[ignore]
+#[test]
+fn should_be_able_to_read_dictionary_address() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let dictionary_session_call =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, DICTIONARY_READ, RuntimeArgs::new())
+            .build();
+
+    builder
+        .exec(dictionary_session_call)
+        .expect_success()
+        .commit();
 }
