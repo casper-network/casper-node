@@ -168,7 +168,7 @@ impl<C: Context> SignedMessage<C> {
 
 /// Partial information about the sender's protocol state. The receiver should send missing data.
 ///
-/// The sender chooses a random peer and a random era, and includes in its `SyncState` message
+/// The sender chooses a random peer and a random era, and includes in its `SyncRequest` message
 /// information about received proposals, echoes and votes. The idea is to set the `i`-th bit
 /// in the `u128` fields to `1` if we have a signature from the `i`-th validator.
 ///
@@ -185,7 +185,7 @@ impl<C: Context> SignedMessage<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct SyncState<C>
+pub(crate) struct SyncRequest<C>
 where
     C: Context,
 {
@@ -219,7 +219,7 @@ where
 pub(crate) enum Message<C: Context> {
     /// Partial information about the sender's protocol state. The receiver should send missing
     /// data.
-    SyncState(SyncState<C>),
+    SyncRequest(SyncRequest<C>),
     /// A proposal for a new block. This does not contain any signature; instead, the proposer is
     /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
     /// receive unless they either have a signed echo by the proposer and the proposer has not
@@ -236,13 +236,13 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
-    pub(super) fn new_empty_round_sync_state(
+    pub(super) fn new_empty_round_sync_request(
         round_id: RoundId,
         first_validator_idx: ValidatorIndex,
         faulty: u128,
         instance_id: C::InstanceId,
     ) -> Self {
-        Message::SyncState(SyncState {
+        Message::SyncRequest(SyncRequest {
             round_id,
             proposal_hash: None,
             has_proposal: false,
@@ -262,7 +262,7 @@ impl<C: Context> Message<C> {
 
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
-            Message::SyncState(SyncState { instance_id, .. })
+            Message::SyncRequest(SyncRequest { instance_id, .. })
             | Message::Signed(SignedMessage { instance_id, .. })
             | Message::Proposal { instance_id, .. }
             | Message::Evidence(SignedMessage { instance_id, .. }, ..) => instance_id,
