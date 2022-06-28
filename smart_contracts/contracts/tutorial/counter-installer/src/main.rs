@@ -83,14 +83,14 @@ pub extern "C" fn call() {
         Some("counter_access_uref".to_string()),
     );
 
-    // The current version of the contract will be reachable through named keys
-    let version_uref = storage::new_uref(contract_version);
-    runtime::put_key(CONTRACT_VERSION_KEY, version_uref.into());
-
     // To create a locked contract instead, use new_locked_contract and throw away the contract
     // version returned
     // let (stored_contract_hash, _) =
     //     storage::new_locked_contract(counter_entry_points, Some(counter_named_keys), None, None);
+
+    // The current version of the contract will be reachable through named keys
+    let version_uref = storage::new_uref(contract_version);
+    runtime::put_key(CONTRACT_VERSION_KEY, version_uref.into());
 
     // Hash of the installed contract will be reachable through named keys
     runtime::put_key(COUNTER_KEY, stored_contract_hash.into());

@@ -28,8 +28,8 @@ export function newDictionary(keyName: String): URef {
     }
     let urefBytes = readHostBuffer(outputSize[0]);
     const uref = URef.fromBytes(urefBytes).unwrap();
-    const key = Key.fromURef(uref);
-    CL.putKey(keyName, key);
+    const urefKey = Key.fromURef(uref);
+    CL.putKey(keyName, urefKey);
     return uref;
 }
 

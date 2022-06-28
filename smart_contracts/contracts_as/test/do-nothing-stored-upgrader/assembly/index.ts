@@ -15,11 +15,11 @@ const DO_NOTHING_PACKAGE_HASH_KEY_NAME = "do_nothing_package_hash";
 const DO_NOTHING_ACCESS_KEY_NAME = "do_nothing_access";
 
 export function delegate(): void {
-  let key = new Uint8Array(32);
+  let hashBytes = new Uint8Array(32);
   for (var i = 0; i < 32; i++) {
-    key[i] = 1;
+    hashBytes[i] = 1;
   }
-  CL.putKey("called_do_nothing_ver_2", Key.fromHash(key));
+  CL.putKey("called_do_nothing_ver_2", Key.fromHash(hashBytes));
   CreatePurse01.delegate();
 }
 

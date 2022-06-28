@@ -31,10 +31,10 @@ export function call(): void {
     PACKAGE_HASH_KEY_NAME,
     ACCESS_KEY_NAME,
   );
-  const key = Key.create(CLValue.fromI32(result.contractVersion));
-  if (!key) {
+  const versionKey = Key.create(CLValue.fromI32(result.contractVersion));
+  if (!versionKey) {
     return;
   }
-  CL.putKey(CONTRACT_VERSION, <Key>key);
+  CL.putKey(CONTRACT_VERSION, <Key>versionKey);
   CL.putKey(HASH_KEY_NAME, Key.fromHash(result.contractHash));
 }

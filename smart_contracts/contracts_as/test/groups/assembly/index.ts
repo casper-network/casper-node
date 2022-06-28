@@ -112,15 +112,15 @@ export function call_restricted_entry_points(): void {
 
 
 function createGroup(packageHash: Uint8Array): URef {
-  let key = Key.create(CLValue.fromU64(0));
-  if (!key) {
+  let valueKey = Key.create(CLValue.fromU64(0));
+  if (!valueKey) {
     Error.fromErrorCode(ErrorCode.Formatting).revert();
     throw 0;
   }
 
-  CL.putKey("saved_uref", key);
+  CL.putKey("saved_uref", valueKey);
 
-  let existingURefs: Array<URef> = [<URef>key.uref];
+  let existingURefs: Array<URef> = [<URef>valueKey.uref];
 
   let newURefs = CL.createContractUserGroup(
     packageHash,

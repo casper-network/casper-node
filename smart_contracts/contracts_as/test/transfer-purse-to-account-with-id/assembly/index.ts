@@ -70,8 +70,8 @@ export function delegate(): void {
         Error.fromUserError(<u16>CustomError.UnableToGetBalance).revert();
         return;
     }
-    const key = Key.create(CLValue.fromU512(<U512>maybeBalance));
-    putKey(MAIN_PURSE_FINAL_BALANCE_UREF_NAME, <Key>key);
+    const balanceKey = Key.create(CLValue.fromU512(<U512>maybeBalance));
+    putKey(MAIN_PURSE_FINAL_BALANCE_UREF_NAME, <Key>balanceKey);
 }
 
 export function call(): void {

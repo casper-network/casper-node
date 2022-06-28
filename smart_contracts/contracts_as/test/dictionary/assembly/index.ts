@@ -28,12 +28,12 @@ const DICTIONARY_REF = "new_dictionary";
 const MALICIOUS_KEY_NAME = "invalid dictionary name";
 
 function getDictionaryURef(): URef {
-  let key = CL.getKey(DICTIONARY_NAME);
-  if (!key) {
+  let dictionaryKey = CL.getKey(DICTIONARY_NAME);
+  if (!dictionaryKey) {
     Error.fromUserError(0).revert();
     throw 0;
   }
-  const dictionaryURef = key.uref;
+  const dictionaryURef = dictionaryKey.uref;
   if (!dictionaryURef) {
     Error.fromUserError(1).revert();
     throw 0;
@@ -161,8 +161,8 @@ export function call(): void {
     CONTRACT_PACKAGE_HASH_NAME,
     ACCESS_KEY_NAME,
   );
-  const key = Key.create(CLValue.fromI32(result.contractVersion));
-  if (!key) {
+  const purseKey = Key.create(CLValue.fromI32(result.contractVersion));
+  if (!purseKey) {
     return;
   }
   CL.putKey(CONTRACT_HASH_NAME, Key.fromHash(result.contractHash));

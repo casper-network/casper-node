@@ -6,13 +6,12 @@ import { RuntimeArgs } from "../../../../contract_as/assembly/runtime_args";
 import { Pair } from "../../../../contract_as/assembly/pair";
 import { PublicKey } from "../../../../contract_as/assembly/public_key";
 
+const ARG_AMOUNT = "amount";
+const ARG_PUBLIC_KEY = "public_key";
+const ARG_UNBOND_PURSE = "unbond_purse";
+const METHOD_WITHDRAW_BID = "withdraw_bid";
 
 export function call(): void {
-    const ARG_AMOUNT = "amount";
-    const ARG_PUBLIC_KEY = "public_key";
-    const ARG_UNBOND_PURSE = "unbond_purse";
-    const METHOD_WITHDRAW_BID = "withdraw_bid";
-
     let auction = CL.getSystemContract(CL.SystemContract.Auction);
 
     let publicKeyBytes = CL.getNamedArg(ARG_PUBLIC_KEY);

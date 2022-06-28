@@ -18,11 +18,11 @@ export function delegate(): void {
       return;
     }
     let purseName = purseNameResult.value;
-  
+
     const purse = createPurse();
-  
-    const key = Key.fromURef(purse);
-    putKey(purseName, <Key>key);
+
+    const purseKey = Key.fromURef(purse);
+    putKey(purseName, <Key>purseKey);
 }
 
 export function call(): void {

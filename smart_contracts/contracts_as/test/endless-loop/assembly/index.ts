@@ -6,8 +6,8 @@ import { CLValue, CLTypeTag, CLType } from "../../../../contract_as/assembly/clv
 import { U512 } from "../../../../contract_as/assembly/bignum";
 
 export function call(): void {
-  let key = Key.create(new CLValue(new Array<u8>(0), new CLType(CLTypeTag.Unit)));
-  if (!key) {
+  let newURefKey = Key.create(new CLValue(new Array<u8>(0), new CLType(CLTypeTag.Unit)));
+  if (!newURefKey) {
     Error.fromErrorCode(ErrorCode.Unhandled).revert();
     return;
   }
@@ -17,6 +17,6 @@ export function call(): void {
 
   while (true) {
     getMainPurse();
-    key.write(new CLValue(serialized, CLType.list(new CLType(CLTypeTag.U8))));
+    newURefKey.write(new CLValue(serialized, CLType.list(new CLType(CLTypeTag.U8))));
   }
 }
