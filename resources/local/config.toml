@@ -221,6 +221,9 @@ finalized_approvals_responses = 0
 # ==================================================
 [rpc_server]
 
+# Flag which enables the JSON-RPC HTTP server.
+enable_server = true
+
 # Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
@@ -250,6 +253,9 @@ speculative_execution_qps_limit = 0
 # ==============================================
 [rest_server]
 
+# Flag which enables the REST HTTP server.
+enable_server = true
+
 # Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
@@ -267,6 +273,9 @@ qps_limit = 100
 # Configuration options for the SSE HTTP event stream server
 # ==========================================================
 [event_stream_server]
+
+# Flag which enables the SSE HTTP event stream server.
+enable_server = true
 
 # Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
 #

@@ -20,6 +20,8 @@ const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Setting to enable the HTTP server.
+    pub enable_server: bool,
     /// Address to bind JSON-RPC HTTP server to.
     pub address: String,
     /// Maximum rate limit in queries per second.
@@ -36,6 +38,7 @@ impl Config {
     /// Creates a default instance for `RpcServer`.
     pub fn new() -> Self {
         Config {
+            enable_server: true,
             address: DEFAULT_ADDRESS.to_string(),
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
