@@ -1436,8 +1436,9 @@ async fn era_validator_weights_for_block<'a>(
         })?;
     let validator_weights = switch_block_of_previous_era
         .next_era_validator_weights()
-        .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-            trusted_header: block_header.clone(),
+        .ok_or(Error::MissingNextEraValidators {
+            height: switch_block_of_previous_era.height(),
+            era_id: era_for_validators_retrieval,
         })?;
     Ok((era_for_validators_retrieval, validator_weights.clone()))
 }
