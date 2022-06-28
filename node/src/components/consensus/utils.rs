@@ -129,12 +129,12 @@ where
 pub(crate) fn check_sufficient_finality_signatures(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
-    block_signatures: &BlockSignatures,
+    block_signatures: Option<&BlockSignatures>,
 ) -> Result<(), FinalitySignatureError> {
     check_sufficient_finality_signatures_with_quorum_formula(
         trusted_validator_weights,
         finality_threshold_fraction,
-        Some(block_signatures),
+        block_signatures,
         quorum_fraction,
     )
 }
@@ -263,7 +263,7 @@ mod tests {
 
         // If the initial set has too few signatures, the result should be `None`.
         let sigs = create_signatures(rng, &keys, threshold.saturating_sub(1));
-        assert!(check_sufficient_finality_signatures(&weights, ftt, &sigs).is_err());
+        assert!(check_sufficient_finality_signatures(&weights, ftt, Some(&sigs)).is_err());
         let minimal_set = get_minimal_set_of_signatures(&weights, ftt, sigs);
         assert!(minimal_set.is_none());
 
@@ -274,7 +274,7 @@ mod tests {
         assert!(minimal_set.is_some());
         let minimal_set = minimal_set.unwrap();
         assert_eq!(minimal_set.proofs.len(), threshold);
-        assert!(check_sufficient_finality_signatures(&weights, ftt, &minimal_set).is_ok());
+        assert!(check_sufficient_finality_signatures(&weights, ftt, Some(&minimal_set)).is_ok());
 
         // Same if we were over the threshold initially.
         let sigs = create_signatures(rng, &keys, threshold.saturating_add(1));
@@ -282,7 +282,7 @@ mod tests {
         assert!(minimal_set.is_some());
         let minimal_set = minimal_set.unwrap();
         assert_eq!(minimal_set.proofs.len(), threshold);
-        assert!(check_sufficient_finality_signatures(&weights, ftt, &minimal_set).is_ok());
+        assert!(check_sufficient_finality_signatures(&weights, ftt, Some(&minimal_set)).is_ok());
     }
 
     #[test]
@@ -350,7 +350,7 @@ mod tests {
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
-            &insufficient,
+            Some(&insufficient),
         );
         assert!(matches!(
             result,
@@ -366,14 +366,14 @@ mod tests {
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
-            &just_enough_weight,
+            Some(&just_enough_weight),
         );
         assert!(result.is_ok());
 
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
-            &too_many,
+            Some(&too_many),
         );
         assert!(matches!(
             result,
@@ -508,7 +508,7 @@ mod tests {
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
-            &signatures,
+            Some(&signatures),
         );
         assert!(result.is_ok());
 
@@ -518,7 +518,7 @@ mod tests {
         let result = check_sufficient_finality_signatures(
             &validator_weights,
             finality_threshold_fraction,
-            &signatures,
+            Some(&signatures),
         );
         assert!(matches!(
             result,

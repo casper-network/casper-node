@@ -606,7 +606,7 @@ where
                 if let Err(error) = consensus::check_sufficient_finality_signatures(
                     trusted_key_block_info.validator_weights(),
                     ctx.config.finality_threshold_fraction(),
-                    item.finality_signatures(),
+                    Some(item.finality_signatures()),
                 ) {
                     warn!(?error, ?peer, "insufficient finality signatures from peer");
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
@@ -1337,15 +1337,12 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> bool {
-        self.0.as_ref().map_or(false, |sigs| {
-            consensus::check_sufficient_finality_signatures(
-                validator_weights,
-                finality_threshold_fraction,
-                sigs,
-            )
-            .is_ok()
-        })
+    ) -> Result<(), FinalitySignatureError> {
+        consensus::check_sufficient_finality_signatures(
+            validator_weights,
+            finality_threshold_fraction,
+            self.0.as_ref(),
+        )
     }
 
     fn check_if_sufficient_for_sync_to_genesis(
@@ -1398,7 +1395,11 @@ impl BlockSignaturesCollector {
         }
         self.add(signatures);
 
-        if self.check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction()) {
+        if are_signatures_sufficient_for_sync_to_genesis(
+            self.check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction()),
+        )
+        .is_ok()
+        {
             info!(
                 block_header_hash =
                     ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
@@ -1406,9 +1407,10 @@ impl BlockSignaturesCollector {
                 ?era_for_validators_retrieval,
                 "fetched sufficient finality signatures"
             );
-            return Ok(HandleSignaturesResult::HaveSufficient);
+            Ok(HandleSignaturesResult::HaveSufficient)
+        } else {
+            Ok(HandleSignaturesResult::ContinueFetching)
         }
-        Ok(HandleSignaturesResult::ContinueFetching)
     }
 }
 
@@ -1546,8 +1548,8 @@ async fn fetch_and_store_finality_signatures_by_block_header(
 // Returns true if the output from consensus can be interpreted
 // as "sufficient finality signatures for the sync to genesis process".
 // We need to make sure that for "sync_to_genesis" the `TooManySignatures` error should
-// be interpreted as Ok, because any number of signatures equal to or greater than
-// `finality_threshold_fraction` is correct.
+// be interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that
+// protects against peers that send too many finality signatures during normal chain operation).
 fn are_signatures_sufficient_for_sync_to_genesis(
     result: Result<(), FinalitySignatureError>,
 ) -> Result<(), FinalitySignatureError> {
