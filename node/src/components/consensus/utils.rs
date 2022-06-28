@@ -39,7 +39,7 @@ fn quorum_fraction(finality_threshold_fraction: Ratio<u64>) -> Ratio<u64> {
 pub(crate) fn check_sufficient_finality_signatures_with_quorum_formula<F>(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,
-    block_signatures: &BlockSignatures,
+    maybe_block_signatures: Option<&BlockSignatures>,
     quorum_formula: F,
 ) -> Result<(), FinalitySignatureError>
 where
@@ -48,63 +48,77 @@ where
     // Calculate the weight of the signatures
     let mut signature_weight: U512 = U512::zero();
     let mut minimum_weight: Option<U512> = None;
-    for (public_key, _) in block_signatures.proofs.iter() {
-        match trusted_validator_weights.get(public_key) {
-            None => {
-                return Err(FinalitySignatureError::BogusValidator {
-                    trusted_validator_weights: trusted_validator_weights.clone(),
-                    block_signatures: Box::new(block_signatures.clone()),
-                    bogus_validator_public_key: Box::new(public_key.clone()),
-                });
-            }
-            Some(validator_weight) => {
-                if minimum_weight.map_or(true, |min_w| *validator_weight < min_w) {
-                    minimum_weight = Some(*validator_weight);
-                }
-                signature_weight += *validator_weight;
-            }
-        }
-    }
 
-    let weight_minus_minimum = signature_weight - minimum_weight.unwrap_or_else(U512::zero);
-
-    // Check the finality signatures have sufficient weight
     let total_weight: U512 = trusted_validator_weights
         .iter()
         .map(|(_, weight)| *weight)
         .sum();
 
-    let quorum_fraction = (quorum_formula)(finality_threshold_fraction);
-    // Verify: signature_weight / total_weight >= lower_bound
-    // Equivalent to the following
-    if signature_weight * U512::from(*quorum_fraction.denom())
-        <= total_weight * U512::from(*quorum_fraction.numer())
-    {
-        return Err(FinalitySignatureError::InsufficientWeightForFinality {
-            trusted_validator_weights: trusted_validator_weights.clone(),
-            block_signatures: Box::new(block_signatures.clone()),
-            signature_weight: Box::new(signature_weight),
-            total_validator_weight: Box::new(total_weight),
-            finality_threshold_fraction,
-        });
-    }
+    match maybe_block_signatures {
+        Some(block_signatures) => {
+            for (public_key, _) in block_signatures.proofs.iter() {
+                match trusted_validator_weights.get(public_key) {
+                    None => {
+                        return Err(FinalitySignatureError::BogusValidator {
+                            trusted_validator_weights: trusted_validator_weights.clone(),
+                            block_signatures: Box::new(block_signatures.clone()),
+                            bogus_validator_public_key: Box::new(public_key.clone()),
+                        });
+                    }
+                    Some(validator_weight) => {
+                        if minimum_weight.map_or(true, |min_w| *validator_weight < min_w) {
+                            minimum_weight = Some(*validator_weight);
+                        }
+                        signature_weight += *validator_weight;
+                    }
+                }
+            }
+            let weight_minus_minimum = signature_weight - minimum_weight.unwrap_or_else(U512::zero);
 
-    // Verify: the total weight decreased by the smallest weight of a single signature should be
-    // below threshold (anti-spam countermeasure).
-    if weight_minus_minimum * U512::from(*quorum_fraction.denom())
-        > total_weight * U512::from(*quorum_fraction.numer())
-    {
-        return Err(FinalitySignatureError::TooManySignatures {
-            trusted_validator_weights: trusted_validator_weights.clone(),
-            block_signatures: Box::new(block_signatures.clone()),
-            signature_weight: Box::new(signature_weight),
-            weight_minus_minimum: Box::new(weight_minus_minimum),
-            total_validator_weight: Box::new(total_weight),
-            finality_threshold_fraction,
-        });
-    }
+            let quorum_fraction = (quorum_formula)(finality_threshold_fraction);
+            // Verify: signature_weight / total_weight >= lower_bound
+            // Equivalent to the following
+            if signature_weight * U512::from(*quorum_fraction.denom())
+                <= total_weight * U512::from(*quorum_fraction.numer())
+            {
+                return Err(FinalitySignatureError::InsufficientWeightForFinality {
+                    trusted_validator_weights: trusted_validator_weights.clone(),
+                    block_signatures: maybe_block_signatures
+                        .map(|signatures| Box::new(signatures.clone())),
+                    signature_weight: Some(Box::new(signature_weight)),
+                    total_validator_weight: Box::new(total_weight),
+                    finality_threshold_fraction,
+                });
+            }
 
-    Ok(())
+            // Verify: the total weight decreased by the smallest weight of a single signature
+            // should be below threshold (anti-spam countermeasure).
+            if weight_minus_minimum * U512::from(*quorum_fraction.denom())
+                > total_weight * U512::from(*quorum_fraction.numer())
+            {
+                return Err(FinalitySignatureError::TooManySignatures {
+                    trusted_validator_weights: trusted_validator_weights.clone(),
+                    block_signatures: Box::new(block_signatures.clone()),
+                    signature_weight: Box::new(signature_weight),
+                    weight_minus_minimum: Box::new(weight_minus_minimum),
+                    total_validator_weight: Box::new(total_weight),
+                    finality_threshold_fraction,
+                });
+            }
+
+            Ok(())
+        }
+        None => {
+            // No signatures provided, return early.
+            Err(FinalitySignatureError::InsufficientWeightForFinality {
+                trusted_validator_weights: trusted_validator_weights.clone(),
+                block_signatures: None,
+                signature_weight: None,
+                total_validator_weight: Box::new(total_weight),
+                finality_threshold_fraction,
+            })
+        }
+    }
 }
 
 /// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold calculated by
@@ -120,7 +134,7 @@ pub(crate) fn check_sufficient_finality_signatures(
     check_sufficient_finality_signatures_with_quorum_formula(
         trusted_validator_weights,
         finality_threshold_fraction,
-        block_signatures,
+        Some(block_signatures),
         quorum_fraction,
     )
 }
@@ -346,7 +360,7 @@ mod tests {
                 signature_weight,
                 total_validator_weight,
                 finality_threshold_fraction: _
-            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == INSUFFICIENT_FINALITY_SIGNATURES.into()
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && **signature_weight.as_ref().unwrap() == INSUFFICIENT_FINALITY_SIGNATURES.into()
         ));
 
         let result = check_sufficient_finality_signatures(
@@ -411,7 +425,7 @@ mod tests {
         let result = check_sufficient_finality_signatures_with_quorum_formula(
             &validator_weights,
             finality_threshold_fraction,
-            &insufficient,
+            Some(&insufficient),
             custom_quorum_formula,
         );
         assert!(matches!(
@@ -422,13 +436,13 @@ mod tests {
                 signature_weight,
                 total_validator_weight,
                 finality_threshold_fraction: _
-            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == INSUFFICIENT_FINALITY_SIGNATURES.into()
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && **signature_weight.as_ref().unwrap() == INSUFFICIENT_FINALITY_SIGNATURES.into()
         ));
 
         let result = check_sufficient_finality_signatures_with_quorum_formula(
             &validator_weights,
             finality_threshold_fraction,
-            &just_enough_weight,
+            Some(&just_enough_weight),
             custom_quorum_formula,
         );
         assert!(result.is_ok());
@@ -436,7 +450,7 @@ mod tests {
         let result = check_sufficient_finality_signatures_with_quorum_formula(
             &validator_weights,
             finality_threshold_fraction,
-            &too_many,
+            Some(&too_many),
             custom_quorum_formula,
         );
         assert!(matches!(
@@ -449,6 +463,32 @@ mod tests {
                 total_validator_weight,
                 finality_threshold_fraction: _
             }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == TOO_MANY_FINALITY_SIGNATURES.into()
+        ));
+    }
+
+    #[test]
+    fn finality_signatures_sufficiency_with_quorum_formula_without_signatures() {
+        const TOTAL_VALIDATORS: usize = 20;
+        const TOTAL_VALIDATORS_WEIGHT: usize = TOTAL_VALIDATORS * TEST_VALIDATOR_WEIGHT;
+        let (_, validator_weights) = generate_validators(TOTAL_VALIDATORS_WEIGHT);
+        let finality_threshold_fraction = Ratio::new_raw(1, 3);
+        let custom_quorum_formula = std::convert::identity;
+
+        let result = check_sufficient_finality_signatures_with_quorum_formula(
+            &validator_weights,
+            finality_threshold_fraction,
+            None,
+            custom_quorum_formula,
+        );
+        assert!(matches!(
+            result,
+            Err(FinalitySignatureError::InsufficientWeightForFinality {
+                trusted_validator_weights: _,
+                block_signatures,
+                signature_weight,
+                total_validator_weight,
+                finality_threshold_fraction: _
+            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && signature_weight.is_none() && block_signatures.is_none()
         ));
     }
 

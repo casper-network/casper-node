@@ -1307,6 +1307,7 @@ async fn fetch_block_worker(
     }
 }
 
+#[derive(Clone, Debug)]
 enum HandleSignaturesResult {
     ContinueFetching,
     HaveSufficient,
@@ -1338,14 +1339,26 @@ impl BlockSignaturesCollector {
         finality_threshold_fraction: Ratio<u64>,
     ) -> bool {
         self.0.as_ref().map_or(false, |sigs| {
-            are_signatures_sufficient_for_sync_to_genesis(
-                check_sufficient_finality_signatures_for_sync_to_genesis(
-                    validator_weights,
-                    finality_threshold_fraction,
-                    sigs,
-                ),
+            consensus::check_sufficient_finality_signatures(
+                validator_weights,
+                finality_threshold_fraction,
+                sigs,
             )
+            .is_ok()
         })
+    }
+
+    fn check_if_sufficient_for_sync_to_genesis(
+        &self,
+        validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+    ) -> Result<(), FinalitySignatureError> {
+        consensus::check_sufficient_finality_signatures_with_quorum_formula(
+            validator_weights,
+            finality_threshold_fraction,
+            self.0.as_ref(),
+            std::convert::identity,
+        )
     }
 
     fn into_inner(self) -> Option<BlockSignatures> {
@@ -1368,26 +1381,10 @@ impl BlockSignaturesCollector {
             return Ok(HandleSignaturesResult::ContinueFetching);
         }
 
-        let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
-            &block_header.era_id(),
-            ctx.config.last_emergency_restart(),
-        );
+        let (era_for_validators_retrieval, validator_weights) =
+            era_validator_weights_for_block(block_header, ctx).await?;
 
-        let switch_block_of_previous_era = ctx
-            .effect_builder
-            .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-            .await
-            .ok_or(Error::NoSwitchBlockForEra {
-                era_id: era_for_validators_retrieval,
-            })?;
-
-        let validator_weights = switch_block_of_previous_era
-            .next_era_validator_weights()
-            .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                trusted_header: block_header.clone(),
-            })?;
-
-        if let Err(err) = consensus::validate_finality_signatures(&signatures, validator_weights) {
+        if let Err(err) = consensus::validate_finality_signatures(&signatures, &validator_weights) {
             warn!(
                 ?peer,
                 ?err,
@@ -1401,7 +1398,7 @@ impl BlockSignaturesCollector {
         }
         self.add(signatures);
 
-        if self.check_if_sufficient(validator_weights, ctx.config.finality_threshold_fraction()) {
+        if self.check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction()) {
             info!(
                 block_header_hash =
                     ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
@@ -1415,34 +1412,29 @@ impl BlockSignaturesCollector {
     }
 }
 
-/// In the "sync to genesis" process, we need to consider finality signatures as valid when
-/// their total weight is at least `finality_threshold_fraction` of the total validator weights.
-///
-/// Please note that this is a relaxed requirement compared to the normal (non "sync to genesis")
-/// chain operation where we use the [quorum fraction](consensus::utils::quorum_fraction) calculated
-/// from the `finality_threshold_fraction` parameter.
-fn check_sufficient_finality_signatures_for_sync_to_genesis(
-    validator_weights: &BTreeMap<PublicKey, U512>,
-    finality_threshold_fraction: Ratio<u64>,
-    sigs: &BlockSignatures,
-) -> Result<(), FinalitySignatureError> {
-    consensus::check_sufficient_finality_signatures_with_quorum_formula(
-        validator_weights,
-        finality_threshold_fraction,
-        sigs,
-        std::convert::identity,
-    )
-}
-
-// Returns true if the output from consensus can be interpreted
-// as sufficient finality signatures for the sync to genesis process.
-fn are_signatures_sufficient_for_sync_to_genesis(
-    consensus_verdict: Result<(), FinalitySignatureError>,
-) -> bool {
-    match consensus_verdict {
-        Ok(_) | Err(FinalitySignatureError::TooManySignatures { .. }) => true,
-        Err(_) => false,
-    }
+/// Reads the validator weights that should be used to check the finality signatures for the given
+/// block.
+async fn era_validator_weights_for_block<'a>(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error> {
+    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
+        &block_header.era_id(),
+        ctx.config.last_emergency_restart(),
+    );
+    let switch_block_of_previous_era = ctx
+        .effect_builder
+        .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+        .await
+        .ok_or(Error::NoSwitchBlockForEra {
+            era_id: era_for_validators_retrieval,
+        })?;
+    let validator_weights = switch_block_of_previous_era
+        .next_era_validator_weights()
+        .ok_or(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+            trusted_header: block_header.clone(),
+        })?;
+    Ok((era_for_validators_retrieval, validator_weights.clone()))
 }
 
 // Fetches the finality signatures from the given peer. In case of timeout, it'll
@@ -1498,6 +1490,8 @@ async fn fetch_and_store_finality_signatures_by_block_header(
                     ?peer,
                     "fetched FinalitySignatures from storage",
                 );
+                // We're guaranteed that if the signatures are in our local storage, they fulfill
+                // the sufficiency requirement for the default quorum fraction.
                 return Ok(());
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
@@ -1519,22 +1513,65 @@ async fn fetch_and_store_finality_signatures_by_block_header(
             }
         };
 
-        match sig_collector
+        if let HandleSignaturesResult::HaveSufficient = sig_collector
             .handle_incoming_signatures(&block_header, signatures, peer, ctx)
             .await?
         {
-            HandleSignaturesResult::ContinueFetching => continue,
-            HandleSignaturesResult::HaveSufficient => break,
+            // Sufficient signatures were fetched from peers, store them and finish fetching for
+            // this block.
+            finalize_finality_signature_fetch(ctx, start, sig_collector).await;
+            return Ok(());
         };
     }
+
+    // We run out of peers, but still don't have sufficient finality signatures according to the
+    // default quorum fraction. However, in the "sync to genesis" process, we can consider
+    // finality signatures as valid when their total weight is at least
+    // `finality_threshold_fraction` of the total validator weights.
+    let (_, validator_weights) = era_validator_weights_for_block(&block_header, ctx).await?;
+    are_signatures_sufficient_for_sync_to_genesis(
+        sig_collector.check_if_sufficient_for_sync_to_genesis(
+            &validator_weights,
+            ctx.config.finality_threshold_fraction(),
+        ),
+    )?;
+    info!(
+        height = block_header.height(),
+        "block below default finality signatures threshold, but enough for sync to genesis"
+    );
+    finalize_finality_signature_fetch(ctx, start, sig_collector).await;
+    Ok(())
+}
+
+// Returns true if the output from consensus can be interpreted
+// as "sufficient finality signatures for the sync to genesis process".
+// We need to make sure that for "sync_to_genesis" the `TooManySignatures` error should
+// be interpreted as Ok, because any number of signatures equal to or greater than
+// `finality_threshold_fraction` is correct.
+fn are_signatures_sufficient_for_sync_to_genesis(
+    result: Result<(), FinalitySignatureError>,
+) -> Result<(), FinalitySignatureError> {
+    match result {
+        Err(err) if !matches!(err, FinalitySignatureError::TooManySignatures { .. }) => Err(err),
+        Err(_) | Ok(_) => Ok(()),
+    }
+}
+
+// Puts the signatures to storage and updates the fetch metric.
+async fn finalize_finality_signature_fetch(
+    ctx: &ChainSyncContext<'_>,
+    start: Timestamp,
+    sig_collector: BlockSignaturesCollector,
+) {
     ctx.metrics
         .observe_fetch_finality_signatures_duration_seconds(start);
     if let Some(finality_signatures) = sig_collector.into_inner() {
+        let block_hash = finality_signatures.block_hash;
         ctx.effect_builder
             .put_signatures_to_storage(finality_signatures)
             .await;
+        trace!(?block_hash, "stored FinalitySignatures");
     }
-    Ok(())
 }
 
 /// Returns the EraId whose switch block should be used to obtain validator weights.
@@ -2202,9 +2239,7 @@ mod tests {
     #[test]
     fn validates_signatures_sufficiency_for_sync_to_genesis() {
         let consensus_verdict = Ok(());
-        assert!(are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdict
-        ));
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
         let mut rng = TestRng::new();
         let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
@@ -2218,23 +2253,19 @@ mod tests {
             total_validator_weight: Box::new(U512::from(0u16)),
             finality_threshold_fraction: Ratio::new_raw(1, 2),
         });
-        assert!(are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdict
-        ));
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
         let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
             trusted_validator_weights: BTreeMap::new(),
-            block_signatures: Box::new(BlockSignatures::new(
+            block_signatures: Some(Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
                 EraId::from(0),
-            )),
-            signature_weight: Box::new(U512::from(0u16)),
+            ))),
+            signature_weight: Some(Box::new(U512::from(0u16))),
             total_validator_weight: Box::new(U512::from(0u16)),
             finality_threshold_fraction: Ratio::new_raw(1, 2),
         });
-        assert!(!are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdict
-        ));
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
 
         let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
             trusted_validator_weights: BTreeMap::new(),
@@ -2244,8 +2275,6 @@ mod tests {
             )),
             bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
         });
-        assert!(!are_signatures_sufficient_for_sync_to_genesis(
-            consensus_verdict
-        ));
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
     }
 }
