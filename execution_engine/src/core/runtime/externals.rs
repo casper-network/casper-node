@@ -998,7 +998,7 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
-            FunctionIndex::DictionaryReadAddress => {
+            FunctionIndex::DictionaryReadFuncIndex => {
                 // args(0) = pointer to key in Wasm memory
                 // args(1) = size of key in Wasm memory
                 // args(2) = pointer to output size (output param)
@@ -1007,7 +1007,7 @@ where
                     &host_function_costs.read_value,
                     [key_ptr, key_size, output_size_ptr],
                 )?;
-                let ret = self.read_dictionary_address(key_ptr, key_size, output_size_ptr)?;
+                let ret = self.dictionary_read(key_ptr, key_size, output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 

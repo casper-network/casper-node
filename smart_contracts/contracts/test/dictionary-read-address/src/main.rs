@@ -25,7 +25,7 @@ pub extern "C" fn call() {
     );
     let dictionary_address_key =
         Key::dictionary(dictionary_seed_uref, DICTIONARY_ITEM_KEY.as_bytes());
-    let value_via_read_address: String = storage::read_dictionary_address(dictionary_address_key)
+    let value_via_read_address: String = storage::dictionary_read(dictionary_address_key)
         .unwrap_or_revert()
         .unwrap_or_revert();
     let value_via_get: String = storage::dictionary_get(dictionary_seed_uref, DICTIONARY_ITEM_KEY)

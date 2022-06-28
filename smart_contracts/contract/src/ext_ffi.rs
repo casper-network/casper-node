@@ -778,7 +778,7 @@ extern "C" {
     /// * `key_ptr` - pointer (offset in wasm linear memory) to serialized form of the key to read
     /// * `key_size` - size of the serialized key (in bytes)
     /// * `output_size` - pointer to a value where host will write size of bytes read from given key
-    pub fn casper_read_dictionary_address(
+    pub fn casper_dictionary_read(
         key_ptr: *const u8,
         key_size: usize,
         output_size: *mut usize,

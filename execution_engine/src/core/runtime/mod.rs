@@ -2820,7 +2820,7 @@ where
     }
 
     /// Reads the `value` under a `key` in a dictionary.
-    fn read_dictionary_address(
+    fn dictionary_read(
         &mut self,
         key_ptr: u32,
         key_size: u32,
@@ -2832,7 +2832,7 @@ where
         }
 
         let dictionary_address = self.key_from_mem(key_ptr, key_size)?;
-        let cl_value = match self.context.read_dictionary_address(dictionary_address)? {
+        let cl_value = match self.context.dictionary_read(dictionary_address)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };

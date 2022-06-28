@@ -653,7 +653,7 @@ fn should_query_dictionary_items_with_test_builder() {
 
 #[ignore]
 #[test]
-fn should_be_able_to_read_dictionary_address() {
+fn should_be_able_to_perform_dictionary_read() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

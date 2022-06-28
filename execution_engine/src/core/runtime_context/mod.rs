@@ -1183,18 +1183,18 @@ where
         }
 
         let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
-        self.read_dictionary_address(dictionary_key)
+        self.dictionary_read(dictionary_key)
     }
 
-    /// Gets a dictionary item key from a dictionary address `Key`.
-    pub(crate) fn read_dictionary_address(
+    /// Gets a dictionary value from a dictionary `Key`.
+    pub(crate) fn dictionary_read(
         &mut self,
-        dictionary_address: Key,
+        dictionary_key: Key,
     ) -> Result<Option<CLValue>, Error> {
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &dictionary_address)
+            .read(self.correlation_id, &dictionary_key)
             .map_err(Into::into)?;
 
         if let Some(stored_value) = maybe_stored_value {

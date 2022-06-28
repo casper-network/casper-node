@@ -423,21 +423,20 @@ pub fn dictionary_put<V: CLTyped + ToBytes>(
     result.unwrap_or_revert()
 }
 
-/// Reads value under `dictionary_address` in the global state.
-pub fn read_dictionary_address<T: CLTyped + FromBytes>(
-    dictionary_address: Key,
+/// Reads value under `dictionary_key` in the global state.
+pub fn dictionary_read<T: CLTyped + FromBytes>(
+    dictionary_key: Key,
 ) -> Result<Option<T>, bytesrepr::Error> {
-    if !dictionary_address.is_dictionary_key() {
+    if !dictionary_key.is_dictionary_key() {
         return Err(bytesrepr::Error::Formatting);
     }
 
-    let (key_ptr, key_size, _bytes) = contract_api::to_ptr(dictionary_address);
+    let (key_ptr, key_size, _bytes) = contract_api::to_ptr(dictionary_key);
 
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
-        let ret = unsafe {
-            ext_ffi::casper_read_dictionary_address(key_ptr, key_size, value_size.as_mut_ptr())
-        };
+        let ret =
+            unsafe { ext_ffi::casper_dictionary_read(key_ptr, key_size, value_size.as_mut_ptr()) };
         match api_error::result_from(ret) {
             Ok(_) => unsafe { value_size.assume_init() },
             Err(ApiError::ValueNotFound) => return Ok(None),
