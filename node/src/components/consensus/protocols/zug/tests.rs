@@ -194,7 +194,7 @@ fn remove_messages_to_random(
             _ => return true,
         };
         assert_eq!(*msg.instance_id(), expected_instance_id);
-        if let Message::SyncState(_) = &msg {
+        if let Message::SyncRequest(_) = &msg {
             result.push(msg);
             false
         } else {
@@ -611,9 +611,9 @@ fn zug_faults() {
     assert!(outcomes.contains(&ProtocolOutcome::FttExceeded));
 }
 
-/// Tests that a `SyncState` message is periodically sent to a random peer.
+/// Tests that a `SyncRequest` message is periodically sent to a random peer.
 #[test]
-fn zug_sends_sync_state() {
+fn zug_sends_sync_request() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(50, 40, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -644,13 +644,13 @@ fn zug_sends_sync_state() {
 
     timestamp += timeout;
 
-    // The protocol state is empty and the SyncState should reflect that.
+    // The protocol state is empty and the SyncRequest should reflect that.
     let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncState(SyncState {
+            Some(Message::SyncRequest(SyncRequest {
                 round_id: 0,
                 proposal_hash: None,
                 has_proposal: false,
@@ -681,13 +681,13 @@ fn zug_sends_sync_state() {
     let msg = create_message(&validators, 0, vote(false), &carol_kp);
     sc.handle_message(&mut rng, sender, msg, timestamp);
 
-    // The next SyncState message must include all the new information.
+    // The next SyncRequest message must include all the new information.
     let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncState(SyncState {
+            Some(Message::SyncRequest(SyncRequest {
                 round_id: 0,
                 proposal_hash: Some(hash),
                 has_proposal: true,
@@ -720,9 +720,9 @@ fn zug_sends_sync_state() {
     }
 }
 
-/// Tests that we respond to a `SyncState` message with the missing signatures.
+/// Tests that we respond to a `SyncRequest` message with the missing signatures.
 #[test]
-fn zug_handles_sync_state() {
+fn zug_handles_sync_request() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(50, 40, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -775,7 +775,7 @@ fn zug_handles_sync_state() {
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
 
     // The sender has everything we have except the proposal itself.
-    let msg = Message::<ClContext>::SyncState(SyncState {
+    let msg = Message::<ClContext>::SyncRequest(SyncRequest {
         round_id: 0,
         proposal_hash: Some(hash0),
         has_proposal: false,
@@ -799,7 +799,7 @@ fn zug_handles_sync_state() {
     expect_no_gossip_block_finalized(outcomes);
 
     // But if there are missing messages, these are sent back.
-    let msg = Message::<ClContext>::SyncState(SyncState {
+    let msg = Message::<ClContext>::SyncRequest(SyncRequest {
         round_id: 0,
         proposal_hash: Some(hash1), // Wrong proposal!
         has_proposal: true,
