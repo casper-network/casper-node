@@ -80,6 +80,7 @@ impl Payload for Message {
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
+                    Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -117,6 +118,7 @@ impl Payload for Message {
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_requests,
+                Tag::FinalitySignaturesByHash => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -129,6 +131,7 @@ impl Payload for Message {
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_responses,
+                Tag::FinalitySignaturesByHash => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -295,6 +298,11 @@ where
                     message: NetRequest::BlockHeadersBatch(serialized_id),
                 }
                 .into(),
+                Tag::FinalitySignaturesByHash => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::FinalitySignatures(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -348,6 +356,11 @@ where
                 Tag::BlockHeaderBatch => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockHeadersBatch(serialized_item),
+                }
+                .into(),
+                Tag::FinalitySignaturesByHash => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::FinalitySignatures(serialized_item),
                 }
                 .into(),
             },

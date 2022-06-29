@@ -65,6 +65,9 @@ pub(super) struct Metrics {
     /// Time in seconds of fetching block with deploys during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_block_and_deploys_duration_seconds: Histogram,
+    /// Time in seconds of fetching finality signatures during chain sync.
+    #[data_size(skip)]
+    pub(super) chain_sync_fetch_finality_signatures_duration_seconds: Histogram,
     /// Integer representing number of blocks that we've successfully downloaded.
     #[data_size(skip)]
     pub(super) chain_sync_blocks_synced: IntCounter,
@@ -204,8 +207,15 @@ impl Metrics {
                 registry,
                 "chain_sync_fetch_block_and_deploys_duration_seconds",
                 "time in seconds of fetching block and all of its deploys",
-                buckets,
+                buckets.clone(),
             )?,
+            chain_sync_fetch_finality_signatures_duration_seconds:
+                utils::register_histogram_metric(
+                    registry,
+                    "chain_sync_fetch_finality_signatures_duration_seconds",
+                    "time in seconds of syncing finality signatures during chain sync",
+                    buckets,
+                )?,
             chain_sync_blocks_synced,
             registry: registry.clone(),
         })
@@ -223,6 +233,11 @@ impl Metrics {
 
     pub(super) fn observe_fetch_block_and_deploys_duration_seconds(&self, start: Timestamp) {
         self.chain_sync_fetch_block_and_deploys_duration_seconds
+            .observe(start.elapsed().millis() as f64 / 1000.0);
+    }
+
+    pub(super) fn observe_fetch_finality_signatures_duration_seconds(&self, start: Timestamp) {
+        self.chain_sync_fetch_finality_signatures_duration_seconds
             .observe(start.elapsed().millis() as f64 / 1000.0);
     }
 }
