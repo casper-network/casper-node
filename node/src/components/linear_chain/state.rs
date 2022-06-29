@@ -310,7 +310,7 @@ impl LinearChain {
             consensus::check_sufficient_finality_signatures(
                 era_kb_info.validator_weights(),
                 self.finality_threshold_fraction,
-                signatures,
+                Some(signatures),
             ),
             Ok(()) | Err(FinalitySignatureError::TooManySignatures { .. })
         )

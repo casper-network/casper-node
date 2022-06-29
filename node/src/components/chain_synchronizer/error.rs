@@ -44,6 +44,9 @@ pub(crate) enum Error {
     #[error("cannot get switch block for era: {era_id}")]
     NoSwitchBlockForEra { era_id: EraId },
 
+    #[error("switch block at height {height} for era {era_id} contains no validator weights")]
+    MissingNextEraValidators { height: u64, era_id: EraId },
+
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
          {block_header_with_future_version:?}"
