@@ -28,7 +28,7 @@ use std::{convert::Infallible, fmt::Debug, time::Instant};
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
 use tokio::{sync::oneshot, task::JoinHandle};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_types::ProtocolVersion;
 
@@ -78,6 +78,8 @@ impl<REv> ReactorEventT for REv where
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
+    /// Enable.
+    enable: bool,
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
@@ -103,18 +105,23 @@ impl RestServer {
     {
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let builder = utils::start_listening(&config.address)?;
-        let server_join_handle = tokio::spawn(http_server::run(
-            builder,
-            effect_builder,
-            api_version,
-            shutdown_receiver,
-            config.qps_limit,
-        ));
+        let server_join_handle = if config.enable_server {
+            let builder = utils::start_listening(&config.address)?;
+            Some(tokio::spawn(http_server::run(
+                builder,
+                effect_builder,
+                api_version,
+                shutdown_receiver,
+                config.qps_limit,
+            )))
+        } else {
+            None
+        };
 
         Ok(RestServer {
+            enable: config.enable_server,
             shutdown_sender,
-            server_join_handle: Some(server_join_handle),
+            server_join_handle,
             node_startup_instant,
             node_state,
         })
@@ -134,6 +141,9 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        if !self.enable {
+            return Effects::new();
+        }
         match event {
             Event::RestRequest(RestRequest::Status { responder }) => {
                 let node_uptime = self.node_startup_instant.elapsed();
@@ -178,16 +188,20 @@ where
 impl Finalize for RestServer {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async {
-            let _ = self.shutdown_sender.send(());
+            if self.enable {
+                let _ = self.shutdown_sender.send(());
 
-            // Wait for the server to exit cleanly.
-            if let Some(join_handle) = self.server_join_handle.take() {
-                match join_handle.await {
-                    Ok(_) => debug!("rest server exited cleanly"),
-                    Err(error) => error!(%error, "could not join rest server task cleanly"),
+                // Wait for the server to exit cleanly.
+                if let Some(join_handle) = self.server_join_handle.take() {
+                    match join_handle.await {
+                        Ok(_) => debug!("rest server exited cleanly"),
+                        Err(error) => error!(%error, "could not join rest server task cleanly"),
+                    }
+                } else {
+                    warn!("rest server shutdown while already shut down")
                 }
             } else {
-                warn!("rest server shutdown while already shut down")
+                info!("rest server was disabled in config, no shutdown performed")
             }
         }
         .boxed()
