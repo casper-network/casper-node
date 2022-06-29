@@ -1,6 +1,6 @@
 //! Frame reading and writing
 //!
-//! Frame readers and writers are responsible for writing a [`Bytes`] frame to a an `AsyncWrite`, or
+//! Frame readers and writers are responsible for writing a [`Bytes`] frame to an `AsyncWrite`, or
 //! reading them from `AsyncRead`. They can be given a flexible function to encode and decode
 //! frames.
 
@@ -27,7 +27,10 @@ pub trait Decoder {
 
     /// Decodes a frame from a buffer.
     ///
-    /// If `buffer` contains enough
+    /// Produces either a frame, an error or an indicator for incompletion. See [`DecodeResult`] for
+    /// details.
+    ///
+    /// Implementers of this function are expected to remove completed frames from `buffer`.
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
 }
 
@@ -173,8 +176,8 @@ where
                 Some(ref mut current_frame) => {
                     // TODO: Implement support for `poll_write_vectored`.
 
-                    let wpin = Pin::new(&mut self.stream);
-                    match wpin.poll_write(cx, current_frame.chunk()) {
+                    let stream_pin = Pin::new(&mut self.stream);
+                    match stream_pin.poll_write(cx, current_frame.chunk()) {
                         Poll::Ready(Ok(bytes_written)) => {
                             current_frame.advance(bytes_written);
 
@@ -225,7 +228,7 @@ where
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         self.current_frame = Some(wrapped_frame);
 
-        // We could eagler poll and send to the underlying writer here, but for ease of
+        // We could eaglerly poll and send to the underlying writer here, but for ease of
         // implementation we don't.
 
         Ok(())
