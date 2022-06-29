@@ -1,8 +1,6 @@
 use super::*;
 
 mod empty_tries {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -14,25 +12,6 @@ mod empty_tries {
             let initial_states = vec![root_hash];
 
             writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &initial_states,
-                &TEST_LEAVES_NON_COLLIDING[..num_leaves],
-            )
-            .unwrap();
-        }
-    }
-
-    #[test]
-    fn in_memory_non_colliding_writes_to_n_leaf_empty_trie_had_expected_results() {
-        for num_leaves in 1..=TEST_LEAVES_LENGTH {
-            let correlation_id = CorrelationId::new();
-            let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-            let context = InMemoryTestContext::new(&tries).unwrap();
-            let initial_states = vec![root_hash];
-
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, in_memory::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -60,58 +39,6 @@ mod empty_tries {
             )
             .unwrap();
         }
-    }
-
-    #[test]
-    fn in_memory_writes_to_n_leaf_empty_trie_had_expected_results() {
-        for num_leaves in 1..=TEST_LEAVES_LENGTH {
-            let correlation_id = CorrelationId::new();
-            let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-            let context = InMemoryTestContext::new(&tries).unwrap();
-            let initial_states = vec![root_hash];
-
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, in_memory::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &initial_states,
-                &TEST_LEAVES[..num_leaves],
-            )
-            .unwrap();
-        }
-    }
-
-    #[test]
-    fn in_memory_writes_to_n_leaf_empty_trie_had_expected_store_contents() {
-        let expected_contents: HashMap<Digest, TestTrie> = {
-            let mut ret = HashMap::new();
-            for generator in &TEST_TRIE_GENERATORS {
-                let (_, tries) = generator().unwrap();
-                for HashedTestTrie { hash, trie } in tries {
-                    ret.insert(hash, trie);
-                }
-            }
-            ret
-        };
-
-        let actual_contents: HashMap<Digest, TestTrie> = {
-            let correlation_id = CorrelationId::new();
-            let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-            let context = InMemoryTestContext::new(&tries).unwrap();
-
-            write_leaves::<_, _, _, _, in_memory::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &root_hash,
-                &TEST_LEAVES,
-            )
-            .unwrap();
-
-            context.environment.dump(None).unwrap()
-        };
-
-        assert_eq!(expected_contents, actual_contents)
     }
 }
 
@@ -174,25 +101,6 @@ mod partial_tries {
             let states = vec![root_hash];
 
             noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &states,
-                num_leaves,
-            )
-            .unwrap()
-        }
-    }
-
-    #[test]
-    fn in_memory_noop_writes_to_n_leaf_partial_trie_had_expected_results() {
-        for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
-            let (root_hash, tries) = generator().unwrap();
-            let context = InMemoryTestContext::new(&tries).unwrap();
-            let states = vec![root_hash];
-
-            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, in_memory::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -289,25 +197,6 @@ mod partial_tries {
             .unwrap()
         }
     }
-
-    #[test]
-    fn in_memory_update_writes_to_n_leaf_partial_trie_had_expected_results() {
-        for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
-            let (root_hash, tries) = generator().unwrap();
-            let context = InMemoryTestContext::new(&tries).unwrap();
-            let states = vec![root_hash];
-
-            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, in_memory::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &states,
-                num_leaves,
-            )
-            .unwrap()
-        }
-    }
 }
 
 mod full_tries {
@@ -378,28 +267,6 @@ mod full_tries {
             states.push(root_hash);
 
             noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &states,
-                index,
-            )
-            .unwrap();
-        }
-    }
-
-    #[test]
-    fn in_memory_noop_writes_to_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
-        let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Digest> = Vec::new();
-
-        for (index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let (root_hash, tries) = generator().unwrap();
-            context.update(&tries).unwrap();
-            states.push(root_hash);
-
-            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, in_memory::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -512,28 +379,6 @@ mod full_tries {
         }
     }
 
-    #[test]
-    fn in_memory_update_writes_to_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
-        let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Digest> = Vec::new();
-
-        for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let (root_hash, tries) = generator().unwrap();
-            context.update(&tries).unwrap();
-            states.push(root_hash);
-
-            update_writes_to_n_leaf_full_trie_had_expected_results::<_, _, in_memory::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &states,
-                num_leaves,
-            )
-            .unwrap()
-        }
-    }
-
     fn node_writes_to_5_leaf_full_trie_had_expected_results<'a, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
@@ -626,27 +471,6 @@ mod full_tries {
         }
 
         node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, error::Error>(
-            correlation_id,
-            &context.environment,
-            &context.store,
-            &states,
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn in_memory_node_writes_to_5_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
-        let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
-        let mut states: Vec<Digest> = Vec::new();
-
-        for generator in &TEST_TRIE_GENERATORS {
-            let (root_hash, tries) = generator().unwrap();
-            context.update(&tries).unwrap();
-            states.push(root_hash);
-        }
-
-        node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, in_memory::Error>(
             correlation_id,
             &context.environment,
             &context.store,

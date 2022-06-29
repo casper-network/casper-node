@@ -285,32 +285,27 @@ mod empty_tries {
     use crate::{
         shared::newtypes::CorrelationId,
         storage::{
-            error::in_memory,
-            trie_store::operations::tests::{self, InMemoryTestContext},
+            error,
+            trie_store::operations::tests::{self, LmdbTestContext},
         },
     };
 
     #[test]
-    fn in_memory_writes_to_n_leaf_empty_trie_had_expected_results() {
+    fn lmdb_writes_to_n_leaf_empty_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
         let (root_hash, tries) = create_0_leaf_trie().unwrap();
-        let context = InMemoryTestContext::new(&tries).unwrap();
+        let context = LmdbTestContext::new(&tries).unwrap();
         let initial_states = vec![root_hash];
 
-        let _states = tests::writes_to_n_leaf_empty_trie_had_expected_results::<
-            _,
-            _,
-            _,
-            _,
-            in_memory::Error,
-        >(
-            correlation_id,
-            &context.environment,
-            &context.store,
-            &initial_states,
-            &TEST_LEAVES,
-        )
-        .unwrap();
+        let _states =
+            tests::writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+                correlation_id,
+                &context.environment,
+                &context.store,
+                &initial_states,
+                &TEST_LEAVES,
+            )
+            .unwrap();
     }
 }
 
@@ -323,8 +318,8 @@ mod proptests {
     use crate::{
         shared::newtypes::CorrelationId,
         storage::{
-            error::{self, in_memory},
-            trie_store::operations::tests::{self, InMemoryTestContext, LmdbTestContext},
+            error::{self},
+            trie_store::operations::tests::{self, LmdbTestContext},
         },
     };
 
@@ -368,43 +363,11 @@ mod proptests {
         .unwrap()
     }
 
-    fn in_memory_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
-        let correlation_id = CorrelationId::new();
-        let (root_hash, tries) = create_0_leaf_trie().unwrap();
-        let context = InMemoryTestContext::new(&tries).unwrap();
-        let mut states_to_check = vec![];
-
-        let root_hashes = tests::write_pairs::<_, _, _, _, in_memory::Error>(
-            correlation_id,
-            &context.environment,
-            &context.store,
-            &root_hash,
-            pairs,
-        )
-        .unwrap();
-
-        states_to_check.extend(root_hashes);
-
-        tests::check_pairs::<_, _, _, _, in_memory::Error>(
-            correlation_id,
-            &context.environment,
-            &context.store,
-            &states_to_check,
-            pairs,
-        )
-        .unwrap()
-    }
-
     fn test_value_arb() -> impl Strategy<Value = TestValue> {
         array::uniform6(arbitrary::any::<u8>()).prop_map(TestValue)
     }
 
     proptest! {
-        #[test]
-        fn prop_in_memory_roundtrip_succeeds(inputs in vec((test_key_arb(), test_value_arb()), get_range())) {
-            assert!(in_memory_roundtrip_succeeds(&inputs));
-        }
-
         #[test]
         fn prop_lmdb_roundtrip_succeeds(inputs in vec((test_key_arb(), test_value_arb()), get_range())) {
             assert!(lmdb_roundtrip_succeeds(&inputs));

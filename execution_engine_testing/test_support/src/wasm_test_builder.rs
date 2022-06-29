@@ -44,8 +44,8 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, scratch::ScratchGlobalState,
-            CommitProvider, StateProvider, StateReader,
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
         },
         transaction_source::lmdb::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
@@ -89,9 +89,6 @@ pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
-/// Wasm test builder where state is held entirely in memory.
-pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
-
 /// Wasm test builder where state is held in LMDB.
 pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
 
@@ -133,12 +130,6 @@ impl<S> WasmTestBuilder<S> {
     }
 }
 
-impl Default for InMemoryWasmTestBuilder {
-    fn default() -> Self {
-        Self::new_with_chainspec(&*PRODUCTION_PATH, None)
-    }
-}
-
 impl Default for LmdbWasmTestBuilder {
     fn default() -> Self {
         Self::new_temporary_with_chainspec(&*PRODUCTION_PATH)
@@ -163,55 +154,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             global_state_dir: self.global_state_dir.clone(),
             temp_dir: self.temp_dir.clone(),
         }
-    }
-}
-
-impl InMemoryWasmTestBuilder {
-    /// Returns an [`InMemoryWasmTestBuilder`].
-    pub fn new(
-        global_state: InMemoryGlobalState,
-        engine_config: EngineConfig,
-        maybe_post_state_hash: Option<Digest>,
-    ) -> Self {
-        Self::initialize_logging();
-        let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            engine_state: Rc::new(engine_state),
-            genesis_hash: maybe_post_state_hash,
-            post_state_hash: maybe_post_state_hash,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            scratch_engine_state: None,
-            system_contract_registry: None,
-            global_state_dir: None,
-            temp_dir: None,
-        }
-    }
-
-    /// Returns an [`InMemoryWasmTestBuilder`] instantiated using values from a given chainspec.
-    pub fn new_with_chainspec<P: AsRef<Path>>(
-        chainspec_path: P,
-        post_state_hash: Option<Digest>,
-    ) -> Self {
-        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
-            .expect("must build chainspec configuration");
-
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-
-        Self::new(global_state, engine_config, post_state_hash)
     }
 }
 

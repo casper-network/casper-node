@@ -6,10 +6,7 @@ mod partial_tries {
             trie::Trie,
             trie_store::operations::{
                 self,
-                tests::{
-                    InMemoryTestContext, LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
-                    TEST_TRIE_GENERATORS,
-                },
+                tests::{LmdbTestContext, TestKey, TestValue, TEST_LEAVES, TEST_TRIE_GENERATORS},
             },
         },
     };
@@ -20,42 +17,6 @@ mod partial_tries {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
-            let test_leaves = TEST_LEAVES;
-            let (used, _) = test_leaves.split_at(num_leaves);
-
-            let expected = {
-                let mut tmp = used
-                    .iter()
-                    .filter_map(Trie::key)
-                    .cloned()
-                    .collect::<Vec<TestKey>>();
-                tmp.sort();
-                tmp
-            };
-            let actual = {
-                let txn = context.environment.create_read_txn().unwrap();
-                let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
-                    correlation_id,
-                    &txn,
-                    &context.store,
-                    &root_hash,
-                )
-                .filter_map(Result::ok)
-                .collect::<Vec<TestKey>>();
-                txn.commit().unwrap();
-                tmp.sort();
-                tmp
-            };
-            assert_eq!(actual, expected);
-        }
-    }
-
-    #[test]
-    fn in_memory_keys_from_n_leaf_partial_trie_had_expected_results() {
-        for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
-            let (root_hash, tries) = generator().unwrap();
-            let context = InMemoryTestContext::new(&tries).unwrap();
             let test_leaves = TEST_LEAVES;
             let (used, _) = test_leaves.split_at(num_leaves);
 
@@ -98,7 +59,7 @@ mod full_tries {
             trie_store::operations::{
                 self,
                 tests::{
-                    InMemoryTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
+                    LmdbTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
                     TEST_TRIE_GENERATORS,
                 },
             },
@@ -106,9 +67,9 @@ mod full_tries {
     };
 
     #[test]
-    fn in_memory_keys_from_n_leaf_full_trie_had_expected_results() {
+    fn lmdb_keys_from_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
-        let context = InMemoryTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
+        let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
         for (state_index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
@@ -162,7 +123,7 @@ mod keys_iterator {
             trie_store::operations::{
                 self,
                 tests::{
-                    hash_test_tries, HashedTestTrie, HashedTrie, InMemoryTestContext, TestKey,
+                    hash_test_tries, HashedTestTrie, HashedTrie, LmdbTestContext, TestKey,
                     TestValue, TEST_LEAVES,
                 },
             },
@@ -219,7 +180,7 @@ mod keys_iterator {
 
     fn test_trie(root_hash: Digest, tries: Vec<HashedTestTrie>) {
         let correlation_id = CorrelationId::new();
-        let context = return_on_err!(InMemoryTestContext::new(&tries));
+        let context = return_on_err!(LmdbTestContext::new(&tries));
         let txn = return_on_err!(context.environment.create_read_txn());
         let _tmp = operations::keys::<TestKey, TestValue, _, _>(
             correlation_id,
@@ -260,7 +221,7 @@ mod keys_with_prefix_iterator {
             trie::Trie,
             trie_store::operations::{
                 self,
-                tests::{create_6_leaf_trie, InMemoryTestContext, TestKey, TestValue, TEST_LEAVES},
+                tests::{create_6_leaf_trie, LmdbTestContext, TestKey, TestValue, TEST_LEAVES},
             },
         },
     };
@@ -279,7 +240,7 @@ mod keys_with_prefix_iterator {
     fn test_prefix(prefix: &[u8]) {
         let correlation_id = CorrelationId::new();
         let (root_hash, tries) = create_6_leaf_trie().expect("should create a trie");
-        let context = InMemoryTestContext::new(&tries).expect("should create a new context");
+        let context = LmdbTestContext::new(&tries).expect("should create a new context");
         let txn = context
             .environment
             .create_read_txn()

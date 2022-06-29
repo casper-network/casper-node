@@ -383,11 +383,18 @@ impl StateProvider for LmdbGlobalState {
 pub(crate) fn make_temporary_global_state(
     initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
 ) -> (LmdbGlobalState, Digest, TempDir) {
+    use crate::storage::{DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS};
+
     let tempdir = tempfile::tempdir().expect("should create tempdir");
 
     let lmdb_global_state = {
-        let lmdb_environment = LmdbEnvironment::new(tempdir.path(), 64 * 1024 * 1024, 512, false)
-            .expect("should create lmdb environment");
+        let lmdb_environment = LmdbEnvironment::new(
+            tempdir.path(),
+            DEFAULT_TEST_MAX_DB_SIZE,
+            DEFAULT_TEST_MAX_READERS,
+            false,
+        )
+        .expect("should create lmdb environment");
         let lmdb_trie_store = LmdbTrieStore::new(&lmdb_environment, None, DatabaseFlags::default())
             .expect("should create lmdb trie store");
         LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store))
@@ -413,130 +420,74 @@ pub(crate) fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use lmdb::DatabaseFlags;
-    use tempfile::tempdir;
-
     use casper_hashing::Digest;
     use casper_types::{account::AccountHash, bytesrepr, CLValue};
 
     use super::*;
-    use crate::storage::{
-        trie_store::operations::{write, WriteResult},
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
-    };
 
-    #[derive(Debug, Clone)]
-    struct TestPair {
-        key: Key,
-        value: StoredValue,
-    }
-
-    fn create_test_pairs() -> [TestPair; 2] {
-        [
-            TestPair {
-                key: Key::Account(AccountHash::new([1_u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
-            },
+    fn create_test_pairs() -> Vec<(Key, StoredValue)> {
+        vec![
+            (
+                Key::Account(AccountHash::new([1_u8; 32])),
+                StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
+            ),
+            (
+                Key::Account(AccountHash::new([2_u8; 32])),
+                StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
+            ),
         ]
     }
 
     // Creates the test pairs that contain data of size
     // greater than the chunk limit.
-    fn create_test_pairs_with_large_data() -> [TestPair; 2] {
+    fn create_test_pairs_with_large_data() -> Vec<(Key, StoredValue)> {
         let val = CLValue::from_t(
             String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
         )
         .unwrap();
-        [
-            TestPair {
-                key: Key::Account(AccountHash::new([1_u8; 32])),
-                value: StoredValue::CLValue(val.clone()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(val),
-            },
+        vec![
+            (
+                Key::Account(AccountHash::new([1_u8; 32])),
+                StoredValue::CLValue(val.clone()),
+            ),
+            (
+                Key::Account(AccountHash::new([2_u8; 32])),
+                StoredValue::CLValue(val),
+            ),
         ]
     }
 
-    fn create_test_pairs_updated() -> [TestPair; 3] {
-        [
-            TestPair {
-                key: Key::Account(AccountHash::new([1u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([2u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([3u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
-            },
+    fn create_test_pairs_updated() -> Vec<(Key, StoredValue)> {
+        vec![
+            (
+                Key::Account(AccountHash::new([1u8; 32])),
+                StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
+            ),
+            (
+                Key::Account(AccountHash::new([2u8; 32])),
+                StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
+            ),
+            (
+                Key::Account(AccountHash::new([3u8; 32])),
+                StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
+            ),
         ]
-    }
-
-    fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (LmdbGlobalState, Digest) {
-        let correlation_id = CorrelationId::new();
-        let temp_dir = tempdir().unwrap();
-        let environment = Arc::new(
-            LmdbEnvironment::new(
-                &temp_dir.path(),
-                DEFAULT_TEST_MAX_DB_SIZE,
-                DEFAULT_TEST_MAX_READERS,
-                true,
-            )
-            .unwrap(),
-        );
-        let trie_store =
-            Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
-
-        let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
-        let mut current_root = ret.empty_root_hash;
-        {
-            let mut txn = ret.environment.create_read_write_txn().unwrap();
-
-            for TestPair { key, value } in &(pairs_creator)() {
-                match write::<_, _, _, LmdbTrieStore, error::Error>(
-                    correlation_id,
-                    &mut txn,
-                    &ret.trie_store,
-                    &current_root,
-                    key,
-                    value,
-                )
-                .unwrap()
-                {
-                    WriteResult::Written(root_hash) => {
-                        current_root = root_hash;
-                    }
-                    WriteResult::AlreadyExists => (),
-                    WriteResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
-                }
-            }
-
-            txn.commit().unwrap();
-        }
-        (ret, current_root)
     }
 
     #[test]
     fn reads_from_a_checkout_return_expected_values() {
         let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state(create_test_pairs);
+        let test_pairs = create_test_pairs();
+        let (state, root_hash, _tempdir) = make_temporary_global_state(test_pairs.clone());
         let checkout = state.checkout(root_hash).unwrap().unwrap();
-        for TestPair { key, value } in create_test_pairs().iter().cloned() {
+        for (key, value) in test_pairs {
             assert_eq!(Some(value), checkout.read(correlation_id, &key).unwrap());
         }
     }
 
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
-        let (state, _) = create_test_state(create_test_pairs);
+        let (state, _, _tempdir) = make_temporary_global_state(create_test_pairs());
         let fake_hash: Digest = Digest::hash(&[1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
@@ -547,11 +498,11 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state(create_test_pairs);
+        let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
-            for TestPair { key, value } in &test_pairs_updated {
+            for (key, value) in &test_pairs_updated {
                 tmp.insert(*key, Transform::Write(value.to_owned()));
             }
             tmp
@@ -561,7 +512,7 @@ mod tests {
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
-        for TestPair { key, value } in test_pairs_updated.iter().cloned() {
+        for (key, value) in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
                 updated_checkout.read(correlation_id, &key).unwrap()
@@ -574,11 +525,11 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state(create_test_pairs);
+        let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
-            for TestPair { key, value } in &test_pairs_updated {
+            for (key, value) in &test_pairs_updated {
                 tmp.insert(*key, Transform::Write(value.to_owned()));
             }
             tmp
@@ -587,7 +538,7 @@ mod tests {
         let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
-        for TestPair { key, value } in test_pairs_updated.iter().cloned() {
+        for (key, value) in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
                 updated_checkout.read(correlation_id, &key).unwrap()
@@ -595,7 +546,7 @@ mod tests {
         }
 
         let original_checkout = state.checkout(root_hash).unwrap().unwrap();
-        for TestPair { key, value } in create_test_pairs().iter().cloned() {
+        for (key, value) in create_test_pairs().iter().cloned() {
             assert_eq!(
                 Some(value),
                 original_checkout.read(correlation_id, &key).unwrap()
@@ -604,7 +555,7 @@ mod tests {
         assert_eq!(
             None,
             original_checkout
-                .read(correlation_id, &test_pairs_updated[2].key)
+                .read(correlation_id, &test_pairs_updated[2].0)
                 .unwrap()
         );
     }
@@ -612,7 +563,8 @@ mod tests {
     #[test]
     fn returns_trie_or_chunk() {
         let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state(create_test_pairs_with_large_data);
+        let (state, root_hash, _tempdir) =
+            make_temporary_global_state(create_test_pairs_with_large_data());
 
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = state
