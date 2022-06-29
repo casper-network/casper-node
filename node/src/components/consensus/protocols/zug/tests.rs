@@ -730,7 +730,7 @@ fn zug_handles_sync_request() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let mut sc = new_test_zug(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_zug(weights.clone(), vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -859,6 +859,31 @@ fn zug_handles_sync_request() {
         }
         (evidence, fault) => panic!("unexpected evidence: {:?}, {:?}", evidence, fault),
     }
+
+    // Create a new instance that doesn't have any data yet, let it send two sync requests to sc,
+    // and handle the responses.
+    let mut sc2 = new_test_zug(weights, vec![], &[alice_idx]);
+    for _ in 0..2 {
+        let mut outcomes = sc2.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+        let msg = loop {
+            if let ProtocolOutcome::CreatedMessageToRandomPeer(payload) =
+                outcomes.pop().expect("expected message to random peer")
+            {
+                break payload;
+            }
+        };
+        let mut outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
+        let msg = match outcomes.pop() {
+            Some(ProtocolOutcome::CreatedTargetedMessage(msg, _)) => msg,
+            outcome => panic!("expected targeted message: {:?}", outcome),
+        };
+        let mut _outcomes = sc2.handle_message(&mut rng, sender, msg, timestamp);
+    }
+
+    // They should be synced up now:
+    assert_eq!(sc.rounds, sc2.rounds);
+    assert_eq!(sc.faults, sc2.faults);
+    assert_eq!(sc.active, sc2.active);
 }
 
 #[test]

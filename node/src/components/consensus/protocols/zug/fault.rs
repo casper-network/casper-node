@@ -10,7 +10,7 @@ use crate::components::consensus::{
 /// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
-#[derive(DataSize, Debug)]
+#[derive(DataSize, Debug, PartialEq)]
 pub(crate) enum Fault<C>
 where
     C: Context,
