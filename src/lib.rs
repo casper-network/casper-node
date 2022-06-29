@@ -1,9 +1,9 @@
 //! Asynchronous multiplexing
 
 pub mod backpressured;
-pub mod chunked;
 pub mod error;
 pub mod fixed_size;
+pub mod fragmented;
 pub mod io;
 pub mod mux;
 #[cfg(test)]
@@ -117,7 +117,7 @@ pub(crate) mod tests {
     use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
 
     use crate::{
-        chunked::{make_defragmentizer, make_fragmentizer},
+        fragmented::{make_defragmentizer, make_fragmentizer},
         io::{length_delimited::LengthDelimited, FrameReader, FrameWriter},
         pipe::pipe,
     };
