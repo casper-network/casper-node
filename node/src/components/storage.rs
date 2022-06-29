@@ -1890,7 +1890,7 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         if let Some(last_emergency_restart) = self.last_emergency_restart {
             if block_header.era_id() <= last_emergency_restart {
-                debug!(
+                warn!(
                     ?block_header,
                     ?last_emergency_restart,
                     "finality signatures from before last emergency restart requested"
@@ -1905,9 +1905,11 @@ impl Storage {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
+        // If `block_header` is from era 0, we can use the switch block from era 0 to ascertain the
+        // validators for that era.
         let switch_block_hash = match self
             .switch_block_era_id_index
-            .get(&(block_header.era_id() - 1))
+            .get(&(block_header.era_id().saturating_sub(1)))
         {
             None => return Ok(None),
             Some(switch_block_hash) => switch_block_hash,
