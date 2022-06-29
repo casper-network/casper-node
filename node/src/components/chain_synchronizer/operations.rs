@@ -688,9 +688,7 @@ where
     let item = loop {
         let peer = match peers.pop() {
             Some(peer) => peer,
-            None => {
-                return Ok(None);
-            }
+            None => return Ok(None),
         };
         match ctx.effect_builder.fetch::<I>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
@@ -818,14 +816,6 @@ async fn fetch_and_store_block_by_hash<REv>(
 where
     REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
 {
-    // We're querying storage directly and short-circuiting here (before using the fetcher)
-    // as joiners don't talk to joiners and in a network comprised only of joining nodes
-    // we would never move past the initial sync since we would wait on fetcher
-    // trying to query a peer for block but have no peers to query for the data.
-    if let Some(stored_block) = ctx.effect_builder.get_block_from_storage(block_hash).await {
-        return Ok(Box::new(stored_block));
-    }
-
     let fetched_block = fetch_retry_forever::<_, Block>(ctx, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),

@@ -540,13 +540,11 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
         let effect_builder = EffectBuilder::new(event_queue);
         let (chain_synchronizer, sync_effects) = ChainSynchronizer::<JoinerEvent>::new(
             Arc::clone(chainspec_loader.chainspec()),
             config.node.clone(),
             config.network.clone(),
-            next_upgrade_activation_point,
             effect_builder,
             registry,
         )?;
@@ -887,20 +885,14 @@ impl reactor::Reactor for Reactor {
             }
             JoinerEvent::ChainspecLoaderAnnouncement(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => {
-                let reactor_event = JoinerEvent::ChainspecLoader(
-                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
-                );
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-
-                let reactor_event = JoinerEvent::ChainSynchronizer(
-                    chain_synchronizer::Event::GotUpgradeActivationPoint(
-                        next_upgrade.activation_point(),
-                    ),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                effects
-            }
+            ) => reactor::wrap_effects(
+                JoinerEvent::ChainspecLoader,
+                self.chainspec_loader.handle_event(
+                    effect_builder,
+                    rng,
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade),
+                ),
+            ),
             // This is done to handle status requests from the RestServer
             JoinerEvent::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 // no consensus, respond with None

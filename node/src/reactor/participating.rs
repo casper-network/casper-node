@@ -842,7 +842,6 @@ impl reactor::Reactor for Reactor {
                 chainspec.clone(),
                 config.node.clone(),
                 config.network.clone(),
-                next_upgrade_activation_point,
                 chain_sync_metrics,
                 effect_builder,
             )?;
@@ -1375,12 +1374,6 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 let reactor_event = ParticipatingEvent::LinearChain(
                     linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                let reactor_event = ParticipatingEvent::ChainSynchronizer(
-                    chain_synchronizer::Event::GotUpgradeActivationPoint(
-                        next_upgrade.activation_point(),
-                    ),
                 );
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects

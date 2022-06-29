@@ -11,10 +11,11 @@ use casper_types::PublicKey;
 use super::{Error, FastSyncOutcome};
 use crate::{
     contract_runtime::{BlockAndExecutionEffects, BlockExecutionError},
-    types::{ActivationPoint, BlockHeader},
+    types::BlockHeader,
 };
 
 #[derive(Debug, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum Event {
     /// The result of running the fast sync task.
     FastSyncResult(Result<FastSyncOutcome, Error>),
@@ -41,8 +42,6 @@ pub(crate) enum Event {
         validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
         result: Result<FastSyncOutcome, Error>,
     },
-    /// A new upgrade activation point was announced.
-    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Display for Event {
@@ -72,13 +71,6 @@ impl Display for Event {
                     formatter,
                     "fast sync after emergency upgrade result: {:?}",
                     fast_sync_result
-                )
-            }
-            Event::GotUpgradeActivationPoint(activation_point) => {
-                write!(
-                    formatter,
-                    "new upgrade activation point: {:?}",
-                    activation_point
                 )
             }
         }

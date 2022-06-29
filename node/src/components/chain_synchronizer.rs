@@ -34,9 +34,9 @@ use crate::{
     reactor::{joiner::JoinerEvent, participating::ParticipatingEvent},
     storage::StorageRequest,
     types::{
-        ActivationPoint, Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockPayload, BlockWithMetadata, Chainspec, Deploy,
-        FinalizedApprovalsWithId, FinalizedBlock, NodeConfig,
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockPayload, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
+        FinalizedBlock, NodeConfig,
     },
     NodeRng, SmallNetworkConfig,
 };
@@ -74,9 +74,6 @@ pub(crate) struct ChainSynchronizer<REv> {
     joining_outcome: Option<JoiningOutcome>,
     /// Metrics for the chain synchronization process.
     metrics: Metrics,
-    /// The next upgrade activation point, used to determine what action to take after completing
-    /// chain synchronization.
-    maybe_next_upgrade: Option<ActivationPoint>,
     /// Association with the reactor event used in subtasks.
     _phantom: PhantomData<REv>,
 }
@@ -88,7 +85,6 @@ impl ChainSynchronizer<JoinerEvent> {
         chainspec: Arc<Chainspec>,
         node_config: NodeConfig,
         small_network_config: SmallNetworkConfig,
-        maybe_next_upgrade: Option<ActivationPoint>,
         effect_builder: EffectBuilder<JoinerEvent>,
         registry: &Registry,
     ) -> Result<(Self, Effects<Event>), Error> {
@@ -96,7 +92,6 @@ impl ChainSynchronizer<JoinerEvent> {
             config: Config::new(chainspec, node_config, small_network_config),
             joining_outcome: None,
             metrics: Metrics::new(registry)?,
-            maybe_next_upgrade,
             _phantom: PhantomData,
         };
         let effects = synchronizer.fast_sync(effect_builder);
@@ -115,7 +110,6 @@ impl ChainSynchronizer<ParticipatingEvent> {
         chainspec: Arc<Chainspec>,
         node_config: NodeConfig,
         small_network_config: SmallNetworkConfig,
-        maybe_next_upgrade: Option<ActivationPoint>,
         metrics: Metrics,
         effect_builder: EffectBuilder<ParticipatingEvent>,
     ) -> Result<(Self, Effects<Event>), Error> {
@@ -123,7 +117,6 @@ impl ChainSynchronizer<ParticipatingEvent> {
             config: Config::new(chainspec, node_config, small_network_config),
             joining_outcome: None,
             metrics,
-            maybe_next_upgrade,
             _phantom: PhantomData,
         };
 
@@ -540,11 +533,6 @@ where
             }
         }
     }
-
-    fn handle_got_next_upgrade(&mut self, next_upgrade: ActivationPoint) -> Effects<Event> {
-        self.maybe_next_upgrade = Some(next_upgrade);
-        Effects::new()
-    }
 }
 
 impl<REv> Component<REv> for ChainSynchronizer<REv>
@@ -612,9 +600,6 @@ where
                 validators_to_sign_immediate_switch_block,
                 result,
             ),
-            Event::GotUpgradeActivationPoint(next_upgrade) => {
-                self.handle_got_next_upgrade(next_upgrade)
-            }
         }
     }
 }
