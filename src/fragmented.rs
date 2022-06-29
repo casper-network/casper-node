@@ -17,7 +17,7 @@ use crate::{error::Error, ImmediateFrame};
 pub type SingleFragment = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
 /// Indicator that more fragments are following.
-const MORE_FRAGMENT: u8 = 0x00;
+const MORE_FRAGMENTS: u8 = 0x00;
 
 /// Final fragment indicator.
 const FINAL_FRAGMENT: u8 = 0xFF;
@@ -40,7 +40,7 @@ pub fn fragment_frame<B: Buf>(
         let fragment_data = frame.copy_to_bytes(remaining);
 
         let continuation_byte: u8 = if frame.has_remaining() {
-            MORE_FRAGMENT
+            MORE_FRAGMENTS
         } else {
             FINAL_FRAGMENT
         };
@@ -83,7 +83,7 @@ pub(crate) fn make_defragmentizer<S: Stream<Item = std::io::Result<Bytes>>>(
                 }
                 future::ready(Some(buf.freeze()))
             }
-            MORE_FRAGMENT => future::ready(None),
+            MORE_FRAGMENTS => future::ready(None),
             _ => panic!("garbage found where continuation byte was expected"),
         }
     })
