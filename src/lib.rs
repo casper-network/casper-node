@@ -1,9 +1,9 @@
 //! Asynchronous multiplexing
 
 pub mod backpressured;
-pub mod chunked;
 pub mod error;
 pub mod fixed_size;
+pub mod fragmented;
 pub mod io;
 pub mod mux;
 #[cfg(test)]
@@ -117,14 +117,13 @@ pub(crate) mod tests {
     use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
 
     use crate::{
-        chunked::{make_defragmentizer, make_fragmentizer},
+        fragmented::{make_defragmentizer, make_fragmentizer},
         io::{length_delimited::LengthDelimited, FrameReader, FrameWriter},
         pipe::pipe,
     };
 
-    // In tests use small value so that we make sure that
-    // we correctly merge data that was polled from
-    // the stream in small chunks.
+    // In tests use small value to make sure that we correctly merge data that was polled from the
+    // stream in small fragments.
     const TESTING_BUFFER_INCREMENT: usize = 4;
 
     /// Collects everything inside a `Buf` into a `Vec`.
@@ -428,28 +427,28 @@ pub(crate) mod tests {
 
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
-    fn chunked_length_prefixed_sink() {
+    fn fragmented_length_prefixed_sink() {
         let (tx, rx) = pipe();
 
         let frame_writer = FrameWriter::new(LengthDelimited, tx);
-        let mut chunked_sink =
+        let mut fragmented_sink =
             make_fragmentizer::<_, Infallible>(frame_writer, NonZeroUsize::new(5).unwrap());
 
         let frame_reader = FrameReader::new(LengthDelimited, rx, TESTING_BUFFER_INCREMENT);
-        let chunked_reader = make_defragmentizer(frame_reader);
+        let fragmented_reader = make_defragmentizer(frame_reader);
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
-        chunked_sink
+        fragmented_sink
             .send(sample_data)
             .now_or_never()
             .unwrap()
             .expect("send failed");
 
         // Drop the sink, to ensure it is closed.
-        drop(chunked_sink);
+        drop(fragmented_sink);
 
-        let round_tripped: Vec<_> = chunked_reader.collect().now_or_never().unwrap();
+        let round_tripped: Vec<_> = fragmented_reader.collect().now_or_never().unwrap();
 
         assert_eq!(round_tripped, &[&b"QRSTUV"[..]])
     }
@@ -474,8 +473,8 @@ pub(crate) mod tests {
 
     #[test]
     fn from_bytestream_to_multiple_frames() {
-        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
-        let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_CHUNK", b"CRUMBS"];
+        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x10\x00\xffSINGLE_FRAGMENT\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
+        let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_FRAGMENT", b"CRUMBS"];
 
         let defragmentizer = make_defragmentizer(FrameReader::new(
             LengthDelimited,
