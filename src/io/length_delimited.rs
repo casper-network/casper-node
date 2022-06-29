@@ -78,7 +78,7 @@ mod tests {
     use super::LengthDelimited;
 
     // In tests use small value to make sure that we correctly merge data that was polled from the
-    // stream in small chunks.
+    // stream in small fragments.
     const TESTING_BUFFER_INCREMENT: usize = 4;
 
     /// Decodes the input string, returning the decoded frames and the remainder.
