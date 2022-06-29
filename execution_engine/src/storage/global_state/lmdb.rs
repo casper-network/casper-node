@@ -6,6 +6,10 @@ use std::{
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+#[cfg(test)]
+use lmdb::DatabaseFlags;
+#[cfg(test)]
+use tempfile::TempDir;
 use tracing::trace;
 
 use crate::{
@@ -370,6 +374,41 @@ impl StateProvider for LmdbGlobalState {
             Ok(missing_descendants)
         }
     }
+}
+
+/// Creates prepopulated LMDB global state instance that stores data in a temporary directory. As
+/// soon as the `TempDir` instance is dropped all the data stored will be removed from the disk as
+/// well.
+#[cfg(test)]
+pub(crate) fn make_temporary_global_state(
+    initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
+) -> (LmdbGlobalState, Digest, TempDir) {
+    let tempdir = tempfile::tempdir().expect("should create tempdir");
+
+    let lmdb_global_state = {
+        let lmdb_environment = LmdbEnvironment::new(tempdir.path(), 64 * 1024 * 1024, 512, false)
+            .expect("should create lmdb environment");
+        let lmdb_trie_store = LmdbTrieStore::new(&lmdb_environment, None, DatabaseFlags::default())
+            .expect("should create lmdb trie store");
+        LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store))
+            .expect("should create lmdb global state")
+    };
+
+    let mut root_hash = lmdb_global_state.empty_root_hash;
+
+    let mut m = AdditiveMap::new();
+
+    for (key, stored_value) in initial_data {
+        let normalized_key = key.normalize();
+        let transform = Transform::Write(stored_value);
+        m.insert(normalized_key, transform);
+    }
+
+    root_hash = lmdb_global_state
+        .commit(CorrelationId::default(), root_hash, m)
+        .expect("Creation of account should be a success.");
+
+    (lmdb_global_state, root_hash, tempdir)
 }
 
 #[cfg(test)]

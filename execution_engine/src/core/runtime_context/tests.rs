@@ -20,6 +20,7 @@ use casper_types::{
     EntryPointType, EntryPoints, Gas, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, StoredValue, URef, KEY_HASH_LENGTH, U256, U512,
 };
+use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
 use crate::{
@@ -28,11 +29,8 @@ use crate::{
         execution::AddressGenerator,
         tracking_copy::TrackingCopy,
     },
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::{
-        in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-        CommitProvider, StateProvider,
-    },
+    shared::{newtypes::CorrelationId, transform::Transform},
+    storage::global_state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
@@ -44,24 +42,16 @@ static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default)
 fn new_tracking_copy(
     init_key: Key,
     init_account: Account,
-) -> TrackingCopy<InMemoryGlobalStateView> {
-    let correlation_id = CorrelationId::new();
-    let hist = InMemoryGlobalState::empty().unwrap();
-    let root_hash = hist.empty_root_hash;
-    let transform = Transform::Write(StoredValue::Account(init_account));
+) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
+    let (global_state, state_root_hash, tempdir) =
+        global_state::lmdb::make_temporary_global_state([(init_key, init_account.into())]);
 
-    let mut m = AdditiveMap::new();
-    m.insert(init_key, transform);
-    let new_hash = hist
-        .commit(correlation_id, root_hash, m)
-        .expect("Creation of account should be a success.");
-
-    let reader = hist
-        .checkout(new_hash)
+    let reader = global_state
+        .checkout(state_root_hash)
         .expect("Checkout should not throw errors.")
         .expect("Root hash should exist.");
 
-    TrackingCopy::new(reader)
+    (TrackingCopy::new(reader), tempdir)
 }
 
 fn new_account_with_purse(
@@ -118,9 +108,10 @@ fn new_runtime_context<'a>(
     named_keys: &'a mut NamedKeys,
     access_rights: ContextAccessRights,
     address_generator: AddressGenerator,
-) -> RuntimeContext<'a, InMemoryGlobalStateView> {
-    let tracking_copy = new_tracking_copy(base_key, account.clone());
-    RuntimeContext::new(
+) -> (RuntimeContext<'a, LmdbGlobalStateView>, TempDir) {
+    let (tracking_copy, tempdir) = new_tracking_copy(base_key, account.clone());
+
+    let runtime_context = RuntimeContext::new(
         Rc::new(RefCell::new(tracking_copy)),
         EntryPointType::Session,
         named_keys,
@@ -140,7 +131,9 @@ fn new_runtime_context<'a>(
         *TEST_ENGINE_CONFIG,
         Vec::default(),
         U512::MAX,
-    )
+    );
+
+    (runtime_context, tempdir)
 }
 
 #[allow(clippy::assertions_on_constants)]
@@ -167,7 +160,7 @@ fn build_runtime_context_and_execute<T, F>(
     functor: F,
 ) -> Result<T, Error>
 where
-    F: FnOnce(RuntimeContext<InMemoryGlobalStateView>) -> Result<T, Error>,
+    F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, Error>,
 {
     let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
         .expect("should create secret key");
@@ -177,7 +170,7 @@ where
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let access_rights = account.extract_access_rights();
-    let runtime_context = new_runtime_context(
+    let (runtime_context, _tempdir) = new_runtime_context(
         &account,
         base_key,
         &mut named_keys,
@@ -353,10 +346,8 @@ fn contract_key_addable_valid() {
         .unwrap()
         .extract_access_rights(ContractHash::default());
 
-    let tracking_copy = Rc::new(RefCell::new(new_tracking_copy(
-        account_key,
-        account.clone(),
-    )));
+    let (tracking_copy, _tempdir) = new_tracking_copy(account_key, account.clone());
+    let tracking_copy = Rc::new(RefCell::new(tracking_copy));
     let _ = tracking_copy.borrow_mut().write(contract_key, contract);
 
     let default_system_registry = {
@@ -441,10 +432,8 @@ fn contract_key_addable_invalid() {
         .as_contract()
         .unwrap()
         .extract_access_rights(ContractHash::default());
-    let tracking_copy = Rc::new(RefCell::new(new_tracking_copy(
-        account_key,
-        account.clone(),
-    )));
+    let (tracking_copy, _tempdir) = new_tracking_copy(account_key, account.clone());
+    let tracking_copy = Rc::new(RefCell::new(tracking_copy));
 
     let _ = tracking_copy.borrow_mut().write(contract_key, contract);
 
@@ -580,7 +569,7 @@ fn uref_key_addable_invalid() {
 #[test]
 fn hash_key_readable() {
     // values under hash's are universally readable
-    let query = |runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_readable(&key)
@@ -592,7 +581,7 @@ fn hash_key_readable() {
 #[test]
 fn hash_key_writeable() {
     // values under hash's are immutable
-    let query = |runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_writeable(&key)
@@ -604,7 +593,7 @@ fn hash_key_writeable() {
 #[test]
 fn hash_key_addable_invalid() {
     // values under hashes are immutable
-    let query = |runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_addable(&key)
@@ -618,7 +607,7 @@ fn manage_associated_keys() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let account_hash = AccountHash::new([42; 32]);
         let weight = Weight::new(155);
 
@@ -689,7 +678,7 @@ fn action_thresholds_management() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         runtime_context
             .add_associated_key(AccountHash::new([42; 32]), Weight::new(254))
             .expect("Unable to add associated key with maximum weight");
@@ -730,7 +719,7 @@ fn should_verify_ownership_before_adding_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
         runtime_context.base_key = Key::Hash([1; 32]);
@@ -754,7 +743,7 @@ fn should_verify_ownership_before_removing_a_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
         runtime_context.base_key = Key::Hash([1; 32]);
@@ -778,7 +767,7 @@ fn should_verify_ownership_before_setting_action_threshold() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
         runtime_context.base_key = Key::Hash([1; 32]);
@@ -800,7 +789,7 @@ fn should_verify_ownership_before_setting_action_threshold() {
 #[test]
 fn can_roundtrip_key_value_pairs() {
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
+    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let deploy_hash = [1u8; 32];
         let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
         let test_uref = create_uref_as_key(&mut uref_address_generator, AccessRights::default())
@@ -838,7 +827,7 @@ fn remove_uref_works() {
 
     let access_rights = account.extract_access_rights();
 
-    let mut runtime_context = new_runtime_context(
+    let (mut runtime_context, _tempdir) = new_runtime_context(
         &account,
         base_key,
         &mut named_keys,
@@ -863,7 +852,7 @@ fn remove_uref_works() {
     // named key.
     let next_session_access_rights = account.extract_access_rights();
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let runtime_context = new_runtime_context(
+    let (runtime_context, _tempdir) = new_runtime_context(
         account,
         base_key,
         &mut named_keys,
@@ -913,7 +902,7 @@ fn validate_valid_purse_of_an_account() {
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let runtime_context = new_runtime_context(
+    let (runtime_context, _tempdir) = new_runtime_context(
         &account,
         base_key,
         &mut named_keys,
