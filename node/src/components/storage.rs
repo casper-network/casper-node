@@ -103,6 +103,10 @@ use self::disjoint_sequences::DisjointSequences;
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 
+/// We can set this very low, as there is only a single reader/writer accessing the component at any
+/// one time.
+const MAX_TRANSACTIONS: u32 = 1;
+
 /// One Gibibyte.
 const GIB: usize = 1024 * 1024 * 1024;
 
@@ -342,12 +346,10 @@ impl Storage {
                 | EnvironmentFlags::NO_SUB_DIR
                 // Disable thread local storage, strongly suggested for operation with tokio.
                 | EnvironmentFlags::NO_TLS
-                // Disable read-ahead. Our data is not storead/read in sequence that would benefit from the read-ahead.
+                // Disable read-ahead. Our data is not stored/read in sequence that would benefit from the read-ahead.
                 | EnvironmentFlags::NO_READAHEAD,
             )
-            // We need at least `max_sync_tasks` readers, add an additional 8 for unforseen external
-            // reads (not likely, but it does not hurt to increase this limit).
-            .set_max_readers(config.max_sync_tasks as u32 + 8)
+            .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(MAX_DB_COUNT)
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
@@ -2217,8 +2219,6 @@ pub struct Config {
     enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
     mem_pool_prune_interval: u16,
-    /// Maximum number of parallel synchronous storage tasks to spawn.
-    max_sync_tasks: u16,
 }
 
 impl Default for Config {
@@ -2232,7 +2232,6 @@ impl Default for Config {
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
             enable_mem_deduplication: true,
             mem_pool_prune_interval: 4096,
-            max_sync_tasks: 32,
         }
     }
 }
