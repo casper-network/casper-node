@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::ImmediateFrame;
 
-use super::{DecodeResult, Decoder, Encoder};
+use super::{DecodeResult, Encoder, FrameDecoder};
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
@@ -18,7 +18,7 @@ const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 /// Two-byte length delimited frame encoder.
 pub struct LengthDelimited;
 
-impl Decoder for LengthDelimited {
+impl FrameDecoder for LengthDelimited {
     type Error = Infallible;
 
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error> {
@@ -58,14 +58,14 @@ where
     F: Buf + Send + Sync + 'static,
 {
     type Error = LengthExceededError;
-    type WrappedFrame = LengthPrefixedFrame<F>;
+    type Output = LengthPrefixedFrame<F>;
 
-    fn encode_frame(&mut self, raw_frame: F) -> Result<Self::WrappedFrame, Self::Error> {
-        let remaining = raw_frame.remaining();
+    fn encode_frame(&mut self, input: F) -> Result<Self::Output, Self::Error> {
+        let remaining = input.remaining();
         let length: u16 = remaining
             .try_into()
             .map_err(|_err| LengthExceededError(remaining))?;
-        Ok(ImmediateFrame::from(length).chain(raw_frame))
+        Ok(ImmediateFrame::from(length).chain(input))
     }
 }
 
