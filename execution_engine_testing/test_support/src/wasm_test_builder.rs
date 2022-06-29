@@ -304,8 +304,6 @@ impl LmdbWasmTestBuilder {
             }
         };
 
-        // let global_state = LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store))
-        //     .expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
