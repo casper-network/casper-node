@@ -122,9 +122,12 @@ mod tests {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use futures::{stream, FutureExt, SinkExt, StreamExt};
+    use futures::{stream, FutureExt, SinkExt};
 
-    use crate::{fixed_size::ImmediateSink, tests::TestingSink};
+    use crate::{
+        fixed_size::ImmediateSink,
+        tests::{collect_stream_results, TestingSink},
+    };
 
     use super::ImmediateStream;
 
@@ -158,9 +161,6 @@ mod tests {
 
         let stream = ImmediateStream::<_, u32>::new(stream::iter(input));
 
-        let output: Vec<Result<u32, _>> = stream.collect().now_or_never().unwrap();
-        let values: Vec<u32> = output.into_iter().collect::<Result<_, _>>().unwrap();
-
-        assert_eq!(values, &[0x12345678, 0xAABBCCDD]);
+        assert_eq!(collect_stream_results(stream), &[0x12345678, 0xAABBCCDD]);
     }
 }

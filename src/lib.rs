@@ -4,11 +4,25 @@ pub mod backpressured;
 pub mod chunked;
 pub mod error;
 pub mod fixed_size;
-pub mod frame_reader;
-pub mod length_prefixed;
+pub mod io;
 pub mod mux;
+#[cfg(test)]
+pub(crate) mod pipe;
 
 use bytes::Buf;
+
+/// Helper macro for returning a `Poll::Ready(Err)` eagerly.
+///
+/// Can be remove once `Try` is stabilized for `Poll`.
+#[macro_export]
+macro_rules! try_ready {
+    ($ex:expr) => {
+        match $ex {
+            Err(e) => return Poll::Ready(Err(e.into())),
+            Ok(v) => v,
+        }
+    };
+}
 
 /// A frame for stack allocated data.
 #[derive(Debug)]
@@ -90,6 +104,7 @@ where
 pub(crate) mod tests {
     use std::{
         convert::Infallible,
+        fmt::Debug,
         io::Read,
         num::NonZeroUsize,
         ops::Deref,
@@ -99,19 +114,18 @@ pub(crate) mod tests {
     };
 
     use bytes::{Buf, Bytes};
-    use futures::{future, FutureExt, Sink, SinkExt, StreamExt};
-    use tokio_util::sync::PollSender;
+    use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
 
     use crate::{
         chunked::{make_defragmentizer, make_fragmentizer},
-        frame_reader::FrameReader,
-        length_prefixed::frame_add_length_prefix,
+        io::{length_delimited::LengthDelimited, FrameReader, FrameWriter},
+        pipe::pipe,
     };
 
     // In tests use small value so that we make sure that
     // we correctly merge data that was polled from
     // the stream in small chunks.
-    const BUFFER_INCREMENT: u16 = 4;
+    const TESTING_BUFFER_INCREMENT: usize = 4;
 
     /// Collects everything inside a `Buf` into a `Vec`.
     pub fn collect_buf<B: Buf>(buf: B) -> Vec<u8> {
@@ -131,6 +145,23 @@ pub(crate) mod tests {
                 .expect("reading buf should never fail");
         }
         vec
+    }
+
+    /// Given a stream producing results, returns the values.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the future is not `Poll::Ready` or any value is an error.
+    pub fn collect_stream_results<T, E, S>(stream: S) -> Vec<T>
+    where
+        E: Debug,
+        S: Stream<Item = Result<T, E>>,
+    {
+        let results: Vec<_> = stream.collect().now_or_never().expect("stream not ready");
+        results
+            .into_iter()
+            .collect::<Result<_, _>>()
+            .expect("error in stream results")
     }
 
     /// A sink for unit testing.
@@ -398,13 +429,14 @@ pub(crate) mod tests {
     /// Test an "end-to-end" instance of the assembled pipeline for sending.
     #[test]
     fn chunked_length_prefixed_sink() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-        let poll_sender = PollSender::new(tx);
+        let (tx, rx) = pipe();
 
-        let mut chunked_sink = make_fragmentizer(
-            poll_sender.with(|frame| future::ready(frame_add_length_prefix(frame))),
-            NonZeroUsize::new(5).unwrap(),
-        );
+        let frame_writer = FrameWriter::new(LengthDelimited, tx);
+        let mut chunked_sink =
+            make_fragmentizer::<_, Infallible>(frame_writer, NonZeroUsize::new(5).unwrap());
+
+        let frame_reader = FrameReader::new(LengthDelimited, rx, TESTING_BUFFER_INCREMENT);
+        let chunked_reader = make_defragmentizer(frame_reader);
 
         let sample_data = Bytes::from(&b"QRSTUV"[..]);
 
@@ -414,24 +446,24 @@ pub(crate) mod tests {
             .unwrap()
             .expect("send failed");
 
+        // Drop the sink, to ensure it is closed.
         drop(chunked_sink);
 
-        let chunks: Vec<_> = std::iter::from_fn(move || rx.blocking_recv())
-            .map(collect_buf)
-            .collect();
+        let round_tripped: Vec<_> = chunked_reader.collect().now_or_never().unwrap();
 
-        assert_eq!(
-            chunks,
-            vec![b"\x06\x00\x00QRSTU".to_vec(), b"\x02\x00\xffV".to_vec()]
-        )
+        assert_eq!(round_tripped, &[&b"QRSTUV"[..]])
     }
 
     #[test]
-    fn stream_to_message() {
-        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
+    fn from_bytestream_to_frame() {
+        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
         let expected = "ABCDEFGHIJKL";
 
-        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BUFFER_INCREMENT));
+        let defragmentizer = make_defragmentizer(FrameReader::new(
+            LengthDelimited,
+            input,
+            TESTING_BUFFER_INCREMENT,
+        ));
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(
@@ -441,11 +473,15 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn stream_to_multiple_messages() {
-        let stream = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
-        let expected = vec!["ABCDEFGHIJKL", "SINGLE_CHUNK", "CRUMBS"];
+    fn from_bytestream_to_multiple_frames() {
+        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x0d\x00\xffSINGLE_CHUNK\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
+        let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_CHUNK", b"CRUMBS"];
 
-        let defragmentizer = make_defragmentizer(FrameReader::new(stream, BUFFER_INCREMENT));
+        let defragmentizer = make_defragmentizer(FrameReader::new(
+            LengthDelimited,
+            input,
+            TESTING_BUFFER_INCREMENT,
+        ));
 
         let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
         assert_eq!(expected, messages);

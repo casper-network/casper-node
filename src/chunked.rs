@@ -4,7 +4,7 @@
 //! continuation byte, which is `0x00` if more chunks are following, `0xFF` if this is the frame's
 //! last chunk.
 
-use std::{future, num::NonZeroUsize};
+use std::{future, io, num::NonZeroUsize};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{
@@ -51,26 +51,29 @@ pub fn chunk_frame<B: Buf>(
 /// Generates the "fragmentizer", i.e: an object that when given the source stream of bytes will yield single chunks.
 #[allow(unused)]
 pub(crate) fn make_fragmentizer<S, E>(
-    source: S,
+    sink: S,
     fragment_size: NonZeroUsize,
-) -> impl Sink<Bytes, Error = Error<E>>
+) -> impl Sink<Bytes, Error = io::Error>
 where
     E: std::error::Error,
-    S: Sink<SingleChunk, Error = Error<E>>,
+    S: Sink<SingleChunk, Error = io::Error>,
 {
-    source.with_flat_map(move |frame: Bytes| {
+    sink.with_flat_map(move |frame: Bytes| {
         let chunk_iter = chunk_frame(frame, fragment_size).expect("TODO: Handle error");
-        stream::iter(chunk_iter.map(Result::<_, Error<E>>::Ok))
+        stream::iter(chunk_iter.map(Result::<_, _>::Ok))
     })
 }
 
 /// Generates the "defragmentizer", i.e.: an object that when given the source stream of fragments will yield the entire message.
 #[allow(unused)]
-pub(crate) fn make_defragmentizer<S: Stream<Item = Bytes>>(source: S) -> impl Stream<Item = Bytes> {
+pub(crate) fn make_defragmentizer<S: Stream<Item = std::io::Result<Bytes>>>(
+    source: S,
+) -> impl Stream<Item = Bytes> {
     let mut buffer = vec![];
-    source.filter_map(move |mut fragment| {
+    source.filter_map(move |fragment| {
+        let mut fragment = fragment.expect("TODO: handle read error");
         let first_byte = *fragment.first().expect("missing first byte");
-        buffer.push(fragment.split_off(std::mem::size_of_val(&first_byte)));
+        buffer.push(fragment.split_off(1));
         match first_byte {
             FINAL_CHUNK => {
                 // TODO: Check the true zero-copy approach.
