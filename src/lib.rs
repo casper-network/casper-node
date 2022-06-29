@@ -2,6 +2,7 @@
 
 pub mod backpressured;
 pub mod chunked;
+pub mod codec;
 pub mod error;
 pub mod fixed_size;
 pub mod io;

@@ -8,9 +8,9 @@ use std::convert::Infallible;
 use bytes::{Buf, BytesMut};
 use thiserror::Error;
 
-use crate::ImmediateFrame;
+use crate::{codec::Encoder, ImmediateFrame};
 
-use super::{DecodeResult, Encoder, FrameDecoder};
+use super::{DecodeResult, FrameDecoder};
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
@@ -60,7 +60,7 @@ where
     type Error = LengthExceededError;
     type Output = LengthPrefixedFrame<F>;
 
-    fn encode_frame(&mut self, input: F) -> Result<Self::Output, Self::Error> {
+    fn encode(&mut self, input: F) -> Result<Self::Output, Self::Error> {
         let remaining = input.remaining();
         let length: u16 = remaining
             .try_into()

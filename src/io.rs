@@ -16,7 +16,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
 use thiserror::Error;
 
-use crate::try_ready;
+use crate::{codec::Encoder, try_ready};
 
 /// Frame decoder.
 ///
@@ -32,27 +32,6 @@ pub trait FrameDecoder {
     ///
     /// Implementers of this function are expected to remove completed frames from `buffer`.
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
-}
-
-/// Encoder.
-///
-/// An encoder takes a value of one kind and transforms it to another.
-pub trait Encoder<F> {
-    /// Encoding error.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// The wrapped frame resulting from encoding the given raw frame.
-    ///
-    /// While this can be simply `Bytes`, using something like `bytes::Chain` allows for more
-    /// efficient encoding here.
-    type Output: Buf + Send + Sync + 'static;
-
-    /// Encode a frame.
-    ///
-    /// The resulting `Bytes` should be the bytes to send into the outgoing stream, it must contain
-    /// the information required for an accompanying `Decoder` to be able to reconstruct the frame
-    /// from a raw byte stream.
-    fn encode_frame(&mut self, input: F) -> Result<Self::Output, Self::Error>;
 }
 
 /// The outcome of a [`decode_frame`] call.
@@ -224,7 +203,7 @@ where
     fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
         let wrapped_frame = self
             .encoder
-            .encode_frame(item)
+            .encode(item)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         self.current_frame = Some(wrapped_frame);
 
