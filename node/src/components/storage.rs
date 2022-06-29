@@ -1760,8 +1760,8 @@ impl Storage {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        let mut tx = self.env.begin_ro_txn()?;
-        self.get_finality_signatures(&mut tx, block_hash)
+        let mut txn = self.env.begin_ro_txn()?;
+        self.get_finality_signatures(&mut txn, block_hash)
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
@@ -1946,17 +1946,17 @@ impl Storage {
     /// emergency upgrade.
     fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
         &self,
-        tx: &mut Tx,
+        txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         // Needed to know what era the block was in, so that we can check what the validators were
         // and figure out if the signatures are sufficient.
-        let block_header = match self.read_block_header_by_hash(block_hash)? {
+        let block_header = match self.get_single_block_header(txn, block_hash)? {
             Some(header) => header,
             None => return Ok(None),
         };
 
-        self.get_sufficient_finality_signatures(tx, &block_header)
+        self.get_sufficient_finality_signatures(txn, &block_header)
     }
 
     /// Retrieves a deploy from the deploy store.
@@ -1971,11 +1971,11 @@ impl Storage {
         &self,
         block_header_ids: &BlockHeadersBatchId,
     ) -> Result<Option<BlockHeadersBatch>, FatalStorageError> {
-        let mut tx = self.env.begin_ro_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
 
         let mut headers = Vec::with_capacity(block_header_ids.len() as usize);
         for block_height in block_header_ids.iter() {
-            match self.get_block_header_by_height_restricted(&mut tx, block_height, true)? {
+            match self.get_block_header_by_height_restricted(&mut txn, block_height, true)? {
                 Some(block_header) => headers.push(block_header),
                 None => {
                     debug!(?block_height, "block header not found");
