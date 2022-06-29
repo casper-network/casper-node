@@ -1,9 +1,13 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
+use either::Either;
 
 use crate::components::consensus::{
     consensus_protocol::ProposedBlock,
@@ -210,6 +214,33 @@ where
     pub(crate) instance_id: C::InstanceId,
 }
 
+/// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is missing.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) struct SyncResponse<C>
+where
+    C: Context,
+{
+    /// The round the information refers to.
+    pub(crate) round_id: RoundId,
+    /// The proposal in this round, or its hash.
+    pub(crate) proposal_or_hash: Option<Either<Proposal<C>, C::Hash>>,
+    /// Echo signatures the requester is missing.
+    pub(crate) echo_sigs: BTreeMap<ValidatorIndex, C::Signature>,
+    /// Vote signatures for `true` the requester is missing.
+    pub(crate) true_vote_sigs: BTreeMap<ValidatorIndex, C::Signature>,
+    /// Vote signatures for `false` the requester is missing.
+    pub(crate) false_vote_sigs: BTreeMap<ValidatorIndex, C::Signature>,
+    /// Signed messages that prove that a validator was active.
+    pub(crate) signed_messages: Vec<SignedMessage<C>>,
+    /// Evidence against faulty validators.
+    pub(crate) evidence: Vec<(SignedMessage<C>, Content<C>, C::Signature)>,
+    pub(crate) instance_id: C::InstanceId,
+}
+
 /// All messages of the protocol.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
@@ -220,6 +251,8 @@ pub(crate) enum Message<C: Context> {
     /// Partial information about the sender's protocol state. The receiver should send missing
     /// data.
     SyncRequest(SyncRequest<C>),
+    /// Signatures, proposals and evidence the requester was missing.
+    SyncResponse(SyncResponse<C>),
     /// A proposal for a new block. This does not contain any signature; instead, the proposer is
     /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
     /// receive unless they either have a signed echo by the proposer and the proposer has not
@@ -263,6 +296,7 @@ impl<C: Context> Message<C> {
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
             Message::SyncRequest(SyncRequest { instance_id, .. })
+            | Message::SyncResponse(SyncResponse { instance_id, .. })
             | Message::Signed(SignedMessage { instance_id, .. })
             | Message::Proposal { instance_id, .. }
             | Message::Evidence(SignedMessage { instance_id, .. }, ..) => instance_id,

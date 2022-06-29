@@ -793,9 +793,19 @@ fn zug_handles_sync_request() {
         instance_id: *sc.instance_id(),
     });
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
-    let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
-    assert!(remove_proposal(&mut msgs, 0, &proposal0));
-    assert!(msgs.is_empty(), "unexpected messages: {:?}", msgs);
+    assert_eq!(
+        &*remove_targeted_messages(&validators, sender, &mut outcomes),
+        [Message::SyncResponse(SyncResponse {
+            round_id: 0,
+            proposal_or_hash: Some(Either::Left(proposal0)),
+            echo_sigs: BTreeMap::new(),
+            true_vote_sigs: BTreeMap::new(),
+            false_vote_sigs: BTreeMap::new(),
+            signed_messages: Vec::new(),
+            evidence: Vec::new(),
+            instance_id: *sc.instance_id(),
+        })]
+    );
     expect_no_gossip_block_finalized(outcomes);
 
     // But if there are missing messages, these are sent back.
@@ -814,31 +824,41 @@ fn zug_handles_sync_request() {
     });
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
     let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
-    // The sender's proposal hash is different from the one we have a quorum for:
-    assert!(remove_signed(&mut msgs, 0, alice_idx, echo(hash0)));
-    assert!(remove_signed(&mut msgs, 0, bob_idx, echo(hash0)));
-    // The sender has Alice's but not Bob's vote:
-    assert!(remove_signed(&mut msgs, 0, bob_idx, vote(false)));
-    // The sender doesn't know Carol is faulty:
-    let evidence_msg = msgs.pop().expect("missing evidence message");
-    assert!(msgs.is_empty());
-    match evidence_msg {
-        Message::Evidence(
-            SignedMessage {
-                round_id: 0,
-                content: Content::Vote(vote),
-                validator_idx,
-                ..
-            },
-            Content::Vote(vote2),
-            _,
-        ) => {
-            assert_ne!(vote, vote2);
-            assert_eq!(validator_idx, carol_idx);
-        }
-        evidence_msg => panic!("unexpected message: {:?}", evidence_msg),
-    }
     expect_no_gossip_block_finalized(outcomes);
+
+    let sync_response_msg = msgs.pop().expect("sync response");
+    assert_eq!(msgs, vec![]);
+
+    let sync_response = match sync_response_msg {
+        Message::SyncResponse(sync_response) => sync_response,
+        msg => panic!("unexpected message: {:?}", msg),
+    };
+
+    assert_eq!(sync_response.round_id, 0);
+    assert_eq!(sync_response.proposal_or_hash, Some(Either::Right(hash0)));
+    assert_eq!(
+        sync_response.echo_sigs,
+        sc.round(0).unwrap().echoes()[&hash0]
+    );
+    assert_eq!(sync_response.true_vote_sigs, BTreeMap::new());
+    assert_eq!(sync_response.false_vote_sigs.len(), 1);
+    assert_eq!(
+        Some(sync_response.false_vote_sigs[&bob_idx]),
+        sc.round(0).unwrap().votes(false)[bob_idx]
+    );
+    assert_eq!(sync_response.signed_messages, vec![]);
+    assert_eq!(sync_response.evidence.len(), 1);
+    match (&sync_response.evidence[0], &sc.faults[&carol_idx]) {
+        (
+            (signed_msg, content2, sig2),
+            Fault::Direct(expected_signed_msg, expected_content2, expected_sig2),
+        ) => {
+            assert_eq!(signed_msg, expected_signed_msg);
+            assert_eq!(content2, expected_content2);
+            assert_eq!(sig2, expected_sig2);
+        }
+        (evidence, fault) => panic!("unexpected evidence: {:?}, {:?}", evidence, fault),
+    }
 }
 
 #[test]
