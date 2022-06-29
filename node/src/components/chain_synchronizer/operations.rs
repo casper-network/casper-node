@@ -281,6 +281,31 @@ impl CanUseJoiners for Deploy {}
 impl CanUseJoiners for BlockAndDeploys {}
 impl CanUseJoiners for BlockHeadersBatch {}
 
+/// Returns fully-connected, non-joiner peers that are known to be not banned.
+async fn get_filtered_fully_connected_non_joiner_peers<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Vec<NodeId>
+where
+    REv: From<NetworkInfoRequest>,
+{
+    let mut peer_list = ctx
+        .effect_builder
+        .get_fully_connected_non_joiner_peers()
+        .await;
+    ctx.filter_bad_peers(&mut peer_list);
+    peer_list
+}
+
+/// Returns fully-connected, joiner and non-joiner peers that are known to be not banned.
+async fn get_filtered_fully_connected_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
+where
+    REv: From<NetworkInfoRequest>,
+{
+    let mut peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+    ctx.filter_bad_peers(&mut peer_list);
+    peer_list
+}
+
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
 async fn fetch_retry_forever<REv, T>(ctx: &ChainSyncContext<'_, REv>, id: T::Id) -> FetchResult<T>
@@ -290,14 +315,11 @@ where
 {
     let mut attempts = 0_usize;
     loop {
-        let mut new_peer_list = if T::can_use_joiners() {
-            ctx.effect_builder.get_fully_connected_peers().await
+        let new_peer_list = if T::can_use_joiners() {
+            get_filtered_fully_connected_peers(ctx).await
         } else {
-            ctx.effect_builder
-                .get_fully_connected_non_joiner_peers()
-                .await
+            get_filtered_fully_connected_non_joiner_peers(ctx).await
         };
-        ctx.filter_bad_peers(&mut new_peer_list);
 
         if new_peer_list.is_empty() && attempts % 100 == 0 {
             warn!(
@@ -666,7 +688,7 @@ where
     // fetch the data.
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = ctx.effect_builder.get_fully_connected_peers().await;
+        peers = get_filtered_fully_connected_peers(ctx).await;
         if !peers.is_empty() {
             break;
         }
@@ -1730,7 +1752,7 @@ where
         + From<BlocklistAnnouncement>,
 {
     let start = Timestamp::now();
-    let peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+    let peer_list = get_filtered_fully_connected_peers(ctx).await;
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
@@ -2194,12 +2216,7 @@ where
 
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            for peer in ctx
-                .effect_builder
-                .get_fully_connected_peers()
-                .await
-                .into_iter()
-            {
+            for peer in get_filtered_fully_connected_peers(ctx).await.into_iter() {
                 info!(block_hash=%block.hash(), "start - re-executing finalized block");
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
