@@ -49,7 +49,7 @@
 //! it is eventually seen by all validators, even if they are not fully connected. This is
 //! achieved via a pull-based randomized gossip mechanism:
 //!
-//! A `SyncState` message containing information about a random part of the local protocol state is
+//! A `SyncRequest` message containing information about a random part of the local protocol state is
 //! periodically sent to a random peer. The peer compares that to its local state, and responds with
 //! all signed messages that it has and the other is missing.
 
@@ -73,6 +73,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use either::Either;
 use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
 use tracing::{debug, error, event, info, warn, Level};
@@ -95,7 +96,7 @@ use crate::{
     utils, NodeRng,
 };
 use fault::Fault;
-use message::{Content, Message, Proposal, SignedMessage, SyncState};
+use message::{Content, Message, Proposal, SignedMessage, SyncRequest, SyncResponse};
 use params::Params;
 use participation::{Participation, ParticipationStatus};
 use round::Round;
@@ -399,7 +400,7 @@ impl<C: Context + 'static> Zug<C> {
             .choose(rng)
             .unwrap_or(self.current_round);
         let payload = self
-            .create_sync_state_message(first_validator_idx, round_id)
+            .create_sync_request_message(first_validator_idx, round_id)
             .serialize();
         let mut outcomes = vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)];
         // Periodically sync the state with a random peer.
@@ -458,12 +459,12 @@ impl<C: Context + 'static> Zug<C> {
         );
     }
 
-    /// Creates a `SyncState` message to inform a peer about our view of the given round, so that
+    /// Creates a `SyncRequest` message to inform a peer about our view of the given round, so that
     /// the peer can send us any data we are missing.
     ///
     /// If there are more than 128 validators, the information only covers echoes and votes of
     /// validators with index in `first_validator_idx..=(first_validator_idx + 127)`.
-    fn create_sync_state_message(
+    fn create_sync_request_message(
         &self,
         first_validator_idx: ValidatorIndex,
         round_id: RoundId,
@@ -472,7 +473,7 @@ impl<C: Context + 'static> Zug<C> {
         let round = match self.round(round_id) {
             Some(round) => round,
             None => {
-                return Message::new_empty_round_sync_state(
+                return Message::new_empty_round_sync_request(
                     round_id,
                     first_validator_idx,
                     faulty,
@@ -499,7 +500,7 @@ impl<C: Context + 'static> Zug<C> {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
         let active = self.validator_bit_field(first_validator_idx, self.active.keys_some());
-        Message::SyncState(SyncState {
+        Message::SyncRequest(SyncRequest {
             round_id,
             proposal_hash,
             has_proposal,
@@ -729,80 +730,79 @@ impl<C: Context + 'static> Zug<C> {
     /// When we receive a request to synchronize, we must take a careful diff of our state and the
     /// state in the sync state to ensure we send them exactly what they need to get back up to
     /// speed in the network.
-    fn handle_sync_state(&self, sync_state: SyncState<C>, sender: NodeId) -> ProtocolOutcomes<C> {
-        let SyncState {
+    fn handle_sync_request(
+        &self,
+        sync_request: SyncRequest<C>,
+        sender: NodeId,
+    ) -> ProtocolOutcomes<C> {
+        let SyncRequest {
             round_id,
-            proposal_hash,
-            has_proposal,
+            mut proposal_hash,
+            mut has_proposal,
             first_validator_idx,
-            echoes,
+            mut echoes,
             true_votes,
             false_votes,
             active,
             faulty,
-            instance_id: _,
-        } = sync_state;
+            instance_id,
+        } = sync_request;
         // TODO: Limit how much time and bandwidth we spend on each peer.
         // TODO: Send only enough signatures for quorum.
-        // TODO: Combine multiple `SignedMessage`s with the same values into one.
-        // TODO: Refactor to something more readable!!
-        let round = match self.round(round_id) {
-            Some(round) => round,
-            None => return vec![],
-        };
         if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
                 first_validator_idx = first_validator_idx.0,
                 ?sender,
-                "invalid SyncState message"
+                "invalid SyncRequest message"
             );
-            return vec![];
+            return vec![ProtocolOutcome::Disconnect(sender)];
         }
+
+        // If we don't have that round we have no information the requester is missing.
+        let round = match self.round(round_id) {
+            Some(round) => round,
+            None => return vec![],
+        };
+
+        // If the peer has no or a wrong proposal we assume they don't have any echoes for the
+        // correct one. We don't send them the right proposal, though: they might already have it.
+        if round.quorum_echoes() != proposal_hash && round.quorum_echoes().is_some() {
+            has_proposal = true;
+            echoes = 0;
+            proposal_hash = round.quorum_echoes();
+        }
+
+        // The bit field of validators we know to be faulty.
         let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
-        let mut contents: Vec<(Content<C>, ValidatorIndex, C::Signature)> = vec![];
-        let mut proposal_outcome = None;
+        // The echo signatures and proposal/hash we will send in the response.
+        let mut proposal_or_hash = None;
+        let mut echo_sigs = BTreeMap::new();
+        // The bit field of validators we have echoes from in this round.
         let mut our_echoes: u128 = 0;
-        match proposal_hash {
-            Some(hash) if round.quorum_echoes() == None || round.quorum_echoes() == Some(hash) => {
-                // They requested echoes for the proposal that we have a quorum for, or we don't
-                // have a quorum of echoes yet.
-                if let Some(echo_map) = round.echoes().get(&hash) {
-                    // Send them echoes they are missing, but exclude faulty validators.
-                    our_echoes =
-                        self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
-                    let missing_echoes = our_echoes & !(echoes | faulty | our_faulty);
-                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echoes)
-                    {
-                        contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
-                    }
-                    if !has_proposal {
-                        // If they don't have the proposal make sure we include the leader's echo.
-                        let leader_idx = self.leader(round_id);
-                        if !self.validator_bit_field_includes(first_validator_idx, leader_idx) {
-                            if let Some(signature) = echo_map.get(&leader_idx) {
-                                contents.push((Content::Echo(hash), leader_idx, *signature));
-                            }
-                        }
-                        if let Some(proposal) = round.proposal() {
-                            if proposal.hash() == hash {
-                                let msg = Message::Proposal {
-                                    round_id,
-                                    instance_id: *self.instance_id(),
-                                    proposal: proposal.clone(),
-                                };
-                                let ser_msg = msg.serialize();
-                                proposal_outcome =
-                                    Some(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender))
-                            }
-                        }
-                    }
+
+        if let Some(hash) = proposal_hash {
+            if let Some(echo_map) = round.echoes().get(&hash) {
+                // Send them echoes they are missing, but exclude faulty validators.
+                our_echoes =
+                    self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
+                let missing_echoes = our_echoes & !(echoes | faulty | our_faulty);
+                for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echoes) {
+                    echo_sigs.insert(v_idx, echo_map[&v_idx]);
                 }
-            }
-            _ => {
-                if let Some(hash) = round.quorum_echoes() {
-                    // We have a quorum of echoes that they don't know about.
-                    for (v_idx, signature) in &round.echoes()[&hash] {
-                        contents.push((Content::Echo(hash), *v_idx, *signature));
+                if has_proposal {
+                    proposal_or_hash = Some(Either::Right(hash));
+                } else {
+                    // If they don't have the proposal make sure we include the leader's echo.
+                    let leader_idx = self.leader(round_id);
+                    if !self.validator_bit_field_includes(first_validator_idx, leader_idx) {
+                        if let Some(signature) = echo_map.get(&leader_idx) {
+                            echo_sigs.insert(leader_idx, *signature);
+                        }
+                    }
+                    if let Some(proposal) = round.proposal() {
+                        if proposal.hash() == hash {
+                            proposal_or_hash = Some(Either::Left(proposal.clone()));
+                        }
                     }
                 }
             }
@@ -816,55 +816,38 @@ impl<C: Context + 'static> Zug<C> {
             self.validator_bit_field(first_validator_idx, round.votes(true).keys_some())
         };
         let missing_true_votes = our_true_votes & !(true_votes | faulty | our_faulty);
-        for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
-            let signature = round.votes(true)[v_idx].unwrap();
-            contents.push((Content::Vote(true), v_idx, signature));
-        }
+        let true_vote_sigs = self
+            .iter_validator_bit_field(first_validator_idx, missing_true_votes)
+            .map(|v_idx| (v_idx, round.votes(true)[v_idx].unwrap()))
+            .collect();
         let our_false_votes: u128 = if round.quorum_votes() == Some(true) {
             0
         } else {
             self.validator_bit_field(first_validator_idx, round.votes(false).keys_some())
         };
         let missing_false_votes = our_false_votes & !(false_votes | faulty | our_faulty);
-        for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
-            let signature = round.votes(false)[v_idx].unwrap();
-            contents.push((Content::Vote(false), v_idx, signature));
-        }
-        // Convert the contents to protocol outcomes.
-        let mut outcomes = contents
-            .into_iter()
-            .map(|(content, validator_idx, signature)| {
-                let msg = Message::Signed(SignedMessage {
-                    round_id,
-                    instance_id: *self.instance_id(),
-                    content,
-                    validator_idx,
-                    signature,
-                });
-                let ser_msg = msg.serialize();
-                ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender)
-            })
-            .collect_vec();
-        // Add the proposal _after_ the corresponding echo, so it gets accepted by the peer.
-        outcomes.extend(proposal_outcome);
+        let false_vote_sigs = self
+            .iter_validator_bit_field(first_validator_idx, missing_false_votes)
+            .map(|v_idx| (v_idx, round.votes(false)[v_idx].unwrap()))
+            .collect();
+
+        let mut outcomes = vec![];
 
         // Add evidence for validators they don't know are faulty.
         let missing_faulty = our_faulty & !faulty;
+        let mut evidence = vec![];
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_faulty) {
             match &self.faults[&v_idx] {
                 Fault::Banned => {
-                    debug!(
+                    info!(
                         validator_index = v_idx.0,
                         ?sender,
-                        "peer disagrees about banned validator"
+                        "peer disagrees about banned validator; disconnecting"
                     );
+                    return vec![ProtocolOutcome::Disconnect(sender)];
                 }
                 Fault::Direct(signed_msg, content2, signature2) => {
-                    outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Evidence(signed_msg.clone(), content2.clone(), *signature2)
-                            .serialize(),
-                        sender,
-                    ));
+                    evidence.push((signed_msg.clone(), content2.clone(), *signature2));
                 }
                 Fault::Indirect => {
                     let vid = self.validators.id(v_idx).unwrap().clone();
@@ -873,13 +856,95 @@ impl<C: Context + 'static> Zug<C> {
             }
         }
 
+        // Send any signed messages that prove a validator is not completely inactive. We only
+        // need to do this for validators that the requester doesn't know are active, and that
+        // we haven't already included any signature from in our votes, echoes or evidence.
         let our_active = self.validator_bit_field(first_validator_idx, self.active.keys_some());
         let missing_active =
             our_active & !(active | our_echoes | our_true_votes | our_false_votes | our_faulty);
-        for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_active) {
-            let signed_msg = self.active[v_idx].as_ref().unwrap().clone();
-            let ser_msg = Message::Signed(signed_msg).serialize();
-            outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
+        let signed_messages = self
+            .iter_validator_bit_field(first_validator_idx, missing_active)
+            .filter_map(|v_idx| self.active[v_idx].clone())
+            .collect();
+
+        // Send the serialized sync response to the requester
+        let sync_response = SyncResponse {
+            round_id,
+            proposal_or_hash,
+            echo_sigs,
+            true_vote_sigs,
+            false_vote_sigs,
+            signed_messages,
+            evidence,
+            instance_id,
+        };
+        let ser_msg = Message::SyncResponse(sync_response).serialize();
+        outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
+        outcomes
+    }
+
+    /// The response containing the parts from the sender's protocol state that we were missing.
+    fn handle_sync_response(
+        &mut self,
+        sync_response: SyncResponse<C>,
+        sender: NodeId,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
+        let SyncResponse {
+            round_id,
+            proposal_or_hash,
+            echo_sigs,
+            true_vote_sigs,
+            false_vote_sigs,
+            mut signed_messages,
+            evidence,
+            instance_id,
+        } = sync_response;
+
+        let (proposal_hash, proposal) = match proposal_or_hash {
+            Some(Either::Left(proposal)) => (Some(proposal.hash()), Some(proposal)),
+            Some(Either::Right(hash)) => (Some(hash), None),
+            None => (None, None),
+        };
+
+        // Reconstruct the signed messages from the echo and vote signatures, and add them to the
+        // messages we need to handle.
+        let mut contents = vec![];
+        if let Some(hash) = proposal_hash {
+            for (validator_idx, signature) in echo_sigs {
+                contents.push((validator_idx, Content::Echo(hash), signature));
+            }
+        }
+        for (validator_idx, signature) in true_vote_sigs {
+            contents.push((validator_idx, Content::Vote(true), signature));
+        }
+        for (validator_idx, signature) in false_vote_sigs {
+            contents.push((validator_idx, Content::Vote(false), signature));
+        }
+        signed_messages.extend(
+            contents
+                .into_iter()
+                .map(|(validator_idx, content, signature)| SignedMessage {
+                    round_id,
+                    instance_id,
+                    content,
+                    validator_idx,
+                    signature,
+                }),
+        );
+
+        // Handle the signed messages, evidence and proposal. The proposal must be handled last,
+        // since the other data may contain its justification, i.e. the proposer's own echo, or a
+        // quorum of echoes.
+        let mut outcomes = vec![];
+        for signed_msg in signed_messages {
+            outcomes.extend(self.handle_signed_message(signed_msg, sender, now));
+        }
+        for (signed_msg, content2, signature2) in evidence {
+            outcomes.extend(self.handle_evidence(signed_msg, content2, signature2, sender, now));
+        }
+        if let Some(proposal) = proposal {
+            outcomes.extend(self.handle_proposal(round_id, proposal, sender, now));
         }
         outcomes
     }
@@ -1850,7 +1915,12 @@ where
                 warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
-            Ok(Message::SyncState(sync_state)) => self.handle_sync_state(sync_state, sender),
+            Ok(Message::SyncRequest(sync_request)) => {
+                self.handle_sync_request(sync_request, sender)
+            }
+            Ok(Message::SyncResponse(sync_response)) => {
+                self.handle_sync_response(sync_response, sender, now)
+            }
             Ok(Message::Proposal {
                 round_id,
                 instance_id: _,
@@ -2041,7 +2111,9 @@ where
         if let Some(v_idx) = self.validators.get_index(vid) {
             // Send the peer a sync message, so they will send us evidence we are missing.
             let round_id = self.current_round;
-            let payload = self.create_sync_state_message(v_idx, round_id).serialize();
+            let payload = self
+                .create_sync_request_message(v_idx, round_id)
+                .serialize();
             vec![ProtocolOutcome::CreatedTargetedMessage(payload, peer)]
         } else {
             error!(?vid, "unknown validator ID");

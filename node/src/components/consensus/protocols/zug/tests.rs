@@ -195,7 +195,7 @@ fn remove_messages_to_random(
             _ => return true,
         };
         assert_eq!(*msg.instance_id(), expected_instance_id);
-        if let Message::SyncState(_) = &msg {
+        if let Message::SyncRequest(_) = &msg {
             result.push(msg);
             false
         } else {
@@ -689,9 +689,9 @@ fn zug_standstill_alert() {
     assert!(has_standstill_alert(&outcomes));
 }
 
-/// Tests that a `SyncState` message is periodically sent to a random peer.
+/// Tests that a `SyncRequest` message is periodically sent to a random peer.
 #[test]
-fn zug_sends_sync_state() {
+fn zug_sends_sync_request() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(50, 40, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -722,13 +722,13 @@ fn zug_sends_sync_state() {
 
     timestamp += timeout;
 
-    // The protocol state is empty and the SyncState should reflect that.
+    // The protocol state is empty and the SyncRequest should reflect that.
     let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncState(SyncState {
+            Some(Message::SyncRequest(SyncRequest {
                 round_id: 0,
                 proposal_hash: None,
                 has_proposal: false,
@@ -759,13 +759,13 @@ fn zug_sends_sync_state() {
     let msg = create_message(&validators, 0, vote(false), &carol_kp);
     sc.handle_message(&mut rng, sender, msg, timestamp);
 
-    // The next SyncState message must include all the new information.
+    // The next SyncRequest message must include all the new information.
     let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncState(SyncState {
+            Some(Message::SyncRequest(SyncRequest {
                 round_id: 0,
                 proposal_hash: Some(hash),
                 has_proposal: true,
@@ -798,9 +798,9 @@ fn zug_sends_sync_state() {
     }
 }
 
-/// Tests that we respond to a `SyncState` message with the missing signatures.
+/// Tests that we respond to a `SyncRequest` message with the missing signatures.
 #[test]
-fn zug_handles_sync_state() {
+fn zug_handles_sync_request() {
     let mut rng = crate::new_rng();
     let (weights, validators) = abc_weights(50, 40, 10);
     let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
@@ -808,7 +808,7 @@ fn zug_handles_sync_state() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let mut sc = new_test_zug(weights, vec![], &[alice_idx]);
+    let mut sc = new_test_zug(weights.clone(), vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -853,7 +853,7 @@ fn zug_handles_sync_state() {
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
 
     // The sender has everything we have except the proposal itself.
-    let msg = Message::<ClContext>::SyncState(SyncState {
+    let msg = Message::<ClContext>::SyncRequest(SyncRequest {
         round_id: 0,
         proposal_hash: Some(hash0),
         has_proposal: false,
@@ -871,13 +871,23 @@ fn zug_handles_sync_state() {
         instance_id: *sc.instance_id(),
     });
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
-    let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
-    assert!(remove_proposal(&mut msgs, 0, &proposal0));
-    assert!(msgs.is_empty(), "unexpected messages: {:?}", msgs);
+    assert_eq!(
+        &*remove_targeted_messages(&validators, sender, &mut outcomes),
+        [Message::SyncResponse(SyncResponse {
+            round_id: 0,
+            proposal_or_hash: Some(Either::Left(proposal0)),
+            echo_sigs: BTreeMap::new(),
+            true_vote_sigs: BTreeMap::new(),
+            false_vote_sigs: BTreeMap::new(),
+            signed_messages: Vec::new(),
+            evidence: Vec::new(),
+            instance_id: *sc.instance_id(),
+        })]
+    );
     expect_no_gossip_block_finalized(outcomes);
 
     // But if there are missing messages, these are sent back.
-    let msg = Message::<ClContext>::SyncState(SyncState {
+    let msg = Message::<ClContext>::SyncRequest(SyncRequest {
         round_id: 0,
         proposal_hash: Some(hash1), // Wrong proposal!
         has_proposal: true,
@@ -892,31 +902,66 @@ fn zug_handles_sync_state() {
     });
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
     let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
-    // The sender's proposal hash is different from the one we have a quorum for:
-    assert!(remove_signed(&mut msgs, 0, alice_idx, echo(hash0)));
-    assert!(remove_signed(&mut msgs, 0, bob_idx, echo(hash0)));
-    // The sender has Alice's but not Bob's vote:
-    assert!(remove_signed(&mut msgs, 0, bob_idx, vote(false)));
-    // The sender doesn't know Carol is faulty:
-    let evidence_msg = msgs.pop().expect("missing evidence message");
-    assert!(msgs.is_empty());
-    match evidence_msg {
-        Message::Evidence(
-            SignedMessage {
-                round_id: 0,
-                content: Content::Vote(vote),
-                validator_idx,
-                ..
-            },
-            Content::Vote(vote2),
-            _,
-        ) => {
-            assert_ne!(vote, vote2);
-            assert_eq!(validator_idx, carol_idx);
-        }
-        evidence_msg => panic!("unexpected message: {:?}", evidence_msg),
-    }
     expect_no_gossip_block_finalized(outcomes);
+
+    let sync_response_msg = msgs.pop().expect("sync response");
+    assert_eq!(msgs, vec![]);
+
+    let sync_response = match sync_response_msg {
+        Message::SyncResponse(sync_response) => sync_response,
+        msg => panic!("unexpected message: {:?}", msg),
+    };
+
+    assert_eq!(sync_response.round_id, 0);
+    assert_eq!(sync_response.proposal_or_hash, Some(Either::Right(hash0)));
+    assert_eq!(
+        sync_response.echo_sigs,
+        sc.round(0).unwrap().echoes()[&hash0]
+    );
+    assert_eq!(sync_response.true_vote_sigs, BTreeMap::new());
+    assert_eq!(sync_response.false_vote_sigs.len(), 1);
+    assert_eq!(
+        Some(sync_response.false_vote_sigs[&bob_idx]),
+        sc.round(0).unwrap().votes(false)[bob_idx]
+    );
+    assert_eq!(sync_response.signed_messages, vec![]);
+    assert_eq!(sync_response.evidence.len(), 1);
+    match (&sync_response.evidence[0], &sc.faults[&carol_idx]) {
+        (
+            (signed_msg, content2, sig2),
+            Fault::Direct(expected_signed_msg, expected_content2, expected_sig2),
+        ) => {
+            assert_eq!(signed_msg, expected_signed_msg);
+            assert_eq!(content2, expected_content2);
+            assert_eq!(sig2, expected_sig2);
+        }
+        (evidence, fault) => panic!("unexpected evidence: {:?}, {:?}", evidence, fault),
+    }
+
+    // Create a new instance that doesn't have any data yet, let it send two sync requests to sc,
+    // and handle the responses.
+    let mut sc2 = new_test_zug(weights, vec![], &[alice_idx]);
+    for _ in 0..2 {
+        let mut outcomes = sc2.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+        let msg = loop {
+            if let ProtocolOutcome::CreatedMessageToRandomPeer(payload) =
+                outcomes.pop().expect("expected message to random peer")
+            {
+                break payload;
+            }
+        };
+        let mut outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
+        let msg = match outcomes.pop() {
+            Some(ProtocolOutcome::CreatedTargetedMessage(msg, _)) => msg,
+            outcome => panic!("expected targeted message: {:?}", outcome),
+        };
+        let mut _outcomes = sc2.handle_message(&mut rng, sender, msg, timestamp);
+    }
+
+    // They should be synced up now:
+    assert_eq!(sc.rounds, sc2.rounds);
+    assert_eq!(sc.faults, sc2.faults);
+    assert_eq!(sc.active, sc2.active);
 }
 
 #[test]
