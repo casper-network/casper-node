@@ -21,17 +21,16 @@ Normally usage will involve two steps:
 # Example
 
 ```rust
-use casper_json_rpc::{Error, RequestHandlersBuilder};
-use serde_json::Value;
+use casper_json_rpc::{Error, Params, RequestHandlersBuilder};
 use std::{convert::Infallible, sync::Arc};
 
-async fn get(params: Option<Value>) -> Result<String, Error> {
+async fn get(params: Option<Params>) -> Result<String, Error> {
     // * parse params or return `ReservedErrorCode::InvalidParams` error
     // * handle request and return result
     Ok("got it".to_string())
 }
 
-async fn put(params: Option<Value>, other_input: &str) -> Result<String, Error> {
+async fn put(params: Option<Params>, other_input: &str) -> Result<String, Error> {
     Ok(other_input.to_string())
 }
 
@@ -81,7 +80,7 @@ To return a JSON-RPC response indicating an error, use
 conditions which require returning a reserved error are already handled in the provided warp filters.  The only
 exception is
 [`ReservedErrorCode::InvalidParams`](https://docs.rs/casper-json-rpc/latest/casper_json_rpc/enum.ReservedErrorCode.html#variant.InvalidParams)
-which should be returned by any RPC handler which deems the provided `params: Option<Value>` to be invalid for any
+which should be returned by any RPC handler which deems the provided `params: Option<Params>` to be invalid for any
 reason.
 
 Generally a set of custom error codes should be provided.  These should all implement
