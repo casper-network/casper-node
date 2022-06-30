@@ -25,6 +25,7 @@ use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
@@ -424,7 +425,7 @@ where
                 main_responder,
             } if self.enable => main_responder.respond(peers).ignore(),
             Event::RpcRequest(RpcRequest::SpeculativeDeployExecute { .. })
-                if self.speculative_exec_enable =>
+                if !self.speculative_exec_enable =>
             {
                 Effects::new()
             }
@@ -441,7 +442,10 @@ where
             {
                 Effects::new()
             }
-            _ => unreachable!(),
+            ev => {
+                error!("Unhandled event in JSON-RPC server: {}", ev);
+                Effects::new()
+            }
         }
     }
 }
