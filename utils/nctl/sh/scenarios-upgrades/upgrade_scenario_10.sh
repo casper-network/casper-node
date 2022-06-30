@@ -60,8 +60,7 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_10.chainspec.toml.in" \
-            config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_10.config.toml"
+            chainspec_path="$NCTL/remotes/1.3.0/chainspec.toml.in"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -91,8 +90,7 @@ function _step_04()
     source "$NCTL/sh/assets/upgrade_from_stage.sh" \
         stage="$STAGE_ID" \
         verbose=false \
-        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_10.chainspec.toml.in" \
-        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_10.config.toml"
+        chainspec_path="$NCTL/overrides/upgrade_scenario_10.post.chainspec.toml.in"
 
     log "... awaiting 2 eras + 1 block"
     nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'

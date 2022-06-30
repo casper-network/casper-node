@@ -1,0 +1,10 @@
+[core]
+era_duration = '180seconds'
+minimum_era_height = 30
+auction_delay = 1
+
+[highway]
+maximum_round_exponent = 14
+
+[deploys]
+delete = { cost = 14_000, arguments = [0, 0] }
