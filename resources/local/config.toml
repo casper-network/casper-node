@@ -240,18 +240,20 @@ qps_limit = 100
 max_body_bytes = 2_621_440
 
 
-# ===================================================================
-# Configuration options for the speculative execution RPC HTTP server
-# ===================================================================
+# ========================================================================
+# Configuration options for the speculative execution JSON-RPC HTTP server
+# ========================================================================
 [speculative_exec_server]
 
-# Flag which enables the speculative execution RPC HTTP server.
+# Flag which enables the speculative execution JSON-RPC HTTP server.
 enable_server = false
 
-# Listening address for speculative execution RPC HTTP server.  If the port is set to 0, a random port will be used.
+# Listening address for speculative execution JSON-RPC HTTP server.  If the port
+# is set to 0, a random port will be used.
 #
-# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
-# the speculative execution RPC HTTP server will not run, but the node will be otherwise unaffected.
+# If the specified port cannot be bound to, a random port will be tried instead.
+# If binding fails, the speculative execution JSON-RPC HTTP server will not run,
+# but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7778'
