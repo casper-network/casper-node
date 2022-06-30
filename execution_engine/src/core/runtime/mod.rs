@@ -1143,28 +1143,14 @@ where
     ) -> Result<CLValue, Error> {
         let (contract, contract_hash, contract_package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
-                let key = contract_hash.into();
-                let contract = match self.context.read_gs(&key)? {
-                    Some(StoredValue::Contract(contract)) => contract,
-                    Some(_) => {
-                        return Err(Error::InvalidContract(contract_hash));
-                    }
-                    None => return Err(Error::KeyNotFound(key)),
-                };
-
-                let contract_package_hash = contract.contract_package_hash();
-                let contract_package_key = contract_package_hash.into();
-                let contract_package = match self.context.read_gs(&contract_package_key)? {
-                    Some(StoredValue::ContractPackage(contract_package)) => contract_package,
-                    Some(_) => {
-                        return Err(Error::InvalidContractPackage(contract_package_hash));
-                    }
-                    None => return Err(Error::KeyNotFound(contract_package_key)),
-                };
+                let contract_key = contract_hash.into();
+                let contract: Contract = self.context.read_gs_typed(&contract_key)?;
+                let contract_package_key = Key::from(contract.contract_package_hash());
+                let contract_package: ContractPackage =
+                    self.context.read_gs_typed(&contract_package_key)?;
 
                 // System contract hashes are disabled at upgrade point
-                let is_calling_system_contract =
-                    self.is_system_contract(Key::from(contract_hash))?;
+                let is_calling_system_contract = self.is_system_contract(contract_key)?;
 
                 // Check if provided contract hash is disabled
                 let is_contract_enabled = contract_package.is_contract_enabled(&contract_hash);
@@ -1179,14 +1165,10 @@ where
                 contract_package_hash,
                 version,
             } => {
-                let contract_package_key = contract_package_hash.into();
-                let contract_package = match self.context.read_gs(&contract_package_key)? {
-                    Some(StoredValue::ContractPackage(contract_package)) => contract_package,
-                    Some(_) => {
-                        return Err(Error::InvalidContractPackage(contract_package_hash));
-                    }
-                    None => return Err(Error::KeyNotFound(contract_package_key)),
-                };
+                let contract_package_key = Key::from(contract_package_hash);
+                let contract_package: ContractPackage =
+                    self.context.read_gs_typed(&contract_package_key)?;
+
                 let contract_version_key = match version {
                     Some(version) => ContractVersionKey::new(
                         self.context.protocol_version().value().major,
@@ -1205,13 +1187,7 @@ where
                     .ok_or(Error::InvalidContractVersion(contract_version_key))?;
 
                 let contract_key = contract_hash.into();
-                let contract = match self.context.read_gs(&contract_key)? {
-                    Some(StoredValue::Contract(contract)) => contract,
-                    Some(_) => {
-                        return Err(Error::InvalidContract(contract_hash));
-                    }
-                    None => return Err(Error::KeyNotFound(contract_key)),
-                };
+                let contract: Contract = self.context.read_gs_typed(&contract_key)?;
 
                 (contract, contract_hash, contract_package)
             }

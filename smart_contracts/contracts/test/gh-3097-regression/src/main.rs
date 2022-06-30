@@ -12,6 +12,8 @@ use casper_types::{
 };
 
 const CONTRACT_PACKAGE_HASH_KEY: &str = "contract_package_hash";
+const DISABLED_CONTRACT_HASH_KEY: &str = "disabled_contract_hash";
+const ENABLED_CONTRACT_HASH_KEY: &str = "enabled_contract_hash";
 
 #[no_mangle]
 pub extern "C" fn do_something() {
@@ -38,19 +40,20 @@ pub extern "C" fn call() {
 
     let (contract_package_hash, _access_key) = storage::create_contract_package_at_hash();
 
-    let (contract_hash_v1, _version) = storage::add_contract_version(
+    let (disabled_contract_hash, _version) = storage::add_contract_version(
         contract_package_hash,
         entry_points.clone(),
         Default::default(),
     );
 
-    let (contract_hash_v2, _version) =
+    let (enabled_contract_hash, _version) =
         storage::add_contract_version(contract_package_hash, entry_points, Default::default());
 
     runtime::put_key(CONTRACT_PACKAGE_HASH_KEY, contract_package_hash.into());
 
-    runtime::put_key("contract_hash_v1", contract_hash_v1.into());
-    runtime::put_key("contract_hash_v2", contract_hash_v2.into());
+    runtime::put_key(DISABLED_CONTRACT_HASH_KEY, disabled_contract_hash.into());
+    runtime::put_key(ENABLED_CONTRACT_HASH_KEY, enabled_contract_hash.into());
 
-    storage::disable_contract_version(contract_package_hash, contract_hash_v1).unwrap_or_revert();
+    storage::disable_contract_version(contract_package_hash, disabled_contract_hash)
+        .unwrap_or_revert();
 }

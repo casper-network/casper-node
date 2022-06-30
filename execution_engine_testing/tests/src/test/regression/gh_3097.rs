@@ -10,8 +10,8 @@ use gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME;
 const GH_3097_REGRESSION_WASM: &str = "gh_3097_regression.wasm";
 const GH_3097_REGRESSION_CALL_WASM: &str = "gh_3097_regression_call.wasm";
 const DO_SOMETHING_ENTRYPOINT: &str = "do_something";
-const CONTRACT_HASH_V1_KEY: &str = "contract_hash_v1";
-const CONTRACT_HASH_V2_KEY: &str = "contract_hash_v2";
+const DISABLED_CONTRACT_HASH_KEY: &str = "disabled_contract_hash";
+const ENABLED_CONTRACT_HASH_KEY: &str = "enabled_contract_hash";
 const CONTRACT_PACKAGE_HASH_KEY: &str = "contract_package_hash";
 const ARG_METHOD: &str = "method";
 const ARG_CONTRACT_HASH_KEY: &str = "contract_hash_key";
@@ -41,11 +41,11 @@ fn should_run_regression() {
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let contract_hash_v1 = account.named_keys()[CONTRACT_HASH_V1_KEY]
+    let disabled_contract_hash = account.named_keys()[DISABLED_CONTRACT_HASH_KEY]
         .into_hash()
         .map(ContractHash::new)
         .unwrap();
-    let contract_hash_v2 = account.named_keys()[CONTRACT_HASH_V2_KEY]
+    let enabled_contract_hash = account.named_keys()[ENABLED_CONTRACT_HASH_KEY]
         .into_hash()
         .map(ContractHash::new)
         .unwrap();
@@ -232,7 +232,7 @@ fn should_run_regression() {
 
     let call_by_hash_v2_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        contract_hash_v2,
+        enabled_contract_hash,
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
     )
@@ -245,7 +245,7 @@ fn should_run_regression() {
 
     let call_by_name_v2_request = ExecuteRequestBuilder::contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_HASH_V2_KEY,
+        ENABLED_CONTRACT_HASH_KEY,
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
     )
@@ -258,7 +258,7 @@ fn should_run_regression() {
     // This direct contract by name/hash should fail
     let call_by_hash_v1_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        contract_hash_v1,
+        disabled_contract_hash,
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
     )
@@ -273,9 +273,9 @@ fn should_run_regression() {
         matches!(
             error,
             casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(disabled_contract_hash)
+                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
             )
-            if disabled_contract_hash == contract_hash_v1
+            if contract_hash == disabled_contract_hash
         ),
         "Expected invalid contract version, found {:?}",
         error,
@@ -284,7 +284,7 @@ fn should_run_regression() {
     // This direct contract by name/hash should fail
     let call_by_name_v1_request = ExecuteRequestBuilder::contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_HASH_V1_KEY,
+        DISABLED_CONTRACT_HASH_KEY,
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
     )
@@ -299,9 +299,9 @@ fn should_run_regression() {
         matches!(
             error,
             casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(disabled_contract_hash)
+                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
             )
-            if disabled_contract_hash == contract_hash_v1
+            if contract_hash == disabled_contract_hash
         ),
         "Expected invalid contract version, found {:?}",
         error,
@@ -314,7 +314,7 @@ fn should_run_regression() {
         GH_3097_REGRESSION_CALL_WASM,
         runtime_args! {
             ARG_METHOD => METHOD_CALL_CONTRACT,
-            ARG_CONTRACT_HASH_KEY => CONTRACT_HASH_V1_KEY,
+            ARG_CONTRACT_HASH_KEY => DISABLED_CONTRACT_HASH_KEY,
         },
     )
     .build();
@@ -324,7 +324,7 @@ fn should_run_regression() {
         GH_3097_REGRESSION_CALL_WASM,
         runtime_args! {
             ARG_METHOD => METHOD_CALL_CONTRACT,
-            ARG_CONTRACT_HASH_KEY => CONTRACT_HASH_V2_KEY,
+            ARG_CONTRACT_HASH_KEY => ENABLED_CONTRACT_HASH_KEY,
         },
     )
     .build();
@@ -339,9 +339,9 @@ fn should_run_regression() {
         matches!(
             error,
             casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(disabled_contract_hash)
+                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
             )
-            if disabled_contract_hash == contract_hash_v1
+            if contract_hash == disabled_contract_hash
         ),
         "Expected invalid contract version, found {:?}",
         error,
