@@ -80,7 +80,7 @@ impl TryFrom<Map<String, Value>> for Request {
                 if jsonrpc != JSON_RPC_VERSION {
                     let error = Error::new(
                         ReservedErrorCode::InvalidRequest,
-                        format!("'jsonrpc' must be '2.0', but was '{}'", jsonrpc),
+                        format!("Expected 'jsonrpc' to be '2.0', but got '{}'", jsonrpc),
                     );
                     return Err(ErrorOrRejection::Error { id, error });
                 }
@@ -88,7 +88,7 @@ impl TryFrom<Map<String, Value>> for Request {
             Some(jsonrpc) => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
-                    format!("'jsonrpc' must be '2.0', but was '{}'", jsonrpc),
+                    format!("Expected 'jsonrpc' to be '2.0', but got '{}'", jsonrpc),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
             }
@@ -276,7 +276,7 @@ mod tests {
             error,
             Error::new(
                 ReservedErrorCode::InvalidRequest,
-                "'jsonrpc' must be '2.0', but was '2.1'"
+                "Expected 'jsonrpc' to be '2.0', but got '2.1'"
             )
         );
     }
@@ -303,7 +303,7 @@ mod tests {
             error,
             Error::new(
                 ReservedErrorCode::InvalidRequest,
-                "'jsonrpc' must be '2.0', but was 'true'"
+                "Expected 'jsonrpc' to be '2.0', but got 'true'"
             )
         );
     }

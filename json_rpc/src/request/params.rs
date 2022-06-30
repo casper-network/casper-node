@@ -132,89 +132,48 @@ impl From<Params> for Value {
 mod tests {
     use super::*;
 
-    fn expected_error(invalid_type: &str) -> String {
-        format!(
-            r#"{{"code":-32600,"message":"Invalid Request","data":"If present, 'params' must be an Array or Object, but was {}"}}"#,
-            invalid_type
-        )
+    fn should_fail_to_convert_invalid_params(bad_params: Value, expected_invalid_type_msg: &str) {
+        let original_id = Value::from(1_i8);
+        match Params::try_from(&original_id, bad_params).unwrap_err() {
+            ErrorOrRejection::Error { id, error } => {
+                assert_eq!(id, original_id);
+                let expected_error = format!(
+                    r#"{{"code":-32600,"message":"Invalid Request","data":"If present, 'params' must be an Array or Object, but was {}"}}"#,
+                    expected_invalid_type_msg
+                );
+                assert_eq!(serde_json::to_string(&error).unwrap(), expected_error);
+            }
+            other => panic!("unexpected: {:?}", other),
+        }
     }
 
     #[test]
     fn should_fail_to_convert_params_from_null() {
-        let original_id = Value::from(1_i8);
-        match Params::try_from(&original_id, Value::Null).unwrap_err() {
-            ErrorOrRejection::Error { id, error } => {
-                assert_eq!(id, original_id);
-                assert_eq!(
-                    serde_json::to_string(&error).unwrap(),
-                    expected_error(
-                        "'null'. If not required for this request, omit the field or provide an \
-                        empty Array '[]' or empty Object '{}'"
-                    )
-                );
-            }
-            other => panic!("unexpected: {:?}", other),
-        }
+        should_fail_to_convert_invalid_params(
+            Value::Null,
+            "'null'. If not required for this request, omit the field or provide an empty Array \
+            '[]' or empty Object '{}'",
+        )
     }
 
     #[test]
     fn should_fail_to_convert_params_from_false() {
-        let original_id = Value::from(1_i8);
-        match Params::try_from(&original_id, Value::Bool(false)).unwrap_err() {
-            ErrorOrRejection::Error { id, error } => {
-                assert_eq!(id, original_id);
-                assert_eq!(
-                    serde_json::to_string(&error).unwrap(),
-                    expected_error("'false'")
-                );
-            }
-            other => panic!("unexpected: {:?}", other),
-        }
+        should_fail_to_convert_invalid_params(Value::Bool(false), "'false'")
     }
 
     #[test]
     fn should_fail_to_convert_params_from_true() {
-        let original_id = Value::from(1_i8);
-        match Params::try_from(&original_id, Value::Bool(true)).unwrap_err() {
-            ErrorOrRejection::Error { id, error } => {
-                assert_eq!(id, original_id);
-                assert_eq!(
-                    serde_json::to_string(&error).unwrap(),
-                    expected_error("'true'")
-                );
-            }
-            other => panic!("unexpected: {:?}", other),
-        }
+        should_fail_to_convert_invalid_params(Value::Bool(true), "'true'")
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_number() {
-        let original_id = Value::from(1_i8);
-        match Params::try_from(&original_id, Value::from(9_u8)).unwrap_err() {
-            ErrorOrRejection::Error { id, error } => {
-                assert_eq!(id, original_id);
-                assert_eq!(
-                    serde_json::to_string(&error).unwrap(),
-                    expected_error("a Number")
-                );
-            }
-            other => panic!("unexpected: {:?}", other),
-        }
+        should_fail_to_convert_invalid_params(Value::from(9_u8), "a Number")
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_string() {
-        let original_id = Value::from(1_i8);
-        match Params::try_from(&original_id, Value::from("s")).unwrap_err() {
-            ErrorOrRejection::Error { id, error } => {
-                assert_eq!(id, original_id);
-                assert_eq!(
-                    serde_json::to_string(&error).unwrap(),
-                    expected_error("a String")
-                );
-            }
-            other => panic!("unexpected: {:?}", other),
-        }
+        should_fail_to_convert_invalid_params(Value::from("s"), "a String")
     }
 
     #[test]

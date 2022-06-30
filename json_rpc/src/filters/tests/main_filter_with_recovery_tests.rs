@@ -219,7 +219,7 @@ async fn should_handle_request_with_extra_field() {
     let filter = main_filter_with_recovery();
 
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
-    // request) to the client as the ID has fractional parts.
+    // request) to the client as the request has an extra field.
     let http_response = warp::test::request()
         .body(r#"{"jsonrpc":"2.0","id":1,"method":"get good thing","params":[2],"extra":"field"}"#)
         .filter(&filter)
