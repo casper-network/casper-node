@@ -196,6 +196,8 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),
     CreatedMessageToRandomPeer(Vec<u8>),
+    CreatedTargetedRequest(Vec<u8>, NodeId),
+    CreatedRequestToRandomPeer(Vec<u8>),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -244,6 +246,15 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         msg: Vec<u8>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
+
+    /// Handles an incoming request message and returns an optional response.
+    fn handle_request_message(
+        &mut self,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        msg: Vec<u8>,
+        now: Timestamp,
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;

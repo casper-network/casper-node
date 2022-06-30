@@ -873,6 +873,17 @@ where
         }
     }
 
+    fn handle_request_message(
+        &mut self,
+        _rng: &mut NodeRng,
+        sender: NodeId,
+        _msg: Vec<u8>,
+        _now: Timestamp,
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
+        info!(?sender, "invalid incoming request");
+        (vec![ProtocolOutcome::Disconnect(sender)], None)
+    }
+
     fn handle_timer(
         &mut self,
         now: Timestamp,

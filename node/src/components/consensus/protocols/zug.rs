@@ -400,9 +400,9 @@ impl<C: Context + 'static> Zug<C> {
             .choose(rng)
             .unwrap_or(self.current_round);
         let payload = self
-            .create_sync_request_message(first_validator_idx, round_id)
+            .create_sync_request(first_validator_idx, round_id)
             .serialize();
-        let mut outcomes = vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)];
+        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(payload)];
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
@@ -464,19 +464,21 @@ impl<C: Context + 'static> Zug<C> {
     ///
     /// If there are more than 128 validators, the information only covers echoes and votes of
     /// validators with index in `first_validator_idx..=(first_validator_idx + 127)`.
-    fn create_sync_request_message(
+    fn create_sync_request(
         &self,
         first_validator_idx: ValidatorIndex,
         round_id: RoundId,
-    ) -> Message<C> {
+    ) -> SyncRequest<C> {
         let faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
+        let active = self.validator_bit_field(first_validator_idx, self.active.keys_some());
         let round = match self.round(round_id) {
             Some(round) => round,
             None => {
-                return Message::new_empty_round_sync_request(
+                return SyncRequest::new_empty_round(
                     round_id,
                     first_validator_idx,
                     faulty,
+                    active,
                     *self.instance_id(),
                 );
             }
@@ -500,7 +502,7 @@ impl<C: Context + 'static> Zug<C> {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
         let active = self.validator_bit_field(first_validator_idx, self.active.keys_some());
-        Message::SyncRequest(SyncRequest {
+        SyncRequest {
             round_id,
             proposal_hash,
             has_proposal,
@@ -511,7 +513,7 @@ impl<C: Context + 'static> Zug<C> {
             active,
             faulty,
             instance_id: *self.instance_id(),
-        })
+        }
     }
 
     /// Returns a bit field where each bit stands for a validator: the least significant one for
@@ -734,7 +736,7 @@ impl<C: Context + 'static> Zug<C> {
         &self,
         sync_request: SyncRequest<C>,
         sender: NodeId,
-    ) -> ProtocolOutcomes<C> {
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
         let SyncRequest {
             round_id,
             mut proposal_hash,
@@ -747,21 +749,19 @@ impl<C: Context + 'static> Zug<C> {
             faulty,
             instance_id,
         } = sync_request;
-        // TODO: Limit how much time and bandwidth we spend on each peer.
-        // TODO: Send only enough signatures for quorum.
         if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
                 first_validator_idx = first_validator_idx.0,
                 ?sender,
                 "invalid SyncRequest message"
             );
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return (vec![ProtocolOutcome::Disconnect(sender)], None);
         }
 
         // If we don't have that round we have no information the requester is missing.
         let round = match self.round(round_id) {
             Some(round) => round,
-            None => return vec![],
+            None => return (vec![], None),
         };
 
         // If the peer has no or a wrong proposal we assume they don't have any echoes for the
@@ -844,7 +844,7 @@ impl<C: Context + 'static> Zug<C> {
                         ?sender,
                         "peer disagrees about banned validator; disconnecting"
                     );
-                    return vec![ProtocolOutcome::Disconnect(sender)];
+                    return (vec![ProtocolOutcome::Disconnect(sender)], None);
                 }
                 Fault::Direct(signed_msg, content2, signature2) => {
                     evidence.push((signed_msg.clone(), content2.clone(), *signature2));
@@ -879,8 +879,7 @@ impl<C: Context + 'static> Zug<C> {
             instance_id,
         };
         let ser_msg = Message::SyncResponse(sync_response).serialize();
-        outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
-        outcomes
+        (outcomes, Some(ser_msg))
     }
 
     /// The response containing the parts from the sender's protocol state that we were missing.
@@ -1915,9 +1914,6 @@ where
                 warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
-            Ok(Message::SyncRequest(sync_request)) => {
-                self.handle_sync_request(sync_request, sender)
-            }
             Ok(Message::SyncResponse(sync_response)) => {
                 self.handle_sync_response(sync_response, sender, now)
             }
@@ -1930,6 +1926,28 @@ where
             Ok(Message::Evidence(signed_msg, content2, signature2)) => {
                 self.handle_evidence(signed_msg, content2, signature2, sender, now)
             }
+        }
+    }
+
+    /// Handles an incoming request message and returns an optional response.
+    fn handle_request_message(
+        &mut self,
+        _rng: &mut NodeRng,
+        sender: NodeId,
+        msg: Vec<u8>,
+        _now: Timestamp,
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
+        match bincode::deserialize::<SyncRequest<C>>(msg.as_slice()) {
+            Err(err) => {
+                warn!(?sender, ?err, "failed to deserialize request message");
+                (vec![ProtocolOutcome::Disconnect(sender)], None)
+            }
+            Ok(sync_request) if sync_request.instance_id != *self.instance_id() => {
+                let instance_id = sync_request.instance_id;
+                warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
+                (vec![ProtocolOutcome::Disconnect(sender)], None)
+            }
+            Ok(sync_request) => self.handle_sync_request(sync_request, sender),
         }
     }
 
@@ -2111,10 +2129,8 @@ where
         if let Some(v_idx) = self.validators.get_index(vid) {
             // Send the peer a sync message, so they will send us evidence we are missing.
             let round_id = self.current_round;
-            let payload = self
-                .create_sync_request_message(v_idx, round_id)
-                .serialize();
-            vec![ProtocolOutcome::CreatedTargetedMessage(payload, peer)]
+            let payload = self.create_sync_request(v_idx, round_id).serialize();
+            vec![ProtocolOutcome::CreatedTargetedRequest(payload, peer)]
         } else {
             error!(?vid, "unknown validator ID");
             vec![]

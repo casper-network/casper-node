@@ -39,17 +39,17 @@ use crate::{
             },
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
-            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, HighwayProtocol,
-            NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
+            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
+            Event, HighwayProtocol, NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
         },
         storage::Storage,
     },
     effect::{
         announcements::ControlAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
-    fatal,
+    fatal, protocol,
     types::{
         chainspec::ConsensusProtocolName, ActivationPoint, BlockHash, BlockHeader, Chainspec,
         Deploy, DeployHash, DeployOrTransferHash, FinalitySignature, FinalizedApprovals,
@@ -612,8 +612,6 @@ impl EraSupervisor {
     ) -> Effects<Event> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
-                // If the era is already unbonded, only accept new evidence, because still-bonded
-                // eras could depend on that.
                 trace!(era = era_id.value(), "received a consensus message");
                 self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
                     consensus.handle_message(rng, sender, payload, Timestamp::now())
@@ -633,6 +631,45 @@ impl EraSupervisor {
                         })
                     })
                     .collect()
+            }
+        }
+    }
+
+    pub(super) fn handle_demand<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        demand: ConsensusRequestMessage,
+        auto_closing_responder: AutoClosingResponder<protocol::Message>,
+    ) -> Effects<Event> {
+        let ConsensusRequestMessage { era_id, payload } = demand;
+        trace!(era = era_id.value(), "received a consensus request");
+        match self.open_eras.get_mut(&era_id) {
+            None => {
+                if era_id > self.current_era {
+                    info!(era = era_id.value(), "received demand for future era");
+                } else {
+                    info!(era = era_id.value(), "received demand for obsolete era");
+                }
+                Effects::new()
+            }
+            Some(era) => {
+                let (outcomes, response) =
+                    era.consensus
+                        .handle_request_message(rng, sender, payload, Timestamp::now());
+                let mut effects =
+                    self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes);
+                if let Some(payload) = response {
+                    effects.extend(
+                        auto_closing_responder
+                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
+                            .ignore(),
+                    );
+                } else {
+                    effects.extend(auto_closing_responder.respond_none().ignore());
+                }
+                effects
             }
         }
     }
@@ -832,12 +869,11 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                // TODO: we'll want to gossip instead of broadcast here
                 effect_builder.broadcast_message(message.into()).ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder.send_message(to, message.into()).ignore()
+                effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -846,6 +882,21 @@ impl EraSupervisor {
                     let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.enqueue_message(to, message.into()).await;
+                    }
+                }
+                .ignore()
+            }
+            ProtocolOutcome::CreatedTargetedRequest(payload, to) => {
+                let message = ConsensusRequestMessage { era_id, payload };
+                effect_builder.send_message(to, message.into()).ignore()
+            }
+            ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
+                let message = ConsensusRequestMessage { era_id, payload };
+
+                async move {
+                    let peers = effect_builder.get_fully_connected_peers().await;
+                    if let Some(to) = peers.into_iter().next() {
+                        effect_builder.send_message(to, message.into()).await;
                     }
                 }
                 .ignore()
