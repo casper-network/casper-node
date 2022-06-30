@@ -54,7 +54,6 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
         max_state_store_size: 50 * MIB,
         enable_mem_deduplication: true,
         mem_pool_prune_interval: 4,
-        max_sync_tasks: 32,
     }
 }
 
