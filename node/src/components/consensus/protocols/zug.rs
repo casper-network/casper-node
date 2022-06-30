@@ -901,10 +901,11 @@ impl<C: Context + 'static> Zug<C> {
             instance_id,
         } = sync_response;
 
-        let proposal_hash = proposal_or_hash.as_ref().map(|poh| match poh {
-            Either::Left(proposal) => proposal.hash(),
-            Either::Right(hash) => *hash,
-        });
+        let (proposal_hash, proposal) = match proposal_or_hash {
+            Some(Either::Left(proposal)) => (Some(proposal.hash()), Some(proposal)),
+            Some(Either::Right(hash)) => (Some(hash), None),
+            None => (None, None),
+        };
 
         // Reconstruct the signed messages from the echo and vote signatures, and add them to the
         // messages we need to handle.
@@ -942,7 +943,7 @@ impl<C: Context + 'static> Zug<C> {
         for (signed_msg, content2, signature2) in evidence {
             outcomes.extend(self.handle_evidence(signed_msg, content2, signature2, sender, now));
         }
-        if let Some(Either::Left(proposal)) = proposal_or_hash {
+        if let Some(proposal) = proposal {
             outcomes.extend(self.handle_proposal(round_id, proposal, sender, now));
         }
         outcomes
