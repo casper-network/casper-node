@@ -87,9 +87,9 @@ impl<REv> ReactorEventT for REv where
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RpcServer {
-    /// Enabled.
+    /// Indicates whether the JSON-RPC server is enabled or not.
     enable: bool,
-    /// Enabled.
+    /// Indicates whether the speculative execution JSON-RPC server is enabled or not.
     speculative_exec_enable: bool,
     /// The instant at which the node has started.
     node_startup_instant: Instant,

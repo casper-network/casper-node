@@ -78,7 +78,7 @@ impl<REv> ReactorEventT for REv where
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
-    /// Enable.
+    /// Indicates whether the REST server is enabled or not.
     enable: bool,
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
