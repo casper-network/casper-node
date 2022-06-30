@@ -37,7 +37,7 @@ use crate::{
     effect::{
         announcements::{ConsensusAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement},
         diagnostics_port::DumpConsensusStateRequest,
-        incoming::ConsensusMessageIncoming,
+        incoming::{ConsensusDemand, ConsensusMessageIncoming},
         requests::{
             BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
             ContractRuntimeRequest, DeployBufferRequest, NetworkInfoRequest, NetworkRequest,
@@ -68,6 +68,13 @@ pub(crate) enum ConsensusMessage {
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
+/// A protocol request message, to be handled by the instance in the specified era.
+#[derive(DataSize, Clone, Serialize, Deserialize)]
+pub(crate) struct ConsensusRequestMessage {
+    era_id: EraId,
+    payload: Vec<u8>,
+}
+
 /// An ID to distinguish different timers. What they are used for is specific to each consensus
 /// protocol implementation.
 #[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
@@ -96,9 +103,12 @@ pub struct ResolveValidity {
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub(crate) enum Event {
-    #[from]
     /// An incoming network message.
+    #[from]
     Incoming(ConsensusMessageIncoming),
+    /// An incoming request message.
+    #[from]
+    DemandIncoming(ConsensusDemand),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -159,11 +169,39 @@ impl Display for ConsensusMessage {
     }
 }
 
+impl Debug for ConsensusRequestMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ConsensusRequestMessage {{ era_id: {:?}, .. }}",
+            self.era_id
+        )
+    }
+}
+
+impl Display for ConsensusRequestMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "protocol request {:10} in {}",
+            HexFmt(&self.payload),
+            self.era_id
+        )
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
-                write!(f, "msg from {:?}: {}", sender, message)
+                write!(f, "message from {:?}: {}", sender, message)
+            }
+            Event::DemandIncoming(demand) => {
+                write!(
+                    f,
+                    "request from {:?}: {}",
+                    demand.sender, demand.request_msg
+                )
             }
             Event::Timer {
                 era_id,
@@ -231,6 +269,7 @@ pub(crate) trait ReactorEventT:
     + From<Event>
     + Send
     + From<NetworkRequest<Message>>
+    + From<ConsensusDemand>
     + From<NetworkInfoRequest>
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
@@ -247,6 +286,7 @@ impl<REv> ReactorEventT for REv where
     REv: ReactorEvent
         + From<Event>
         + Send
+        + From<ConsensusDemand>
         + From<NetworkRequest<Message>>
         + From<NetworkInfoRequest>
         + From<DeployBufferRequest>
@@ -285,6 +325,11 @@ where
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
                 self.handle_message(effect_builder, rng, sender, message)
             }
+            Event::DemandIncoming(ConsensusDemand {
+                sender,
+                request_msg: demand,
+                auto_closing_responder,
+            }) => self.handle_demand(effect_builder, rng, sender, demand, auto_closing_responder),
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)
             }

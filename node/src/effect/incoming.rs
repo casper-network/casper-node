@@ -69,8 +69,11 @@ pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
 
-/// A demand for a try that should be answered.
+/// A demand for a trie that should be answered.
 pub(crate) type TrieDemand = DemandIncoming<TrieRequest>;
+
+/// A demand for consensus protocol data that should be answered.
+pub(crate) type ConsensusDemand = DemandIncoming<consensus::ConsensusRequestMessage>;
 
 /// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;

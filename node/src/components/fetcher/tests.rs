@@ -16,6 +16,7 @@ use casper_types::testing::TestRng;
 use super::*;
 use crate::{
     components::{
+        consensus::ConsensusRequestMessage,
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         network::{GossipedAddress, Identity as NetworkIdentity},
@@ -27,7 +28,7 @@ use crate::{
             RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
@@ -132,6 +133,8 @@ enum Event {
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
+    #[from]
+    ConsensusDemandIncoming(DemandIncoming<ConsensusRequestMessage>),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -246,6 +249,7 @@ impl ReactorTrait for Reactor {
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)
+            | Event::ConsensusDemandIncoming(_)
             | Event::FinalitySignatureIncoming(_)
             | Event::ControlAnnouncement(_)
             | Event::FatalAnnouncement(_) => panic!("unexpected: {}", event),

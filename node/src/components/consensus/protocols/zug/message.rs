@@ -214,6 +214,34 @@ where
     pub(crate) instance_id: C::InstanceId,
 }
 
+impl<C: Context> SyncRequest<C> {
+    /// Creates a `SyncRequest` for a round in which we haven't received any messages yet.
+    pub(super) fn new_empty_round(
+        round_id: RoundId,
+        first_validator_idx: ValidatorIndex,
+        faulty: u128,
+        active: u128,
+        instance_id: C::InstanceId,
+    ) -> Self {
+        SyncRequest {
+            round_id,
+            proposal_hash: None,
+            has_proposal: false,
+            first_validator_idx,
+            echoes: 0,
+            true_votes: 0,
+            false_votes: 0,
+            active,
+            faulty,
+            instance_id,
+        }
+    }
+
+    pub(super) fn serialize(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("should serialize request message")
+    }
+}
+
 /// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is missing.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
@@ -248,9 +276,6 @@ where
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Message<C: Context> {
-    /// Partial information about the sender's protocol state. The receiver should send missing
-    /// data.
-    SyncRequest(SyncRequest<C>),
     /// Signatures, proposals and evidence the requester was missing.
     SyncResponse(SyncResponse<C>),
     /// A proposal for a new block. This does not contain any signature; instead, the proposer is
@@ -269,34 +294,13 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
-    pub(super) fn new_empty_round_sync_request(
-        round_id: RoundId,
-        first_validator_idx: ValidatorIndex,
-        faulty: u128,
-        instance_id: C::InstanceId,
-    ) -> Self {
-        Message::SyncRequest(SyncRequest {
-            round_id,
-            proposal_hash: None,
-            has_proposal: false,
-            first_validator_idx,
-            echoes: 0,
-            true_votes: 0,
-            false_votes: 0,
-            active: 0,
-            faulty,
-            instance_id,
-        })
-    }
-
     pub(super) fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).expect("should serialize message")
     }
 
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
-            Message::SyncRequest(SyncRequest { instance_id, .. })
-            | Message::SyncResponse(SyncResponse { instance_id, .. })
+            Message::SyncResponse(SyncResponse { instance_id, .. })
             | Message::Signed(SignedMessage { instance_id, .. })
             | Message::Proposal { instance_id, .. }
             | Message::Evidence(SignedMessage { instance_id, .. }, ..) => instance_id,
