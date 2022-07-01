@@ -78,7 +78,7 @@ use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
 use tracing::{debug, error, event, info, warn, Level};
 
-use casper_types::{TimeDiff, Timestamp, U512};
+use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -194,6 +194,8 @@ where
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
     write_wal: Option<WriteWal<C>>,
+    /// The rewards based on the finalized rounds so far.
+    rewards: BTreeMap<C::ValidatorId, u64>,
 }
 
 impl<C: Context + 'static> Zug<C> {
@@ -251,6 +253,8 @@ impl<C: Context + 'static> Zug<C> {
             protocols::common::ftt::<C>(core_config.finality_threshold_fraction, &validators),
         );
 
+        let rewards = validators.iter().map(|v| (v.id().clone(), 0)).collect();
+
         Zug {
             leader_sequence,
             proposals_waiting_for_parent: HashMap::new(),
@@ -273,6 +277,7 @@ impl<C: Context + 'static> Zug<C> {
             paused: false,
             next_scheduled_update: Timestamp::MAX,
             write_wal: None,
+            rewards,
         }
     }
 
@@ -1609,6 +1614,8 @@ impl<C: Context + 'static> Zug<C> {
             .id(self.leader(round_id))
             .expect("validator not found")
             .clone();
+        let reward = self.rewards.entry(proposer.clone()).or_default();
+        *reward = reward.saturating_add(BLOCK_REWARD);
         let terminal_block_data = self.accepted_switch_block(round_id).then(|| {
             let inactive_validators = proposal
                 .inactive
@@ -1618,11 +1625,7 @@ impl<C: Context + 'static> Zug<C> {
                 .cloned()
                 .collect();
             TerminalBlockData {
-                rewards: self
-                    .validators
-                    .iter()
-                    .map(|v| (v.id().clone(), v.weight().0))
-                    .collect(), // TODO
+                rewards: self.rewards.clone(),
                 inactive_validators,
             }
         });
