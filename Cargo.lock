@@ -1225,7 +1225,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dictionary-read-address"
+name = "dictionary-read"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

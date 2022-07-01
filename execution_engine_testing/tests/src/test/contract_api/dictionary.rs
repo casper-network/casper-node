@@ -19,7 +19,7 @@ use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
 const DICTIONARY_WASM: &str = "dictionary.wasm";
 const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
-const DICTIONARY_READ: &str = "dictionary-read-address.wasm";
+const DICTIONARY_READ: &str = "dictionary_read.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {

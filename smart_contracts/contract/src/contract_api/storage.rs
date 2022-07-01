@@ -424,11 +424,9 @@ pub fn dictionary_put<V: CLTyped + ToBytes>(
 }
 
 /// Reads value under `dictionary_key` in the global state.
-pub fn dictionary_read<T: CLTyped + FromBytes>(
-    dictionary_key: Key,
-) -> Result<Option<T>, bytesrepr::Error> {
+pub fn dictionary_read<T: CLTyped + FromBytes>(dictionary_key: Key) -> Result<Option<T>, ApiError> {
     if !dictionary_key.is_dictionary_key() {
-        return Err(bytesrepr::Error::Formatting);
+        return Err(ApiError::UnexpectedKeyVariant);
     }
 
     let (key_ptr, key_size, _bytes) = contract_api::to_ptr(dictionary_key);

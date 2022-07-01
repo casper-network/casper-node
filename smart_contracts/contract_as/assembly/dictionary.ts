@@ -73,3 +73,26 @@ export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
         valueBytes.length
     );
 }
+
+/**
+ * Reads `value` under `dictionary-key` in a dictionary.
+ * @category Storage
+ */
+export function dictionaryRead(dictionaryKey: Key): Uint8Array | null {
+    const dictionaryKeyBytes = dictionaryKey.toBytes();
+    let valueSize = new Uint8Array(1);
+    const ret = externals.dictionary_read(
+        dictionaryKeyBytes.dataStart,
+        dictionaryKeyBytes.length,
+        valueSize.dataStart
+    )
+    if (ret == ErrorCode.ValueNotFound){
+        return null;
+    }
+    const error = Error.fromResult(ret);
+    if (error != null) {
+        error.revert();
+        return <Uint8Array>unreachable();
+    }
+    return readHostBuffer(valueSize[0]);
+}
