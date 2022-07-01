@@ -7,14 +7,14 @@ use tracing::{debug, error};
 
 use crate::{
     error::{Error, ReservedErrorCode},
-    request::Request,
+    request::{Params, Request},
     response::Response,
 };
 
 /// A boxed future of `Result<Value, Error>`; the return type of a request-handling closure.
 type HandleRequestFuture = Pin<Box<dyn Future<Output = Result<Value, Error>> + Send>>;
 /// A request-handling closure.
-type RequestHandler = Arc<dyn Fn(Option<Value>) -> HandleRequestFuture + Send + Sync>;
+type RequestHandler = Arc<dyn Fn(Option<Params>) -> HandleRequestFuture + Send + Sync>;
 
 /// A collection of request-handlers, indexed by the JSON-RPC "method" applicable to each.
 ///
@@ -73,12 +73,12 @@ impl RequestHandlersBuilder {
     ///
     /// The handler should be an async closure or function with a signature like:
     /// ```ignore
-    /// async fn handle_it(params: Option<Value>) -> Result<T, Error>
+    /// async fn handle_it(params: Option<Params>) -> Result<T, Error>
     /// ```
     /// where `T` implements `Serialize` and will be used as the JSON-RPC response's "result" field.
     pub fn register_handler<Func, Fut, T>(&mut self, method: &'static str, handler: Arc<Func>)
     where
-        Func: Fn(Option<Value>) -> Fut + Send + Sync + 'static,
+        Func: Fn(Option<Params>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<T, Error>> + Send,
         T: Serialize + 'static,
     {

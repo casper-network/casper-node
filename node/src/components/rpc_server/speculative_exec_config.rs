@@ -1,14 +1,13 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-/// Default binding address for the JSON-RPC HTTP server.
+/// Default binding address for the speculative execution RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
+const DEFAULT_ADDRESS: &str = "0.0.0.0:1";
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: u64 = 100;
-/// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
-/// JSON-RPC request, which would be an "account_put_deploy".
+const DEFAULT_QPS_LIMIT: u64 = 1;
+/// Default max body bytes (2.5MB).
 const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
 
 /// JSON-RPC HTTP server configuration.
@@ -18,7 +17,7 @@ const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
 pub struct Config {
     /// Setting to enable the HTTP server.
     pub enable_server: bool,
-    /// Address to bind JSON-RPC HTTP server to.
+    /// Address to bind JSON-RPC speculative execution server to.
     pub address: String,
     /// Maximum rate limit in queries per second.
     pub qps_limit: u64,
@@ -30,7 +29,7 @@ impl Config {
     /// Creates a default instance for `RpcServer`.
     pub fn new() -> Self {
         Config {
-            enable_server: true,
+            enable_server: false,
             address: DEFAULT_ADDRESS.to_string(),
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,

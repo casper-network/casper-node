@@ -65,6 +65,9 @@ pub(crate) enum Error {
     #[error("no such block height: {0} encountered during syncing to Genesis")]
     NoSuchBlockHeight(u64),
 
+    #[error("no highest block header")]
+    NoHighestBlockHeader,
+
     #[error(transparent)]
     BlockHeaderFetcher(#[from] FetcherError<BlockHeader>),
 
