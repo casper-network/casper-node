@@ -688,7 +688,7 @@ pub(super) async fn message_sender<P>(
                 // We should never attempt to send an unsafe message to a peer that we know is a
                 // joiner. Since "unsafe" does usually not mean immediately catastrophic, we attempt
                 // to carry on, but warn loudly.
-                error!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
+                warn!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
             }
         }
 
