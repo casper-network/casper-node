@@ -77,9 +77,7 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RestServer {
-    /// Indicates whether the REST server is enabled or not.
-    enable: bool,
+pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
@@ -90,6 +88,12 @@ pub(crate) struct RestServer {
     node_startup_instant: Instant,
     /// The current state of operation.
     node_state: NodeState,
+}
+
+#[derive(DataSize, Debug)]
+pub(crate) struct RestServer {
+    /// Inner server is present only when enabled in the config.
+    inner_rest: Option<InnerRestServer>,
 }
 
 impl RestServer {
@@ -103,27 +107,28 @@ impl RestServer {
     where
         REv: ReactorEventT,
     {
+        if !config.enable_server {
+            return Ok(RestServer { inner_rest: None });
+        }
+
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let server_join_handle = if config.enable_server {
-            let builder = utils::start_listening(&config.address)?;
-            Some(tokio::spawn(http_server::run(
-                builder,
-                effect_builder,
-                api_version,
-                shutdown_receiver,
-                config.qps_limit,
-            )))
-        } else {
-            None
-        };
+        let builder = utils::start_listening(&config.address)?;
+        let server_join_handle = Some(tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            api_version,
+            shutdown_receiver,
+            config.qps_limit,
+        )));
 
         Ok(RestServer {
-            enable: config.enable_server,
-            shutdown_sender,
-            server_join_handle,
-            node_startup_instant,
-            node_state,
+            inner_rest: Some(InnerRestServer {
+                shutdown_sender,
+                server_join_handle,
+                node_startup_instant,
+                node_state,
+            }),
         })
     }
 }
@@ -141,13 +146,17 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        if !self.enable {
-            return Effects::new();
-        }
+        let rest_server = match &self.inner_rest {
+            Some(rest_server) => rest_server,
+            None => {
+                return Effects::new();
+            }
+        };
+
         match event {
             Event::RestRequest(RestRequest::Status { responder }) => {
-                let node_uptime = self.node_startup_instant.elapsed();
-                let node_state = self.node_state;
+                let node_uptime = rest_server.node_startup_instant.elapsed();
+                let node_state = rest_server.node_state;
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -186,13 +195,13 @@ where
 }
 
 impl Finalize for RestServer {
-    fn finalize(mut self) -> BoxFuture<'static, ()> {
+    fn finalize(self) -> BoxFuture<'static, ()> {
         async {
-            if self.enable {
-                let _ = self.shutdown_sender.send(());
+            if let Some(mut rest_server) = self.inner_rest {
+                let _ = rest_server.shutdown_sender.send(());
 
                 // Wait for the server to exit cleanly.
-                if let Some(join_handle) = self.server_join_handle.take() {
+                if let Some(join_handle) = rest_server.server_join_handle.take() {
                     match join_handle.await {
                         Ok(_) => debug!("rest server exited cleanly"),
                         Err(error) => error!(%error, "could not join rest server task cleanly"),

@@ -86,15 +86,34 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RpcServer {
-    /// Indicates whether the JSON-RPC server is enabled or not.
-    enable: bool,
-    /// Indicates whether the speculative execution JSON-RPC server is enabled or not.
-    speculative_exec_enable: bool,
+pub(crate) struct InnerRpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
     /// The current state of the node.
     node_state: NodeState,
+}
+
+impl InnerRpcServer {
+    pub fn node_state(&self) -> NodeState {
+        self.node_state
+    }
+
+    pub fn node_startup_instant(&self) -> Instant {
+        self.node_startup_instant
+    }
+}
+
+#[derive(DataSize, Debug)]
+pub(crate) struct RpcServer {
+    /// Inner JSON-RPC server is present only when enabled in the JSON-RPC
+    /// server config.
+    inner_rpc: Option<InnerRpcServer>,
+    /// Inner speculative execution JSON-RPC server is present only when enabled
+    /// in the speculative execution JSON-RPC server config.
+    /// The inner speculative execution JSON-RPC server as a struct would have
+    /// no fields and no methods because all that is needed to operate it is the
+    /// spawned tokio task, so a unit struct will suffice here.
+    speculative_exec: Option<()>,
 }
 
 impl RpcServer {
@@ -109,19 +128,10 @@ impl RpcServer {
     where
         REv: ReactorEventT,
     {
-        if config.enable_server {
-            let builder = utils::start_listening(&config.address)?;
-            tokio::spawn(http_server::run(
-                builder,
-                effect_builder,
-                api_version,
-                config.qps_limit,
-                config.max_body_bytes,
-            ));
-        }
-
-        // Set the speculative execution HTTP server up.
-        if speculative_exec_config.enable_server {
+        // Set the speculative execution HTTP server up first. The speculative
+        // execution server can operate independently from the JSON-RPC server,
+        // so we save its state before we construct the `RpcServer`.
+        let speculative_exec = if speculative_exec_config.enable_server {
             let builder = utils::start_listening(&speculative_exec_config.address)?;
             tokio::spawn(speculative_exec_server::run(
                 builder,
@@ -130,18 +140,36 @@ impl RpcServer {
                 speculative_exec_config.qps_limit,
                 speculative_exec_config.max_body_bytes,
             ));
+            Some(())
+        } else {
+            None
+        };
+
+        if !config.enable_server {
+            return Ok(RpcServer {
+                inner_rpc: None,
+                speculative_exec,
+            });
         }
 
-        Ok(RpcServer {
-            enable: config.enable_server,
-            speculative_exec_enable: speculative_exec_config.enable_server,
+        let builder = utils::start_listening(&config.address)?;
+        tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            api_version,
+            config.qps_limit,
+            config.max_body_bytes,
+        ));
+
+        let inner_rpc = Some(InnerRpcServer {
             node_startup_instant,
             node_state,
-        })
-    }
+        });
 
-    fn node_state(&self) -> NodeState {
-        self.node_state
+        Ok(RpcServer {
+            inner_rpc,
+            speculative_exec,
+        })
     }
 }
 
@@ -230,17 +258,47 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) if self.enable => {
-                effect_builder
-                    .announce_deploy_received(deploy, Some(responder))
-                    .ignore()
+        // Handle the special case where we need to route the request to
+        // the speculative execution JSON-RPC server.
+        if let Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
+            block_header,
+            deploy,
+            responder,
+        }) = event
+        {
+            match self.speculative_exec {
+                Some(_) => {
+                    return self.handle_execute_deploy(
+                        effect_builder,
+                        block_header,
+                        *deploy,
+                        responder,
+                    );
+                }
+                None => {
+                    return Effects::new();
+                }
             }
+        }
+
+        // For all requests other than `SpeculativeDeployExecute`, we return
+        // empty effects if the JSON-RPC server is disabled.
+        let rpc_server = match &self.inner_rpc {
+            Some(rpc_server) => rpc_server,
+            None => {
+                return Effects::new();
+            }
+        };
+
+        match event {
+            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
+                .announce_deploy_received(deploy, Some(responder))
+                .ignore(),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 only_from_available_block_range,
                 responder,
-            }) if self.enable => effect_builder
+            }) => effect_builder
                 .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Hash(hash)),
@@ -251,7 +309,7 @@ where
                 maybe_id: Some(BlockIdentifier::Height(height)),
                 only_from_available_block_range,
                 responder,
-            }) if self.enable => effect_builder
+            }) => effect_builder
                 .get_block_at_height_with_metadata_from_storage(
                     height,
                     only_from_available_block_range,
@@ -266,7 +324,7 @@ where
                 only_from_available_block_range: _, /* Requesting for higest block cannot be
                                                      * restricted by block availability index */
                 responder,
-            }) if self.enable => effect_builder
+            }) => effect_builder
                 .get_highest_block_with_metadata_from_storage()
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: None,
@@ -276,7 +334,7 @@ where
             Event::RpcRequest(RpcRequest::GetBlockTransfers {
                 block_hash,
                 responder,
-            }) if self.enable => effect_builder
+            }) => effect_builder
                 .get_block_transfers_from_storage(block_hash)
                 .event(move |result| Event::GetBlockTransfersResult {
                     block_hash,
@@ -288,14 +346,12 @@ where
                 base_key,
                 path,
                 responder,
-            }) if self.enable => {
-                self.handle_query(effect_builder, state_root_hash, base_key, path, responder)
-            }
+            }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
             Event::RpcRequest(RpcRequest::QueryEraValidators {
                 state_root_hash,
                 protocol_version,
                 responder,
-            }) if self.enable => self.handle_era_validators(
+            }) => self.handle_era_validators(
                 effect_builder,
                 state_root_hash,
                 protocol_version,
@@ -304,7 +360,7 @@ where
             Event::RpcRequest(RpcRequest::GetBids {
                 state_root_hash,
                 responder,
-            }) if self.enable => {
+            }) => {
                 let get_bids_request = GetBidsRequest::new(state_root_hash);
                 effect_builder
                     .get_bids(get_bids_request)
@@ -317,14 +373,12 @@ where
                 state_root_hash,
                 purse_uref,
                 responder,
-            }) if self.enable => {
-                self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder)
-            }
+            }) => self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder),
             Event::RpcRequest(RpcRequest::GetDeploy {
                 hash,
                 responder,
                 finalized_approvals,
-            }) if self.enable => effect_builder
+            }) => effect_builder
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
                     hash,
@@ -342,15 +396,15 @@ where
                     )),
                     main_responder: responder,
                 }),
-            Event::RpcRequest(RpcRequest::GetPeers { responder }) if self.enable => effect_builder
+            Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder
                 .network_peers()
                 .event(move |peers| Event::GetPeersResult {
                     peers,
                     main_responder: responder,
                 }),
-            Event::RpcRequest(RpcRequest::GetStatus { responder }) if self.enable => {
-                let node_uptime = self.node_startup_instant.elapsed();
-                let node_state = self.node_state();
+            Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
+                let node_uptime = rpc_server.node_startup_instant().elapsed();
+                let node_state = rpc_server.node_state();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -370,82 +424,59 @@ where
                 }
                 .ignore()
             }
-            Event::RpcRequest(RpcRequest::GetAvailableBlockRange { responder }) if self.enable => {
-                async move {
-                    responder
-                        .respond(
-                            effect_builder
-                                .get_available_block_range_from_storage()
-                                .await,
-                        )
-                        .await
-                }
-                .ignore()
+            Event::RpcRequest(RpcRequest::GetAvailableBlockRange { responder }) => async move {
+                responder
+                    .respond(
+                        effect_builder
+                            .get_available_block_range_from_storage()
+                            .await,
+                    )
+                    .await
             }
-            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
-                block_header,
-                deploy,
-                responder,
-            }) if self.speculative_exec_enable => {
-                self.handle_execute_deploy(effect_builder, block_header, *deploy, responder)
+            .ignore(),
+            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute { .. }) => {
+                // Handled above by the speculative execution JSON-RPC server.
+                error!(
+                    "Received spurious speculative exec event in JSON-RPC server, \
+                    should have been handled in speculative execution JSON-RPC server."
+                );
+                Effects::new()
             }
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
                 main_responder,
-            } if self.enable => main_responder.respond(*result).ignore(),
+            } => main_responder.respond(*result).ignore(),
             Event::GetBlockTransfersResult {
                 result,
                 main_responder,
                 ..
-            } if self.enable => main_responder.respond(*result).ignore(),
+            } => main_responder.respond(*result).ignore(),
             Event::QueryGlobalStateResult {
                 result,
                 main_responder,
-            } if self.enable => main_responder.respond(result).ignore(),
+            } => main_responder.respond(result).ignore(),
             Event::QueryEraValidatorsResult {
                 result,
                 main_responder,
-            } if self.enable => main_responder.respond(result).ignore(),
+            } => main_responder.respond(result).ignore(),
             Event::GetBidsResult {
                 result,
                 main_responder,
-            } if self.enable => main_responder.respond(result).ignore(),
+            } => main_responder.respond(result).ignore(),
             Event::GetBalanceResult {
                 result,
                 main_responder,
-            } if self.enable => main_responder.respond(result).ignore(),
+            } => main_responder.respond(result).ignore(),
             Event::GetDeployResult {
                 hash: _,
                 result,
                 main_responder,
-            } if self.enable => main_responder.respond(*result).ignore(),
+            } => main_responder.respond(*result).ignore(),
             Event::GetPeersResult {
                 peers,
                 main_responder,
-            } if self.enable => main_responder.respond(peers).ignore(),
-            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute { .. })
-                if !self.speculative_exec_enable =>
-            {
-                Effects::new()
-            }
-            Event::RpcRequest(_)
-            | Event::GetBalanceResult { .. }
-            | Event::GetBidsResult { .. }
-            | Event::GetBlockResult { .. }
-            | Event::GetBlockTransfersResult { .. }
-            | Event::GetDeployResult { .. }
-            | Event::GetPeersResult { .. }
-            | Event::QueryEraValidatorsResult { .. }
-            | Event::QueryGlobalStateResult { .. }
-                if !self.enable =>
-            {
-                Effects::new()
-            }
-            ev => {
-                error!("Unhandled event in JSON-RPC server: {}", ev);
-                Effects::new()
-            }
+            } => main_responder.respond(peers).ignore(),
         }
     }
 }
