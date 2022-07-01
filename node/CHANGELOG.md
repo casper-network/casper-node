@@ -37,8 +37,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add new `block_hash` and `block_height` optional fields to `info_get_deploy` RPC query which will be present when execution results aren't available.
 * Add a new config option `[rpc_server.max_body_bytes]` to allow a configurable value for the maximum size of the body of a JSON-RPC request.
 * Add new JSON RPC endpoint `/speculative_exec` that accepts a deploy and a block hash and executes that deploy, returning the execution effects.
-* Add `speculative_execution_address` to `rpc_server` section in `config.toml` to control address which the speculative execution server binds to.
-* Add `speculative_execution_qps_limit` to `rpc_server` section in `config.toml` to control requests per second the node handles. Setting to 0 disbles the endpoint.
+* Add `enable_server` option to all HTTP server configuration sections (`rpc_server`, `rest_server`, `event_stream_server`) which allow users to enable/disable each server independently (enabled by default).
+* Add `enable_server`, `address`, `qps_limit` and `max_body_bytes` to new `speculative_exec_server` section to `config.toml` to configure speculative execution JSON-RPC server (disabled by default).
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
