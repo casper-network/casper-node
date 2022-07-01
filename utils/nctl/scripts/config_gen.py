@@ -60,7 +60,7 @@ def logger_setup(level):
 
 
 def parse_args():
-    """Sets up arguements from CLI input."""
+    """Sets up arguments from CLI input."""
     parser = argparse.ArgumentParser(
         description="A script to generate casper-node configs with overridden values"
     )
