@@ -70,8 +70,7 @@ impl EventQueueMetrics {
             .iter()
             .sorted_by_key(|k| k.0)
             .map(|(queue, event_count)| {
-                let _ = self
-                    .event_queue_gauges
+                self.event_queue_gauges
                     .get(queue)
                     .map(|gauge| gauge.set(*event_count as i64))
                     .expect("queue exists.");

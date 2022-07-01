@@ -287,6 +287,8 @@ pub(super) async fn run(
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write;
+
     use http::StatusCode;
     use warp::{filters::BoxedFilter, Filter, Reply};
 
@@ -302,7 +304,7 @@ mod tests {
     ) -> Response {
         let mut body = format!(r#"{{"jsonrpc":"2.0","id":"a","method":"{}""#, method);
         match maybe_params {
-            Some(params) => body += &format!(r#","params":{}}}"#, params),
+            Some(params) => write!(body, r#","params":{}}}"#, params).unwrap(),
             None => body += "}",
         }
 
