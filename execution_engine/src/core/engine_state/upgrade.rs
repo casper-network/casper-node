@@ -313,8 +313,7 @@ where
             entry_points,
             self.new_protocol_version,
         );
-        let _ = self
-            .tracking_copy
+        self.tracking_copy
             .borrow_mut()
             .write(contract_hash.into(), StoredValue::Contract(new_contract));
 
