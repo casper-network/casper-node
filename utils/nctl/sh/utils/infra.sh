@@ -352,3 +352,11 @@ function get_process_name_of_node_group()
         echo "$NCTL_PROCESS_GROUP_3"
     fi
 }
+
+#######################################
+# Returns count of nodes that atleast attempted to start
+#######################################
+function get_count_of_started_nodes()
+{
+    nctl-status | grep -v 'Not started' | wc -l
+}
