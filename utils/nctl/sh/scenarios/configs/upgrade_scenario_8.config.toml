@@ -363,11 +363,6 @@ enable_mem_deduplication = true
 # For example, setting this value to 5 means that every 5th time something is put in the pool the cache is swept.
 mem_pool_prune_interval = 4096
 
-# Parallel storage request execution.
-#
-# Controls the maximum number of threads that are spawned to access storage in parallel.
-max_sync_tasks = 32
-
 
 # ===================================
 # Configuration options for gossiping

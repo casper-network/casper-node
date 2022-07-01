@@ -53,9 +53,9 @@ All notable changes to this project will be documented in this file.  The format
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 * Switch blocks immediately after genesis or an upgrade are now signed.
 * Added CORS behavior to allow any route on the JSON-RPC, REST and SSE servers.
-* Storage operations are now executed in parallel, the degree of parallelism can be controlled through the `storage.max_sync_tasks` setting.
 * The network message format has been replaced with a more efficient encoding while keeping the initial handshake intact.
-* The node flushes outgoing messages immediately, trading bandwidth for latecy. This change is made to optimize feedback loops of various components in the system.
+* The node flushes outgoing messages immediately, trading bandwidth for latency. This change is made to optimize feedback loops of various components in the system.
+* The JSON-RPC server now returns more useful responses in many error cases.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
@@ -72,6 +72,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
+* JSON-RPC server is now compliant with the standard. Specifically, correct error values are now returned in responses, and `null` is no longer accepted as a value for `params` in requests.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
