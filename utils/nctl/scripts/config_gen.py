@@ -28,7 +28,7 @@ def main():
     toml_dict = load_toml_file(args.toml_file)
 
     logger.info("Applying overrides to toml file")
-    new_toml_dict = edit_toml(override_dict, toml_dict)
+    new_toml_dict = edit_toml(override_dict, toml_dict, args.no_skip)
 
     if args.output_file is not None:
         logger.info("Generating toml file to: %s", args.output_file)
@@ -82,6 +82,12 @@ def parse_args():
         required=False,
         default=None,
     )
+    parser.add_argument(
+        "--no_skip",
+        help="Ignores default behavior. Will not skip keys not found in original toml file.",
+        required=False,
+        action='store_true',
+    )
     args = parser.parse_args()
     return args
 
@@ -93,15 +99,15 @@ def write_toml(file_path, toml_dict):
     Path(file_path).write_text(dumps(toml_dict))
 
 
-def edit_toml(override_dict, toml_dict):
+def edit_toml(override_dict, toml_dict, no_skip):
     """Returns updated toml dictionary."""
     logger.debug(pp.pformat(override_dict))
     logger.debug(pp.pformat(toml_dict))
-    new_dict = dict(mergedicts(toml_dict, override_dict))
+    new_dict = dict(mergedicts(toml_dict, override_dict, no_skip))
     return new_dict
 
 
-def mergedicts(dict1, dict2):
+def mergedicts(dict1, dict2, no_skip=False):
     """Merges two dictionaries where applicable"""
     for k in set(dict1) | set(dict2):
         if k in dict1 and k in dict2:
@@ -114,8 +120,13 @@ def mergedicts(dict1, dict2):
             # not in dict2, keep values of dict1
             yield k, dict1[k]
         else:
-            # do nothing if its not present in dict1
-            logger.warning("Skipping %s: not found in original toml", k)
+            if no_skip:
+                # non-default behavior, allow unmatched keys
+                logger.warning("no_skip passed: allowing %s", k)
+                yield k, dict2[k]
+            else:
+                # do nothing if its not present in dict1
+                logger.warning("Skipping %s: not found in original toml", k)
 
 
 def load_toml_file(file_path):
