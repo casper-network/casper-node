@@ -415,6 +415,10 @@ where
             effect_builder
                 .mark_block_completed(block_and_execution_effects.block.height())
                 .await;
+            info!(
+                immediate_switch_block = ?block_and_execution_effects.block.clone(),
+                "immediate switch block after upgrade/genesis stored"
+            );
             Ok(block_and_execution_effects)
         }
         .event(move |result| Event::ExecuteImmediateSwitchBlockResult {

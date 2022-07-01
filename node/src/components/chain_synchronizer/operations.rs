@@ -2281,7 +2281,7 @@ where
 
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            for peer in get_filtered_fully_connected_peers(ctx).await.into_iter() {
+            for peer in get_filtered_fully_connected_peers(ctx).await {
                 info!(block_hash=%block.hash(), "start - re-executing finalized block");
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
