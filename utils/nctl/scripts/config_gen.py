@@ -54,7 +54,7 @@ def logger_setup(level):
     level = levels.get(level)
 
     logging.basicConfig(
-        stream=sys.stdout, level=level, format=log_format, datefmt="%d-%b-%Y %H:%M:%S"
+        stream=sys.stdout, level=level, format=log_format, datefmt="%Y-%m-%d %H:%M:%S"
     )
     return logging.getLogger(__name__)
 
