@@ -96,15 +96,6 @@ fn main() {
                         .help("Amount to be transferred")
                         .takes_value(true)
                         .required(true),
-                )
-                .arg(
-                    Arg::with_name("proposer")
-                        .short("p")
-                        .long("proposer")
-                        .value_name("PUBLIC_KEY_STRING")
-                        .help("Hex-encoded public key of the proposer")
-                        .takes_value(true)
-                        .required(true),
                 ),
         )
         .subcommand(
