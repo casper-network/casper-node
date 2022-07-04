@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    convert::TryFrom,
 };
 
 use rand::Rng;
@@ -112,7 +113,14 @@ impl StateTracker {
         match self.purses_cache.get(&purse).cloned() {
             Some(amount) => amount,
             None => {
-                let amount = self.builder.get_purse_balance(purse);
+                let base_key = Key::Balance(purse.addr());
+                let amount = self
+                    .builder
+                    .query(None, base_key, &[])
+                    .ok()
+                    .and_then(|v| CLValue::try_from(v).ok())
+                    .and_then(|cl_value| cl_value.into_t().ok())
+                    .unwrap_or_else(U512::zero);
                 self.purses_cache.insert(purse, amount);
                 amount
             }
@@ -124,8 +132,8 @@ impl StateTracker {
         let current_balance = self.get_purse_balance(purse);
 
         match balance.cmp(&current_balance) {
-            Ordering::Less => self.increase_supply(balance - current_balance),
-            Ordering::Greater => self.decrease_supply(current_balance - balance),
+            Ordering::Greater => self.increase_supply(balance - current_balance),
+            Ordering::Less => self.decrease_supply(current_balance - balance),
             Ordering::Equal => return,
         }
 
