@@ -160,8 +160,7 @@ impl DisjointSequences {
         }
 
         if let Some(index_to_insert) = maybe_insertion_index {
-            let _ = self
-                .sequences
+            self.sequences
                 .insert(index_to_insert, Sequence::single(value));
         }
 

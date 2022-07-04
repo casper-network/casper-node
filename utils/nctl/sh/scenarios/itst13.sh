@@ -42,7 +42,7 @@ function main() {
     # 6. Assert node is marked as inactive
     assert_inactive '5'
     # 7. Restart node 5
-    do_start_node '5' "$(get_chain_first_block_hash)"
+    do_start_node '5'
     # 8-9. Assert joined within expected era
     assert_joined_in_era_4 '5'
     # 10. Assert eviction of node

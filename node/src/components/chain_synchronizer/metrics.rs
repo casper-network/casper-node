@@ -15,17 +15,11 @@ const SYNC_TRIE_OR_DEPLOY_BUCKET_COUNT: usize = 15;
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
 #[allow(dead_code)]
-pub(super) struct Metrics {
+pub(crate) struct Metrics {
     /// Total time in seconds of syncing the chain.
     #[data_size(skip)]
     pub(super) chain_sync_total_duration_seconds: IntGauge,
-    /// Time in seconds of handling the emergency restart.
-    #[data_size(skip)]
-    pub(super) chain_sync_emergency_restart_duration_seconds: IntGauge,
-    /// Time in seconds of handling the upgrade.
-    #[data_size(skip)]
-    pub(super) chain_sync_upgrade_duration_seconds: IntGauge,
-    /// Total time in seconds of performing the sync to genesis..
+    /// Total time in seconds of performing the sync to genesis.
     #[data_size(skip)]
     pub(super) chain_sync_to_genesis_total_duration_seconds: IntGauge,
     /// Time in seconds to get the trusted key block.
@@ -83,14 +77,6 @@ impl Metrics {
             "chain_sync_total_duration_seconds",
             "total time in seconds of syncing the chain",
         )?;
-        let chain_sync_emergency_restart_duration_seconds = IntGauge::new(
-            "chain_sync_emergency_restart_duration_seconds",
-            "time in seconds of handling the emergency restart",
-        )?;
-        let chain_sync_upgrade_duration_seconds = IntGauge::new(
-            "chain_sync_upgrade_duration_seconds",
-            "time in seconds of handling the upgrade",
-        )?;
         let chain_sync_to_genesis_total_duration_seconds = IntGauge::new(
             "chain_sync_to_genesis_total_duration_seconds",
             "total time in seconds of performing the sync to genesis",
@@ -146,10 +132,6 @@ impl Metrics {
 
         registry.register(Box::new(chain_sync_total_duration_seconds.clone()))?;
         registry.register(Box::new(
-            chain_sync_emergency_restart_duration_seconds.clone(),
-        ))?;
-        registry.register(Box::new(chain_sync_upgrade_duration_seconds.clone()))?;
-        registry.register(Box::new(
             chain_sync_to_genesis_total_duration_seconds.clone(),
         ))?;
         registry.register(Box::new(
@@ -179,8 +161,6 @@ impl Metrics {
 
         Ok(Metrics {
             chain_sync_total_duration_seconds,
-            chain_sync_emergency_restart_duration_seconds,
-            chain_sync_upgrade_duration_seconds,
             chain_sync_to_genesis_total_duration_seconds,
             chain_sync_get_trusted_key_block_info_duration_seconds,
             chain_sync_fetch_to_genesis_duration_seconds,

@@ -269,11 +269,12 @@ impl TestFixture {
             self.protocol_version,
         )
         .unwrap();
+        assert!(server.inner.is_some());
 
-        self.first_event_id = server.event_indexer.current_index();
+        self.first_event_id = server.inner.as_ref().unwrap().event_indexer.current_index();
 
-        let first_event_id = server.event_indexer.current_index();
-        let server_address = server.listening_address;
+        let first_event_id = server.inner.as_ref().unwrap().event_indexer.current_index();
+        let server_address = server.inner.as_ref().unwrap().listening_address;
         let events = self.events.clone();
         let server_stopper = self.server_stopper.clone();
 

@@ -1,0 +1,16 @@
+[package]
+name = "hello-world"
+version = "0.1.0"
+authors = ["darthsiroftardis <karan@casperlabs.io>", "Michał Papierski <michal@casperlabs.io>"]
+edition = "2021"
+
+[dependencies]
+casper-contract = "1.4.4"
+casper-types = "1.5.0"
+
+[[bin]]
+name = "hello_world"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false

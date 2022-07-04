@@ -22,12 +22,12 @@ const TOTAL_EXISTING_UREFS_ARG = "total_existing_urefs";
 
 export function create_group(): void {
   let packageHashKey = CL.getKey(PACKAGE_HASH_KEY);
-  if (packageHashKey === null) {
+  if (!packageHashKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
   let packageAccessKey = CL.getKey(PACKAGE_ACCESS_KEY);
-  if (packageAccessKey === null) {
+  if (!packageAccessKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
@@ -38,7 +38,7 @@ export function create_group(): void {
   let existingURefs = new Array<URef>();
   for (var i: u64 = 0; i < total_existing_urefs; i++) {
     let res = Key.create(CLValue.fromU64(i));
-    if (res === null) {
+    if (!res) {
       Error.fromErrorCode(ErrorCode.Formatting).revert();
       unreachable();
       return;
@@ -56,7 +56,7 @@ export function create_group(): void {
 
 export function remove_group(): void {
   let packageHashKey = CL.getKey(PACKAGE_HASH_KEY);
-  if (packageHashKey === null) {
+  if (!packageHashKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
@@ -68,12 +68,12 @@ export function remove_group(): void {
 
 export function extend_group_urefs(): void {
   let packageHashKey = CL.getKey(PACKAGE_HASH_KEY);
-  if (packageHashKey === null) {
+  if (!packageHashKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
   let packageAccessKey = CL.getKey(PACKAGE_ACCESS_KEY);
-  if (packageAccessKey === null) {
+  if (!packageAccessKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
@@ -91,7 +91,7 @@ export function extend_group_urefs(): void {
 
 export function remove_group_urefs(): void {
   let packageHashKey = CL.getKey(PACKAGE_HASH_KEY);
-  if (packageHashKey === null) {
+  if (!packageHashKey) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
