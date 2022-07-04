@@ -58,6 +58,7 @@ mod fault;
 mod message;
 mod params;
 mod participation;
+mod proposal;
 mod round;
 #[cfg(test)]
 mod tests;
@@ -96,9 +97,10 @@ use crate::{
     utils, NodeRng,
 };
 use fault::Fault;
-use message::{Content, Message, Proposal, SignedMessage, SyncRequest, SyncResponse};
+use message::{Content, Message, SignedMessage, SyncRequest, SyncResponse};
 use params::Params;
 use participation::{Participation, ParticipationStatus};
+use proposal::{HashedProposal, Proposal};
 use round::Round;
 use wal::{Entry, ReadWal, WriteWal};
 
@@ -119,7 +121,7 @@ const MAX_FUTURE_ROUNDS: u32 = 7200; // Don't drop messages in 2-hour eras with 
 pub(crate) type RoundId = u32;
 
 type ProposalsAwaitingParent = HashSet<(RoundId, NodeId)>;
-type ProposalsAwaitingValidation<C> = HashSet<(RoundId, Proposal<C>, NodeId)>;
+type ProposalsAwaitingValidation<C> = HashSet<(RoundId, HashedProposal<C>, NodeId)>;
 
 /// Contains the portion of the state required for an active validator to participate in the
 /// protocol.
@@ -161,7 +163,8 @@ where
     /// it around to provide evidence for equivocation in previous eras.
     evidence_only: bool,
     /// Proposals which have not yet had their parent accepted, by parent round ID.
-    proposals_waiting_for_parent: HashMap<RoundId, HashMap<Proposal<C>, ProposalsAwaitingParent>>,
+    proposals_waiting_for_parent:
+        HashMap<RoundId, HashMap<HashedProposal<C>, ProposalsAwaitingParent>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
     proposals_waiting_for_validation: HashMap<ProposedBlock<C>, ProposalsAwaitingValidation<C>>,
     /// If we requested a new block from the block proposer component this contains the proposal's
@@ -364,7 +367,7 @@ impl<C: Context + 'static> Zug<C> {
             None => false,
             Some((height, proposal)) => {
                 height.saturating_add(1) >= self.params.end_height()
-                    && proposal.timestamp >= self.params.end_timestamp()
+                    && proposal.timestamp() >= self.params.end_timestamp()
             }
         }
     }
@@ -374,7 +377,7 @@ impl<C: Context + 'static> Zug<C> {
     fn accepted_dummy_proposal(&self, round_id: RoundId) -> bool {
         match self.round(round_id).and_then(Round::accepted_proposal) {
             None => false,
-            Some((_, proposal)) => proposal.maybe_block.is_none(),
+            Some((_, proposal)) => proposal.maybe_block().is_none(),
         }
     }
 
@@ -446,7 +449,7 @@ impl<C: Context + 'static> Zug<C> {
     }
 
     /// Prints a log message if the message is a proposal.
-    fn log_proposal(&self, proposal: &Proposal<C>, round_id: RoundId, msg: &str) {
+    fn log_proposal(&self, proposal: &HashedProposal<C>, round_id: RoundId, msg: &str) {
         let creator_index = self.leader(round_id);
         let creator = if let Some(creator) = self.validators.id(creator_index) {
             creator
@@ -459,7 +462,7 @@ impl<C: Context + 'static> Zug<C> {
             ?creator,
             creator_index = creator_index.0,
             ?round_id,
-            timestamp = %proposal.timestamp,
+            timestamp = %proposal.timestamp(),
             "{}", msg,
         );
     }
@@ -501,7 +504,7 @@ impl<C: Context + 'static> Zug<C> {
                 .max_by_key(|(_, echo_map)| self.sum_weights(echo_map.keys()))
                 .map(|(hash, _)| *hash)
         });
-        let has_proposal = round.proposal().map(Proposal::hash) == proposal_hash;
+        let has_proposal = round.proposal().map(HashedProposal::hash) == proposal_hash.as_ref();
         let mut echoes = 0;
         if let Some(echo_map) = proposal_hash.and_then(|hash| round.echoes().get(&hash)) {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
@@ -805,8 +808,8 @@ impl<C: Context + 'static> Zug<C> {
                         }
                     }
                     if let Some(proposal) = round.proposal() {
-                        if proposal.hash() == hash {
-                            proposal_or_hash = Some(Either::Left(proposal.clone()));
+                        if *proposal.hash() == hash {
+                            proposal_or_hash = Some(Either::Left(proposal.inner().clone()));
                         }
                     }
                 }
@@ -906,7 +909,10 @@ impl<C: Context + 'static> Zug<C> {
         } = sync_response;
 
         let (proposal_hash, proposal) = match proposal_or_hash {
-            Some(Either::Left(proposal)) => (Some(proposal.hash()), Some(proposal)),
+            Some(Either::Left(proposal)) => {
+                let hashed_prop = HashedProposal::new(proposal);
+                (Some(*hashed_prop.hash()), Some(hashed_prop.into_inner()))
+            }
             Some(Either::Right(hash)) => (Some(hash), None),
             None => (None, None),
         };
@@ -1076,12 +1082,12 @@ impl<C: Context + 'static> Zug<C> {
         let leader_idx = self.leader(round_id);
 
         macro_rules! log_proposal {
-            ($lvl:expr, $msg:expr $(,)?) => {
+            ($lvl:expr, $prop:expr, $msg:expr $(,)?) => {
                 event!(
                     $lvl,
                     round_id,
-                    parent = proposal.maybe_parent_round_id,
-                    timestamp = %proposal.timestamp,
+                    parent = $prop.maybe_parent_round_id,
+                    timestamp = %$prop.timestamp,
                     leader_idx = leader_idx.0,
                     ?sender,
                     "{}",
@@ -1094,6 +1100,7 @@ impl<C: Context + 'static> Zug<C> {
             if parent_round_id >= round_id {
                 log_proposal!(
                     Level::WARN,
+                    proposal,
                     "invalid proposal: parent is not from an earlier round",
                 );
                 return vec![ProtocolOutcome::Disconnect(sender)];
@@ -1103,6 +1110,7 @@ impl<C: Context + 'static> Zug<C> {
         if proposal.timestamp > now + self.config.clock_tolerance {
             log_proposal!(
                 Level::TRACE,
+                proposal,
                 "received a proposal with a timestamp far in the future; dropping",
             );
             return vec![];
@@ -1110,30 +1118,16 @@ impl<C: Context + 'static> Zug<C> {
         if proposal.timestamp > now {
             log_proposal!(
                 Level::TRACE,
+                proposal,
                 "received a proposal with a timestamp slightly in the future",
             );
         }
-
-        let hash = proposal.hash();
-
-        if self
-            .round(round_id)
-            .map_or(true, |round| !round.has_echoes_for_proposal(&hash))
-        {
-            log_proposal!(Level::DEBUG, "dropping proposal: missing echoes");
-            return vec![];
-        }
-
-        if self.round(round_id).and_then(Round::proposal) == Some(&proposal) {
-            log_proposal!(Level::DEBUG, "dropping proposal: we already have it");
-            return vec![];
-        }
-
         if (proposal.maybe_parent_round_id.is_none() || proposal.maybe_block.is_none())
             != proposal.inactive.is_none()
         {
             log_proposal!(
                 Level::WARN,
+                proposal,
                 "invalid proposal: inactive must be present in all except the first and dummy proposals",
             );
             return vec![ProtocolOutcome::Disconnect(sender)];
@@ -1145,24 +1139,48 @@ impl<C: Context + 'static> Zug<C> {
             {
                 log_proposal!(
                     Level::WARN,
+                    proposal,
                     "invalid proposal: invalid inactive validator index",
                 );
                 return vec![ProtocolOutcome::Disconnect(sender)];
             }
         }
 
-        let ancestor_values = if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+        let hashed_prop = HashedProposal::new(proposal);
+
+        if self.round(round_id).map_or(true, |round| {
+            !round.has_echoes_for_proposal(hashed_prop.hash())
+        }) {
+            log_proposal!(
+                Level::DEBUG,
+                hashed_prop.inner(),
+                "dropping proposal: missing echoes"
+            );
+            return vec![];
+        }
+
+        if self.round(round_id).and_then(Round::proposal) == Some(&hashed_prop) {
+            log_proposal!(
+                Level::DEBUG,
+                hashed_prop.inner(),
+                "dropping proposal: we already have it"
+            );
+            return vec![];
+        }
+
+        let ancestor_values = if let Some(parent_round_id) = hashed_prop.maybe_parent_round_id() {
             if let Some(ancestor_values) = self.ancestor_values(parent_round_id) {
                 ancestor_values
             } else {
                 log_proposal!(
                     Level::DEBUG,
+                    hashed_prop.inner(),
                     "storing proposal for later; still missing ancestors",
                 );
                 self.proposals_waiting_for_parent
                     .entry(parent_round_id)
                     .or_insert_with(HashMap::new)
-                    .entry(proposal)
+                    .entry(hashed_prop)
                     .or_insert_with(HashSet::new)
                     .insert((round_id, sender));
                 return vec![];
@@ -1171,7 +1189,7 @@ impl<C: Context + 'static> Zug<C> {
             vec![]
         };
 
-        let mut outcomes = self.validate_proposal(round_id, proposal, ancestor_values, sender);
+        let mut outcomes = self.validate_proposal(round_id, hashed_prop, ancestor_values, sender);
         outcomes.extend(self.update(now));
         outcomes
     }
@@ -1247,7 +1265,7 @@ impl<C: Context + 'static> Zug<C> {
                     Entry::Proposal(next_proposal, corresponding_round_id) => {
                         if self
                             .round_mut(corresponding_round_id)
-                            .insert_proposal(next_proposal)
+                            .insert_proposal(HashedProposal::new(next_proposal))
                         {
                             self.mark_dirty(corresponding_round_id);
                         }
@@ -1411,7 +1429,7 @@ impl<C: Context + 'static> Zug<C> {
         let mut outcomes = vec![];
 
         // If we have a proposal, echo it.
-        if let Some(hash) = self.rounds[&round_id].proposal().map(Proposal::hash) {
+        if let Some(&hash) = self.rounds[&round_id].proposal().map(HashedProposal::hash) {
             outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
         }
 
@@ -1500,10 +1518,10 @@ impl<C: Context + 'static> Zug<C> {
         } else {
             return false; // We don't have a proposal.
         };
-        if self.round(round_id).and_then(Round::quorum_echoes) != Some(proposal.hash()) {
+        if self.round(round_id).and_then(Round::quorum_echoes) != Some(*proposal.hash()) {
             return false; // We don't have a quorum of echoes.
         }
-        if let Some(inactive) = &proposal.inactive {
+        if let Some(inactive) = proposal.inactive() {
             for (idx, _) in self.validators.enumerate_ids() {
                 if !inactive.contains(&idx)
                     && self.active[idx].is_none()
@@ -1516,7 +1534,7 @@ impl<C: Context + 'static> Zug<C> {
             }
         }
         let (first_skipped_round_id, rel_height) =
-            if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+            if let Some(parent_round_id) = proposal.maybe_parent_round_id() {
                 if let Some((parent_height, _)) = self
                     .round(parent_round_id)
                     .and_then(Round::accepted_proposal)
@@ -1549,21 +1567,21 @@ impl<C: Context + 'static> Zug<C> {
     fn validate_proposal(
         &mut self,
         round_id: RoundId,
-        proposal: Proposal<C>,
+        proposal: HashedProposal<C>,
         ancestor_values: Vec<C::ConsensusValue>,
         sender: NodeId,
     ) -> ProtocolOutcomes<C> {
         if let Some((_, parent_proposal)) = proposal
-            .maybe_parent_round_id
+            .maybe_parent_round_id()
             .and_then(|parent_round_id| self.accepted_proposal(parent_round_id))
         {
             let min_block_time = self.params.min_block_time();
-            if proposal.timestamp < parent_proposal.timestamp.saturating_add(min_block_time) {
+            if proposal.timestamp() < parent_proposal.timestamp().saturating_add(min_block_time) {
                 info!("rejecting proposal with timestamp earlier than the parent");
                 return vec![];
             }
             if let (Some(inactive), Some(parent_inactive)) =
-                (&proposal.inactive, &parent_proposal.inactive)
+                (proposal.inactive(), parent_proposal.inactive())
             {
                 if !inactive.is_subset(parent_inactive) {
                     info!("rejecting proposal with more inactive validators than parent");
@@ -1572,12 +1590,12 @@ impl<C: Context + 'static> Zug<C> {
             }
         }
         if let Some(block) = proposal
-            .maybe_block
-            .clone()
+            .maybe_block()
+            .cloned()
             .filter(ConsensusValueT::needs_validation)
         {
             self.log_proposal(&proposal, round_id, "requesting proposal validation");
-            let block_context = BlockContext::new(proposal.timestamp, ancestor_values);
+            let block_context = BlockContext::new(proposal.timestamp(), ancestor_values);
             let proposed_block = ProposedBlock::new(block, block_context);
             if self
                 .proposals_waiting_for_validation
@@ -1593,13 +1611,13 @@ impl<C: Context + 'static> Zug<C> {
                 vec![] // Proposal was already known.
             }
         } else {
-            if proposal.timestamp < self.params.start_timestamp() {
+            if proposal.timestamp() < self.params.start_timestamp() {
                 info!("rejecting proposal with timestamp earlier than era start");
                 return vec![];
             }
             self.log_proposal(&proposal, round_id, "proposal does not need validation");
             if self.round_mut(round_id).insert_proposal(proposal.clone()) {
-                self.record_entry(&Entry::Proposal(proposal, round_id));
+                self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
                 self.progress_detected = true;
                 self.mark_dirty(round_id);
             }
@@ -1622,7 +1640,7 @@ impl<C: Context + 'static> Zug<C> {
             error!(round_id, "missing finalized proposal; this is a bug");
             return outcomes;
         };
-        if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+        if let Some(parent_round_id) = proposal.maybe_parent_round_id() {
             // Output the parent first if it isn't already finalized.
             outcomes.extend(self.finalize_round(parent_round_id));
         }
@@ -1630,8 +1648,8 @@ impl<C: Context + 'static> Zug<C> {
             self.round_mut(prune_round_id).prune_skipped();
         }
         self.first_non_finalized_round_id = round_id.saturating_add(1);
-        let value = if let Some(block) = proposal.maybe_block.clone() {
-            block
+        let value = if let Some(block) = proposal.maybe_block() {
+            block.clone()
         } else {
             return outcomes; // This era's last block is already finalized.
         };
@@ -1643,13 +1661,13 @@ impl<C: Context + 'static> Zug<C> {
         let reward = self.rewards.entry(proposer.clone()).or_default();
         *reward = reward.saturating_add(BLOCK_REWARD);
         let terminal_block_data = self.accepted_switch_block(round_id).then(|| {
-            let inactive_validators = proposal
-                .inactive
-                .iter()
-                .flatten()
-                .filter_map(|idx| self.validators.id(*idx))
-                .cloned()
-                .collect();
+            let inactive_validators = proposal.inactive().map_or_else(Vec::new, |inactive| {
+                inactive
+                    .iter()
+                    .filter_map(|idx| self.validators.id(*idx))
+                    .cloned()
+                    .collect()
+            });
             TerminalBlockData {
                 rewards: self.rewards.clone(),
                 inactive_validators,
@@ -1657,7 +1675,7 @@ impl<C: Context + 'static> Zug<C> {
         });
         let finalized_block = FinalizedBlock {
             value,
-            timestamp: proposal.timestamp,
+            timestamp: proposal.timestamp(),
             relative_height,
             // Faulty validators are already reported to the era supervisor via
             // validators_with_evidence.
@@ -1720,13 +1738,14 @@ impl<C: Context + 'static> Zug<C> {
             proposal: proposal.clone(),
             instance_id: *self.instance_id(),
         };
-        let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
+        let hashed_prop = HashedProposal::new(proposal);
+        let mut outcomes = self.create_message(round_id, Content::Echo(*hashed_prop.hash()));
         if outcomes.is_empty() {
             return vec![]; // Failed to create an echo message.
         }
-        if !self.record_entry(&Entry::Proposal(proposal.clone(), round_id)) {
+        if !self.record_entry(&Entry::Proposal(hashed_prop.inner().clone(), round_id)) {
             error!("could not record own proposal in WAL");
-        } else if self.round_mut(round_id).insert_proposal(proposal) {
+        } else if self.round_mut(round_id).insert_proposal(hashed_prop) {
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
         }
         self.mark_dirty(round_id);
@@ -1743,7 +1762,7 @@ impl<C: Context + 'static> Zug<C> {
             if let Some((_, parent)) = self.accepted_proposal(round_id) {
                 // All rounds higher than this one are skippable. When the accepted proposal's
                 // timestamp is old enough it can be used as a parent.
-                let timestamp = parent.timestamp.saturating_add(min_block_time);
+                let timestamp = parent.timestamp().saturating_add(min_block_time);
                 if now >= timestamp {
                     return Some((Some(round_id), timestamp));
                 }
@@ -1777,7 +1796,7 @@ impl<C: Context + 'static> Zug<C> {
     }
 
     /// Returns the accepted proposal, if any, together with its height.
-    fn accepted_proposal(&self, round_id: RoundId) -> Option<(u64, &Proposal<C>)> {
+    fn accepted_proposal(&self, round_id: RoundId) -> Option<(u64, &HashedProposal<C>)> {
         self.round(round_id)?.accepted_proposal()
     }
 
@@ -1828,8 +1847,8 @@ impl<C: Context + 'static> Zug<C> {
         let mut ancestor_values = vec![];
         loop {
             let (_, proposal) = self.accepted_proposal(round_id)?;
-            ancestor_values.extend(proposal.maybe_block.clone());
-            match proposal.maybe_parent_round_id {
+            ancestor_values.extend(proposal.maybe_block().cloned());
+            match proposal.maybe_parent_round_id() {
                 None => return Some(ancestor_values),
                 Some(parent_round_id) => round_id = parent_round_id,
             }
@@ -2053,7 +2072,7 @@ where
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(?proposal, "handling valid proposal");
                 if self.round_mut(round_id).insert_proposal(proposal.clone()) {
-                    self.record_entry(&Entry::Proposal(proposal, round_id));
+                    self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
                 }

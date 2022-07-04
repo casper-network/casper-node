@@ -1,67 +1,15 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-};
+use std::{collections::BTreeMap, fmt::Debug};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::Timestamp;
 use either::Either;
 
 use crate::components::consensus::{
-    consensus_protocol::ProposedBlock,
-    protocols::zug::RoundId,
+    protocols::zug::{Proposal, RoundId},
     traits::{Context, ValidatorSecret},
     utils::ValidatorIndex,
 };
-
-/// A proposal in the consensus protocol.
-#[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct Proposal<C>
-where
-    C: Context,
-{
-    pub(super) timestamp: Timestamp,
-    pub(super) maybe_block: Option<C::ConsensusValue>,
-    pub(super) maybe_parent_round_id: Option<RoundId>,
-    /// The set of validators that appear to be inactive in this era.
-    /// This is `None` in round 0 and in dummy blocks.
-    pub(super) inactive: Option<BTreeSet<ValidatorIndex>>,
-}
-
-impl<C: Context> Proposal<C> {
-    pub(super) fn dummy(timestamp: Timestamp, parent_round_id: RoundId) -> Self {
-        Proposal {
-            timestamp,
-            maybe_block: None,
-            maybe_parent_round_id: Some(parent_round_id),
-            inactive: None,
-        }
-    }
-
-    pub(super) fn with_block(
-        proposed_block: &ProposedBlock<C>,
-        maybe_parent_round_id: Option<RoundId>,
-        inactive: impl Iterator<Item = ValidatorIndex>,
-    ) -> Self {
-        Proposal {
-            maybe_block: Some(proposed_block.value().clone()),
-            timestamp: proposed_block.context().timestamp(),
-            maybe_parent_round_id,
-            inactive: maybe_parent_round_id.map(|_| inactive.collect()),
-        }
-    }
-
-    pub(super) fn hash(&self) -> C::Hash {
-        let serialized = bincode::serialize(&self).expect("failed to serialize fields");
-        <C as Context>::hash(&serialized)
-    }
-}
 
 /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
 /// which are somewhat decoupled from the rest of the protocol. These messages, along with the
