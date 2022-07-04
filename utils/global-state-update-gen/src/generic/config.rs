@@ -1,4 +1,4 @@
-use casper_types::{PublicKey, U512};
+use casper_types::{account::AccountHash, PublicKey, U512};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,8 +12,8 @@ pub struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transfer {
-    pub from: PublicKey,
-    pub to: PublicKey,
+    pub from: AccountHash,
+    pub to: AccountHash,
     pub amount: U512,
 }
 

@@ -8,7 +8,7 @@ use rand::Rng;
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_hashing::Digest;
 use casper_types::{
-    account::Account,
+    account::{Account, AccountHash},
     system::{
         auction::{Bid, Bids, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,
@@ -26,7 +26,7 @@ pub struct StateTracker {
     entries_to_write: BTreeMap<Key, StoredValue>,
     total_supply: U512,
     total_supply_key: Key,
-    accounts_cache: BTreeMap<PublicKey, Account>,
+    accounts_cache: BTreeMap<AccountHash, Account>,
     purses_cache: BTreeMap<URef, U512>,
     bids_cache: Option<Bids>,
 }
@@ -138,11 +138,12 @@ impl StateTracker {
 
     /// Creates a new account for the given public key and seeds it with the given amount of
     /// tokens.
-    pub fn create_account(&mut self, pub_key: PublicKey, amount: U512) -> Account {
+    pub fn create_account(&mut self, account_hash: AccountHash, amount: U512) -> Account {
         let main_purse = self.create_purse(amount);
 
-        let account_hash = pub_key.to_account_hash();
         let account = Account::create(account_hash, Default::default(), main_purse);
+
+        self.accounts_cache.insert(account_hash, account.clone());
 
         self.write_entry(
             Key::Account(account_hash),
@@ -153,14 +154,12 @@ impl StateTracker {
     }
 
     /// Gets the account for the given public key.
-    pub fn get_account(&mut self, pub_key: &PublicKey) -> Option<Account> {
-        match self.accounts_cache.entry(pub_key.clone()) {
-            Entry::Vacant(vac) => {
-                let account_hash = pub_key.to_account_hash();
-                self.builder
-                    .get_account(account_hash)
-                    .map(|account| vac.insert(account).clone())
-            }
+    pub fn get_account(&mut self, account_hash: &AccountHash) -> Option<Account> {
+        match self.accounts_cache.entry(*account_hash) {
+            Entry::Vacant(vac) => self
+                .builder
+                .get_account(*account_hash)
+                .map(|account| vac.insert(account).clone()),
             Entry::Occupied(occupied) => Some(occupied.into_mut().clone()),
         }
     }
@@ -176,7 +175,7 @@ impl StateTracker {
         let to_account = if let Some(account) = self.get_account(&transfer.to) {
             account
         } else {
-            self.create_account(transfer.to.clone(), U512::zero())
+            self.create_account(transfer.to, U512::zero())
         };
 
         let from_balance = self.get_purse_balance(from_account.main_purse());

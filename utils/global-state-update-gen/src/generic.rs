@@ -1,4 +1,4 @@
-mod config;
+pub(crate) mod config;
 mod state_tracker;
 
 use std::{
@@ -61,10 +61,11 @@ fn update_account_balances(state: &mut StateTracker, accounts: &[AccountConfig])
         } else {
             continue;
         };
-        if let Some(account) = state.get_account(&account.public_key) {
+        let account_hash = account.public_key.to_account_hash();
+        if let Some(account) = state.get_account(&account_hash) {
             state.set_purse_balance(account.main_purse(), target_balance);
         } else {
-            state.create_account(account.public_key.clone(), target_balance);
+            state.create_account(account_hash, target_balance);
         }
     }
 }

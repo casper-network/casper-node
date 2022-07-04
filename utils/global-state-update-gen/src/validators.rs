@@ -1,31 +1,28 @@
-mod validators_manager;
-
-use std::collections::BTreeMap;
-
 use clap::ArgMatches;
 
 use casper_types::{AsymmetricType, PublicKey, U512};
 
-use validators_manager::ValidatorsUpdateManager;
-
-pub struct ValidatorConfig {
-    stake: U512,
-    maybe_new_balance: Option<U512>,
-}
+use crate::{
+    generic::{
+        config::{AccountConfig, Config},
+        update_from_config,
+    },
+    utils::hash_from_str,
+};
 
 pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
     let data_dir = matches.value_of("data_dir").unwrap_or(".");
-    let state_hash = matches.value_of("hash").unwrap();
-    let validators = match matches.values_of("validator") {
-        None => BTreeMap::new(),
+    let state_hash = hash_from_str(matches.value_of("hash").unwrap());
+    let accounts = match matches.values_of("validator") {
+        None => vec![],
         Some(values) => values
             .map(|validator_def| {
                 let mut fields = validator_def.split(',').map(str::to_owned);
 
-                let pub_key_str = fields
+                let public_key_str = fields
                     .next()
                     .expect("validator config should contain a public key");
-                let pub_key = PublicKey::from_hex(pub_key_str.as_bytes())
+                let public_key = PublicKey::from_hex(public_key_str.as_bytes())
                     .expect("validator config should have a valid public key");
 
                 let stake_str = fields
@@ -40,21 +37,20 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
                         .expect("balance should be a valid decimal number")
                 });
 
-                (
-                    pub_key,
-                    ValidatorConfig {
-                        stake,
-                        maybe_new_balance,
-                    },
-                )
+                AccountConfig {
+                    public_key,
+                    stake: Some(stake),
+                    balance: maybe_new_balance,
+                }
             })
             .collect(),
     };
 
-    let mut validators_upgrade_manager =
-        ValidatorsUpdateManager::new(data_dir, state_hash, validators);
+    let config = Config {
+        accounts,
+        transfers: vec![],
+        only_listed_validators: true,
+    };
 
-    validators_upgrade_manager.perform_update();
-
-    validators_upgrade_manager.print_writes();
+    update_from_config(data_dir, state_hash, config);
 }
