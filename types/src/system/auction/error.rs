@@ -15,6 +15,7 @@ use crate::{
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(test, derive(strum::EnumIter))]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum Error {
     /// Unable to find named key in the contract's named keys.
     /// ```

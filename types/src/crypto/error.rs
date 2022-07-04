@@ -15,6 +15,7 @@ use crate::file_utils::{ReadFileError, WriteFileError};
 /// Cryptographic errors.
 #[derive(Debug)]
 #[cfg_attr(any(feature = "std", test), derive(Error))]
+#[non_exhaustive]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
     #[cfg_attr(any(feature = "std", test), error("asymmetric key error: {0}"))]
@@ -62,6 +63,7 @@ impl From<SignatureError> for Error {
 /// Cryptographic errors extended with some additional variants.
 #[cfg(any(feature = "std", test))]
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ErrorExt {
     /// A basic crypto error.
     #[error("crypto error: {0:?}")]

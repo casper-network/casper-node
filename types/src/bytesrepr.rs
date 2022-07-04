@@ -111,6 +111,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum Error {
     /// Early end of stream while deserializing.
     EarlyEndOfStream = 0,
