@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
@@ -238,8 +238,8 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
     );
 }
 
-fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn setup() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let fund_account_1_request = ExecuteRequestBuilder::transfer(
@@ -381,7 +381,7 @@ fn regression_20220217_() {
 #[test]
 fn mint_by_hash_transfer_should_fail_because_lack_of_target_uref_access() {
     // TODO create two named purses and verify we can pass source and target known non-main purses
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 

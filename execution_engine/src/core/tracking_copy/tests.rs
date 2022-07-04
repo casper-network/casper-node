@@ -19,7 +19,7 @@ use crate::{
     core::{engine_state::EngineConfig, runtime_context::dictionary, ValidationError},
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId, transform::Transform},
     storage::{
-        global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
+        global_state::{self, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
     },
 };
@@ -311,7 +311,7 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, value)]).unwrap();
+        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([(k, value)]);
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
@@ -350,10 +350,9 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(
-            correlation_id,
-            &[(k, value), (contract_key, contract)]
-        ).unwrap();
+        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state(
+            [(k, value), (contract_key, contract)]
+        );
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(name.clone());
@@ -393,10 +392,9 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(
-            correlation_id,
-            &[(k, value), (account_key, StoredValue::Account(account))],
-        ).unwrap();
+        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state(
+            [(k, value), (account_key, account.into())],
+        );
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(name.clone());
@@ -452,11 +450,11 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[
+        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
             (k, value),
             (contract_key, contract),
-            (account_key, StoredValue::Account(account)),
-        ]).unwrap();
+            (account_key, account.into()),
+        ]);
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(contract_name, state_name);
@@ -540,11 +538,10 @@ fn query_for_circular_references_should_fail() {
     ));
 
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
-        correlation_id,
-        &[(cl_value_key, cl_value), (contract_key, contract)],
-    )
-    .unwrap();
+    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+        (cl_value_key, cl_value),
+        (contract_key, contract),
+    ]);
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);
 
@@ -626,16 +623,12 @@ fn validate_query_proof_should_work() {
 
     // persist them
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
-        correlation_id,
-        &[
-            (account_key, account_value.to_owned()),
-            (contract_key, contract_value.to_owned()),
-            (main_account_key, main_account_value.to_owned()),
-            (uref_key, uref_value),
-        ],
-    )
-    .unwrap();
+    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+        (account_key, account_value.to_owned()),
+        (contract_key, contract_value.to_owned()),
+        (main_account_key, main_account_value.to_owned()),
+        (uref_key, uref_value),
+    ]);
 
     let view = global_state
         .checkout(root_hash)
@@ -776,15 +769,12 @@ fn validate_query_proof_should_work() {
         Err(ValidationError::PathCold)
     );
 
-    let (misfit_global_state, misfit_root_hash) = InMemoryGlobalState::from_pairs(
-        correlation_id,
-        &[
+    let (misfit_global_state, misfit_root_hash, _tempdir) =
+        global_state::lmdb::make_temporary_global_state([
             (account_key, account_value.to_owned()),
             (contract_key, contract_value),
             (main_account_key, main_account_value),
-        ],
-    )
-    .unwrap();
+        ]);
 
     let misfit_view = misfit_global_state
         .checkout(misfit_root_hash)
@@ -850,15 +840,11 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
 
     // persist them
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
-        correlation_id,
-        &[
-            (account_1_key, account_1_value),
-            (account_2_key, account_2_value),
-            (uref_key, uref_value),
-        ],
-    )
-    .unwrap();
+    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+        (account_1_key, account_1_value),
+        (account_2_key, account_2_value),
+        (uref_key, uref_value),
+    ]);
 
     let view = global_state
         .checkout(root_hash)
@@ -901,15 +887,11 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
 
     // persist them
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
-        correlation_id,
-        &[
-            (account_key, account_value),
-            (uref_1_key, uref_1_value),
-            (uref_2_key, uref_2_value),
-        ],
-    )
-    .unwrap();
+    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+        (account_key, account_value),
+        (uref_1_key, uref_1_value),
+        (uref_2_key, uref_2_value),
+    ]);
 
     let view = global_state
         .checkout(root_hash)
@@ -947,7 +929,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
 #[test]
 fn get_keys_should_handle_reads_from_empty_trie() {
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[]).unwrap();
+    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([]);
 
     let view = global_state
         .checkout(root_hash)
@@ -1065,8 +1047,8 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     }
 
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) =
-        InMemoryGlobalState::from_pairs(correlation_id, &pairs).unwrap();
+    let (global_state, root_hash, _tempdir) =
+        global_state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);
@@ -1124,8 +1106,8 @@ fn query_with_large_depth_with_urefs_should_fail() {
     pairs.push((contract_key, contract));
 
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash) =
-        InMemoryGlobalState::from_pairs(correlation_id, &pairs).unwrap();
+    let (global_state, root_hash, _tempdir) =
+        global_state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);

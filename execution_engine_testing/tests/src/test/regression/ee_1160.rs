@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
@@ -25,7 +25,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
     let transfer_amount =
         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - wasmless_transfer_cost.value();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
@@ -79,7 +79,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
         // One above the available balance to transfer should raise an InsufficientPayment already
         + U512::one();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
@@ -140,7 +140,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
 fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
     let transfer_amount = U512::max_value();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder

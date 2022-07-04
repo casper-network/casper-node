@@ -1,7 +1,5 @@
 //! Storage errors.
 
-/// Errors for In-Memory storage implementation.
-pub mod in_memory;
 /// Errors for LMDB storage implementation.
 pub mod lmdb;
 

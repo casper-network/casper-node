@@ -58,42 +58,6 @@ fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
     .unwrap()
 }
 
-fn in_memory_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
-    let correlation_id = CorrelationId::new();
-    let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-    let context = InMemoryTestContext::new(&tries).unwrap();
-    let mut states_to_check = vec![];
-
-    let root_hashes = write_pairs::<_, _, _, _, in_memory::Error>(
-        correlation_id,
-        &context.environment,
-        &context.store,
-        &root_hash,
-        pairs,
-    )
-    .unwrap();
-
-    states_to_check.extend(root_hashes);
-
-    check_pairs::<_, _, _, _, in_memory::Error>(
-        correlation_id,
-        &context.environment,
-        &context.store,
-        &states_to_check,
-        pairs,
-    )
-    .unwrap();
-
-    check_pairs_proofs::<_, _, _, _, in_memory::Error>(
-        correlation_id,
-        &context.environment,
-        &context.store,
-        &states_to_check,
-        pairs,
-    )
-    .unwrap()
-}
-
 fn test_key_arb() -> impl Strategy<Value = TestKey> {
     array::uniform7(any::<u8>()).prop_map(TestKey)
 }
@@ -103,11 +67,6 @@ fn test_value_arb() -> impl Strategy<Value = TestValue> {
 }
 
 proptest! {
-    #[test]
-    fn prop_in_memory_roundtrip_succeeds(inputs in vec((test_key_arb(), test_value_arb()), get_range())) {
-        assert!(in_memory_roundtrip_succeeds(&inputs));
-    }
-
     #[test]
     fn prop_lmdb_roundtrip_succeeds(inputs in vec((test_key_arb(), test_value_arb()), get_range())) {
         assert!(lmdb_roundtrip_succeeds(&inputs));

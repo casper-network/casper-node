@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution::Error as ExecError};
@@ -16,7 +16,7 @@ const UNAPPROVED_SPENDING_AMOUNT_ERR: Error = Error::Exec(ExecError::Revert(ApiE
 #[ignore]
 #[test]
 fn should_not_transfer_above_approved_limit() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let args = runtime_args! {
@@ -37,7 +37,7 @@ fn should_not_transfer_above_approved_limit() {
 #[ignore]
 #[test]
 fn should_transfer_within_approved_limit() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let args = runtime_args! {
@@ -56,7 +56,7 @@ fn should_transfer_within_approved_limit() {
 #[ignore]
 #[test]
 fn should_fail_without_amount_arg() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let args = runtime_args! {

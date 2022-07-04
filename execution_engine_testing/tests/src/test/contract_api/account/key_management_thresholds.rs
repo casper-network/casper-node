@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
@@ -23,7 +23,7 @@ fn should_verify_key_management_permission_with_low_weight() {
         runtime_args! { ARG_STAGE => String::from("test-permission-denied") },
     )
     .build();
-    InMemoryWasmTestBuilder::default()
+    LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
@@ -60,7 +60,7 @@ fn should_verify_key_management_permission_with_sufficient_weight() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    InMemoryWasmTestBuilder::default()
+    LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()

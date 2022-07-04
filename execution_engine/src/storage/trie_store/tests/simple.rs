@@ -5,13 +5,11 @@ use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use super::TestData;
 use crate::storage::{
-    error::{self, in_memory},
+    error,
     store::StoreExt,
-    transaction_source::{
-        in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Transaction, TransactionSource,
-    },
+    transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
     trie::Trie,
-    trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore, TrieStore},
+    trie_store::{lmdb::LmdbTrieStore, TrieStore},
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
@@ -33,15 +31,6 @@ where
     store.put_many(&mut txn, items)?;
     txn.commit()?;
     Ok(())
-}
-
-#[test]
-fn in_memory_put_succeeds() {
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-    let data = &super::create_data()[0..1];
-
-    assert!(put_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, data).is_ok());
 }
 
 #[test]
@@ -85,24 +74,6 @@ where
 }
 
 #[test]
-fn in_memory_put_get_succeeds() {
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-    let data = &super::create_data()[0..1];
-
-    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
-
-    assert_eq!(
-        expected,
-        put_get_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, data)
-            .expect("put_get_succeeds failed")
-            .into_iter()
-            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
-            .expect("one of the outputs was empty")
-    )
-}
-
-#[test]
 fn lmdb_put_get_succeeds() {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
@@ -127,24 +98,6 @@ fn lmdb_put_get_succeeds() {
     );
 
     tmp_dir.close().unwrap();
-}
-
-#[test]
-fn in_memory_put_get_many_succeeds() {
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-    let data = super::create_data();
-
-    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
-
-    assert_eq!(
-        expected,
-        put_get_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, &data)
-            .expect("put_get failed")
-            .into_iter()
-            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
-            .expect("one of the outputs was empty")
-    )
 }
 
 #[test]
@@ -202,23 +155,6 @@ where
 }
 
 #[test]
-fn in_memory_uncommitted_read_write_txn_does_not_persist() {
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-    let data = super::create_data();
-
-    assert_eq!(
-        None,
-        uncommitted_read_write_txn_does_not_persist::<_, _, _, _, in_memory::Error>(
-            &store, &env, &data,
-        )
-        .expect("uncommitted_read_write_txn_does_not_persist failed")
-        .into_iter()
-        .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
-    )
-}
-
-#[test]
 fn lmdb_uncommitted_read_write_txn_does_not_persist() {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
@@ -256,15 +192,6 @@ where
     read_write_txn.commit()?;
     read_txn.commit()?;
     Ok(())
-}
-
-#[test]
-fn in_memory_read_write_transaction_does_not_block_read_transaction() {
-    let env = InMemoryEnvironment::new();
-
-    assert!(
-        read_write_transaction_does_not_block_read_transaction::<_, in_memory::Error>(&env).is_ok()
-    )
 }
 
 #[test]
@@ -314,14 +241,6 @@ where
     }
 
     Ok(())
-}
-
-#[test]
-fn in_memory_reads_are_isolated() {
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-
-    assert!(reads_are_isolated::<_, _, in_memory::Error>(&store, &env).is_ok())
 }
 
 #[test]
@@ -376,14 +295,6 @@ where
     }
 
     Ok(())
-}
-
-#[test]
-fn in_memory_reads_are_isolated_2() {
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-
-    assert!(reads_are_isolated_2::<_, _, in_memory::Error>(&store, &env).is_ok())
 }
 
 #[test]
@@ -446,15 +357,6 @@ where
 }
 
 #[test]
-fn in_memory_dbs_are_isolated() {
-    let env = InMemoryEnvironment::new();
-    let store_a = InMemoryTrieStore::new(&env, Some("a"));
-    let store_b = InMemoryTrieStore::new(&env, Some("b"));
-
-    assert!(dbs_are_isolated::<_, _, in_memory::Error>(&env, &store_a, &store_b).is_ok())
-}
-
-#[test]
 fn lmdb_dbs_are_isolated() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
@@ -502,20 +404,6 @@ where
     }
 
     Ok(())
-}
-
-#[test]
-fn in_memory_transactions_can_be_used_across_sub_databases() {
-    let env = InMemoryEnvironment::new();
-    let store_a = InMemoryTrieStore::new(&env, Some("a"));
-    let store_b = InMemoryTrieStore::new(&env, Some("b"));
-
-    assert!(
-        transactions_can_be_used_across_sub_databases::<_, _, in_memory::Error>(
-            &env, &store_a, &store_b,
-        )
-        .is_ok()
-    );
 }
 
 #[test]
@@ -570,20 +458,6 @@ where
     }
 
     Ok(())
-}
-
-#[test]
-fn in_memory_uncommitted_transactions_across_sub_databases_do_not_persist() {
-    let env = InMemoryEnvironment::new();
-    let store_a = InMemoryTrieStore::new(&env, Some("a"));
-    let store_b = InMemoryTrieStore::new(&env, Some("b"));
-
-    assert!(
-        uncommitted_transactions_across_sub_databases_do_not_persist::<_, _, in_memory::Error>(
-            &env, &store_a, &store_b,
-        )
-        .is_ok()
-    );
 }
 
 #[test]

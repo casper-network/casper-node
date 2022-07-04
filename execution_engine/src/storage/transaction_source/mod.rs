@@ -1,7 +1,5 @@
 use casper_types::bytesrepr::Bytes;
 
-/// In-memory implementation of transaction source.
-pub mod in_memory;
 /// LMDB implementation of transaction source.
 pub mod lmdb;
 

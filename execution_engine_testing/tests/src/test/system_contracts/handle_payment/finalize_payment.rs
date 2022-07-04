@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
 };
 use casper_types::{
@@ -26,8 +26,8 @@ pub const ARG_REFUND_FLAG: &str = "refund";
 pub const ARG_ACCOUNT_KEY: &str = "account";
 pub const ARG_TARGET: &str = "target";
 
-fn initialize() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn initialize() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -86,7 +86,7 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
 #[ignore]
 #[test]
 fn finalize_payment_should_refund_to_specified_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     let payment_amount = *DEFAULT_PAYMENT;
     let refund_purse_flag: u8 = 1;
     // Don't need to run finalize_payment manually, it happens during
@@ -181,13 +181,13 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
 // ------------- utility functions -------------------- //
 
-fn get_handle_payment_payment_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
+fn get_handle_payment_payment_purse_balance(builder: &LmdbWasmTestBuilder) -> U512 {
     let purse = get_payment_purse_by_name(builder, handle_payment::PAYMENT_PURSE_KEY)
         .expect("should find handle payment payment purse");
     builder.get_purse_balance(purse)
 }
 
-fn get_handle_payment_refund_purse(builder: &InMemoryWasmTestBuilder) -> Option<Key> {
+fn get_handle_payment_refund_purse(builder: &LmdbWasmTestBuilder) -> Option<Key> {
     let handle_payment_contract = builder.get_handle_payment_contract();
     handle_payment_contract
         .named_keys()
@@ -195,7 +195,7 @@ fn get_handle_payment_refund_purse(builder: &InMemoryWasmTestBuilder) -> Option<
         .cloned()
 }
 
-fn get_payment_purse_by_name(builder: &InMemoryWasmTestBuilder, purse_name: &str) -> Option<URef> {
+fn get_payment_purse_by_name(builder: &LmdbWasmTestBuilder, purse_name: &str) -> Option<URef> {
     let handle_payment_contract = builder.get_handle_payment_contract();
     handle_payment_contract
         .named_keys()
@@ -205,7 +205,7 @@ fn get_payment_purse_by_name(builder: &InMemoryWasmTestBuilder, purse_name: &str
 }
 
 fn get_named_account_balance(
-    builder: &InMemoryWasmTestBuilder,
+    builder: &LmdbWasmTestBuilder,
     account_address: AccountHash,
     name: &str,
 ) -> Option<U512> {
