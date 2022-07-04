@@ -12,9 +12,9 @@ use crate::{
         runtime::stack,
     },
     shared::wasm_prep,
-    storage,
-    storage::global_state::CommitError,
 };
+
+use casper_global_state::storage::{self, global_state::CommitError, lmdb};
 
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]

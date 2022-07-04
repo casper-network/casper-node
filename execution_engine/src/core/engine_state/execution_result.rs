@@ -2,15 +2,13 @@
 
 use std::collections::VecDeque;
 
+use casper_global_state::shared::transform::Transform;
 use casper_types::{
     bytesrepr::FromBytes, CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
 use super::error;
-use crate::{
-    core::execution::Error as ExecError,
-    shared::{execution_journal::ExecutionJournal, transform::Transform},
-};
+use crate::{core::execution::Error as ExecError, shared::execution_journal::ExecutionJournal};
 
 fn make_payment_error_effects(
     max_payment_cost: Motes,

@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::transform::Transform;
+use casper_global_state::shared::transform::Transform;
 use casper_types::{
     runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef, U512,
 };

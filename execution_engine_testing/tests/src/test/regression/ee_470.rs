@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::storage::{
+use casper_global_state::storage::{
     global_state::{lmdb::LmdbGlobalState, StateProvider},
     transaction_source::lmdb::LmdbEnvironment,
     trie_store::lmdb::LmdbTrieStore,

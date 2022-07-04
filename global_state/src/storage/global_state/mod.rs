@@ -13,11 +13,11 @@ use tracing::error;
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
 
+pub use self::lmdb::make_temporary_global_state;
 use crate::{
     shared::{
-        additive_map::AdditiveMap,
-        newtypes::CorrelationId,
         transform::{self, Transform},
+        AdditiveMap, CorrelationId,
     },
     storage::{
         transaction_source::{Transaction, TransactionSource},

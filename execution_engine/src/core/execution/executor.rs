@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
+use casper_global_state::{shared::CorrelationId, storage::global_state::StateReader};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
@@ -9,19 +10,15 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
-use crate::{
-    core::{
-        engine_state::{
-            executable_deploy_item::ExecutionKind, execution_result::ExecutionResult, EngineConfig,
-            ExecError,
-        },
-        execution::{address_generator::AddressGenerator, Error},
-        runtime::{Runtime, RuntimeStack},
-        runtime_context::RuntimeContext,
-        tracking_copy::{TrackingCopy, TrackingCopyExt},
+use crate::core::{
+    engine_state::{
+        executable_deploy_item::ExecutionKind, execution_result::ExecutionResult, EngineConfig,
+        ExecError,
     },
-    shared::newtypes::CorrelationId,
-    storage::global_state::StateReader,
+    execution::{address_generator::AddressGenerator, Error},
+    runtime::{Runtime, RuntimeStack},
+    runtime_context::RuntimeContext,
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 const ARG_AMOUNT: &str = "amount";

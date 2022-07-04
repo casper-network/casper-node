@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     collections::BTreeSet,
+    convert::TryInto,
     iter::{self, FromIterator},
     rc::Rc,
 };
@@ -8,6 +9,10 @@ use std::{
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
+use casper_global_state::{
+    shared::{transform::Transform, CorrelationId},
+    storage::global_state::{self, lmdb::LmdbGlobalStateView, StateProvider},
+};
 use casper_types::{
     account::{
         Account, AccountHash, ActionType, AddKeyFailure, AssociatedKeys, RemoveKeyFailure,
@@ -23,14 +28,10 @@ use casper_types::{
 use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
-use crate::{
-    core::{
-        engine_state::{EngineConfig, SystemContractRegistry},
-        execution::AddressGenerator,
-        tracking_copy::TrackingCopy,
-    },
-    shared::{newtypes::CorrelationId, transform::Transform},
-    storage::global_state::{self, lmdb::LmdbGlobalStateView, StateProvider},
+use crate::core::{
+    engine_state::{EngineConfig, SystemContractRegistry},
+    execution::AddressGenerator,
+    tracking_copy::TrackingCopy,
 };
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
@@ -44,7 +45,7 @@ fn new_tracking_copy(
     init_account: Account,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) =
-        global_state::lmdb::make_temporary_global_state([(init_key, init_account.into())]);
+        global_state::make_temporary_global_state([(init_key, init_account.into())]);
 
     let reader = global_state
         .checkout(state_root_hash)
@@ -1009,7 +1010,7 @@ fn associated_keys_add_full() {
                 U256::from(count).to_big_endian(&mut addr);
                 AccountHash::new(addr)
             };
-            let weight = Weight::new(count as u8);
+            let weight = Weight::new(count.try_into().unwrap());
             rc.add_associated_key(account_hash, weight)
                 .unwrap_or_else(|e| panic!("should add key {}: {:?}", count, e));
         }

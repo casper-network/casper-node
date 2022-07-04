@@ -31,7 +31,7 @@ pub fn check_multiple_of_page_size(value: usize) {
 /// serializes value to json;
 /// pretty_print: false = inline
 /// pretty_print: true  = pretty printed / multiline
-pub fn jsonify<T>(value: T, pretty_print: bool) -> String
+pub(crate) fn jsonify<T>(value: T, pretty_print: bool) -> String
 where
     T: Serialize,
 {

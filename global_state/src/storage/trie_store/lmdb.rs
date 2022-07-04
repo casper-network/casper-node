@@ -3,11 +3,11 @@
 //! # Usage
 //!
 //! ```
-//! use casper_execution_engine::storage::store::Store;
-//! use casper_execution_engine::storage::transaction_source::{Transaction, TransactionSource};
-//! use casper_execution_engine::storage::transaction_source::lmdb::LmdbEnvironment;
-//! use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
-//! use casper_execution_engine::storage::trie_store::lmdb::LmdbTrieStore;
+//! use casper_global_state::storage::store::Store;
+//! use casper_global_state::storage::transaction_source::{Transaction, TransactionSource};
+//! use casper_global_state::storage::transaction_source::lmdb::LmdbEnvironment;
+//! use casper_global_state::storage::trie::{Pointer, PointerBlock, Trie};
+//! use casper_global_state::storage::trie_store::lmdb::LmdbTrieStore;
 //! use casper_hashing::Digest;
 //! use casper_types::bytesrepr::{ToBytes, Bytes};
 //! use lmdb::DatabaseFlags;
