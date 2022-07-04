@@ -4,52 +4,69 @@ mod event;
 mod metrics;
 mod operations;
 
-use std::{collections::HashSet, convert::Infallible, fmt::Debug, sync::Arc};
+use std::{collections::HashSet, convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
+use casper_execution_engine::{
+    core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess},
+    storage::trie::TrieOrChunk,
+};
 use casper_types::{EraId, PublicKey, Timestamp};
 
-use self::metrics::Metrics;
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState},
         Component,
     },
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
+            MarkBlockCompletedRequest, NetworkInfoRequest,
+        },
+        EffectBuilder, EffectExt, Effects,
+    },
     fatal,
-    reactor::joiner::JoinerEvent,
+    reactor::{joiner::JoinerEvent, participating::ParticipatingEvent},
+    storage::StorageRequest,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock,
-        NodeConfig,
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockPayload, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
+        FinalizedBlock, NodeConfig,
     },
     NodeRng, SmallNetworkConfig,
 };
 use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
+pub(crate) use metrics::Metrics;
+use operations::FastSyncOutcome;
 pub(crate) use operations::KeyBlockInfo;
 
 #[derive(DataSize, Debug)]
 pub(crate) enum JoiningOutcome {
     /// We need to shutdown for upgrade as we downloaded a block from a higher protocol version.
     ShouldExitForUpgrade,
-    /// We finished synchronizing, with the given block header being the result of the sync task.
-    Synced { latest_block_header: BlockHeader },
-    /// We didn't sync, but ran `commit_genesis` or `commit_upgrade` and created the given switch
-    /// block immediately afterwards.
+    /// We finished initial synchronizing, with the given block header being the result of the fast
+    /// sync task.
+    Synced { highest_block_header: BlockHeader },
+    /// We ran `commit_genesis` or `commit_upgrade` and created the given switch block immediately
+    /// afterwards. `highest_block_header` will be the same as that in
+    /// `block_and_execution_effects` except where we synced using a trusted block of the last
+    /// switch block before an emergency upgrade, in which case it might be a later block.
     RanUpgradeOrGenesis {
         block_and_execution_effects: BlockAndExecutionEffects,
         validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
+        highest_block_header: BlockHeader,
     },
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct ChainSynchronizer {
+pub(crate) struct ChainSynchronizer<REv> {
     config: Config,
     /// This will be populated once the synchronizer has completed all work, indicating the joiner
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
@@ -57,18 +74,17 @@ pub(crate) struct ChainSynchronizer {
     joining_outcome: Option<JoiningOutcome>,
     /// Metrics for the chain synchronization process.
     metrics: Metrics,
-    /// The next upgrade activation point, used to determine what action to take after completing
-    /// chain synchronization.
-    maybe_next_upgrade: Option<ActivationPoint>,
+    /// Association with the reactor event used in subtasks.
+    _phantom: PhantomData<REv>,
 }
 
-impl ChainSynchronizer {
+impl ChainSynchronizer<JoinerEvent> {
+    /// Constructs a new `ChainSynchronizer` suitable for use in the joiner reactor to perform the
+    /// initial fast sync.
     pub(crate) fn new(
         chainspec: Arc<Chainspec>,
         node_config: NodeConfig,
         small_network_config: SmallNetworkConfig,
-        maybe_next_upgrade: Option<ActivationPoint>,
-        verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<JoinerEvent>,
         registry: &Registry,
     ) -> Result<(Self, Effects<Event>), Error> {
@@ -76,25 +92,70 @@ impl ChainSynchronizer {
             config: Config::new(chainspec, node_config, small_network_config),
             joining_outcome: None,
             metrics: Metrics::new(registry)?,
-            maybe_next_upgrade,
+            _phantom: PhantomData,
         };
-        let effects = match synchronizer.config.trusted_hash() {
-            None => {
-                // If no trusted hash was provided in the config, get the highest block from storage
-                // in order to use its hash, or in the case of no blocks, to commit genesis.
-                effect_builder
-                    .get_highest_block_header_from_storage()
-                    .event(move |maybe_highest_block_header| {
-                        Event::HighestBlockHash(maybe_highest_block_header.map(|block_header| {
-                            block_header.hash(verifiable_chunked_hash_activation)
-                        }))
-                    })
-            }
-            Some(trusted_hash) => synchronizer.start_syncing(effect_builder, trusted_hash),
-        };
+        let effects = synchronizer.fast_sync(effect_builder);
         Ok((synchronizer, effects))
     }
 
+    pub(crate) fn metrics(&self) -> Metrics {
+        self.metrics.clone()
+    }
+}
+
+impl ChainSynchronizer<ParticipatingEvent> {
+    /// Constructs a new `ChainSynchronizer` suitable for use in the participating reactor to sync
+    /// to genesis.
+    pub(crate) fn new(
+        chainspec: Arc<Chainspec>,
+        node_config: NodeConfig,
+        small_network_config: SmallNetworkConfig,
+        metrics: Metrics,
+        effect_builder: EffectBuilder<ParticipatingEvent>,
+    ) -> Result<(Self, Effects<Event>), Error> {
+        let synchronizer = ChainSynchronizer {
+            config: Config::new(chainspec, node_config, small_network_config),
+            joining_outcome: None,
+            metrics,
+            _phantom: PhantomData,
+        };
+
+        // If we're not configured to sync-to-genesis, return without doing anything.
+        if !synchronizer.config.sync_to_genesis() {
+            return Ok((synchronizer, Effects::new()));
+        }
+
+        let effects = operations::run_sync_to_genesis_task(
+            effect_builder,
+            synchronizer.config.clone(),
+            synchronizer.metrics.clone(),
+        )
+        .ignore();
+
+        Ok((synchronizer, effects))
+    }
+}
+
+impl<REv> ChainSynchronizer<REv>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
+        + From<ControlAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
     pub(crate) fn joining_outcome(&self) -> Option<&JoiningOutcome> {
         self.joining_outcome.as_ref()
     }
@@ -103,50 +164,33 @@ impl ChainSynchronizer {
         self.joining_outcome
     }
 
-    fn start_syncing(
-        &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        trusted_hash: BlockHash,
-    ) -> Effects<Event> {
-        info!(%trusted_hash, "synchronizing linear chain");
-        operations::run_chain_sync_task(
-            effect_builder,
-            self.config.clone(),
-            self.metrics.clone(),
-            trusted_hash,
-        )
-        .event(Event::SyncResult)
+    fn fast_sync(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event> {
+        operations::run_fast_sync_task(effect_builder, self.config.clone(), self.metrics.clone())
+            .event(Event::FastSyncResult)
     }
 
-    fn handle_sync_result(
+    fn handle_fast_sync_result(
         &mut self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        result: Result<BlockHeader, Error>,
+        effect_builder: EffectBuilder<REv>,
+        result: Result<FastSyncOutcome, Error>,
     ) -> Effects<Event> {
         match result {
-            Ok(latest_block_header) => {
-                if latest_block_header.protocol_version() == self.config.protocol_version() {
-                    self.joining_outcome = Some(JoiningOutcome::Synced {
-                        latest_block_header,
-                    });
-                    Effects::new()
-                } else if self
-                    .config
-                    .is_last_block_before_activation(&latest_block_header)
-                {
-                    self.commit_upgrade(effect_builder, latest_block_header)
-                } else {
-                    error!(
-                        ?latest_block_header,
-                        "failed to sync linear chain: unexpected latest block header: not our \
-                         version and not the previous upgrade point"
-                    );
-                    fatal!(
-                        effect_builder,
-                        "unexpected latest block header after syncing"
-                    )
-                    .ignore()
-                }
+            Ok(FastSyncOutcome::ShouldCommitGenesis) => self.commit_genesis(effect_builder),
+            Ok(FastSyncOutcome::ShouldCommitUpgrade {
+                switch_block_header_before_upgrade,
+                is_emergency_upgrade,
+            }) => self.commit_upgrade(
+                effect_builder,
+                switch_block_header_before_upgrade,
+                is_emergency_upgrade,
+            ),
+            Ok(FastSyncOutcome::Synced {
+                highest_block_header,
+            }) => {
+                self.joining_outcome = Some(JoiningOutcome::Synced {
+                    highest_block_header,
+                });
+                Effects::new()
             }
             Err(Error::RetrievedBlockHeaderFromFutureVersion {
                 current_version,
@@ -164,21 +208,7 @@ impl ChainSynchronizer {
         }
     }
 
-    fn handle_highest_block(
-        &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        maybe_highest_block: Option<BlockHash>,
-    ) -> Effects<Event> {
-        // If we have a block in storage, use its hash as the trusted hash to sync to.  If not,
-        // since the user provided no trusted hash, we can only continue if this is an initial run
-        // at network genesis.
-        match maybe_highest_block {
-            Some(trusted_hash) => self.start_syncing(effect_builder, trusted_hash),
-            None => self.commit_genesis(effect_builder),
-        }
-    }
-
-    fn commit_genesis(&self, effect_builder: EffectBuilder<JoinerEvent>) -> Effects<Event> {
+    fn commit_genesis(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event> {
         let genesis_timestamp = match self.config.genesis_timestamp() {
             None => {
                 return fatal!(
@@ -215,36 +245,37 @@ impl ChainSynchronizer {
 
     fn commit_upgrade(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        upgrade_block_header: BlockHeader,
+        effect_builder: EffectBuilder<REv>,
+        switch_block_header_before_upgrade: BlockHeader,
+        is_emergency_upgrade: bool,
     ) -> Effects<Event> {
-        info!("committing upgrade");
+        info!(%is_emergency_upgrade, "committing upgrade");
         let config = self.config.clone();
-        let cloned_upgrade_block_header = upgrade_block_header.clone();
+        let cloned_block_header = switch_block_header_before_upgrade.clone();
         async move {
             let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-            let upgrade_config = match config
-                .new_upgrade_config(&cloned_upgrade_block_header, chainspec_raw_bytes)
-            {
-                Ok(state_update) => state_update,
-                Err(error) => {
-                    error!(?error, "failed to get global state update from config");
-                    return Err(error.into());
-                }
-            };
+            let upgrade_config =
+                match config.new_upgrade_config(&cloned_block_header, chainspec_raw_bytes) {
+                    Ok(state_update) => state_update,
+                    Err(error) => {
+                        error!(?error, "failed to get global state update from config");
+                        return Err(error.into());
+                    }
+                };
             effect_builder
                 .upgrade_contract_runtime(upgrade_config)
                 .await
         }
-        .event(|result| Event::UpgradeResult {
-            upgrade_block_header,
+        .event(move |result| Event::UpgradeResult {
+            switch_block_header_before_upgrade,
+            is_emergency_upgrade,
             result,
         })
     }
 
     fn handle_commit_genesis_result(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         result: Result<GenesisSuccess, engine_state::Error>,
     ) -> Effects<Event> {
         match result {
@@ -282,6 +313,7 @@ impl ChainSynchronizer {
                     None,
                     initial_pre_state,
                     finalized_block,
+                    false,
                 )
             }
             Err(error) => {
@@ -293,8 +325,9 @@ impl ChainSynchronizer {
 
     fn handle_upgrade_result(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        upgrade_block_header: BlockHeader,
+        effect_builder: EffectBuilder<REv>,
+        switch_block_header_before_upgrade: BlockHeader,
+        is_emergency_upgrade: bool,
         result: Result<UpgradeSuccess, engine_state::Error>,
     ) -> Effects<Event> {
         match result {
@@ -308,24 +341,33 @@ impl ChainSynchronizer {
                 );
 
                 let initial_pre_state = ExecutionPreState::new(
-                    upgrade_block_header.height() + 1,
+                    switch_block_header_before_upgrade.height() + 1,
                     post_state_hash,
-                    upgrade_block_header.hash(self.config.verifiable_chunked_hash_activation()),
-                    upgrade_block_header.accumulated_seed(),
+                    switch_block_header_before_upgrade
+                        .hash(self.config.verifiable_chunked_hash_activation()),
+                    switch_block_header_before_upgrade.accumulated_seed(),
                 );
                 let finalized_block = FinalizedBlock::new(
                     BlockPayload::default(),
                     Some(EraReport::default()),
-                    upgrade_block_header.timestamp(),
-                    upgrade_block_header.next_block_era_id(),
+                    switch_block_header_before_upgrade.timestamp(),
+                    switch_block_header_before_upgrade.next_block_era_id(),
                     initial_pre_state.next_block_height(),
                     PublicKey::System,
                 );
+                // If this is an emergency upgrade, we don't need to pass the switch block from just
+                // before the upgrade, as it's only used to derive the list of validators to sign
+                // the immediate switch block, and for an emergency upgrade that list is the same as
+                // its own `next_era_validators` collection.
+                let maybe_switch_block_header_before_upgrade =
+                    (!is_emergency_upgrade).then(|| switch_block_header_before_upgrade);
+
                 self.execute_immediate_switch_block(
                     effect_builder,
-                    Some(upgrade_block_header),
+                    maybe_switch_block_header_before_upgrade,
                     initial_pre_state,
                     finalized_block,
+                    is_emergency_upgrade,
                 )
             }
             Err(error) => {
@@ -340,14 +382,17 @@ impl ChainSynchronizer {
     /// and no consensus instance is run for era 0 or an upgrade point era.
     fn execute_immediate_switch_block(
         &self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        maybe_upgrade_block_header: Option<BlockHeader>,
+        effect_builder: EffectBuilder<REv>,
+        maybe_switch_block_header_before_upgrade: Option<BlockHeader>,
         initial_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
+        is_emergency_upgrade: bool,
     ) -> Effects<Event> {
         let protocol_version = self.config.protocol_version();
+        let last_emergency_restart = self.config.last_emergency_restart();
+        let verifiable_chunked_hash_activation = self.config.verifiable_chunked_hash_activation();
         async move {
-            let block_and_execution_effects = effect_builder
+            let mut block_and_execution_effects = effect_builder
                 .execute_finalized_block(
                     protocol_version,
                     initial_pre_state,
@@ -356,26 +401,41 @@ impl ChainSynchronizer {
                     vec![],
                 )
                 .await?;
+
+            if last_emergency_restart == Some(block_and_execution_effects.block.header().era_id()) {
+                block_and_execution_effects
+                    .block
+                    .mark_after_emergency_upgrade(verifiable_chunked_hash_activation);
+            }
             // We need to store the block now so that the era supervisor can be properly
             // initialized in the participating reactor's constructor.
             effect_builder
                 .put_block_to_storage(block_and_execution_effects.block.clone())
                 .await;
+            effect_builder
+                .mark_block_completed(block_and_execution_effects.block.height())
+                .await;
+            info!(
+                immediate_switch_block = ?block_and_execution_effects.block.clone(),
+                "immediate switch block after upgrade/genesis stored"
+            );
             Ok(block_and_execution_effects)
         }
-        .event(|result| Event::ExecuteImmediateSwitchBlockResult {
-            maybe_upgrade_block_header,
+        .event(move |result| Event::ExecuteImmediateSwitchBlockResult {
+            maybe_switch_block_header_before_upgrade,
+            is_emergency_upgrade,
             result,
         })
     }
 
     fn handle_execute_immediate_switch_block_result(
         &mut self,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        maybe_upgrade_block_header: Option<BlockHeader>,
+        effect_builder: EffectBuilder<REv>,
+        maybe_switch_block_header_before_upgrade: Option<BlockHeader>,
+        is_emergency_upgrade: bool,
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     ) -> Effects<Event> {
-        let block_and_execution_effects = match result {
+        let immediate_switch_block_and_exec_effects = match result {
             Ok(block_and_execution_effects) => block_and_execution_effects,
             Err(error) => {
                 error!(%error, "failed to execute block");
@@ -383,12 +443,14 @@ impl ChainSynchronizer {
             }
         };
 
-        // If the upgrade block is `None`, this is a genesis switch block, so we can use the
-        // validator set from that.
-        let maybe_era_end = maybe_upgrade_block_header
+        // If the switch block before the immediate switch block is `None`, we use the
+        // `next_era_validators` of the immediate switch block to sign it.  This is the case at
+        // genesis and for an emergency upgrade.
+        let maybe_era_end = maybe_switch_block_header_before_upgrade
             .as_ref()
-            .unwrap_or_else(|| block_and_execution_effects.block.header())
+            .unwrap_or_else(|| immediate_switch_block_and_exec_effects.block.header())
             .era_end();
+
         let validators_to_sign_immediate_switch_block = match maybe_era_end {
             Some(era_end) => era_end
                 .next_era_validator_weights()
@@ -396,64 +458,152 @@ impl ChainSynchronizer {
                 .cloned()
                 .collect(),
             None => {
-                error!(
-                    ?maybe_upgrade_block_header,
-                    "upgrade/genesis block is not a switch block"
-                );
+                error!("upgrade/genesis switch block missing era end");
                 return fatal!(
                     effect_builder,
-                    "upgrade/genesis block is not a switch block"
+                    "upgrade/genesis switch block missing era end"
                 )
                 .ignore();
             }
         };
+
+        // For an emergency upgrade, we always execute/commit locally rather than syncing over it.
+        // This means we should try fast syncing again if this was an emergency upgrade.
+        if is_emergency_upgrade {
+            return operations::run_fast_sync_task(
+                effect_builder,
+                self.config.clone(),
+                self.metrics.clone(),
+            )
+            .event(|result| Event::FastSyncAfterEmergencyUpgradeResult {
+                immediate_switch_block_and_exec_effects,
+                validators_to_sign_immediate_switch_block,
+                result,
+            });
+        }
+
+        let highest_block_header = immediate_switch_block_and_exec_effects
+            .block
+            .header()
+            .clone();
         self.joining_outcome = Some(JoiningOutcome::RanUpgradeOrGenesis {
-            block_and_execution_effects,
+            block_and_execution_effects: immediate_switch_block_and_exec_effects,
             validators_to_sign_immediate_switch_block,
+            highest_block_header,
         });
         Effects::new()
     }
 
-    fn handle_got_next_upgrade(&mut self, next_upgrade: ActivationPoint) -> Effects<Event> {
-        self.maybe_next_upgrade = Some(next_upgrade);
-        Effects::new()
+    fn handle_fast_sync_after_emergency_upgrade_result(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        immediate_switch_block_and_exec_effects: BlockAndExecutionEffects,
+        validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
+        result: Result<FastSyncOutcome, Error>,
+    ) -> Effects<Event> {
+        match result {
+            Ok(FastSyncOutcome::ShouldCommitGenesis) => {
+                let msg = "fast sync after emergency upgrade should not require commit genesis";
+                error!(msg);
+                fatal!(effect_builder, "{}", msg).ignore()
+            }
+            Ok(FastSyncOutcome::ShouldCommitUpgrade { .. }) => {
+                let msg = "fast sync after emergency upgrade should not require commit upgrade";
+                error!(msg);
+                fatal!(effect_builder, "{}", msg).ignore()
+            }
+            Ok(FastSyncOutcome::Synced {
+                highest_block_header,
+            }) => {
+                self.joining_outcome = Some(JoiningOutcome::RanUpgradeOrGenesis {
+                    block_and_execution_effects: immediate_switch_block_and_exec_effects,
+                    validators_to_sign_immediate_switch_block,
+                    highest_block_header,
+                });
+                Effects::new()
+            }
+            Err(Error::RetrievedBlockHeaderFromFutureVersion {
+                current_version,
+                block_header_with_future_version,
+            }) => {
+                let future_version = block_header_with_future_version.protocol_version();
+                info!(%current_version, %future_version, "shutting down for upgrade");
+                self.joining_outcome = Some(JoiningOutcome::ShouldExitForUpgrade);
+                Effects::new()
+            }
+            Err(error) => {
+                error!(%error, "failed to sync linear chain");
+                fatal!(effect_builder, "{}", error).ignore()
+            }
+        }
     }
 }
 
-impl Component<JoinerEvent> for ChainSynchronizer {
+impl<REv> Component<REv> for ChainSynchronizer<REv>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
+        + From<ControlAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
     type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
-        effect_builder: EffectBuilder<JoinerEvent>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::HighestBlockHash(maybe_highest_block) => {
-                self.handle_highest_block(effect_builder, maybe_highest_block)
-            }
-            Event::SyncResult(result) => self.handle_sync_result(effect_builder, result),
+            Event::FastSyncResult(result) => self.handle_fast_sync_result(effect_builder, result),
             Event::CommitGenesisResult(result) => {
                 self.handle_commit_genesis_result(effect_builder, result)
             }
             Event::UpgradeResult {
-                upgrade_block_header,
+                switch_block_header_before_upgrade,
+                is_emergency_upgrade,
                 result,
-            } => self.handle_upgrade_result(effect_builder, upgrade_block_header, result),
+            } => self.handle_upgrade_result(
+                effect_builder,
+                switch_block_header_before_upgrade,
+                is_emergency_upgrade,
+                result,
+            ),
             Event::ExecuteImmediateSwitchBlockResult {
-                maybe_upgrade_block_header,
+                maybe_switch_block_header_before_upgrade,
+                is_emergency_upgrade,
                 result,
             } => self.handle_execute_immediate_switch_block_result(
                 effect_builder,
-                maybe_upgrade_block_header,
+                maybe_switch_block_header_before_upgrade,
+                is_emergency_upgrade,
                 result,
             ),
-            Event::GotUpgradeActivationPoint(next_upgrade) => {
-                self.handle_got_next_upgrade(next_upgrade)
-            }
+            Event::FastSyncAfterEmergencyUpgradeResult {
+                immediate_switch_block_and_exec_effects,
+                validators_to_sign_immediate_switch_block,
+                result,
+            } => self.handle_fast_sync_after_emergency_upgrade_result(
+                effect_builder,
+                immediate_switch_block_and_exec_effects,
+                validators_to_sign_immediate_switch_block,
+                result,
+            ),
         }
     }
 }

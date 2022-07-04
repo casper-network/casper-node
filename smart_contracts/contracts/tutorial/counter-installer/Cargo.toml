@@ -1,11 +1,11 @@
 [package]
-name = "counter-define"
+name = "counter-installer"
 version = "0.1.0"
-authors = ["Ed Hastings <ed@casperlabs.io>"]
+authors = ["Ed Hastings <ed@casperlabs.io>", "Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "counter_define"
+name = "counter_installer"
 path = "src/main.rs"
 bench = false
 doctest = false

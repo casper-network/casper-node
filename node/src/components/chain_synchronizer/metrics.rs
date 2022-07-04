@@ -15,17 +15,11 @@ const SYNC_TRIE_OR_DEPLOY_BUCKET_COUNT: usize = 15;
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
 #[allow(dead_code)]
-pub(super) struct Metrics {
+pub(crate) struct Metrics {
     /// Total time in seconds of syncing the chain.
     #[data_size(skip)]
     pub(super) chain_sync_total_duration_seconds: IntGauge,
-    /// Time in seconds of handling the emergency restart.
-    #[data_size(skip)]
-    pub(super) chain_sync_emergency_restart_duration_seconds: IntGauge,
-    /// Time in seconds of handling the upgrade.
-    #[data_size(skip)]
-    pub(super) chain_sync_upgrade_duration_seconds: IntGauge,
-    /// Total time in seconds of performing the sync to genesis..
+    /// Total time in seconds of performing the sync to genesis.
     #[data_size(skip)]
     pub(super) chain_sync_to_genesis_total_duration_seconds: IntGauge,
     /// Time in seconds to get the trusted key block.
@@ -65,6 +59,9 @@ pub(super) struct Metrics {
     /// Time in seconds of fetching block with deploys during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_block_and_deploys_duration_seconds: Histogram,
+    /// Time in seconds of fetching finality signatures during chain sync.
+    #[data_size(skip)]
+    pub(super) chain_sync_fetch_finality_signatures_duration_seconds: Histogram,
     /// Integer representing number of blocks that we've successfully downloaded.
     #[data_size(skip)]
     pub(super) chain_sync_blocks_synced: IntCounter,
@@ -79,14 +76,6 @@ impl Metrics {
         let chain_sync_total_duration_seconds = IntGauge::new(
             "chain_sync_total_duration_seconds",
             "total time in seconds of syncing the chain",
-        )?;
-        let chain_sync_emergency_restart_duration_seconds = IntGauge::new(
-            "chain_sync_emergency_restart_duration_seconds",
-            "time in seconds of handling the emergency restart",
-        )?;
-        let chain_sync_upgrade_duration_seconds = IntGauge::new(
-            "chain_sync_upgrade_duration_seconds",
-            "time in seconds of handling the upgrade",
         )?;
         let chain_sync_to_genesis_total_duration_seconds = IntGauge::new(
             "chain_sync_to_genesis_total_duration_seconds",
@@ -143,10 +132,6 @@ impl Metrics {
 
         registry.register(Box::new(chain_sync_total_duration_seconds.clone()))?;
         registry.register(Box::new(
-            chain_sync_emergency_restart_duration_seconds.clone(),
-        ))?;
-        registry.register(Box::new(chain_sync_upgrade_duration_seconds.clone()))?;
-        registry.register(Box::new(
             chain_sync_to_genesis_total_duration_seconds.clone(),
         ))?;
         registry.register(Box::new(
@@ -176,8 +161,6 @@ impl Metrics {
 
         Ok(Metrics {
             chain_sync_total_duration_seconds,
-            chain_sync_emergency_restart_duration_seconds,
-            chain_sync_upgrade_duration_seconds,
             chain_sync_to_genesis_total_duration_seconds,
             chain_sync_get_trusted_key_block_info_duration_seconds,
             chain_sync_fetch_to_genesis_duration_seconds,
@@ -204,8 +187,15 @@ impl Metrics {
                 registry,
                 "chain_sync_fetch_block_and_deploys_duration_seconds",
                 "time in seconds of fetching block and all of its deploys",
-                buckets,
+                buckets.clone(),
             )?,
+            chain_sync_fetch_finality_signatures_duration_seconds:
+                utils::register_histogram_metric(
+                    registry,
+                    "chain_sync_fetch_finality_signatures_duration_seconds",
+                    "time in seconds of syncing finality signatures during chain sync",
+                    buckets,
+                )?,
             chain_sync_blocks_synced,
             registry: registry.clone(),
         })
@@ -223,6 +213,11 @@ impl Metrics {
 
     pub(super) fn observe_fetch_block_and_deploys_duration_seconds(&self, start: Timestamp) {
         self.chain_sync_fetch_block_and_deploys_duration_seconds
+            .observe(start.elapsed().millis() as f64 / 1000.0);
+    }
+
+    pub(super) fn observe_fetch_finality_signatures_duration_seconds(&self, start: Timestamp) {
+        self.chain_sync_fetch_finality_signatures_duration_seconds
             .observe(start.elapsed().millis() as f64 / 1000.0);
     }
 }

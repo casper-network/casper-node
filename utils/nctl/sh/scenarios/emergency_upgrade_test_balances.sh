@@ -20,7 +20,7 @@ set -e
 #######################################
 function main() {
     log "------------------------------------------------------------"
-    log "Emergency upgrade test begins"
+    log "Emergency upgrade test balances begins"
     log "------------------------------------------------------------"
 
     do_await_genesis_era_to_complete

@@ -45,7 +45,7 @@ use crate::{
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{ContractRuntimeRequest, MarkBlockCompletedRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -216,6 +216,7 @@ where
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
         + From<NetworkRequest<Message>>
+        + From<MarkBlockCompletedRequest>
         + Send,
 {
     type Event = Event;
@@ -308,6 +309,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
+            + From<MarkBlockCompletedRequest>
             + Send,
     {
         match request {
@@ -788,6 +790,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
+            + From<MarkBlockCompletedRequest>
             + Send,
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
@@ -821,9 +824,12 @@ impl ContractRuntime {
 
         let current_era_id = block.header().era_id();
 
+        let block_height = block.height();
         effect_builder
             .announce_new_linear_chain_block(block, execution_results)
             .await;
+
+        effect_builder.mark_block_completed(block_height).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
