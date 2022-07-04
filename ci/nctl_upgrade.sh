@@ -26,6 +26,7 @@ function main() {
         get_remotes
         stage_remotes
         build_from_settings_file
+        source "$NCTL/sh/staging/set_override_tomls.sh" upgrade_test='true'
     fi
 
     if [ -z "$TEST_ID" ]; then
