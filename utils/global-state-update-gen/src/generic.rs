@@ -89,22 +89,24 @@ fn update_auction_state(
         gen_snapshot_from_old(old_snapshot.clone(), accounts)
     };
 
-    // Save the write to the snapshot key.
-    state.write_entry(
-        validators_key,
-        StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
-    );
+    if new_snapshot != old_snapshot {
+        // Save the write to the snapshot key.
+        state.write_entry(
+            validators_key,
+            StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
+        );
 
-    let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
+        let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 
-    add_and_remove_bids(
-        state,
-        &validators_diff,
-        &new_snapshot,
-        only_listed_validators,
-    );
+        add_and_remove_bids(
+            state,
+            &validators_diff,
+            &new_snapshot,
+            only_listed_validators,
+        );
 
-    state.remove_withdraws(&validators_diff.removed);
+        state.remove_withdraws(&validators_diff.removed);
+    }
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
@@ -233,6 +235,15 @@ fn find_large_bids(
 
 /// Updates the amount of an existing bid for the given public key, or creates a new one.
 fn create_or_update_bid(state: &mut StateTracker, pub_key: &PublicKey, stake: U512) {
+    if state
+        .get_bids()
+        .get(pub_key)
+        .and_then(|bid| bid.total_staked_amount().ok())
+        == Some(stake)
+    {
+        // already staked the amount we need, nothing to do
+        return;
+    }
     let new_bid = if let Some(bid) = state.get_bids().get(pub_key) {
         Bid::unlocked(
             pub_key.clone(),
