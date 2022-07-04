@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
-* Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
+* Add `sync_to_genesis` to `[node]` config section, which if set to `true` will cause the node to retrieve all blocks, deploys and global state back to genesis while running in participating mode.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 * A diagnostic port can now be enabled via the `[diagnostics_port]` section in the configuration file. See the `README.md` for details.
@@ -37,8 +37,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add new `block_hash` and `block_height` optional fields to `info_get_deploy` RPC query which will be present when execution results aren't available.
 * Add a new config option `[rpc_server.max_body_bytes]` to allow a configurable value for the maximum size of the body of a JSON-RPC request.
 * Add new JSON RPC endpoint `/speculative_exec` that accepts a deploy and a block hash and executes that deploy, returning the execution effects.
-* Add `speculative_execution_address` to `rpc_server` section in `config.toml` to control address which the speculative execution server binds to.
-* Add `speculative_execution_qps_limit` to `rpc_server` section in `config.toml` to control requests per second the node handles. Setting to 0 disbles the endpoint.
+* Add `enable_server` option to all HTTP server configuration sections (`rpc_server`, `rest_server`, `event_stream_server`) which allow users to enable/disable each server independently (enabled by default).
+* Add `enable_server`, `address`, `qps_limit` and `max_body_bytes` to new `speculative_exec_server` section to `config.toml` to configure speculative execution JSON-RPC server (disabled by default).
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
@@ -53,9 +53,9 @@ All notable changes to this project will be documented in this file.  The format
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 * Switch blocks immediately after genesis or an upgrade are now signed.
 * Added CORS behavior to allow any route on the JSON-RPC, REST and SSE servers.
-* Storage operations are now executed in parallel, the degree of parallelism can be controlled through the `storage.max_sync_tasks` setting.
 * The network message format has been replaced with a more efficient encoding while keeping the initial handshake intact.
-* The node flushes outgoing messages immediately, trading bandwidth for latecy. This change is made to optimize feedback loops of various components in the system.
+* The node flushes outgoing messages immediately, trading bandwidth for latency. This change is made to optimize feedback loops of various components in the system.
+* The JSON-RPC server now returns more useful responses in many error cases.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
@@ -72,6 +72,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
+* JSON-RPC server is now compliant with the standard. Specifically, correct error values are now returned in responses, and `null` is no longer accepted as a value for `params` in requests.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).

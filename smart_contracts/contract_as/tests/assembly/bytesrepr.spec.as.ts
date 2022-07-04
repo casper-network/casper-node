@@ -1,12 +1,14 @@
-import { fromBytesU64, toBytesU64,
-         fromBytesStringList, toBytesStringList,
-         fromBytesU32, toBytesU32,
-         fromBytesU8, toBytesU8,
-         toBytesMap, fromBytesMap,
-         toBytesPair,
-         toBytesString, fromBytesString,
-         toBytesVecT,
-         Error } from "../../assembly/bytesrepr";
+import {
+    fromBytesU64, toBytesU64,
+    fromBytesStringList, toBytesStringList,
+    fromBytesU32, toBytesU32,
+    fromBytesU8, toBytesU8,
+    toBytesMap, fromBytesMap,
+    toBytesPair,
+    toBytesString, fromBytesString,
+    toBytesVecT,
+    Error
+} from "../../assembly/bytesrepr";
 import { CLValue, CLType, CLTypeTag } from "../../assembly/clvalue";
 import { Key, KeyVariant, AccountHash } from "../../assembly/key";
 import { URef, AccessRights } from "../../assembly/uref";
@@ -198,7 +200,7 @@ export function testSerializeMap(): bool {
 export function testToBytesVecT(): bool {
     // let args = ("get_payment_purse",).parse().unwrap().to_bytes().unwrap();
     const truth = hex2bin("0100000015000000110000006765745f7061796d656e745f70757273650a");
-    let serialize = function(item: CLValue): Array<u8> { return item.toBytes(); };
+    let serialize = function (item: CLValue): Array<u8> { return item.toBytes(); };
     let serialized = toBytesVecT<CLValue>([
         CLValue.fromString("get_payment_purse"),
     ], serialize);
@@ -210,8 +212,8 @@ export function testKeyOfURefVariantSerializes(): bool {
     const truth = hex2bin("022a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a07");
     const urefBytes = hex2bin("2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a");
     let uref = new URef(urefBytes, AccessRights.READ_ADD_WRITE);
-    let key = Key.fromURef(uref);
-    let serialized = key.toBytes();
+    let urefKey = Key.fromURef(uref);
+    let serialized = urefKey.toBytes();
 
     return checkArraysEqual(serialized, typedToArray(truth));
 };

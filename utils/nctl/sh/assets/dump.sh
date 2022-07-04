@@ -30,7 +30,7 @@ cp "$PATH_TO_NET"/faucet/public_key.pem "$PATH_TO_DUMP"/faucet-public_key.pem
 cp "$PATH_TO_NET"/faucet/secret_key.pem "$PATH_TO_DUMP"/faucet-secret_key.pem
 
 # Dump nodes.
-for NODE_ID in $(seq 1 "$(get_count_of_genesis_nodes)")
+for NODE_ID in $(seq 1 "$(get_count_of_started_nodes)")
 do
     PATH_TO_NODE_KEYS=$(get_path_to_node_keys "$NODE_ID")
     PATH_TO_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")

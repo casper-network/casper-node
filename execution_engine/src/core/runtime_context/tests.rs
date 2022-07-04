@@ -357,7 +357,7 @@ fn contract_key_addable_valid() {
         account_key,
         account.clone(),
     )));
-    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
+    tracking_copy.borrow_mut().write(contract_key, contract);
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
@@ -368,7 +368,7 @@ fn contract_key_addable_valid() {
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
-    let _ = tracking_copy
+    tracking_copy
         .borrow_mut()
         .write(Key::SystemContractRegistry, default_system_registry);
 
@@ -446,7 +446,7 @@ fn contract_key_addable_invalid() {
         account.clone(),
     )));
 
-    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
+    tracking_copy.borrow_mut().write(contract_key, contract);
 
     let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();

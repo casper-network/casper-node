@@ -1,14 +1,14 @@
 //@ts-nocheck
 import * as CL from "../../../../contract_as/assembly";
-import {Error} from "../../../../contract_as/assembly/error";
-import {U512} from "../../../../contract_as/assembly/bignum";
-import {getMainPurse} from "../../../../contract_as/assembly/account";
-import {Key} from "../../../../contract_as/assembly/key";
-import {getKey, hasKey, putKey} from "../../../../contract_as/assembly";
-import {CLValue} from "../../../../contract_as/assembly/clvalue";
-import {fromBytesString} from "../../../../contract_as/assembly/bytesrepr";
-import {URef} from "../../../../contract_as/assembly/uref";
-import {createPurse, getPurseBalance, transferFromPurseToPurse} from "../../../../contract_as/assembly/purse";
+import { Error } from "../../../../contract_as/assembly/error";
+import { U512 } from "../../../../contract_as/assembly/bignum";
+import { getMainPurse } from "../../../../contract_as/assembly/account";
+import { Key } from "../../../../contract_as/assembly/key";
+import { getKey, hasKey, putKey } from "../../../../contract_as/assembly";
+import { CLValue } from "../../../../contract_as/assembly/clvalue";
+import { fromBytesString } from "../../../../contract_as/assembly/bytesrepr";
+import { URef } from "../../../../contract_as/assembly/uref";
+import { createPurse, getPurseBalance, transferFromPurseToPurse } from "../../../../contract_as/assembly/purse";
 
 const PURSE_MAIN = "purse:main";
 const PURSE_TRANSFER_RESULT = "purse_transfer_result";
@@ -43,52 +43,52 @@ export function call(): void {
     putKey(PURSE_MAIN, mainPurseKey);
     const sourcePurseKeyNameArg = CL.getNamedArg(ARG_SOURCE);
     const maybeSourcePurseKeyName = fromBytesString(sourcePurseKeyNameArg);
-    if(maybeSourcePurseKeyName.hasError()) {
+    if (maybeSourcePurseKeyName.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidSourcePurseArg).revert();
         return;
     }
     const sourcePurseKeyName = maybeSourcePurseKeyName.value;
     const sourcePurseKey = getKey(sourcePurseKeyName);
-    if (sourcePurseKey === null){
+    if (!sourcePurseKey) {
         Error.fromUserError(<u16>CustomError.InvalidSourcePurseKey).revert();
         return;
     }
-    if(!sourcePurseKey.isURef()){
+    if (!sourcePurseKey.isURef()) {
         Error.fromUserError(<u16>CustomError.UnexpectedSourcePurseKeyVariant).revert();
         return;
     }
     const sourcePurse = sourcePurseKey.toURef();
 
     const destinationPurseKeyNameArg = CL.getNamedArg(ARG_TARGET);
-    if (destinationPurseKeyNameArg === null) {
+    if (!destinationPurseKeyNameArg) {
         Error.fromUserError(<u16>CustomError.MissingDestinationPurseArg).revert();
         return;
     }
     const maybeDestinationPurseKeyName = fromBytesString(destinationPurseKeyNameArg);
-    if(maybeDestinationPurseKeyName.hasError()){
+    if (maybeDestinationPurseKeyName.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidDestinationPurseArg).revert();
         return;
     }
     let destinationPurseKeyName = maybeDestinationPurseKeyName.value;
     let destinationPurse: URef | null;
     let destinationKey: Key | null;
-    if(!hasKey(destinationPurseKeyName)){
+    if (!hasKey(destinationPurseKeyName)) {
         destinationPurse = createPurse();
         destinationKey = Key.fromURef(destinationPurse);
         putKey(destinationPurseKeyName, destinationKey);
     } else {
         destinationKey = getKey(destinationPurseKeyName);
-        if(destinationKey === null){
+        if (!destinationKey) {
             Error.fromUserError(<u16>CustomError.InvalidDestinationPurseKey).revert();
             return;
         }
-        if(!destinationKey.isURef()){
+        if (!destinationKey.isURef()) {
             Error.fromUserError(<u16>CustomError.UnexpectedDestinationPurseKeyVariant).revert();
             return;
         }
         destinationPurse = destinationKey.toURef();
     }
-    if(destinationPurse === null){
+    if (!destinationPurse) {
         Error.fromUserError(<u16>CustomError.MissingDestinationPurse).revert();
         return;
     }
@@ -103,21 +103,21 @@ export function call(): void {
 
     const error = transferFromPurseToPurse(<URef>sourcePurse, <URef>destinationPurse, amount);
     let message = SUCCESS_MESSAGE;
-    if (error !== null){
+    if (error !== null) {
         message = TRANSFER_ERROR_MESSAGE;
     }
     const resultKey = Key.create(CLValue.fromString(message));
     const finalBalance = getPurseBalance(<URef>sourcePurse);
-    if(finalBalance === null){
+    if (!finalBalance) {
         Error.fromUserError(<u16>CustomError.UnableToGetBalance).revert();
         return;
     }
     const balanceKey = Key.create(CLValue.fromU512(finalBalance));
-    if(balanceKey === null){
+    if (!balanceKey) {
         Error.fromUserError(<u16>CustomError.UnableToStoreBalance).revert();
         return;
     }
-    if(resultKey === null){
+    if (!resultKey) {
         Error.fromUserError(<u16>CustomError.UnableToStoreResult).revert();
         return;
     }

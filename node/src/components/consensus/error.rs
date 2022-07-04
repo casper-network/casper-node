@@ -25,14 +25,14 @@ pub enum FinalitySignatureError {
         "Insufficient weight for finality. \
          trusted validator weights: {trusted_validator_weights:?}, \
          block signatures: {block_signatures:?}, \
-         signature weight: {signature_weight}, \
+         signature weight: {signature_weight:?}, \
          total validator weight: {total_validator_weight}, \
          finality threshold fraction: {finality_threshold_fraction}"
     )]
     InsufficientWeightForFinality {
         trusted_validator_weights: BTreeMap<PublicKey, U512>,
-        block_signatures: Box<BlockSignatures>,
-        signature_weight: Box<U512>,
+        block_signatures: Option<Box<BlockSignatures>>,
+        signature_weight: Option<Box<U512>>,
         total_validator_weight: Box<U512>,
         finality_threshold_fraction: Ratio<u64>,
     },

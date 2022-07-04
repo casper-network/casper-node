@@ -2169,7 +2169,7 @@ impl Item for BlockAndDeploys {
         &self,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<(), Self::ValidationError> {
-        let _ = self.block.verify(verifiable_chunked_hash_activation)?;
+        self.block.verify(verifiable_chunked_hash_activation)?;
         // Validate that we've got all of the deploys we should have gotten, and that their hashes
         // are valid.
         for deploy_hash in self
