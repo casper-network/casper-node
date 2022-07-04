@@ -12,7 +12,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::components::consensus::{
-    protocols::zug::message::{Content, Proposal, SignedMessage},
+    protocols::zug::{Content, Proposal, SignedMessage},
     traits::Context,
 };
 
