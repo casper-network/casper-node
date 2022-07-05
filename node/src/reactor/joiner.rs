@@ -528,7 +528,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec,
-            true,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);

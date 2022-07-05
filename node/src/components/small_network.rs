@@ -204,7 +204,6 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
-        is_joiner: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -308,7 +307,6 @@ where
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands: demand_max,
-            is_joiner,
         });
 
         // Run the server task.
@@ -473,7 +471,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
-                is_joiner,
             } => {
                 if self.cfg.max_incoming_peer_connections != 0 {
                     if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
@@ -510,7 +507,10 @@ where
                     .add_incoming(peer_addr, Instant::now())
                 {
                     self.connection_completed(peer_id);
-                    self.update_joining_set(peer_id, is_joiner);
+
+                    // By default, we assume that the peer is syncing. It'll send us the
+                    // `SyncStateChanged` message in case it isn't.
+                    self.update_joining_set(peer_id, true);
                 }
 
                 // Now we can start the message reader.
@@ -650,7 +650,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
-                is_joiner,
             } => {
                 info!("new outgoing connection established");
 
@@ -675,14 +674,13 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
-                    self.update_joining_set(peer_id, is_joiner);
                 }
 
-                let remote_joiner_id = if is_joiner {
-                    Some((peer_addr, peer_id))
-                } else {
-                    None
-                };
+                // By default, we assume that the peer is syncing. It'll send us the
+                // `SyncStateChanged` message in case it isn't.
+                //
+                // TODO[RC]: Rename `remote_joiner_id` to make it clear it is related to "syncing".
+                let remote_joiner_id = Some((peer_addr, peer_id));
 
                 effects.extend(
                     tasks::message_sender(
