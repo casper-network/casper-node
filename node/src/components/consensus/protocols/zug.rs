@@ -509,7 +509,6 @@ impl<C: Context + 'static> Zug<C> {
         if let Some(echo_map) = proposal_hash.and_then(|hash| round.echoes().get(&hash)) {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
-        let active = self.validator_bit_field(first_validator_idx, self.active.keys_some());
         SyncRequest {
             round_id,
             proposal_hash,

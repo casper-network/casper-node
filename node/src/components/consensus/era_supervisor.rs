@@ -652,7 +652,7 @@ impl EraSupervisor {
                 } else {
                     info!(era = era_id.value(), "received demand for obsolete era");
                 }
-                Effects::new()
+                auto_closing_responder.respond_none().ignore()
             }
             Some(era) => {
                 let (outcomes, response) =
@@ -888,7 +888,7 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedTargetedRequest(payload, to) => {
                 let message = ConsensusRequestMessage { era_id, payload };
-                effect_builder.send_message(to, message.into()).ignore()
+                effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
                 let message = ConsensusRequestMessage { era_id, payload };
@@ -896,7 +896,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.send_message(to, message.into()).await;
+                        effect_builder.enqueue_message(to, message.into()).await;
                     }
                 }
                 .ignore()
