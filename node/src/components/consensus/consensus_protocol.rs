@@ -83,10 +83,7 @@ impl<C: Context> ProposedBlock<C> {
     }
 }
 
-impl<C: Context> Display for ProposedBlock<C>
-where
-    C::ConsensusValue: Display,
-{
+impl<C: Context> Display for ProposedBlock<C> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,

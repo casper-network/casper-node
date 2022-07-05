@@ -9,6 +9,7 @@ pub(super) mod debug;
 mod era;
 
 use std::{
+    cmp,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
@@ -575,16 +576,26 @@ impl EraSupervisor {
     {
         match self.open_eras.get_mut(&era_id) {
             None => {
-                debug!(
-                    era = era_id.value(),
-                    "received message for uninitialized era"
-                );
+                self.log_missing_era(era_id);
                 Effects::new()
             }
             Some(era) => {
                 let outcomes = f(&mut *era.consensus, rng);
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
+        }
+    }
+
+    fn log_missing_era(&self, era_id: EraId) {
+        let era = era_id.value();
+        if let Some(current_era_id) = self.current_era() {
+            match era_id.cmp(&current_era_id) {
+                cmp::Ordering::Greater => info!(era, "received message for future era"),
+                cmp::Ordering::Equal => error!(era, "missing current era"),
+                cmp::Ordering::Less => info!(era, "received message for obsolete era"),
+            }
+        } else {
+            info!(era, "received message, but no era initialized");
         }
     }
 
@@ -660,12 +671,8 @@ impl EraSupervisor {
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
             None => {
-                if self.current_era().map_or(false, |ce| ce < era_id) {
-                    info!(era = era_id.value(), "received demand for future era");
-                } else {
-                    info!(era = era_id.value(), "received demand for obsolete era");
-                }
-                Effects::new()
+                self.log_missing_era(era_id);
+                auto_closing_responder.respond_none().ignore()
             }
             Some(era) => {
                 let (outcomes, response) =
@@ -911,7 +918,7 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedTargetedRequest(payload, to) => {
                 let message = ConsensusRequestMessage { era_id, payload };
-                effect_builder.send_message(to, message.into()).ignore()
+                effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
                 let message = ConsensusRequestMessage { era_id, payload };
@@ -919,7 +926,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.send_message(to, message.into()).await;
+                        effect_builder.enqueue_message(to, message.into()).await;
                     }
                 }
                 .ignore()

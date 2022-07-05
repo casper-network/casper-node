@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use std::{collections::BTreeSet, fmt};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -59,7 +59,7 @@ impl<C: Context> Proposal<C> {
         }
     }
 
-    /// Returns the proposal hash. Memoizes the hash, so it is only computed the first time this is called.
+    /// Returns the proposal hash.
     #[cfg(test)] // Only used in tests; in production use HashedProposal below.
     pub(super) fn hash(&self) -> C::Hash {
         let serialized = bincode::serialize(&self).expect("failed to serialize fields");
@@ -110,5 +110,20 @@ impl<C: Context> HashedProposal<C> {
 
     pub(crate) fn maybe_parent_round_id(&self) -> Option<RoundId> {
         self.proposal.maybe_parent_round_id
+    }
+}
+
+impl<C: Context> fmt::Display for Proposal<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.maybe_block {
+            None => write!(f, "dummy proposal at {}", self.timestamp),
+            Some(block) => write!(f, "proposal at {}: {}", self.timestamp, block),
+        }
+    }
+}
+
+impl<C: Context> fmt::Display for HashedProposal<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}, hash {}", self.proposal, self.hash)
     }
 }

@@ -284,14 +284,12 @@ impl BlockPayload {
 
 impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "block payload: {} deploys, {} transfers, random bit {}, accusations {}",
-            self.deploys.len(),
-            self.transfers.len(),
-            self.random_bit,
-            DisplayIter::new(&self.accusations),
-        )
+        let count = self.deploys.len() + self.transfers.len();
+        write!(formatter, "payload: {} deploys", count,)?;
+        if !self.accusations.is_empty() {
+            write!(formatter, ", {} accusations", self.accusations.len())?;
+        }
+        Ok(())
     }
 }
 
