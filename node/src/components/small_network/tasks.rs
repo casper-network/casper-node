@@ -67,7 +67,7 @@ struct HandshakeOutcome {
     framed_transport: FramedTransport,
     public_addr: SocketAddr,
     peer_consensus_public_key: Option<PublicKey>,
-    is_joiner: bool,
+    is_peer_joiner: bool,
 }
 
 /// Low-level TLS connection function.
@@ -149,7 +149,7 @@ where
             framed_transport,
             public_addr,
             peer_consensus_public_key,
-            is_joiner,
+            is_peer_joiner: is_joiner,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -266,7 +266,7 @@ where
             framed_transport,
             public_addr,
             peer_consensus_public_key,
-            is_joiner: _,
+            is_peer_joiner: _,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -466,7 +466,7 @@ where
             framed_transport,
             public_addr,
             peer_consensus_public_key,
-            is_joiner,
+            is_peer_joiner: is_joiner,
         })
     } else {
         // Received a non-handshake, this is an error.
