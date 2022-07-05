@@ -6,6 +6,7 @@ members = [
     "execution_engine_testing/tests",
     "hashing",
     "json_rpc",
+    "muxink",
     "node",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
