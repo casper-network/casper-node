@@ -42,11 +42,18 @@ use crate::{
     NodeRng,
 };
 
-type ConsensusValue = Vec<u8>;
+#[derive(Eq, PartialEq, Clone, Debug, Hash, Serialize, Deserialize, DataSize, Default)]
+pub(crate) struct ConsensusValue(Vec<u8>);
 
 impl ConsensusValueT for ConsensusValue {
     fn needs_validation(&self) -> bool {
-        !self.is_empty()
+        !self.0.is_empty()
+    }
+}
+
+impl Display for ConsensusValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(&self.0))
     }
 }
 
@@ -273,7 +280,7 @@ impl HighwayValidator {
                                 let mut wunit2 = swunit.wire_unit().clone();
                                 match wunit2.value.as_mut() {
                                     None => wunit2.timestamp += 1.into(),
-                                    Some(v) => v.push(0),
+                                    Some(v) => v.0.push(0),
                                 }
                                 let secret = TestSecret(wunit2.creator.0.into());
                                 let hwunit2 = wunit2.into_hashed();
@@ -841,7 +848,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
     fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count)
-            .map(|el| vec![el])
+            .map(|el| ConsensusValue(vec![el]))
             .collect::<VecDeque<ConsensusValue>>();
 
         let instance_id = 0;

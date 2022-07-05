@@ -458,10 +458,10 @@ impl<C: Context + 'static> Zug<C> {
             return;
         };
         info!(
-            hash = ?proposal.hash(),
-            ?creator,
+            hash = %proposal.hash(),
+            %creator,
             creator_index = creator_index.0,
-            ?round_id,
+            round_id,
             timestamp = %proposal.timestamp(),
             "{}", msg,
         );
@@ -760,7 +760,7 @@ impl<C: Context + 'static> Zug<C> {
         if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
                 first_validator_idx = first_validator_idx.0,
-                ?sender,
+                %sender,
                 "invalid SyncRequest message"
             );
             return (vec![ProtocolOutcome::Disconnect(sender)], None);
@@ -849,7 +849,7 @@ impl<C: Context + 'static> Zug<C> {
                 Fault::Banned => {
                     info!(
                         validator_index = v_idx.0,
-                        ?sender,
+                        %sender,
                         "peer disagrees about banned validator; disconnecting"
                     );
                     return (vec![ProtocolOutcome::Disconnect(sender)], None);
@@ -973,7 +973,7 @@ impl<C: Context + 'static> Zug<C> {
         } else {
             warn!(
                 ?signed_msg,
-                ?sender,
+                %sender,
                 "invalid incoming message: validator index out of range",
             );
             return vec![ProtocolOutcome::Disconnect(sender)];
@@ -996,13 +996,13 @@ impl<C: Context + 'static> Zug<C> {
 
         if let Some(round) = self.round(signed_msg.round_id) {
             if round.contains(&signed_msg.content, validator_idx) {
-                debug!(?signed_msg, ?sender, "received a duplicated message");
+                debug!(?signed_msg, %sender, "received a duplicated message");
                 return vec![];
             }
         }
 
         if !signed_msg.verify_signature(&validator_id) {
-            warn!(?signed_msg, ?sender, "invalid signature",);
+            warn!(?signed_msg, %sender, "invalid signature",);
             return vec![ProtocolOutcome::Disconnect(sender)];
         }
 
@@ -1038,7 +1038,7 @@ impl<C: Context + 'static> Zug<C> {
         } else {
             warn!(
                 ?signed_msg,
-                ?sender,
+                %sender,
                 "invalid incoming evidence: validator index out of range",
             );
             return vec![ProtocolOutcome::Disconnect(sender)];
@@ -1047,7 +1047,7 @@ impl<C: Context + 'static> Zug<C> {
             warn!(
                 ?signed_msg,
                 ?content2,
-                ?sender,
+                %sender,
                 "invalid evidence: contents don't conflict",
             );
             return vec![ProtocolOutcome::Disconnect(sender)];
@@ -1060,7 +1060,7 @@ impl<C: Context + 'static> Zug<C> {
             warn!(
                 ?signed_msg,
                 ?content2,
-                ?sender,
+                %sender,
                 "invalid signature in evidence",
             );
             return vec![ProtocolOutcome::Disconnect(sender)];
@@ -1213,6 +1213,11 @@ impl<C: Context + 'static> Zug<C> {
             && self.is_quorum(self.rounds[&round_id].votes(vote).keys_some())
         {
             self.round_mut(round_id).set_quorum_votes(vote);
+            if !vote {
+                info!(%round_id, "round is now skippable");
+            } else if self.rounds[&round_id].accepted_proposal().is_none() {
+                info!(%round_id, "round committed; no accepted proposal yet");
+            }
             return true;
         }
         false
@@ -1228,7 +1233,7 @@ impl<C: Context + 'static> Zug<C> {
                 self.active_validator = None;
                 self.write_wal = None;
                 error!(
-                    ?err,
+                    %err,
                     "could not record a signed message to the WAL; deactivating"
                 );
                 false
@@ -1245,7 +1250,7 @@ impl<C: Context + 'static> Zug<C> {
         let mut read_wal = match ReadWal::<C>::new(&wal_file) {
             Ok(read_wal) => read_wal,
             Err(err) => {
-                error!(?err, "could not create a ReadWal using this file");
+                error!(%err, "could not create a ReadWal using this file");
                 return;
             }
         };
@@ -1280,7 +1285,7 @@ impl<C: Context + 'static> Zug<C> {
                                 validator_id.clone()
                             } else {
                                 warn!(
-                                    ?conflicting_message.validator_idx,
+                                    index = conflicting_message.validator_idx.0,
                                     "No validator present at this index, despite holding \
                                     conflicting messages for it in the WAL"
                                 );
@@ -1643,6 +1648,7 @@ impl<C: Context + 'static> Zug<C> {
             outcomes.extend(self.finalize_round(parent_round_id));
         }
         for prune_round_id in self.first_non_finalized_round_id..round_id {
+            info!(round_id = prune_round_id, "skipped round");
             self.round_mut(prune_round_id).prune_skipped();
         }
         self.first_non_finalized_round_id = round_id.saturating_add(1);
@@ -1925,13 +1931,13 @@ where
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         match msg.try_into_zug() {
-            Err(msg) => {
-                warn!(?msg, "received a message for the wrong consensus protocol");
+            Err(_msg) => {
+                warn!(%sender, "received a message for the wrong consensus protocol");
                 return vec![ProtocolOutcome::Disconnect(sender)];
             }
             Ok(zug_msg) if zug_msg.instance_id() != self.instance_id() => {
                 let instance_id = zug_msg.instance_id();
-                warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
+                warn!(?instance_id, %sender, "wrong instance ID; disconnecting");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(Message::SyncResponse(sync_response)) => {
@@ -1958,17 +1964,16 @@ where
         _now: Timestamp,
     ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
         match msg.try_into_zug() {
-            Err(err) => {
+            Err(_msg) => {
                 warn!(
-                    ?sender,
-                    ?err,
+                    %sender,
                     "received a request for the wrong consensus protocol"
                 );
                 (vec![ProtocolOutcome::Disconnect(sender)], None)
             }
             Ok(sync_request) if sync_request.instance_id != *self.instance_id() => {
                 let instance_id = sync_request.instance_id;
-                warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
+                warn!(?instance_id, %sender, "wrong instance ID; disconnecting");
                 (vec![ProtocolOutcome::Disconnect(sender)], None)
             }
             Ok(sync_request) => self.handle_sync_request(sync_request, sender),
@@ -2038,7 +2043,7 @@ where
             self.pending_proposal.take()
         {
             if block_context != *proposed_block.context() || round_id != self.current_round {
-                warn!(block_context = ?proposed_block.context(), "skipping outdated proposal");
+                warn!(%proposed_block, "skipping outdated proposal");
                 self.pending_proposal = Some((block_context, round_id, maybe_parent_round_id));
                 return vec![];
             }
@@ -2072,7 +2077,7 @@ where
         let mut outcomes = vec![];
         if valid {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
-                info!(?proposal, "handling valid proposal");
+                info!(%round_id, %proposal, "handling valid proposal");
                 if self.round_mut(round_id).insert_proposal(proposal.clone()) {
                     self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
                     self.mark_dirty(round_id);
@@ -2081,12 +2086,12 @@ where
             }
             outcomes.extend(self.update(now));
         } else {
-            for (round_id, _, sender) in rounds_and_node_ids {
+            for (round_id, proposal, sender) in rounds_and_node_ids {
                 // We don't disconnect from the faulty sender here: The block validator considers
                 // the value "invalid" even if it just couldn't download the deploys, which could
                 // just be because the original sender went offline.
                 let validator_index = self.leader(round_id).0;
-                info!(validator_index, %round_id, ?sender, "dropping invalid proposal");
+                info!(%validator_index, %round_id, %sender, %proposal, "dropping invalid proposal");
             }
         }
         outcomes

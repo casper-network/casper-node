@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use std::{collections::BTreeSet, fmt};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -110,5 +110,20 @@ impl<C: Context> HashedProposal<C> {
 
     pub(crate) fn maybe_parent_round_id(&self) -> Option<RoundId> {
         self.proposal.maybe_parent_round_id
+    }
+}
+
+impl<C: Context> fmt::Display for Proposal<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.maybe_block {
+            None => write!(f, "dummy proposal at {}", self.timestamp),
+            Some(block) => write!(f, "proposal at {}: {}", self.timestamp, block),
+        }
+    }
+}
+
+impl<C: Context> fmt::Display for HashedProposal<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}, hash {}", self.proposal, self.hash)
     }
 }
