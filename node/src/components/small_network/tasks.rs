@@ -63,6 +63,13 @@ use crate::{
 /// successfully handed over to the kernel for sending.
 pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
 
+struct HandshakeOutcome {
+    framed_transport: FramedTransport,
+    public_addr: SocketAddr,
+    peer_consensus_public_key: Option<PublicKey>,
+    is_joiner: bool,
+}
+
 /// Low-level TLS connection function.
 ///
 /// Performs the actual TCP+TLS connection setup.
@@ -134,11 +141,16 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key, is_joiner)) => {
+    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+            is_joiner,
+        }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -152,7 +164,7 @@ where
             let full_transport = full_transport::<P>(
                 context.net_metrics.clone(),
                 connection_id,
-                framed,
+                framed_transport,
                 Role::Dialer,
             );
             let (sink, _stream) = full_transport.split();
@@ -246,11 +258,16 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key, _is_peer_joiner)) => {
+    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+            is_joiner: _,
+        }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -259,7 +276,7 @@ where
             let full_transport = full_transport::<P>(
                 context.net_metrics.clone(),
                 connection_id,
-                framed,
+                framed_transport,
                 Role::Listener,
             );
 
@@ -348,7 +365,7 @@ async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>, bool), ConnectionError>
+) -> Result<HandshakeOutcome, ConnectionError>
 where
     P: Payload,
 {
@@ -397,7 +414,7 @@ where
         public_addr,
         protocol_version,
         consensus_certificate,
-        is_joiner: is_peer_joiner,
+        is_joiner,
     } = remote_message
     {
         debug!(%protocol_version, "handshake received");
@@ -441,16 +458,16 @@ where
             })
             .transpose()?;
 
-        let framed = sink
+        let framed_transport = sink
             .reunite(stream)
             .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
 
-        Ok((
-            framed,
+        Ok(HandshakeOutcome {
+            framed_transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_joiner,
-        ))
+            is_joiner,
+        })
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
