@@ -5,10 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use either::Either;
 
-use crate::components::consensus::{
-    highway_core::validators::ValidatorIndex,
-    protocols::zug::{Proposal, RoundId},
-    traits::{Context, ValidatorSecret},
+use crate::{
+    components::consensus::{
+    	highway_core::validators::ValidatorIndex,
+        protocols::zug::{Proposal, RoundId},
+        traits::{Context, ValidatorSecret},
+    },
+    utils::ds,
 };
 
 /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
@@ -84,6 +87,7 @@ impl<C: Context> SignedMessage<C> {
             signature: secret.sign(&hash),
         }
     }
+
     /// Creates a new signed message with the alternative content and signature.
     pub(crate) fn with(&self, content: Content<C>, signature: C::Signature) -> SignedMessage<C> {
         SignedMessage {
@@ -132,7 +136,7 @@ impl<C: Context> SignedMessage<C> {
 ///
 /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
 /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -184,14 +188,10 @@ impl<C: Context> SyncRequest<C> {
             instance_id,
         }
     }
-
-    pub(super) fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize request message")
-    }
 }
 
 /// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is missing.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -203,6 +203,7 @@ where
     /// The round the information refers to.
     pub(crate) round_id: RoundId,
     /// The proposal in this round, or its hash.
+    #[data_size(with = ds::maybe_either)]
     pub(crate) proposal_or_hash: Option<Either<Proposal<C>, C::Hash>>,
     /// Echo signatures the requester is missing.
     pub(crate) echo_sigs: BTreeMap<ValidatorIndex, C::Signature>,
@@ -218,12 +219,15 @@ where
 }
 
 /// All messages of the protocol.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum Message<C: Context> {
+pub(crate) enum Message<C>
+where
+    C: Context,
+{
     /// Signatures, proposals and evidence the requester was missing.
     SyncResponse(SyncResponse<C>),
     /// A proposal for a new block. This does not contain any signature; instead, the proposer is
@@ -242,10 +246,6 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
-    pub(super) fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize message")
-    }
-
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
             Message::SyncResponse(SyncResponse { instance_id, .. })

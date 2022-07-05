@@ -95,20 +95,6 @@ where
     hw_proto
 }
 
-#[test]
-fn test_highway_protocol_handle_message_parse_error() {
-    // Build a highway_protocol for instrumentation
-    let mut highway_protocol: Box<dyn ConsensusProtocol<ClContext>> =
-        new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![]);
-
-    let mut rng = TestRng::new();
-    let now = Timestamp::zero();
-    let sender = *ALICE_NODE_ID;
-    let msg = vec![];
-    let outcomes = highway_protocol.handle_message(&mut rng, sender.to_owned(), msg, now);
-    assert_eq!(&*outcomes, [ProtocolOutcome::Disconnect(sender)]);
-}
-
 pub(crate) const N: Observation<ClContext> = Observation::None;
 
 #[test]
@@ -136,7 +122,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = *ALICE_NODE_ID;
-    let msg = bincode::serialize(&highway_message).unwrap();
+    let msg = highway_message.into();
     let outcomes = highway_protocol.handle_message(&mut rng, sender.to_owned(), msg, now);
     assert_eq!(&*outcomes, [ProtocolOutcome::Disconnect(sender)]);
 }
@@ -167,7 +153,7 @@ fn send_a_valid_wire_unit() {
 
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = *ALICE_NODE_ID;
-    let msg = bincode::serialize(&highway_message).unwrap();
+    let msg = highway_message.into();
 
     let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
@@ -217,7 +203,7 @@ fn detect_doppelganger() {
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert!(highway_protocol.is_active());
     let sender = *ALICE_NODE_ID;
-    let msg = bincode::serialize(&highway_message).unwrap();
+    let msg = highway_message.into();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.

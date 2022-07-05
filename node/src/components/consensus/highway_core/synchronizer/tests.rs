@@ -9,7 +9,7 @@ use crate::{
             highway_testing::TEST_INSTANCE_ID,
             state::{tests::*, State},
         },
-        BlockContext,
+        BlockContext, EraMessage,
     },
     types::NodeId,
 };
@@ -317,30 +317,26 @@ fn transitive_proposal_dependency() {
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(maybe_pv.is_none());
     match &*outcomes {
-        [ProtocolOutcome::CreatedTargetedMessage(msg0, p0), ProtocolOutcome::CreatedTargetedMessage(msg1, p1)] =>
+        [ProtocolOutcome::CreatedTargetedMessage(EraMessage::Highway(msg0), p0), ProtocolOutcome::CreatedTargetedMessage(EraMessage::Highway(msg1), p1)] =>
         {
             assert_eq!(
                 vec![&peer0, &peer1],
                 vec![p0, p1].into_iter().sorted().collect_vec(),
                 "expected to request dependency from exactly two different peers",
             );
-            let msg0_parsed: HighwayMessage<TestContext> =
-                bincode::deserialize(msg0.as_slice()).expect("deserialization to pass");
-            let msg1_parsed =
-                bincode::deserialize(msg1.as_slice()).expect("deserialization to pass");
 
-            match (msg0_parsed, msg1_parsed) {
+            match (&**msg0, &**msg1) {
                 (
                     HighwayMessage::RequestDependency(_, dep0),
                     HighwayMessage::RequestDependency(_, dep1),
                 ) => {
                     assert_eq!(
-                        dep0,
+                        *dep0,
                         Dependency::Unit(c0),
                         "unexpected dependency requested"
                     );
                     assert_eq!(
-                        dep0, dep1,
+                        *dep0, *dep1,
                         "we should have requested the same dependency from two different peers"
                     );
                 }
@@ -367,12 +363,10 @@ fn assert_targeted_message(
     expected: Dependency<TestContext>,
 ) {
     match outcome {
-        ProtocolOutcome::CreatedTargetedMessage(msg, peer0) => {
+        ProtocolOutcome::CreatedTargetedMessage(EraMessage::Highway(msg), peer0) => {
             assert_eq!(peer, peer0);
-            let highway_message: HighwayMessage<TestContext> =
-                bincode::deserialize(msg.as_slice()).expect("deserialization to pass");
-            match highway_message {
-                HighwayMessage::RequestDependency(_, got) => assert_eq!(got, expected),
+            match &**msg {
+                HighwayMessage::RequestDependency(_, got) => assert_eq!(*got, expected),
                 other => panic!("unexpected variant: {:?}", other),
             }
         }
