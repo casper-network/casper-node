@@ -7,10 +7,11 @@ use core::{
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
 #[derive(Debug, Eq, PartialEq)]
-pub struct TryFromIntError(pub ());
+pub struct TryFromIntError(pub(super) ());
 
 /// Error returned when decoding an `AccountHash` from a formatted string.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     /// The prefix is invalid.
     InvalidPrefix,
@@ -49,6 +50,7 @@ impl Display for FromStrError {
 /// various actions) on an account.
 #[repr(i32)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[non_exhaustive]
 pub enum SetThresholdFailure {
     /// Setting the key-management threshold to a value lower than the deployment threshold is
     /// disallowed.
@@ -105,4 +107,4 @@ impl Display for SetThresholdFailure {
 
 /// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`](super::AccountHash).
 #[derive(Debug)]
-pub struct TryFromSliceForAccountHashError(pub ());
+pub struct TryFromSliceForAccountHashError(());

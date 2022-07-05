@@ -15,6 +15,7 @@ use crate::{
 // TODO: Split this up into user errors vs. system errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum Error {
     // ===== User errors =====
     /// The given validator is not bonded.
