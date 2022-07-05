@@ -250,7 +250,7 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key, is_peer_joiner)) => {
+        Ok((framed, public_addr, peer_consensus_public_key, _is_peer_joiner)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -271,7 +271,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
-                is_joiner: is_peer_joiner,
             }
         }
         Err(error) => IncomingConnection::Failed {
@@ -688,7 +687,7 @@ pub(super) async fn message_sender<P>(
                 // We should never attempt to send an unsafe message to a peer that we know is a
                 // joiner. Since "unsafe" does usually not mean immediately catastrophic, we attempt
                 // to carry on, but warn loudly.
-                warn!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
+                error!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
             }
         }
 
