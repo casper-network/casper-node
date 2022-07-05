@@ -1,4 +1,7 @@
+use std::marker::PhantomData;
+
 use bytes::Buf;
+use futures::Sink;
 
 /// Encoder.
 ///
@@ -20,3 +23,10 @@ pub trait Encoder<F> {
     /// from a raw byte stream.
     fn encode(&mut self, input: F) -> Result<Self::Output, Self::Error>;
 }
+
+struct EncodingAdapter<E, F> {
+    encoder: E,
+    _phantom: PhantomData<F>,
+}
+
+impl<E, F> Sink<F> for EncodingAdapter<E, F> {}

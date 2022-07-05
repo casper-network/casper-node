@@ -27,7 +27,7 @@ use std::{
 };
 
 use bytes::Buf;
-use futures::{ready, FutureExt, Sink, SinkExt};
+use futures::{ready, FutureExt, Sink, SinkExt, Stream};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::sync::ReusableBoxFuture;
 

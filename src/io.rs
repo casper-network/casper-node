@@ -5,6 +5,7 @@
 //! frames.
 
 pub mod length_delimited;
+// pub mod serde;
 
 use std::{
     io,
