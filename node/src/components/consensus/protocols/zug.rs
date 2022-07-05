@@ -91,18 +91,20 @@ use crate::{
         protocols,
         traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
-        ActionId, LeaderSequence, TimerId,
+        ActionId, EraMessage, EraRequest, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
     utils, NodeRng,
 };
 use fault::Fault;
-use message::{Content, Message, SignedMessage, SyncRequest, SyncResponse};
+use message::{Content, SignedMessage, SyncResponse};
 use params::Params;
 use participation::{Participation, ParticipationStatus};
 use proposal::{HashedProposal, Proposal};
 use round::Round;
 use wal::{Entry, ReadWal, WriteWal};
+
+pub(crate) use message::{Message, SyncRequest};
 
 /// The timer for syncing with a random peer.
 const TIMER_ID_SYNC_PEER: TimerId = TimerId(0);
@@ -407,10 +409,8 @@ impl<C: Context + 'static> Zug<C> {
         let round_id = (self.first_non_finalized_round_id..=self.current_round)
             .choose(rng)
             .unwrap_or(self.current_round);
-        let payload = self
-            .create_sync_request(first_validator_idx, round_id)
-            .serialize();
-        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(payload)];
+        let payload = self.create_sync_request(first_validator_idx, round_id);
+        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(payload.into())];
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
@@ -651,7 +651,7 @@ impl<C: Context + 'static> Zug<C> {
             && self.add_content_no_wal(signed_msg.clone())
         {
             let message = Message::Signed(signed_msg);
-            vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
+            vec![ProtocolOutcome::CreatedGossipMessage(message.into())]
         } else {
             vec![]
         }
@@ -744,7 +744,7 @@ impl<C: Context + 'static> Zug<C> {
         &self,
         sync_request: SyncRequest<C>,
         sender: NodeId,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
+    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
         let SyncRequest {
             round_id,
             mut proposal_hash,
@@ -886,8 +886,7 @@ impl<C: Context + 'static> Zug<C> {
             evidence,
             instance_id,
         };
-        let ser_msg = Message::SyncResponse(sync_response).serialize();
-        (outcomes, Some(ser_msg))
+        (outcomes, Some(Message::SyncResponse(sync_response).into()))
     }
 
     /// The response containing the parts from the sender's protocol state that we were missing.
@@ -1011,8 +1010,7 @@ impl<C: Context + 'static> Zug<C> {
             let evidence_msg = Message::Evidence(signed_msg.clone(), content2.clone(), signature2);
             let mut outcomes =
                 self.handle_fault(signed_msg, validator_id, content2, signature2, now);
-            let serialized_msg = evidence_msg.serialize();
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialized_msg));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(evidence_msg.into()));
             outcomes
         } else if self.add_content(signed_msg) {
             self.update(now)
@@ -1746,7 +1744,7 @@ impl<C: Context + 'static> Zug<C> {
         if !self.record_entry(&Entry::Proposal(hashed_prop.inner().clone(), round_id)) {
             error!("could not record own proposal in WAL");
         } else if self.round_mut(round_id).insert_proposal(hashed_prop) {
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.into()));
         }
         self.mark_dirty(round_id);
         outcomes
@@ -1923,16 +1921,16 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: EraMessage<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match bincode::deserialize::<Message<C>>(msg.as_slice()) {
-            Err(err) => {
-                warn!(?sender, ?err, "failed to deserialize message");
-                vec![ProtocolOutcome::Disconnect(sender)]
+        match msg.try_into_zug() {
+            Err(msg) => {
+                warn!(?msg, "received a message for the wrong consensus protocol");
+                return vec![ProtocolOutcome::Disconnect(sender)];
             }
-            Ok(message) if message.instance_id() != self.instance_id() => {
-                let instance_id = message.instance_id();
+            Ok(zug_msg) if zug_msg.instance_id() != self.instance_id() => {
+                let instance_id = zug_msg.instance_id();
                 warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
@@ -1956,12 +1954,16 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: EraRequest<C>,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
-        match bincode::deserialize::<SyncRequest<C>>(msg.as_slice()) {
+    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+        match msg.try_into_zug() {
             Err(err) => {
-                warn!(?sender, ?err, "failed to deserialize request message");
+                warn!(
+                    ?sender,
+                    ?err,
+                    "received a request for the wrong consensus protocol"
+                );
                 (vec![ProtocolOutcome::Disconnect(sender)], None)
             }
             Ok(sync_request) if sync_request.instance_id != *self.instance_id() => {
@@ -2151,7 +2153,7 @@ where
         if let Some(v_idx) = self.validators.get_index(vid) {
             // Send the peer a sync message, so they will send us evidence we are missing.
             let round_id = self.current_round;
-            let payload = self.create_sync_request(v_idx, round_id).serialize();
+            let payload = self.create_sync_request(v_idx, round_id).into();
             vec![ProtocolOutcome::CreatedTargetedRequest(payload, peer)]
         } else {
             error!(?vid, "unknown validator ID");

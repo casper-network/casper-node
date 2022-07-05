@@ -39,7 +39,7 @@ use crate::{
         },
         protocols,
         traits::{ConsensusValueT, Context},
-        ActionId, TimerId,
+        ActionId, EraMessage, EraRequest, TimerId,
     },
     types::{Chainspec, NodeId},
     NodeRng,
@@ -260,7 +260,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             outcomes.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(vv.into());
-        outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
+        outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.into()));
         outcomes.extend(self.detect_finality());
         outcomes
     }
@@ -592,8 +592,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let request: HighwayMessage<C> = HighwayMessage::LatestStateRequest(
             IndexPanorama::from_panorama(self.highway.state().panorama(), self.highway.state()),
         );
-        let payload = request.serialize();
-        vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
+        vec![ProtocolOutcome::CreatedMessageToRandomPeer(request.into())]
     }
 
     /// Creates a batch of dependency requests if the peer has more units by the validator `vidx`
@@ -676,12 +675,15 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum HighwayMessage<C: Context> {
+pub(crate) enum HighwayMessage<C>
+where
+    C: Context,
+{
     NewVertex(Vertex<C>),
     // A dependency request. u64 is a random UUID identifying the request.
     RequestDependency(u64, Dependency<C>),
@@ -707,13 +709,13 @@ where
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: EraMessage<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match bincode::deserialize(msg.as_slice()) {
-            Err(err) => {
-                warn!(?sender, ?err, "failed to deserialize message");
-                vec![ProtocolOutcome::Disconnect(sender)]
+        match msg.try_into_highway() {
+            Err(msg) => {
+                warn!(?msg, "received a message for the wrong consensus protocol");
+                return vec![ProtocolOutcome::Disconnect(sender)];
             }
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (self.evidence_only && !v.is_evidence()) =>
@@ -788,7 +790,7 @@ where
                     }
                     // TODO: Should this be done via a gossip service?
                     GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
-                        HighwayMessage::NewVertex(vv.into()).serialize(),
+                        HighwayMessage::NewVertex(vv.into()).into(),
                         sender,
                     )],
                 }
@@ -820,7 +822,7 @@ where
                     // TODO: Should this be done via a gossip service?
                     GetDepOutcome::Vertex(vv) => {
                         vec![ProtocolOutcome::CreatedTargetedMessage(
-                            HighwayMessage::NewVertex(vv.into()).serialize(),
+                            HighwayMessage::NewVertex(vv.into()).into(),
                             sender,
                         )]
                     }
@@ -864,9 +866,8 @@ where
                     .zip(&their_index_panorama)
                     .map(create_message)
                     .flat_map(|msgs| {
-                        msgs.into_iter().map(|msg| {
-                            ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender)
-                        })
+                        msgs.into_iter()
+                            .map(|msg| ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender))
                     })
                     .collect()
             }
@@ -877,9 +878,9 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        _msg: Vec<u8>,
+        _msg: EraRequest<C>,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
+    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
         info!(?sender, "invalid incoming request");
         (vec![ProtocolOutcome::Disconnect(sender)], None)
     }
@@ -1038,10 +1039,7 @@ where
                     GetDepOutcome::None | GetDepOutcome::Evidence(_) => None,
                     GetDepOutcome::Vertex(vv) => {
                         let msg = HighwayMessage::NewVertex(vv.into());
-                        Some(ProtocolOutcome::CreatedTargetedMessage(
-                            msg.serialize(),
-                            sender,
-                        ))
+                        Some(ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender))
                     }
                 },
             )

@@ -18,6 +18,7 @@ use crate::{
             BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
         },
         traits::Context,
+        EraMessage,
     },
     testing,
     types::BlockPayload,
@@ -70,31 +71,34 @@ where
     )
 }
 
-/// Creates a serialized `Message::Signed`.
+/// Creates a `Message::Signed`.
 fn create_message(
     validators: &Validators<PublicKey>,
     round_id: RoundId,
     content: Content<ClContext>,
     keypair: &Keypair,
-) -> Vec<u8> {
+) -> EraMessage<ClContext> {
     let validator_idx = validators.get_index(keypair.public_key()).unwrap();
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let signed_msg =
         SignedMessage::sign_new(round_id, instance_id, content, validator_idx, keypair);
-    Message::Signed(signed_msg).serialize()
+    Message::Signed(signed_msg).into()
 }
 
-/// Creates a serialized `Message::Proposal`
-fn create_proposal_message(round_id: RoundId, proposal: &Proposal<ClContext>) -> Vec<u8> {
+/// Creates a `Message::Proposal`
+fn create_proposal_message(
+    round_id: RoundId,
+    proposal: &Proposal<ClContext>,
+) -> EraMessage<ClContext> {
     Message::Proposal {
         round_id,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         proposal: proposal.clone(),
     }
-    .serialize()
+    .into()
 }
 
-/// Removes all `CreatedGossipMessage`s from `outcomes` and returns the deserialized messages, after
+/// Removes all `CreatedGossipMessage`s from `outcomes` and returns the messages, after
 /// verifying the signatures and instance ID.
 fn remove_gossip(
     validators: &Validators<PublicKey>,
@@ -104,20 +108,18 @@ fn remove_gossip(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let msg = match outcome {
-            ProtocolOutcome::CreatedGossipMessage(msg) => msg,
+            ProtocolOutcome::CreatedGossipMessage(EraMessage::Zug(msg)) => &**msg,
             _ => return true,
         };
-        let message = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-            .expect("deserialize message");
-        assert_eq!(*message.instance_id(), expected_instance_id);
-        if let Message::Signed(signed_msg) = &message {
+        assert_eq!(*msg.instance_id(), expected_instance_id);
+        if let Message::Signed(signed_msg) = msg {
             let public_key = validators
                 .id(signed_msg.validator_idx)
                 .expect("validator ID")
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(message);
+        result.push(msg.clone());
         false
     });
     result
@@ -189,8 +191,7 @@ fn remove_requests_to_random(
     outcomes.retain(|outcome| {
         let msg: SyncRequest<ClContext> = match outcome {
             ProtocolOutcome::CreatedRequestToRandomPeer(msg) => {
-                bincode::deserialize::<SyncRequest<ClContext>>(msg.as_slice())
-                    .expect("deserialize request message")
+                msg.clone().try_into_zug().expect("Zug request")
             }
             _ => return true,
         };
@@ -201,7 +202,7 @@ fn remove_requests_to_random(
     result
 }
 
-/// Removes all `CreatedTargetedMessage`s from `outcomes` and returns the deserialized content of
+/// Removes all `CreatedTargetedMessage`s from `outcomes` and returns the content of
 /// all `Message::Signed`, after verifying the signatures.
 fn remove_targeted_messages(
     validators: &Validators<PublicKey>,
@@ -212,23 +213,21 @@ fn remove_targeted_messages(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let (msg, peer) = match outcome {
-            ProtocolOutcome::CreatedTargetedMessage(msg, peer) => (msg, *peer),
+            ProtocolOutcome::CreatedTargetedMessage(EraMessage::Zug(msg), peer) => (&**msg, *peer),
             _ => return true,
         };
         if peer != expected_peer {
             return true;
         }
-        let message = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-            .expect("deserialize message");
-        assert_eq!(*message.instance_id(), expected_instance_id);
-        if let Message::Signed(signed_msg) = &message {
+        assert_eq!(*msg.instance_id(), expected_instance_id);
+        if let Message::Signed(signed_msg) = msg {
             let public_key = validators
                 .id(signed_msg.validator_idx)
                 .expect("validator ID")
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(message);
+        result.push(msg.clone());
         false
     });
     result
@@ -277,10 +276,8 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
     for outcome in outcomes {
         match outcome {
             ProtocolOutcome::FinalizedBlock(fb) => panic!("unexpected finalized block: {:?}", fb),
-            ProtocolOutcome::CreatedGossipMessage(msg) => {
-                let deserialized = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-                    .expect("deserialize message");
-                panic!("unexpected gossip message {:?}", deserialized);
+            ProtocolOutcome::CreatedGossipMessage(EraMessage::Zug(msg)) => {
+                panic!("unexpected gossip message {:?}", msg);
             }
             ProtocolOutcome::CreateNewBlock(block_context) => {
                 panic!("unexpected CreateNewBlock: {:?}", block_context);
@@ -866,11 +863,12 @@ fn zug_handles_sync_request() {
         faulty: sc.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
         instance_id: *sc.instance_id(),
     };
-    let (outcomes, response) =
-        sc.handle_request_message(&mut rng, sender, msg.serialize(), timestamp);
+    let (outcomes, response) = sc.handle_request_message(&mut rng, sender, msg.into(), timestamp);
     assert_eq!(
-        bincode::deserialize::<Message<ClContext>>(&response.expect("response"))
-            .expect("deserialize"),
+        response
+            .expect("response")
+            .try_into_zug()
+            .expect("Zug message"),
         Message::SyncResponse(SyncResponse {
             round_id: 0,
             proposal_or_hash: Some(Either::Left(proposal0)),
@@ -899,20 +897,16 @@ fn zug_handles_sync_request() {
         instance_id: *sc.instance_id(),
     };
     let (mut outcomes, response) =
-        sc.handle_request_message(&mut rng, sender, msg.serialize(), timestamp);
+        sc.handle_request_message(&mut rng, sender, msg.into(), timestamp);
     assert_eq!(
         remove_targeted_messages(&validators, sender, &mut outcomes),
         vec![]
     );
     expect_no_gossip_block_finalized(outcomes);
 
-    let sync_response_msg =
-        bincode::deserialize::<Message<ClContext>>(&*response.expect("response"))
-            .expect("deserialize response");
-
-    let sync_response = match sync_response_msg {
-        Message::SyncResponse(sync_response) => sync_response,
-        msg => panic!("unexpected message: {:?}", msg),
+    let sync_response = match response.expect("response").try_into_zug() {
+        Ok(Message::SyncResponse(sync_response)) => sync_response,
+        result => panic!("unexpected message: {:?}", result),
     };
 
     assert_eq!(sync_response.round_id, 0);
