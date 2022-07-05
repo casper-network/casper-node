@@ -4,7 +4,8 @@ use serde::Deserialize;
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
     ContractRuntimeConfig, DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig,
-    GossipConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig, StorageConfig,
+    GossipConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig, SpeculativeExecConfig,
+    StorageConfig,
 };
 
 /// Root configuration.
@@ -26,6 +27,8 @@ pub(crate) struct Config {
     pub(crate) rest_server: RestServerConfig,
     /// RPC API server configuration.
     pub(crate) rpc_server: RpcServerConfig,
+    /// Speculative execution server configuration.
+    pub(crate) speculative_exec_server: SpeculativeExecConfig,
     /// On-disk storage configuration.
     pub(crate) storage: StorageConfig,
     /// Gossip protocol configuration.

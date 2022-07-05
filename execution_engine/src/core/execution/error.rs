@@ -170,6 +170,9 @@ pub enum Error {
     /// The runtime stack is `None`.
     #[error("Runtime stack missing")]
     MissingRuntimeStack,
+    /// Contract is disabled.
+    #[error("Contract is disabled")]
+    DisabledContract(ContractHash),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

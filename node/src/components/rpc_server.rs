@@ -18,12 +18,14 @@ mod config;
 mod event;
 mod http_server;
 pub mod rpcs;
+mod speculative_exec_config;
 mod speculative_exec_server;
 
 use std::{convert::Infallible, fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
@@ -51,6 +53,7 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use event::Event;
+pub use speculative_exec_config::Config as SpeculativeExecConfig;
 
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
@@ -83,16 +86,40 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RpcServer {
+pub(crate) struct InnerRpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
     /// The current state of the node.
     node_state: NodeState,
 }
 
+impl InnerRpcServer {
+    pub fn node_state(&self) -> NodeState {
+        self.node_state
+    }
+
+    pub fn node_startup_instant(&self) -> Instant {
+        self.node_startup_instant
+    }
+}
+
+#[derive(DataSize, Debug)]
+pub(crate) struct RpcServer {
+    /// Inner JSON-RPC server is present only when enabled in the JSON-RPC
+    /// server config.
+    inner_rpc: Option<InnerRpcServer>,
+    /// Inner speculative execution JSON-RPC server is present only when enabled
+    /// in the speculative execution JSON-RPC server config.
+    /// The inner speculative execution JSON-RPC server as a struct would have
+    /// no fields and no methods because all that is needed to operate it is the
+    /// spawned tokio task, so a unit struct will suffice here.
+    speculative_exec: Option<()>,
+}
+
 impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
+        speculative_exec_config: SpeculativeExecConfig,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
@@ -101,6 +128,30 @@ impl RpcServer {
     where
         REv: ReactorEventT,
     {
+        // Set the speculative execution HTTP server up first. The speculative
+        // execution server can operate independently from the JSON-RPC server,
+        // so we save its state before we construct the `RpcServer`.
+        let speculative_exec = if speculative_exec_config.enable_server {
+            let builder = utils::start_listening(&speculative_exec_config.address)?;
+            tokio::spawn(speculative_exec_server::run(
+                builder,
+                effect_builder,
+                api_version,
+                speculative_exec_config.qps_limit,
+                speculative_exec_config.max_body_bytes,
+            ));
+            Some(())
+        } else {
+            None
+        };
+
+        if !config.enable_server {
+            return Ok(RpcServer {
+                inner_rpc: None,
+                speculative_exec,
+            });
+        }
+
         let builder = utils::start_listening(&config.address)?;
         tokio::spawn(http_server::run(
             builder,
@@ -110,26 +161,15 @@ impl RpcServer {
             config.max_body_bytes,
         ));
 
-        // QPS limit set to 0 disables the server.
-        if config.speculative_execution_qps_limit > 0 {
-            let builder = utils::start_listening(&config.speculative_execution_address)?;
-            tokio::spawn(speculative_exec_server::run(
-                builder,
-                effect_builder,
-                api_version,
-                config.speculative_execution_qps_limit,
-                config.max_body_bytes,
-            ));
-        }
-
-        Ok(RpcServer {
+        let inner_rpc = Some(InnerRpcServer {
             node_startup_instant,
             node_state,
-        })
-    }
+        });
 
-    fn node_state(&self) -> NodeState {
-        self.node_state
+        Ok(RpcServer {
+            inner_rpc,
+            speculative_exec,
+        })
     }
 }
 
@@ -218,6 +258,38 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        // Handle the special case where we need to route the request to
+        // the speculative execution JSON-RPC server.
+        if let Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
+            block_header,
+            deploy,
+            responder,
+        }) = event
+        {
+            match self.speculative_exec {
+                Some(_) => {
+                    return self.handle_execute_deploy(
+                        effect_builder,
+                        block_header,
+                        *deploy,
+                        responder,
+                    );
+                }
+                None => {
+                    return Effects::new();
+                }
+            }
+        }
+
+        // For all requests other than `SpeculativeDeployExecute`, we return
+        // empty effects if the JSON-RPC server is disabled.
+        let rpc_server = match &self.inner_rpc {
+            Some(rpc_server) => rpc_server,
+            None => {
+                return Effects::new();
+            }
+        };
+
         match event {
             Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
                 .announce_deploy_received(deploy, Some(responder))
@@ -331,8 +403,8 @@ where
                     main_responder: responder,
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
-                let node_uptime = self.node_startup_instant.elapsed();
-                let node_state = self.node_state();
+                let node_uptime = rpc_server.node_startup_instant().elapsed();
+                let node_state = rpc_server.node_state();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -362,11 +434,14 @@ where
                     .await
             }
             .ignore(),
-            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
-                block_header,
-                deploy,
-                responder,
-            }) => self.handle_execute_deploy(effect_builder, block_header, *deploy, responder),
+            Event::RpcRequest(RpcRequest::SpeculativeDeployExecute { .. }) => {
+                // Handled above by the speculative execution JSON-RPC server.
+                error!(
+                    "Received spurious speculative exec event in JSON-RPC server, \
+                    should have been handled in speculative execution JSON-RPC server."
+                );
+                Effects::new()
+            }
             Event::GetBlockResult {
                 maybe_id: _,
                 result,

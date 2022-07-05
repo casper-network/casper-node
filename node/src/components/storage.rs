@@ -81,7 +81,6 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::ReactorEvent,
-    storage::disjoint_sequences::Sequence,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
@@ -93,15 +92,18 @@ use crate::{
     utils::{display_error, WithDir},
     NodeRng,
 };
+use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
 use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
-use self::disjoint_sequences::DisjointSequences;
-
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
+
+/// We can set this very low, as there is only a single reader/writer accessing the component at any
+/// one time.
+const MAX_TRANSACTIONS: u32 = 1;
 
 /// One Gibibyte.
 const GIB: usize = 1024 * 1024 * 1024;
@@ -342,12 +344,10 @@ impl Storage {
                 | EnvironmentFlags::NO_SUB_DIR
                 // Disable thread local storage, strongly suggested for operation with tokio.
                 | EnvironmentFlags::NO_TLS
-                // Disable read-ahead. Our data is not storead/read in sequence that would benefit from the read-ahead.
+                // Disable read-ahead. Our data is not stored/read in sequence that would benefit from the read-ahead.
                 | EnvironmentFlags::NO_READAHEAD,
             )
-            // We need at least `max_sync_tasks` readers, add an additional 8 for unforseen external
-            // reads (not likely, but it does not hurt to increase this limit).
-            .set_max_readers(config.max_sync_tasks as u32 + 8)
+            .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(MAX_DB_COUNT)
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
@@ -1758,8 +1758,8 @@ impl Storage {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        let mut tx = self.env.begin_ro_txn()?;
-        self.get_finality_signatures(&mut tx, block_hash)
+        let mut txn = self.env.begin_ro_txn()?;
+        self.get_finality_signatures(&mut txn, block_hash)
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
@@ -1892,7 +1892,7 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         if let Some(last_emergency_restart) = self.last_emergency_restart {
             if block_header.era_id() <= last_emergency_restart {
-                debug!(
+                warn!(
                     ?block_header,
                     ?last_emergency_restart,
                     "finality signatures from before last emergency restart requested"
@@ -1907,9 +1907,11 @@ impl Storage {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
+        // If `block_header` is from era 0, we can use the switch block from era 0 to ascertain the
+        // validators for that era.
         let switch_block_hash = match self
             .switch_block_era_id_index
-            .get(&(block_header.era_id() - 1))
+            .get(&(block_header.era_id().saturating_sub(1)))
         {
             None => return Ok(None),
             Some(switch_block_hash) => switch_block_hash,
@@ -1944,17 +1946,17 @@ impl Storage {
     /// emergency upgrade.
     fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
         &self,
-        tx: &mut Tx,
+        txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         // Needed to know what era the block was in, so that we can check what the validators were
         // and figure out if the signatures are sufficient.
-        let block_header = match self.read_block_header_by_hash(block_hash)? {
+        let block_header = match self.get_single_block_header(txn, block_hash)? {
             Some(header) => header,
             None => return Ok(None),
         };
 
-        self.get_sufficient_finality_signatures(tx, &block_header)
+        self.get_sufficient_finality_signatures(txn, &block_header)
     }
 
     /// Retrieves a deploy from the deploy store.
@@ -1969,11 +1971,11 @@ impl Storage {
         &self,
         block_header_ids: &BlockHeadersBatchId,
     ) -> Result<Option<BlockHeadersBatch>, FatalStorageError> {
-        let mut tx = self.env.begin_ro_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
 
         let mut headers = Vec::with_capacity(block_header_ids.len() as usize);
         for block_height in block_header_ids.iter() {
-            match self.get_block_header_by_height_restricted(&mut tx, block_height, true)? {
+            match self.get_block_header_by_height_restricted(&mut txn, block_height, true)? {
                 Some(block_header) => headers.push(block_header),
                 None => {
                     debug!(?block_height, "block header not found");
@@ -2217,8 +2219,6 @@ pub struct Config {
     enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
     mem_pool_prune_interval: u16,
-    /// Maximum number of parallel synchronous storage tasks to spawn.
-    max_sync_tasks: u16,
 }
 
 impl Default for Config {
@@ -2232,7 +2232,6 @@ impl Default for Config {
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
             enable_mem_deduplication: true,
             mem_pool_prune_interval: 4096,
-            max_sync_tasks: 32,
         }
     }
 }

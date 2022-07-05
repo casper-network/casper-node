@@ -70,7 +70,7 @@ pub trait ReactorEventT: From<Event> + Send {}
 impl<REv> ReactorEventT for REv where REv: From<Event> + Send + 'static {}
 
 #[derive(DataSize, Debug)]
-pub(crate) struct EventStreamServer {
+struct InnerServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
     #[data_size(skip)]
@@ -79,12 +79,21 @@ pub(crate) struct EventStreamServer {
     listening_address: SocketAddr,
 }
 
+#[derive(DataSize, Debug)]
+pub(crate) struct EventStreamServer {
+    inner: Option<InnerServer>,
+}
+
 impl EventStreamServer {
     pub(crate) fn new(
         config: Config,
         storage_path: PathBuf,
         api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError> {
+        if !config.enable_server {
+            return Ok(EventStreamServer { inner: None });
+        }
+
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
             warn!(
                 %error,
@@ -134,16 +143,20 @@ impl EventStreamServer {
         ));
 
         Ok(EventStreamServer {
-            sse_data_sender,
-            event_indexer,
-            listening_address,
+            inner: Some(InnerServer {
+                sse_data_sender,
+                event_indexer,
+                listening_address,
+            }),
         })
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
     fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        let event_index = self.event_indexer.next_index();
-        let _ = self.sse_data_sender.send((event_index, sse_data));
+        if let Some(server) = self.inner.as_mut() {
+            let event_index = server.event_indexer.next_index();
+            let _ = server.sse_data_sender.send((event_index, sse_data));
+        }
         Effects::new()
     }
 }
