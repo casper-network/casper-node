@@ -774,6 +774,7 @@ where
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()
             }
+            Message::SyncStateChanged => todo!(),
         })
     }
 

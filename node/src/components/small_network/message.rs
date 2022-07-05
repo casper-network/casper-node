@@ -43,6 +43,9 @@ pub(crate) enum Message<P> {
         is_joiner: bool,
     },
     Payload(P),
+    /// Indicates that peer has finished its syncing process and should no longer be considered a
+    /// "joiner".
+    SyncStateChanged,
 }
 
 impl<P: Payload> Message<P> {
@@ -50,7 +53,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } => MessageKind::Protocol,
+            Message::Handshake { .. } | Message::SyncStateChanged => MessageKind::Protocol,
             Message::Payload(payload) => payload.classify(),
         }
     }
@@ -59,7 +62,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn is_low_priority(&self) -> bool {
         match self {
-            Message::Handshake { .. } => false,
+            Message::Handshake { .. } | Message::SyncStateChanged => false,
             Message::Payload(payload) => payload.is_low_priority(),
         }
     }
@@ -68,7 +71,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
-            Message::Handshake { .. } => 0,
+            Message::Handshake { .. } | Message::SyncStateChanged => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
         }
     }
@@ -77,7 +80,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn payload_is_unsafe_for_joiners(&self) -> bool {
         match self {
-            Message::Handshake { .. } => false,
+            Message::Handshake { .. } | Message::SyncStateChanged => false,
             Message::Payload(payload) => payload.is_unsafe_for_joiners(),
         }
     }
@@ -94,7 +97,7 @@ impl<P: Payload> Message<P> {
         REv: FromIncoming<P> + Send,
     {
         match self {
-            Message::Handshake { .. } => Err(self),
+            Message::Handshake { .. } | Message::SyncStateChanged => Err(self),
             Message::Payload(payload) => {
                 // Note: For now, the wrapping/unwrapp of the payload is a bit unfortunate here.
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
@@ -274,6 +277,9 @@ impl<P: Display> Display for Message<P> {
                 }
             }
             Message::Payload(payload) => write!(f, "payload: {}", payload),
+            Message::SyncStateChanged => {
+                write!(f, "sync_state_changed")
+            }
         }
     }
 }
@@ -601,6 +607,9 @@ mod tests {
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
             }
+            Message::SyncStateChanged => {
+                panic!("did not expect modern handshake to deserialize to sync_state_changed")
+            }
         }
     }
 
@@ -624,6 +633,9 @@ mod tests {
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
+            }
+            Message::SyncStateChanged => {
+                panic!("did not expect modern handshake to deserialize to sync_state_changed")
             }
         }
     }
@@ -668,6 +680,9 @@ mod tests {
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
             }
+            Message::SyncStateChanged => {
+                panic!("did not expect modern handshake to deserialize to sync_state_changed")
+            }
         }
     }
 
@@ -710,6 +725,9 @@ mod tests {
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
+            }
+            Message::SyncStateChanged => {
+                panic!("did not expect modern handshake to deserialize to sync_state_changed")
             }
         }
     }

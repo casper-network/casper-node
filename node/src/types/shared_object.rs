@@ -142,7 +142,7 @@ mod tests {
             .expect("could not deserialize value");
         match msg {
             Message::Payload(payload) => payload,
-            Message::Handshake { .. } => panic!("expected payload"),
+            Message::Handshake { .. } | Message::SyncStateChanged => panic!("expected payload"),
         }
     }
 
