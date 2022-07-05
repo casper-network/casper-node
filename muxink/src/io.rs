@@ -5,6 +5,7 @@
 //! frames.
 
 pub mod length_delimited;
+// pub mod serde;
 
 use std::{
     io,
@@ -16,12 +17,12 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
 use thiserror::Error;
 
-use crate::try_ready;
+use crate::{codec::Encoder, try_ready};
 
 /// Frame decoder.
 ///
 /// A frame decoder is responsible for extracting a frame from a reader's internal buffer.
-pub trait Decoder {
+pub trait FrameDecoder {
     /// Decoding error.
     type Error: std::error::Error + Send + Sync + 'static;
 
@@ -32,27 +33,6 @@ pub trait Decoder {
     ///
     /// Implementers of this function are expected to remove completed frames from `buffer`.
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
-}
-
-/// Frame encoder.
-///
-/// A frame encoder adds the framing envelope (or replaces the frame entirely) of a given raw frame.
-pub trait Encoder<F> {
-    /// Encoding error.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// The wrapped frame resulting from encoding the given raw frame.
-    ///
-    /// While this can be simply `Bytes`, using something like `bytes::Chain` allows for more
-    /// efficient encoding here.
-    type WrappedFrame: Buf + Send + Sync + 'static;
-
-    /// Encode a frame.
-    ///
-    /// The resulting `Bytes` should be the bytes to send into the outgoing stream, it must contain
-    /// the information required for an accompanying `Decoder` to be able to reconstruct the frame
-    /// from a raw byte stream.
-    fn encode_frame(&mut self, raw_frame: F) -> Result<Self::WrappedFrame, Self::Error>;
 }
 
 /// The outcome of a [`decode_frame`] call.
@@ -87,7 +67,7 @@ pub struct FrameWriter<F, E: Encoder<F>, W> {
     /// Underlying async bytestream being written.
     stream: W,
     /// The frame in process of being sent.
-    current_frame: Option<E::WrappedFrame>,
+    current_frame: Option<E::Output>,
 }
 
 impl<D, R> FrameReader<D, R> {
@@ -109,7 +89,7 @@ impl<D, R> FrameReader<D, R> {
 
 impl<D, R> Stream for FrameReader<D, R>
 where
-    D: Decoder + Unpin,
+    D: FrameDecoder + Unpin,
     R: AsyncRead + Unpin,
 {
     type Item = io::Result<Bytes>;
@@ -224,7 +204,7 @@ where
     fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
         let wrapped_frame = self
             .encoder
-            .encode_frame(item)
+            .encode(item)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         self.current_frame = Some(wrapped_frame);
 

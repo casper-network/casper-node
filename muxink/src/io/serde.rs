@@ -1,16 +1,15 @@
-//! 2-byte Length delimited frame encoding/decoding.
-//!
-//! Allows for frames to be at most `u16::MAX` (64 KB) in size. Frames are encoded by prefixing
-//! their length in little endian byte order in front of every frame.
+// #### QUESTION: ONE ENCODER OPERATES ON FRAMES AND ONE OPERATES ON BUFFERS! BUT THIS ISNT TRUE, SINCE THE WRITE-SINK TAKES `Buf`!
+
+//! Serde encoding/decoding
 
 use std::convert::Infallible;
 
 use bytes::{Buf, BytesMut};
 use thiserror::Error;
 
-use crate::{codec::Encoder, ImmediateFrame};
+use crate::ImmediateFrame;
 
-use super::{DecodeResult, FrameDecoder};
+use super::{DecodeResult, Decoder, Encoder};
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
@@ -18,7 +17,7 @@ const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 /// Two-byte length delimited frame encoder.
 pub struct LengthDelimited;
 
-impl FrameDecoder for LengthDelimited {
+impl Decoder for LengthDelimited {
     type Error = Infallible;
 
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error> {
@@ -58,14 +57,14 @@ where
     F: Buf + Send + Sync + 'static,
 {
     type Error = LengthExceededError;
-    type Output = LengthPrefixedFrame<F>;
+    type WrappedFrame = LengthPrefixedFrame<F>;
 
-    fn encode(&mut self, input: F) -> Result<Self::Output, Self::Error> {
-        let remaining = input.remaining();
+    fn encode_frame(&mut self, raw_frame: F) -> Result<Self::WrappedFrame, Self::Error> {
+        let remaining = raw_frame.remaining();
         let length: u16 = remaining
             .try_into()
             .map_err(|_err| LengthExceededError(remaining))?;
-        Ok(ImmediateFrame::from(length).chain(input))
+        Ok(ImmediateFrame::from(length).chain(raw_frame))
     }
 }
 
@@ -78,7 +77,7 @@ mod tests {
     use super::LengthDelimited;
 
     // In tests use small value to make sure that we correctly merge data that was polled from the
-    // stream in small fragments.
+    // stream in small chunks.
     const TESTING_BUFFER_INCREMENT: usize = 4;
 
     /// Decodes the input string, returning the decoded frames and the remainder.
