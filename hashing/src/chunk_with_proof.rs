@@ -102,7 +102,7 @@ impl ChunkWithProof {
 
     /// Verify the integrity of this chunk with indexed Merkle proof.
     pub fn verify(&self) -> Result<(), ChunkWithProofVerificationError> {
-        let _ = self.proof().verify()?;
+        self.proof().verify()?;
         let first_digest_in_indexed_merkle_proof =
             self.proof().merkle_proof().first().ok_or_else(|| {
                 ChunkWithProofVerificationError::ChunkWithProofHasEmptyMerkleProof {

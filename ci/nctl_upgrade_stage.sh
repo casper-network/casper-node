@@ -29,8 +29,6 @@ BIN_BUILD_DIR="$ROOT_DIR/target/release"
 WASM_BUILD_DIR="$ROOT_DIR/target/wasm32-unknown-unknown/release"
 CONFIG_DIR="$ROOT_DIR/resources/local"
 TEMP_STAGE_DIR='/tmp/nctl_upgrade_stage'
-NCTL_UPGRADE_CHAINSPECS="$ROOT_DIR/utils/nctl/sh/scenarios/chainspecs"
-NCTL_UPGRADE_CONFIGS="$ROOT_DIR/utils/nctl/sh/scenarios/configs"
 
 # FILES
 BIN_ARRAY=(casper-node)
@@ -41,7 +39,7 @@ WASM_ARRAY=(add_bid.wasm \
             undelegate.wasm \
             withdraw_bid.wasm)
 
-CONFIG_ARRAY=(chainspec.toml.in config.toml)
+CONFIG_ARRAY=(chainspec.toml.in config.toml accounts.toml)
 
 # Create temporary staging directory
 if [ ! -d "$TEMP_STAGE_DIR" ]; then
@@ -94,12 +92,3 @@ for i in "${CONFIG_ARRAY[@]}"; do
     fi
     echo ""
 done
-
-# Copy NCTL upgrade chainspecs
-pushd "$NCTL_UPGRADE_CHAINSPECS"
-cp upgrade* "$TEMP_STAGE_DIR"
-popd
-
-pushd "$NCTL_UPGRADE_CONFIGS"
-cp upgrade* "$TEMP_STAGE_DIR"
-popd

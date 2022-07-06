@@ -19,27 +19,35 @@ bash -i "$DRONE_ROOT_DIR/ci/nctl_compile.sh"
 function start_run_teardown() {
     local RUN_CMD=$1
     local TEST_NAME
+    local STAGE_TOML_DIR
     local SETUP_ARGS
+    local CONFIG_TOML
+    local CHAINSPEC_TOML
+    local ACCOUNTS_TOML
 
     # Capture test prefix for custom file checks
     TEST_NAME="$(echo $RUN_CMD | awk -F'.sh' '{ print $1 }')"
+    STAGE_TOML_DIR="$NCTL/overrides"
+    CONFIG_TOML="$STAGE_TOML_DIR/$TEST_NAME.config.toml"
+    CHAINSPEC_TOML="$STAGE_TOML_DIR/$TEST_NAME.chainspec.toml.in"
+    ACCOUNTS_TOML="$STAGE_TOML_DIR/$TEST_NAME.accounts.toml"
 
     # Really-really make sure nothing is leftover
     nctl-assets-teardown
 
-    # Check for custom chainspec
-    if [ -f "$SCENARIOS_CHAINSPEC_DIR/$TEST_NAME.chainspec.toml.in" ]; then
-        SETUP_ARGS+=("chainspec_path=$SCENARIOS_CHAINSPEC_DIR/$TEST_NAME.chainspec.toml.in")
+    # Overrides chainspec.toml
+    if [ -f "$CHAINSPEC_TOML" ]; then
+        SETUP_ARGS+=("chainspec_path=$CHAINSPEC_TOML")
     fi
 
-    # Check for custom accounts
-    if [ -f "$SCENARIOS_ACCOUNTS_DIR/$TEST_NAME.accounts.toml" ]; then
-        SETUP_ARGS+=("accounts_path=$SCENARIOS_ACCOUNTS_DIR/$TEST_NAME.accounts.toml")
+    # Overrides accounts.toml
+    if [ -f "$ACCOUNTS_TOML" ]; then
+        SETUP_ARGS+=("accounts_path=$ACCOUNTS_TOML")
     fi
 
-    # Check for custom config
-    if [ -f "$SCENARIOS_CONFIGS_DIR/$TEST_NAME.config.toml" ]; then
-        SETUP_ARGS+=("config_path=$SCENARIOS_CONFIGS_DIR/$TEST_NAME.config.toml")
+    # Overrides config.toml
+    if [ -f "$CONFIG_TOML" ]; then
+        SETUP_ARGS+=("config_path=$CONFIG_TOML")
     fi
 
     # Setup nctl files for test
@@ -75,6 +83,7 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=10 skip_setup=true
 }
 
+source "$NCTL/sh/staging/set_override_tomls.sh"
 start_run_teardown "client.sh"
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"

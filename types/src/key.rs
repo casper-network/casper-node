@@ -140,6 +140,7 @@ pub enum Key {
 
 /// Errors produced when converting a `String` into a `Key`.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     /// Account parse error.
     Account(account::FromStrError),

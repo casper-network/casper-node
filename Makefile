@@ -16,11 +16,13 @@ ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 # AssemblyScript Contracts
-CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client -mindepth 1 -maxdepth 1 -type d)
-TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test   -mindepth 1 -maxdepth 1 -type d)
+CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client     -mindepth 1 -maxdepth 1 -type d)
+TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test       -mindepth 1 -maxdepth 1 -type d)
+EXAMPLE_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/example -mindepth 1 -maxdepth 1 -type d)
 
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
+EXAMPLE_CONTRACTS_AS := $(patsubst %, build-contract-as/%, $(EXAMPLE_CONTRACTS_AS))
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
@@ -131,7 +133,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2020-0159
+	$(CARGO) audit --ignore RUSTSEC-2020-0071
 
 .PHONY: audit-as
 audit-as:

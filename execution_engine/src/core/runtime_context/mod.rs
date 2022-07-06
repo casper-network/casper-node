@@ -571,8 +571,7 @@ where
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {
             // Writing a `Transfer` will not exceed write size limit.
-            let _ = self
-                .tracking_copy
+            self.tracking_copy
                 .borrow_mut()
                 .write(key, StoredValue::Transfer(value));
         } else {
@@ -584,8 +583,7 @@ where
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
         if let Key::EraInfo(_) = key {
             // Writing an `EraInfo` for 100 validators will not exceed write size limit.
-            let _ = self
-                .tracking_copy
+            self.tracking_copy
                 .borrow_mut()
                 .write(key, StoredValue::EraInfo(value));
         } else {

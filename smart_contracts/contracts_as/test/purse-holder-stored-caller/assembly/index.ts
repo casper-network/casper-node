@@ -1,12 +1,12 @@
 //@ts-nocheck
 import * as CL from "../../../../contract_as/assembly";
-import {Error} from "../../../../contract_as/assembly/error";
-import {fromBytesString} from "../../../../contract_as/assembly/bytesrepr";
-import {Key} from "../../../../contract_as/assembly/key";
-import {putKey} from "../../../../contract_as/assembly";
-import {CLValue} from "../../../../contract_as/assembly/clvalue";
+import { Error } from "../../../../contract_as/assembly/error";
+import { fromBytesString } from "../../../../contract_as/assembly/bytesrepr";
+import { Key } from "../../../../contract_as/assembly/key";
+import { putKey } from "../../../../contract_as/assembly";
+import { CLValue } from "../../../../contract_as/assembly/clvalue";
 import { RuntimeArgs } from "../../../../contract_as/assembly/runtime_args";
-import {Pair} from "../../../../contract_as/assembly/pair";
+import { Pair } from "../../../../contract_as/assembly/pair";
 
 const METHOD_VERSION = "version";
 const HASH_KEY_NAME = "purse_holder";
@@ -27,7 +27,7 @@ export function call(): void {
   if (entryPointName == METHOD_VERSION) {
     let contractHash = CL.getNamedArg(HASH_KEY_NAME);
     const versionBytes = CL.callContract(contractHash, entryPointName, new RuntimeArgs());
-    if (versionBytes === null) {
+    if (!versionBytes) {
       Error.fromUserError(<u16>CustomError.UnableToGetVersion).revert();
       return;
     }
@@ -38,7 +38,7 @@ export function call(): void {
     }
     let version = versionResult.value;
     const maybeVersionKey = Key.create(CLValue.fromString(version));
-    if (maybeVersionKey === null) {
+    if (!maybeVersionKey) {
       Error.fromUserError(<u16>CustomError.UnableToStoreVersion).revert();
       return;
     }

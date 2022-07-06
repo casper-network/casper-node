@@ -865,7 +865,7 @@ mod tests {
             match *new_units {
                 [] => (),
                 [unit] => {
-                    let _ = self.state.add_unit(unit.clone()).unwrap();
+                    self.state.add_unit(unit.clone()).unwrap();
                 }
                 _ => panic!(
                     "Expected at most one timer to be scheduled: {:?}",

@@ -20,7 +20,7 @@ use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
 
-pub use available_block_range::{AvailableBlockRange, AvailableBlockRangeError};
+pub use available_block_range::AvailableBlockRange;
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockAndDeploys, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,

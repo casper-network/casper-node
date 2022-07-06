@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use std::iter;
 use std::{
     array::TryFromSliceError,
@@ -16,20 +16,20 @@ use derive_more::Into;
 use hex_fmt::HexList;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::Digest;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
 use tracing::{error, warn};
 
@@ -185,7 +185,7 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
 
 // This should be clearly specified because the `verifiable_chunked_hash_activation`
 // parameter used in various tests strongly rely on this value.
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
 
 /// Error returned from constructing a `Block`.
@@ -296,7 +296,7 @@ impl Display for BlockPayload {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl BlockPayload {
     #[allow(unused)] // TODO: remove when used in tests
     pub fn random(
@@ -489,7 +489,7 @@ impl FinalizedBlock {
     }
 
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let era = rng.gen_range(0..5);
         let height = era * 10 + rng.gen_range(0..10);
@@ -498,7 +498,7 @@ impl FinalizedBlock {
         FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch, None)
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`, but using the specified values.
     /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
     /// will be used.
@@ -639,7 +639,7 @@ impl BlockHash {
     }
 
     /// Creates a random block hash.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         BlockHash(hash)
@@ -703,7 +703,7 @@ impl BlockHashAndHeight {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {
             block_hash: BlockHash::random(rng),
@@ -819,6 +819,9 @@ pub struct BlockHeader {
     state_root_hash: Digest,
     body_hash: Digest,
     random_bit: bool,
+    /// The seed for the sequence of leaders accumulated from random_bits. If it is equal to the
+    /// parent hash, it means that the block is an immediate switch block created right after an
+    /// emergency upgrade.
     accumulated_seed: Digest,
     era_end: Option<EraEnd>,
     timestamp: Timestamp,
@@ -1113,6 +1116,7 @@ impl Item for BlockHeaderWithMetadata {
         self.block_header.height()
     }
 }
+
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 /// ID identifying a request for a batch of block headers.
 pub(crate) struct BlockHeadersBatchId {
@@ -1654,6 +1658,24 @@ impl Display for BlockSignatures {
     }
 }
 
+impl Item for BlockSignatures {
+    type Id = BlockHash;
+    type ValidationError = crypto::Error;
+    const TAG: Tag = Tag::FinalitySignaturesByHash;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.block_hash
+    }
+}
+
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1739,6 +1761,17 @@ impl Block {
             header,
             body,
         })
+    }
+
+    pub(crate) fn mark_after_emergency_upgrade(
+        &mut self,
+        verifiable_chunked_hash_activation: EraId,
+    ) {
+        // accumulated seed being equal to the parent hash will mean that the block is an immediate
+        // switch block created right after an emergency upgrade
+        self.header.accumulated_seed = *self.header.parent_hash.inner();
+        // changing the seed changes the header hash!
+        self.hash = self.header.hash(verifiable_chunked_hash_activation);
     }
 
     pub(crate) fn new_from_header_and_body(
@@ -1839,7 +1872,7 @@ impl Block {
     }
 
     /// Overrides the height of a block.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn set_height(
         &mut self,
         height: u64,
@@ -1851,7 +1884,7 @@ impl Block {
     }
 
     /// Overrides the era end of a block with a `None`, making it a non-switch block.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn disable_switch_block(&mut self, verifiable_chunked_hash_activation: EraId) -> &mut Self {
         let _ = self.header.era_end.take();
         self.hash = self.header.hash(verifiable_chunked_hash_activation);
@@ -1859,7 +1892,7 @@ impl Block {
     }
 
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
@@ -1879,7 +1912,7 @@ impl Block {
 
     /// Generates a random instance using a `TestRng` with the specified
     /// `verifiable_chunked_hash_activation`
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_with_verifiable_chunked_hash_activation(
         rng: &mut TestRng,
         verifiable_chunked_hash_activation: EraId,
@@ -1902,7 +1935,7 @@ impl Block {
     /// Generates random instance that is guaranteed to be using
     /// the legacy hashing scheme. Apart from the Block itself
     /// it also returns the EraId used as verifiable_chunked_hash_activation.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
         let verifiable_chunked_hash_activation = EraId::from(MAX_ERA_FOR_RANDOM_BLOCK + 1);
 
@@ -1918,7 +1951,7 @@ impl Block {
     /// Generates random instance that is guaranteed to be using
     /// the merkle tree hashing scheme. Apart from the Block itself
     /// it also returns the EraId used as verifiable_chunked_hash_activation.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
         let verifiable_chunked_hash_activation = EraId::from(0);
 
@@ -1932,7 +1965,7 @@ impl Block {
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,
@@ -2136,7 +2169,7 @@ impl Item for BlockAndDeploys {
         &self,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<(), Self::ValidationError> {
-        let _ = self.block.verify(verifiable_chunked_hash_activation)?;
+        self.block.verify(verifiable_chunked_hash_activation)?;
         // Validate that we've got all of the deploys we should have gotten, and that their hashes
         // are valid.
         for deploy_hash in self
@@ -2515,7 +2548,8 @@ impl FinalitySignature {
         crypto::verify(bytes, &self.signature, &self.public_key)
     }
 
-    #[cfg(test)]
+    /// Returns a random `FinalitySignature` for the provided `block_hash` and `era_id`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random_for_block(block_hash: BlockHash, era_id: u64) -> Self {
         let (sec_key, pub_key) = generate_ed25519_keypair();
         FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)
@@ -2978,45 +3012,97 @@ mod tests {
         );
     }
 
-    struct TestBlock(Block, TestRng);
+    // Utility struct that can be turned into an iterator that generates
+    // continuous and descending blocks (i.e. blocks that have consecutive height
+    // and parent hashes are correctly set). The height of the first block
+    // in a series is choosen randomly.
+    //
+    // Additionally, this struct allows to generate switch blocks at a specific location in the
+    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
+    // cause the 2nd and 4th blocks to be switch blocks.
+    struct TestBlockSpec {
+        block: Block,
+        rng: TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+    }
 
-    impl TestBlock {
-        fn new(test_rng: TestRng) -> Self {
+    impl TestBlockSpec {
+        fn new(test_rng: TestRng, switch_block_indices: Option<Vec<u64>>) -> Self {
             let mut rng = test_rng;
-            let init = Block::random(&mut rng);
-            Self(init, rng)
+            let block = Block::random(&mut rng);
+            Self {
+                block,
+                rng,
+                switch_block_indices,
+            }
         }
 
         fn into_iter(self) -> TestBlockIterator {
-            TestBlockIterator(self.0, self.1)
+            let block_height = self.block.height();
+            TestBlockIterator {
+                block: self.block,
+                rng: self.rng,
+                switch_block_indices: self.switch_block_indices.map(|switch_block_indices| {
+                    switch_block_indices
+                        .iter()
+                        .map(|index| index + block_height)
+                        .collect()
+                }),
+            }
         }
     }
 
     const NEVER_SWITCH_HASHING: EraId = EraId::new(u64::MAX);
 
-    struct TestBlockIterator(Block, TestRng);
+    struct TestBlockIterator {
+        block: Block,
+        rng: TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+    }
 
     impl Iterator for TestBlockIterator {
         type Item = Block;
 
         fn next(&mut self) -> Option<Self::Item> {
+            let (is_switch_block, validators) = match &self.switch_block_indices {
+                Some(switch_block_indices)
+                    if switch_block_indices.contains(&self.block.height()) =>
+                {
+                    let secret_keys: Vec<SecretKey> = iter::repeat_with(|| {
+                        SecretKey::ed25519_from_bytes(
+                            self.rng.gen::<[u8; SecretKey::ED25519_LENGTH]>(),
+                        )
+                        .unwrap()
+                    })
+                    .take(4)
+                    .collect();
+                    let validators: BTreeMap<_, _> = secret_keys
+                        .iter()
+                        .map(|sk| (PublicKey::from(sk), 100.into()))
+                        .collect();
+
+                    (true, Some(validators))
+                }
+                Some(_) | None => (false, None),
+            };
+
             let next = Block::new(
-                self.0.id(NEVER_SWITCH_HASHING),
-                self.0.header().accumulated_seed(),
-                *self.0.header().state_root_hash(),
+                self.block.id(NEVER_SWITCH_HASHING),
+                self.block.header().accumulated_seed(),
+                *self.block.header().state_root_hash(),
                 FinalizedBlock::random_with_specifics(
-                    &mut self.1,
-                    self.0.header().era_id(),
-                    self.0.header().height() + 1,
-                    false,
+                    &mut self.rng,
+                    self.block.header().era_id(),
+                    self.block.header().height() + 1,
+                    is_switch_block,
                     std::iter::empty(),
                 ),
-                None,
-                self.0.header().protocol_version(),
+                validators,
+                self.block.header().protocol_version(),
                 NEVER_SWITCH_HASHING,
             )
             .unwrap();
-            self.0 = next.clone();
+            self.block = next.clone();
             Some(next)
         }
     }
@@ -3024,8 +3110,8 @@ mod tests {
     #[test]
     fn test_block_iter() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
-        let mut block_batch = test_block.into_iter().take(500);
+        let test_block = TestBlockSpec::new(rng, None);
+        let mut block_batch = test_block.into_iter().take(100);
         let mut parent_block: Block = block_batch.next().unwrap();
         for current_block in block_batch {
             assert_eq!(
@@ -3043,9 +3129,32 @@ mod tests {
     }
 
     #[test]
+    fn test_block_iter_creates_switch_blocks() {
+        let switch_block_indices = vec![0, 10, 76];
+
+        let rng = TestRng::new();
+        let test_block = TestBlockSpec::new(rng, Some(switch_block_indices.clone()));
+        let block_batch: Vec<_> = test_block.into_iter().take(100).collect();
+
+        let base_height = block_batch.first().expect("should have block").height();
+
+        for block in block_batch {
+            if switch_block_indices
+                .iter()
+                .map(|index| index + base_height)
+                .any(|index| index == block.height())
+            {
+                assert!(block.header().is_switch_block())
+            } else {
+                assert!(!block.header().is_switch_block())
+            }
+        }
+    }
+
+    #[test]
     fn block_batch_is_continuous_and_descending() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3089,7 +3198,7 @@ mod tests {
     #[test]
     fn block_headers_batch_from_vec() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
         let mut batch = test_block_iter
@@ -3127,7 +3236,7 @@ mod tests {
         );
 
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 
@@ -3173,7 +3282,7 @@ mod tests {
     #[test]
     fn block_headers_batch_validate() {
         let rng = TestRng::new();
-        let test_block = TestBlock::new(rng);
+        let test_block = TestBlockSpec::new(rng, None);
 
         let mut test_block_iter = test_block.into_iter();
 

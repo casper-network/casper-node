@@ -1,23 +1,25 @@
 import * as externals from "./externals";
-import {URef, AccessRights} from "./uref";
-import {Error, ErrorCode} from "./error";
-import {CLValue, CLType, CLTypeTag} from "./clvalue";
-import {Key, AccountHash} from "./key";
-import {Pair} from "./pair";
-import {Ref} from "./ref";
-import {toBytesString,
-        toBytesVecT,
-        fromBytesMap,
-        fromBytesString,
-        toBytesStringList,
-        Result,
-        toBytesMap,
-        toBytesVecT,
-        fromBytesArray} from "./bytesrepr";
-import {KEY_UREF_SERIALIZED_LENGTH, UREF_ADDR_LENGTH, KEY_HASH_LENGTH} from "./constants";
-import {RuntimeArgs} from "./runtime_args";
-import {encodeUTF8} from "./utils";
-import {Option} from "./option";
+import { URef, AccessRights } from "./uref";
+import { Error, ErrorCode } from "./error";
+import { CLValue, CLType, CLTypeTag } from "./clvalue";
+import { Key, AccountHash } from "./key";
+import { Pair } from "./pair";
+import { Ref } from "./ref";
+import {
+  toBytesString,
+  toBytesVecT,
+  fromBytesMap,
+  fromBytesString,
+  toBytesStringList,
+  Result,
+  toBytesMap,
+  toBytesVecT,
+  fromBytesArray
+} from "./bytesrepr";
+import { KEY_UREF_SERIALIZED_LENGTH, UREF_ADDR_LENGTH, KEY_HASH_LENGTH } from "./constants";
+import { RuntimeArgs } from "./runtime_args";
+import { encodeUTF8 } from "./utils";
+import { Option } from "./option";
 
 // NOTE: interfaces aren't supported in AS yet: https://github.com/AssemblyScript/assemblyscript/issues/146#issuecomment-399130960
 // interface ToBytes {
@@ -162,13 +164,13 @@ export function callContract(contractHash: Uint8Array, entryPointName: String, r
   resultSize.fill(0);
 
   let ret = externals.call_contract(
-      <usize>contractHash.dataStart,
-      contractHash.length,
-      entryPointNameBytes.dataStart,
-      entryPointNameBytes.length,
-      argBytes.dataStart,
-      argBytes.length,
-      resultSize.dataStart,
+    <usize>contractHash.dataStart,
+    contractHash.length,
+    entryPointNameBytes.dataStart,
+    entryPointNameBytes.length,
+    argBytes.dataStart,
+    argBytes.length,
+    resultSize.dataStart,
   );
   const error = Error.fromResult(ret);
   if (error !== null) {
@@ -216,12 +218,12 @@ export function getKey(name: String): Key | null {
   var nameBytes = toBytesString(name);
   let keyBytes = new Uint8Array(KEY_UREF_SERIALIZED_LENGTH);
   let resultSize = new Uint32Array(1);
-  let ret =  externals.get_key(
-      nameBytes.dataStart,
-      nameBytes.length,
-      keyBytes.dataStart,
-      keyBytes.length,
-      resultSize.dataStart,
+  let ret = externals.get_key(
+    nameBytes.dataStart,
+    nameBytes.length,
+    keyBytes.dataStart,
+    keyBytes.length,
+    resultSize.dataStart,
   );
   const error = Error.fromResult(ret);
   if (error !== null) {
@@ -231,8 +233,8 @@ export function getKey(name: String): Key | null {
     error.revert();
     unreachable();
   }
-  let key = Key.fromBytes(keyBytes.slice(0, <i32>resultSize[0])); // total guess
-  return key.unwrap();
+  const deserializedKey = Key.fromBytes(keyBytes.slice(0, <i32>resultSize[0])); // total guess
+  return deserializedKey.unwrap();
 }
 
 /**
@@ -334,7 +336,7 @@ export function getPhase(): Phase {
  * The current context is either the caller's account or a stored contract depending on whether the
  * currently-executing module is a direct call or a sub-call respectively.
  */
-export function removeKey(name: String): void{
+export function removeKey(name: String): void {
   var nameBytes = toBytesString(name);
   externals.remove_key(nameBytes.dataStart, nameBytes.length);
 }
@@ -379,7 +381,7 @@ const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
 const ENTRYPOINTACCESS_GROUPS_TAG: u8 = 2;
 
 export class EntryPointAccess {
-  constructor(public cachedBytes: Array<u8>) {}
+  constructor(public cachedBytes: Array<u8>) { }
   toBytes(): Array<u8> {
     return this.cachedBytes;
   }
@@ -407,14 +409,14 @@ export enum EntryPointType {
 
 export class EntryPoint {
   constructor(public name: String,
-              public args: Array<Pair<String, CLType>>,
-              public ret: CLType,
-              public access: EntryPointAccess,
-              public entry_point_type: EntryPointType) {}
+    public args: Array<Pair<String, CLType>>,
+    public ret: CLType,
+    public access: EntryPointAccess,
+    public entry_point_type: EntryPointType) { }
 
   toBytes(): Array<u8> {
     let nameBytes = toBytesString(this.name);
-    let toBytesCLType = function(clType: CLType): Array<u8> { return clType.toBytes(); };
+    let toBytesCLType = function (clType: CLType): Array<u8> { return clType.toBytes(); };
     let argsBytes = toBytesMap(this.args, toBytesString, toBytesCLType);
     let retBytes = this.ret.toBytes();
     let accessBytes = this.access.toBytes();
@@ -429,7 +431,7 @@ export class EntryPoints {
     this.entryPoints.push(new Pair(entryPoint.name, entryPoint));
   }
   toBytes(): Array<u8> {
-    let toBytesEntryPoint = function(entryPoint: EntryPoint): Array<u8> { return entryPoint.toBytes(); };
+    let toBytesEntryPoint = function (entryPoint: EntryPoint): Array<u8> { return entryPoint.toBytes(); };
     return toBytesMap(this.entryPoints, toBytesString, toBytesEntryPoint);
   }
 }
@@ -438,7 +440,7 @@ export class EntryPoints {
  * A two-value structure that holds the result of [[createContractPackageAtHash]].
  */
 export class CreateContractPackageResult {
-  constructor(public packageHash: Uint8Array, public accessURef: URef) {}
+  constructor(public packageHash: Uint8Array, public accessURef: URef) { }
 }
 
 export function createContractPackageAtHash(): CreateContractPackageResult {
@@ -456,12 +458,12 @@ export function createLockedContractPackageAtHash(): CreateContractPackageResult
   let urefAddr = new Uint8Array(UREF_ADDR_LENGTH);
   externals.create_contract_package_at_hash(hashAddr.dataStart, urefAddr.dataStart, true);
   return new CreateContractPackageResult(
-      hashAddr,
-      new URef(urefAddr, AccessRights.READ_ADD_WRITE),
+    hashAddr,
+    new URef(urefAddr, AccessRights.READ_ADD_WRITE),
   );
 }
 
-export function newContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null ,hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
+export function newContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null, hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
   let result = createContractPackageAtHash();
   if (hashName !== null) {
     putKey(<String>hashName, Key.fromHash(result.packageHash));
@@ -481,7 +483,7 @@ export function newContract(entryPoints: EntryPoints, namedKeys: Array<Pair<Stri
   );
 }
 
-export function newLockedContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null ,hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
+export function newLockedContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null, hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
   let result = createLockedContractPackageAtHash();
   if (hashName !== null) {
     putKey(<String>hashName, Key.fromHash(result.packageHash));
@@ -495,9 +497,9 @@ export function newLockedContract(entryPoints: EntryPoints, namedKeys: Array<Pai
   }
 
   return addContractVersion(
-      result.packageHash,
-      entryPoints,
-      namedKeys,
+    result.packageHash,
+    entryPoints,
+    namedKeys,
   );
 }
 
@@ -534,7 +536,7 @@ export function callVersionedContract(packageHash: Uint8Array, contract_version:
 // Container for a result of contract version.
 // Used as a replacement of non-existing tuples.
 export class AddContractVersionResult {
-  constructor(public contractHash: Uint8Array, public contractVersion: u32) {}
+  constructor(public contractHash: Uint8Array, public contractVersion: u32) { }
 }
 
 // Add new contract version. Requires a package hash, entry points and named keys.
@@ -542,7 +544,7 @@ export class AddContractVersionResult {
 export function addContractVersion(packageHash: Uint8Array, entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>>): AddContractVersionResult {
   var versionPtr = new Uint32Array(1);
   let entryPointsBytes = entryPoints.toBytes();
-  let keyToBytes = function(key: Key): Array<u8> { return key.toBytes(); };
+  let keyToBytes = function (key: Key): Array<u8> { return key.toBytes(); };
   let namedKeysBytes = toBytesMap(namedKeys, toBytesString, keyToBytes);
   let keyBytes = new Uint8Array(32);
   let totalBytes = new Uint32Array(1);
@@ -576,8 +578,8 @@ export function createContractUserGroup(packageHash: Uint8Array, label: String, 
   // NOTE: AssemblyScript sometimes is fine with closures, and sometimes
   // it generates unreachable code. Anonymous functions seems to be working
   // consistently.
-  let toBytesURef = function(item: URef): Array<u8> { return item.toBytes(); }
-  let fromBytesURef = function(bytes: Uint8Array): Result<URef> { return URef.fromBytes(bytes); }
+  let toBytesURef = function (item: URef): Array<u8> { return item.toBytes(); }
+  let fromBytesURef = function (bytes: Uint8Array): Result<URef> { return URef.fromBytes(bytes); }
 
   let existingUrefBytes: Array<u8> = toBytesVecT(existingURefs, toBytesURef);
 
@@ -648,7 +650,7 @@ export function removeContractUserGroupURefs(
 
   let label_bytes = toBytesString(label);
 
-  let encode = function(item: URef): Array<u8> { return item.toBytes(); };
+  let encode = function (item: URef): Array<u8> { return item.toBytes(); };
   let urefsData = toBytesVecT(urefs, encode);
 
   let ret = externals.remove_contract_user_group_urefs(

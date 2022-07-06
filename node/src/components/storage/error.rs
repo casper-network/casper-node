@@ -4,7 +4,7 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_hashing::Digest;
-use casper_types::{crypto, EraId};
+use casper_types::{bytesrepr, crypto, EraId};
 
 use super::lmdb_ext::LmdbExtError;
 use crate::{
@@ -175,6 +175,12 @@ pub enum FatalStorageError {
         /// The missing deploy hash.
         deploy_hash: DeployHash,
     },
+    /// `ToBytes` serialization failure of an item that should never fail to serialize.
+    #[error("unexpected serialization failure: {0}")]
+    UnexpectedSerializationFailure(bytesrepr::Error),
+    /// `ToBytes` deserialization failure of an item that should never fail to serialize.
+    #[error("unexpected deserialization failure: {0}")]
+    UnexpectedDeserializationFailure(bytesrepr::Error),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.

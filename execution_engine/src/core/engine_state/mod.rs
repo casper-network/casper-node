@@ -359,7 +359,7 @@ where
                 CLValue::from_t(new_validator_slots)
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
-            let _ = tracking_copy.borrow_mut().write(validator_slots_key, value);
+            tracking_copy.borrow_mut().write(validator_slots_key, value);
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
@@ -372,7 +372,7 @@ where
                 CLValue::from_t(new_auction_delay)
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
-            let _ = tracking_copy.borrow_mut().write(auction_delay_key, value);
+            tracking_copy.borrow_mut().write(auction_delay_key, value);
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
@@ -385,7 +385,7 @@ where
                 CLValue::from_t(new_locked_funds_period)
                     .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
             );
-            let _ = tracking_copy
+            tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
         }
@@ -400,7 +400,7 @@ where
                 CLValue::from_t(new_unbonding_delay)
                     .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
             );
-            let _ = tracking_copy.borrow_mut().write(unbonding_delay_key, value);
+            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
@@ -418,7 +418,7 @@ where
                 CLValue::from_t(new_round_seigniorage_rate)
                     .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
             );
-            let _ = tracking_copy
+            tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
         }
@@ -765,7 +765,7 @@ where
                             let new_account =
                                 Account::create(public_key, Default::default(), main_purse);
                             // write new account
-                            let _ = tracking_copy
+                            tracking_copy
                                 .borrow_mut()
                                 .write(Key::Account(public_key), StoredValue::Account(new_account));
                         }
@@ -1057,7 +1057,7 @@ where
                 account.main_purse(),
                 cost,
             );
-            let _ = tracking_copy.borrow_mut().write(
+            tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_item.deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
             );
@@ -1488,7 +1488,7 @@ where
                 account.main_purse(),
                 cost,
             );
-            let _ = session_tracking_copy.borrow_mut().write(
+            session_tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
             );
@@ -2153,7 +2153,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::MissingSystemContractHash(_)
                 | ExecError::RuntimeStackOverflow
                 | ExecError::ValueTooLarge
-                | ExecError::MissingRuntimeStack => false,
+                | ExecError::MissingRuntimeStack
+                | ExecError::DisabledContract(_) => false,
             },
             Error::WasmPreprocessing(_) => true,
             Error::WasmSerialization(_) => true,

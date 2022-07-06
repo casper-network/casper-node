@@ -177,6 +177,7 @@ where
 
 /// A secret or private asymmetric key.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[non_exhaustive]
 pub enum SecretKey {
     /// System secret key.
     System,
@@ -467,6 +468,7 @@ impl Tagged<u8> for SecretKey {
 /// A public asymmetric key.
 #[derive(Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[non_exhaustive]
 pub enum PublicKey {
     /// System public key.
     System,
@@ -874,6 +876,7 @@ impl CLTyped for PublicKey {
 /// A signature of given data.
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[non_exhaustive]
 pub enum Signature {
     /// System signature.  Cannot be verified.
     System,
@@ -1211,7 +1214,7 @@ mod detail {
     ///
     /// The wrapped contents are the result of calling `t_as_ref()` on the type.
     #[derive(Serialize, Deserialize)]
-    pub enum AsymmetricTypeAsBytes {
+    pub(super) enum AsymmetricTypeAsBytes {
         System,
         Ed25519(Vec<u8>),
         Secp256k1(Vec<u8>),
@@ -1237,7 +1240,7 @@ mod detail {
         }
     }
 
-    pub fn serialize<'a, T, S>(value: &'a T, serializer: S) -> Result<S::Ok, S::Error>
+    pub(super) fn serialize<'a, T, S>(value: &'a T, serializer: S) -> Result<S::Ok, S::Error>
     where
         T: AsymmetricType<'a>,
         Vec<u8>: From<&'a T>,
@@ -1251,7 +1254,7 @@ mod detail {
         AsymmetricTypeAsBytes::from(value).serialize(serializer)
     }
 
-    pub fn deserialize<'a, 'de, T, D>(deserializer: D) -> Result<T, D::Error>
+    pub(super) fn deserialize<'a, 'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where
         T: AsymmetricType<'a>,
         Vec<u8>: From<&'a T>,

@@ -4,6 +4,7 @@ use crate::system::{auction, handle_payment, mint};
 
 /// An aggregate enum error with variants for each system contract's error.
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub enum Error {
     /// Contains a [`mint::Error`].
     Mint(mint::Error),
