@@ -64,6 +64,8 @@ use crate::components::consensus::error::CreateNewEraError;
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
+/// A warning is printed if a timer is delayed by more than this.
+const TIMER_DELAY_WARNING_MILLIS: u64 = 1000;
 
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
@@ -607,6 +609,12 @@ impl EraSupervisor {
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event> {
+        if timestamp.elapsed().millis() > TIMER_DELAY_WARNING_MILLIS {
+            warn!(
+                era = era_id.value(), timer_id = timer_id.0, delay = %timestamp.elapsed(),
+                "timer called with long delay"
+            );
+        }
         self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
             consensus.handle_timer(timestamp, timer_id, rng)
         })
