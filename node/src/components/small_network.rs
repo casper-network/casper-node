@@ -342,6 +342,7 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
+            // Initially, we assume that we are in the sync process.
             chain_sync_in_progress: true,
         };
 
@@ -516,7 +517,7 @@ where
                     self.update_joining_set(peer_id, true);
                 }
 
-                // Tell the peer that we have finished syncing, because he'll asssume he's
+                // Tell the peer that we have finished syncing because it'll assume it's
                 // connecting to a node that is still syncing. If we're actually
                 // still syncing, the peer will be notified later by the chain synchronizer
                 // component.
