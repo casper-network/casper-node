@@ -855,8 +855,8 @@ impl reactor::Reactor for Reactor {
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            JoinerEvent::LinearChainAnnouncement(LinearChainAnnouncement::SyncStateFinished) => {
-                warn!("unexpected sync state finished announcement in the joiner");
+            JoinerEvent::LinearChainAnnouncement(LinearChainAnnouncement::SyncFinished) => {
+                warn!("unexpected sync finished announcement in the joiner");
                 Effects::new()
             }
             JoinerEvent::RestServer(event) => reactor::wrap_effects(

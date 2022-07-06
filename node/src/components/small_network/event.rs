@@ -97,7 +97,7 @@ pub(crate) enum Event<P> {
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 
     #[from]
-    SyncStateFinished,
+    SyncFinished,
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -147,7 +147,7 @@ impl<P: Display> Display for Event<P> {
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
             }
-            Event::SyncStateFinished => write!(f, "syncing finished"),
+            Event::SyncFinished => write!(f, "syncing finished"),
         }
     }
 }

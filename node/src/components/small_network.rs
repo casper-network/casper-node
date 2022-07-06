@@ -512,7 +512,7 @@ where
                     self.connection_completed(peer_id);
 
                     // By default, we assume that the peer is syncing. It'll send us the
-                    // `SyncStateChanged` message in case it isn't.
+                    // `SyncFinished` message in case it isn't.
                     self.update_joining_set(peer_id, true);
                 }
 
@@ -522,7 +522,7 @@ where
                 // component.
                 if !self.chain_sync_in_progress {
                     info!("telling the newly connected peer that we already finished syncing");
-                    self.send_message(peer_id, Arc::new(Message::SyncStateChanged), None);
+                    self.send_message(peer_id, Arc::new(Message::SyncFinished), None);
                 }
 
                 // Now we can start the message reader.
@@ -689,7 +689,7 @@ where
                 }
 
                 // By default, we assume that the peer is syncing. It'll send us the
-                // `SyncStateChanged` message in case it isn't.
+                // `SyncFinished` message in case it isn't.
                 //
                 // TODO[RC]: Rename `remote_joiner_id` to make it clear it is related to "syncing".
                 let remote_joiner_id = Some((peer_addr, peer_id));
@@ -784,7 +784,7 @@ where
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()
             }
-            Message::SyncStateChanged => {
+            Message::SyncFinished => {
                 info!(%peer_id, "peer reported sync finished");
                 self.update_joining_set(peer_id, false);
                 Effects::new()
@@ -1083,10 +1083,10 @@ where
 
                 effects
             }
-            Event::SyncStateFinished => {
+            Event::SyncFinished => {
                 info!("notifying peers that chain sync has finished");
                 self.net_metrics.broadcast_requests.inc();
-                self.broadcast_message(Arc::new(Message::SyncStateChanged));
+                self.broadcast_message(Arc::new(Message::SyncFinished));
                 self.chain_sync_in_progress = false;
                 Effects::new()
             }

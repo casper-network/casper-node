@@ -1669,10 +1669,7 @@ impl<REv> EffectBuilder<REv> {
     {
         info!("announcing chain sync finished");
         self.event_queue
-            .schedule(
-                LinearChainAnnouncement::SyncStateFinished,
-                QueueKind::Network,
-            )
+            .schedule(LinearChainAnnouncement::SyncFinished, QueueKind::Network)
             .await
     }
 

@@ -267,7 +267,7 @@ pub(crate) enum LinearChainAnnouncement {
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
     // TODO[RC]: temp location
-    SyncStateFinished,
+    SyncFinished,
 }
 
 impl Display for LinearChainAnnouncement {
@@ -279,7 +279,7 @@ impl Display for LinearChainAnnouncement {
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)
             }
-            LinearChainAnnouncement::SyncStateFinished => write!(f, "chain sync finished"),
+            LinearChainAnnouncement::SyncFinished => write!(f, "chain sync finished"),
         }
     }
 }
