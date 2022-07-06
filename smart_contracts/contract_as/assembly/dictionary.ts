@@ -34,14 +34,14 @@ export function newDictionary(keyName: String): URef {
 }
 
 /**
- * Reads the value under `key` in the dictionary partition of global state.
+ * Reads the value under `dictionary_item_key` in the dictionary partition of global state.
  *
  * @category Storage
  * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, dictionary_item_key: String): Uint8Array | null {
     let seedUrefBytes = seed_uref.toBytes();
-    const keyBytes = encodeUTF8(key);
+    const keyBytes = encodeUTF8(dictionary_item_key);
 
     let valueSize = new Uint8Array(1);
     const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
@@ -54,24 +54,6 @@ export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
         throw 0;
     }
     return readHostBuffer(valueSize[0]);
-}
-
-/**
- * Writes `value` under `key` in a dictionary.
- * @category Storage
- */
-export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
-    const keyBytes = encodeUTF8(key);
-    const urefBytes = uref.toBytes();
-    const valueBytes = value.toBytes();
-    externals.dictionary_put(
-        urefBytes.dataStart,
-        urefBytes.length,
-        keyBytes.dataStart,
-        keyBytes.length,
-        valueBytes.dataStart,
-        valueBytes.length
-    );
 }
 
 /**
@@ -96,3 +78,22 @@ export function dictionaryRead(dictionaryKey: Key): Uint8Array | null {
     }
     return readHostBuffer(valueSize[0]);
 }
+
+/**
+ * Writes `value` under `key` in a dictionary.
+ * @category Storage
+ */
+export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
+    const keyBytes = encodeUTF8(key);
+    const urefBytes = uref.toBytes();
+    const valueBytes = value.toBytes();
+    externals.dictionary_put(
+        urefBytes.dataStart,
+        urefBytes.length,
+        keyBytes.dataStart,
+        keyBytes.length,
+        valueBytes.dataStart,
+        valueBytes.length
+    );
+}
+

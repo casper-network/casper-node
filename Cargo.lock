@@ -1266,8 +1266,8 @@ dependencies = [
 name = "dictionary-read"
 version = "0.1.0"
 dependencies = [
- "casper-contract",
- "casper-types",
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
 ]
 
 [[package]]
@@ -3590,6 +3590,14 @@ dependencies = [
  "crossbeam-deque 0.8.1",
  "crossbeam-utils 0.8.10",
  "num_cpus",
+]
+
+[[package]]
+name = "read-from-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
 ]
 
 [[package]]

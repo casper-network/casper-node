@@ -744,6 +744,23 @@ extern "C" {
         key_bytes_size: usize,
         output_size: *mut usize,
     ) -> i32;
+    /// The bytes in the span of wasm memory from `key_ptr` to `key_ptr + key_size` must correspond
+    /// to a valid global state dictionary key, otherwise the function will fail.
+    /// If the Key::Dictionary is de-serialized successfully, then the result of the read is
+    /// serialized and buffered in the runtime. This result can be obtained via the
+    /// [`casper_read_host_buffer`] function. Returns standard error code.
+    ///
+    /// # Arguments
+    ///
+    /// * `key_ptr` - pointer (offset in wasm linear memory) to serialized form of the
+    ///   Key::Dictionary to read
+    /// * `key_size` - size of the serialized Key::Dictionary (in bytes)
+    /// * `output_size` - pointer to a value where host will write size of bytes read from given key
+    pub fn casper_dictionary_read(
+        key_ptr: *const u8,
+        key_size: usize,
+        output_size: *mut usize,
+    ) -> i32;
     /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
     /// will be used together with the passed URef's seed to form a dictionary.
     /// This function writes the provided value (read via de-serializing the bytes
@@ -766,22 +783,6 @@ extern "C" {
         key_size: usize,
         value_ptr: *const u8,
         value_size: usize,
-    ) -> i32;
-    /// The bytes in the span of wasm memory from `key_ptr` to `key_ptr + key_size` must correspond
-    /// to a valid global state dictionary key, otherwise the function will fail.
-    /// If the key is de-serialized successfully, then the result of the read is serialized
-    /// and buffered in the runtime. This result can be obtained via the [`casper_read_host_buffer`]
-    /// function. Returns standard error code.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_ptr` - pointer (offset in wasm linear memory) to serialized form of the key to read
-    /// * `key_size` - size of the serialized key (in bytes)
-    /// * `output_size` - pointer to a value where host will write size of bytes read from given key
-    pub fn casper_dictionary_read(
-        key_ptr: *const u8,
-        key_size: usize,
-        output_size: *mut usize,
     ) -> i32;
     /// Returns 32 pseudo random bytes.
     ///

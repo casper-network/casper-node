@@ -20,6 +20,7 @@ const DICTIONARY_WASM: &str = "dictionary.wasm";
 const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const DICTIONARY_READ: &str = "dictionary_read.wasm";
+const READ_FROM_KEY: &str = "read_from_key.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
@@ -663,6 +664,22 @@ fn should_be_able_to_perform_dictionary_read() {
 
     builder
         .exec(dictionary_session_call)
+        .expect_success()
+        .commit();
+}
+
+#[ignore]
+#[test]
+fn should_be_able_to_perform_read_from_key() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let read_from_key_session_call =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, READ_FROM_KEY, RuntimeArgs::new())
+            .build();
+
+    builder
+        .exec(read_from_key_session_call)
         .expect_success()
         .commit();
 }

@@ -2785,6 +2785,41 @@ where
         Ok(Ok(()))
     }
 
+    /// Reads the `value` under a `Key::Dictionary`.
+    fn dictionary_read(
+        &mut self,
+        key_ptr: u32,
+        key_size: u32,
+        output_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        let dictionary_key = self.key_from_mem(key_ptr, key_size)?;
+        let cl_value = match self.context.dictionary_read(dictionary_key)? {
+            Some(cl_value) => cl_value,
+            None => return Ok(Err(ApiError::ValueNotFound)),
+        };
+
+        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
+        if let Err(error) = self.write_host_buffer(cl_value) {
+            return Ok(Err(error));
+        }
+
+        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
     /// Writes a `key`, `value` pair in a dictionary
     fn dictionary_put(
         &mut self,
@@ -2813,41 +2848,6 @@ where
         {
             return Err(Trap::from(e));
         }
-        Ok(Ok(()))
-    }
-
-    /// Reads the `value` under a `key` in a dictionary.
-    fn dictionary_read(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        if !self.can_write_to_host_buffer() {
-            // Exit early if the host buffer is already occupied
-            return Ok(Err(ApiError::HostBufferFull));
-        }
-
-        let dictionary_address = self.key_from_mem(key_ptr, key_size)?;
-        let cl_value = match self.context.dictionary_read(dictionary_address)? {
-            Some(cl_value) => cl_value,
-            None => return Ok(Err(ApiError::ValueNotFound)),
-        };
-
-        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
-            Ok(value) => value,
-            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
-        };
-
-        if let Err(error) = self.write_host_buffer(cl_value) {
-            return Ok(Err(error));
-        }
-
-        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
-        }
-
         Ok(Ok(()))
     }
 

@@ -20,6 +20,11 @@ use crate::{
 /// Reads value under `uref` in the global state.
 pub fn read<T: CLTyped + FromBytes>(uref: URef) -> Result<Option<T>, bytesrepr::Error> {
     let key: Key = uref.into();
+    read_from_key(key)
+}
+
+/// Reads value under `key` in the global state.
+pub fn read_from_key<T: CLTyped + FromBytes>(key: Key) -> Result<Option<T>, bytesrepr::Error> {
     let (key_ptr, key_size, _bytes) = contract_api::to_ptr(key);
 
     let value_size = {
