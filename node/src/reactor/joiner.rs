@@ -855,6 +855,11 @@ impl reactor::Reactor for Reactor {
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            JoinerEvent::LinearChainAnnouncement(LinearChainAnnouncement::SyncStateFinished) => {
+                // TODO[RC]
+                // ignore + warn
+                todo!();
+            }
             JoinerEvent::RestServer(event) => reactor::wrap_effects(
                 JoinerEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),

@@ -1662,6 +1662,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce that the sync process has finished.
+    pub(crate) async fn announce_finished_syncing(self)
+    where
+        REv: From<LinearChainAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                LinearChainAnnouncement::SyncStateFinished,
+                QueueKind::Network,
+            )
+            .await
+    }
+
     /// The linear chain has stored a newly-created block.
     pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where

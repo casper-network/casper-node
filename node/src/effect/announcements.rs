@@ -260,12 +260,14 @@ impl<T: Item> Display for GossiperAnnouncement<T> {
 }
 
 /// A linear chain announcement.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
     BlockAdded(Box<Block>),
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
+    // TODO[RC]: temp location
+    SyncStateFinished,
 }
 
 impl Display for LinearChainAnnouncement {
@@ -277,6 +279,7 @@ impl Display for LinearChainAnnouncement {
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)
             }
+            LinearChainAnnouncement::SyncStateFinished => write!(f, "chain sync finished"),
         }
     }
 }

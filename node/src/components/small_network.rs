@@ -772,7 +772,11 @@ where
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()
             }
-            Message::SyncStateChanged => todo!(),
+            Message::SyncStateChanged => {
+                // TODO[RC]: Mark peer as non joiner
+                self.update_joining_set(peer_id, false);
+                Effects::new()
+            }
         })
     }
 
@@ -1066,6 +1070,12 @@ where
                 );
 
                 effects
+            }
+            Event::SyncStateFinished => {
+                // TODO[RC]: Update internal flag
+                self.net_metrics.broadcast_requests.inc();
+                self.broadcast_message(Arc::new(Message::SyncStateChanged));
+                Effects::new()
             }
         }
     }

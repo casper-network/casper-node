@@ -47,6 +47,12 @@ pub(crate) use metrics::Metrics;
 use operations::FastSyncOutcome;
 pub(crate) use operations::KeyBlockInfo;
 
+// #[derive(Debug, Serialize)]
+// pub(crate) enum LinearChainSyncAnnouncement {
+//     /// Chain sync finished.
+//     SyncStateFinished,
+// }
+
 #[derive(DataSize, Debug)]
 pub(crate) enum JoiningOutcome {
     /// We need to shutdown for upgrade as we downloaded a block from a higher protocol version.
@@ -120,9 +126,13 @@ impl ChainSynchronizer<ParticipatingEvent> {
             _phantom: PhantomData,
         };
 
-        // If we're not configured to sync-to-genesis, return without doing anything.
+        // If we're not configured to sync-to-genesis, return without doing anything but announcing
+        // that the sync process has finished.
         if !synchronizer.config.sync_to_genesis() {
-            return Ok((synchronizer, Effects::new()));
+            return Ok((
+                synchronizer,
+                effect_builder.announce_finished_syncing().ignore(),
+            ));
         }
 
         let effects = operations::run_sync_to_genesis_task(

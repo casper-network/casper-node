@@ -38,7 +38,7 @@ use crate::{
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
         requests::{
             ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
         },
@@ -2001,6 +2001,7 @@ where
         + From<FetcherRequest<BlockSignatures>>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
+        + From<LinearChainAnnouncement>
         + Send,
 {
     info!("starting chain sync to genesis");
@@ -2012,6 +2013,9 @@ where
             Error::NoHighestBlockHeader
         })?;
     sync_to_genesis(&ctx).await?;
+
+    effect_builder.announce_finished_syncing().await;
+
     info!("finished chain sync to genesis");
     Ok(())
 }
