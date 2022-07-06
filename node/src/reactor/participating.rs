@@ -28,7 +28,9 @@ use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
-        chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
+        chain_synchronizer::{
+            self, ChainSynchronizer, ChainSynchronizerAnnouncement, JoiningOutcome,
+        },
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
@@ -214,6 +216,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
     #[from]
+    ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
+    #[from]
     BlocklistAnnouncement(BlocklistAnnouncement),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
@@ -333,6 +337,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
         }
     }
 }
@@ -509,6 +514,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
+            }
+            ParticipatingEvent::ChainSynchronizerAnnouncement(ann) => {
+                write!(f, "chain synchronizer announcement: {}", ann)
             }
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
@@ -1360,13 +1368,13 @@ impl reactor::Reactor for Reactor {
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            ParticipatingEvent::LinearChainAnnouncement(LinearChainAnnouncement::SyncFinished) => {
-                self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    ParticipatingEvent::SmallNetwork(small_network::Event::SyncFinished),
-                )
-            }
+            ParticipatingEvent::ChainSynchronizerAnnouncement(
+                ChainSynchronizerAnnouncement::SyncFinished,
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::SmallNetwork(small_network::Event::SyncFinished),
+            ),
             ParticipatingEvent::ChainspecLoaderAnnouncement(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {

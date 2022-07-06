@@ -133,6 +133,7 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
+        chain_synchronizer::ChainSynchronizerAnnouncement,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
@@ -1665,11 +1666,14 @@ impl<REv> EffectBuilder<REv> {
     /// Announce that the sync process has finished.
     pub(crate) async fn announce_finished_syncing(self)
     where
-        REv: From<LinearChainAnnouncement>,
+        REv: From<ChainSynchronizerAnnouncement>,
     {
         info!("announcing chain sync finished");
         self.event_queue
-            .schedule(LinearChainAnnouncement::SyncFinished, QueueKind::Network)
+            .schedule(
+                ChainSynchronizerAnnouncement::SyncFinished,
+                QueueKind::Network,
+            )
             .await
     }
 

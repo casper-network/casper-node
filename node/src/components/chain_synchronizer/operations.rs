@@ -38,7 +38,7 @@ use crate::{
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{
-        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
+        announcements::BlocklistAnnouncement,
         requests::{
             ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
         },
@@ -53,6 +53,8 @@ use crate::{
     },
     utils::work_queue::WorkQueue,
 };
+
+use super::ChainSynchronizerAnnouncement;
 
 const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
 
@@ -2001,7 +2003,7 @@ where
         + From<FetcherRequest<BlockSignatures>>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<LinearChainAnnouncement>
+        + From<ChainSynchronizerAnnouncement>
         + Send,
 {
     info!("starting chain sync to genesis");

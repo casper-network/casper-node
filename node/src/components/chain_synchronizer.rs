@@ -4,7 +4,14 @@ mod event;
 mod metrics;
 mod operations;
 
-use std::{collections::HashSet, convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
+use core::fmt;
+use std::{
+    collections::HashSet,
+    convert::Infallible,
+    fmt::{Debug, Display, Formatter},
+    marker::PhantomData,
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -47,12 +54,6 @@ pub(crate) use metrics::Metrics;
 use operations::FastSyncOutcome;
 pub(crate) use operations::KeyBlockInfo;
 
-// #[derive(Debug, Serialize)]
-// pub(crate) enum LinearChainSyncAnnouncement {
-//     /// Chain sync finished.
-//     SyncStateFinished,
-// }
-
 #[derive(DataSize, Debug)]
 pub(crate) enum JoiningOutcome {
     /// We need to shutdown for upgrade as we downloaded a block from a higher protocol version.
@@ -69,6 +70,21 @@ pub(crate) enum JoiningOutcome {
         validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
         highest_block_header: BlockHeader,
     },
+}
+
+/// A chain synchronizer announcement.
+#[derive(Debug)]
+pub(crate) enum ChainSynchronizerAnnouncement {
+    /// Synchronization has been finished.
+    SyncFinished,
+}
+
+impl Display for ChainSynchronizerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ChainSynchronizerAnnouncement::SyncFinished => write!(f, "chain sync finished"),
+        }
+    }
 }
 
 #[derive(DataSize, Debug)]
