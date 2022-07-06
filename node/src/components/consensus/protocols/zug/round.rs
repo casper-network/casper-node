@@ -203,6 +203,11 @@ impl<C: Context> Round<C> {
         self.proposal = None;
         self.outcome.accepted_proposal_height = None;
     }
+
+    /// Returns the validator index of this round's leader.
+    pub(super) fn leader(&self) -> ValidatorIndex {
+        self.leader_idx
+    }
 }
 
 /// Indicates the outcome of a given round.
