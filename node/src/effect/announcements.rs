@@ -260,7 +260,7 @@ impl<T: Item> Display for GossiperAnnouncement<T> {
 }
 
 /// A linear chain announcement.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
     BlockAdded(Box<Block>),
