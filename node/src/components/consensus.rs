@@ -59,7 +59,10 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 pub(crate) use leader_sequence::LeaderSequence;
 
-pub(crate) use utils::{check_sufficient_finality_signatures, get_minimal_set_of_signatures};
+pub(crate) use utils::{
+    check_sufficient_finality_signatures, check_sufficient_finality_signatures_with_quorum_formula,
+    get_minimal_set_of_signatures, validate_finality_signatures,
+};
 pub(crate) use validator_change::ValidatorChange;
 
 /// A message to be handled by the consensus protocol instance in a particular era.

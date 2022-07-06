@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, contracts::NamedKeys, runtime_args, Key, RuntimeArgs};
@@ -13,7 +13,7 @@ const ARG_NEW_NAMED_KEYS: &str = "new_named_keys";
 #[ignore]
 #[test]
 fn should_list_named_keys() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let initial_named_keys: NamedKeys = NamedKeys::new();

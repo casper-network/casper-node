@@ -10,8 +10,7 @@ use std::convert::TryFrom;
 
 use bytes::Bytes;
 use http::{header::CONTENT_TYPE, HeaderMap, StatusCode};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tracing::{debug, trace, warn};
 use warp::{
     body,
@@ -24,18 +23,12 @@ use warp::{
 use crate::{
     error::{Error, ReservedErrorCode},
     rejections::{BodyTooLarge, MissingContentTypeHeader, MissingId, UnsupportedMediaType},
-    request::{ErrorOrRejection, Request, UnvalidatedRequest},
+    request::{ErrorOrRejection, Request},
     request_handlers::RequestHandlers,
     response::Response,
 };
 
 const CONTENT_TYPE_VALUE: &str = "application/json";
-
-/// A type to try to allow parsing an invalid request in order to extract the ID.
-#[derive(Serialize, Deserialize, Debug)]
-struct MalformedRequestWithId {
-    id: Value,
-}
 
 /// Returns a boxed warp filter which handles the initial setup.
 ///
@@ -82,7 +75,7 @@ pub fn base_filter<P: AsRef<str>>(path: P, max_body_bytes: u32) -> BoxedFilter<(
 /// specification, i.e. the request doesn't contain an "id" field.  In this case, no JSON-RPC
 /// response is sent to the client.
 async fn handle_body(body: Bytes, handlers: RequestHandlers) -> Result<Response, Rejection> {
-    let response = match serde_json::from_slice::<UnvalidatedRequest>(&*body) {
+    let response = match serde_json::from_slice::<Map<String, Value>>(&*body) {
         Ok(unvalidated_request) => match Request::try_from(unvalidated_request) {
             Ok(request) => handlers.handle_request(request).await,
             Err(ErrorOrRejection::Error { id, error }) => {
@@ -95,19 +88,9 @@ async fn handle_body(body: Bytes, handlers: RequestHandlers) -> Result<Response,
             }
         },
         Err(error) => {
-            if let Ok(malformed) = serde_json::from_slice::<MalformedRequestWithId>(&*body) {
-                debug!(%error, "got an invalid request, but with 'id' field");
-                let error = Error::new(ReservedErrorCode::InvalidRequest, error.to_string());
-                Response::new_failure(malformed.id, error)
-            } else if serde_json::from_slice::<Value>(&*body).is_ok() {
-                debug!(%error, "got json, but not a request");
-                let error = Error::new(ReservedErrorCode::InvalidRequest, error.to_string());
-                Response::new_failure(Value::Null, error)
-            } else {
-                debug!(%error, "got bad json");
-                let error = Error::new(ReservedErrorCode::ParseError, error.to_string());
-                Response::new_failure(Value::Null, error)
-            }
+            debug!(%error, "got bad json");
+            let error = Error::new(ReservedErrorCode::ParseError, error.to_string());
+            Response::new_failure(Value::Null, error)
         }
     };
     Ok(response)

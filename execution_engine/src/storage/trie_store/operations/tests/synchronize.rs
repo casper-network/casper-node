@@ -5,12 +5,11 @@ use crate::{
     shared::newtypes::CorrelationId,
     storage::{
         error,
-        error::in_memory,
         transaction_source::{Transaction, TransactionSource},
         trie_store::{
             operations::{
                 self,
-                tests::{InMemoryTestContext, LmdbTestContext, TestKey, TestValue},
+                tests::{LmdbTestContext, TestKey, TestValue},
                 ReadResult,
             },
             TrieStore,
@@ -142,24 +141,6 @@ fn lmdb_copy_state() {
     let target = LmdbTestContext::new::<TestKey, TestValue>(&[]).unwrap();
 
     copy_state::<TestKey, TestValue, _, _, error::Error>(
-        correlation_id,
-        &source.environment,
-        &source.store,
-        &target.environment,
-        &target.store,
-        &root_hash,
-    )
-    .unwrap();
-}
-
-#[test]
-fn in_memory_copy_state() {
-    let correlation_id = CorrelationId::new();
-    let (root_hash, tries) = super::create_6_leaf_trie().unwrap();
-    let source = InMemoryTestContext::new(&tries).unwrap();
-    let target = InMemoryTestContext::new::<TestKey, TestValue>(&[]).unwrap();
-
-    copy_state::<TestKey, TestValue, _, _, in_memory::Error>(
         correlation_id,
         &source.environment,
         &source.store,

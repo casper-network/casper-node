@@ -14,6 +14,7 @@ mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
+
 /// Utilities for running transfers in a test or bench context.
 pub mod transfer;
 mod upgrade_request_builder;
@@ -39,7 +40,7 @@ pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
-pub use wasm_test_builder::{InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder};
+pub use wasm_test_builder::{LmdbWasmTestBuilder, WasmTestBuilder};
 
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;

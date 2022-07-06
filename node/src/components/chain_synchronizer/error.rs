@@ -12,7 +12,10 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
-    components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
+    components::{
+        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
+        fetcher::FetcherError,
+    },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
@@ -38,6 +41,12 @@ pub(crate) enum Error {
         maybe_last_emergency_restart_era_id: Option<EraId>,
     },
 
+    #[error("cannot get switch block for era: {era_id}")]
+    NoSwitchBlockForEra { era_id: EraId },
+
+    #[error("switch block at height {height} for era {era_id} contains no validator weights")]
+    MissingNextEraValidators { height: u64, era_id: EraId },
+
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
          {block_header_with_future_version:?}"
@@ -56,6 +65,9 @@ pub(crate) enum Error {
     #[error("no such block height: {0} encountered during syncing to Genesis")]
     NoSuchBlockHeight(u64),
 
+    #[error("no highest block header")]
+    NoHighestBlockHeader,
+
     #[error(transparent)]
     BlockHeaderFetcher(#[from] FetcherError<BlockHeader>),
 
@@ -73,6 +85,13 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
+
+    #[error(transparent)]
+    FinalitySignatures(
+        #[from]
+        #[serde(skip_serializing)]
+        FinalitySignatureError,
+    ),
 
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),

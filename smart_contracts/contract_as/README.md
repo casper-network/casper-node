@@ -18,9 +18,11 @@ answer as you see fit but you may safely default everything except `name` which 
 Then install assembly script and this package in the project directory.
 
 ```
-npm install --save-dev assemblyscript@0.9.1
+npm install --save-dev assemblyscript@0.17.14
 npm install --save casper-contract
 ```
+
+Currently AssemblyScript compiler v0.17.14 is the latest supported.
 
 ## Usage
 Add script entries for assembly script to your project's `package.json`; note that your contract name is used
@@ -30,7 +32,7 @@ for the name of the wasm file.
   "name": "your-contract-name",
   ...
   "scripts": {
-    "asbuild:optimized": "asc assembly/index.ts -b dist/your-contract-name.wasm --validate --optimize --use abort=",
+    "asbuild:optimized": "asc assembly/index.ts -o dist/your-contract-name.wasm --validate --disable bulk-memory --optimize --use abort=",
     "asbuild": "npm run asbuild:optimized",
     ...
   },

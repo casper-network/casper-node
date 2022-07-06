@@ -3,7 +3,7 @@ use num_rational::Ratio;
 use casper_execution_engine::core::{engine_state, execution};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
@@ -33,7 +33,7 @@ const FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET: u16 = 25;
 #[ignore]
 #[test]
 fn should_install_faucet_contract() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let fund_installer_account_request = FundAccountRequestBuilder::new()
@@ -131,7 +131,7 @@ fn should_install_faucet_contract() {
 #[ignore]
 #[test]
 fn should_allow_installer_to_set_variables() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut helper = FaucetDeployHelper::new()
@@ -222,7 +222,7 @@ fn should_allow_installer_to_set_variables() {
 #[ignore]
 #[test]
 fn should_fund_new_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -287,7 +287,7 @@ fn should_fund_new_account() {
 fn should_fund_existing_account() {
     let user_account = AccountHash::new([7u8; 32]);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
@@ -356,7 +356,7 @@ fn should_not_fund_once_exhausted() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
@@ -510,7 +510,7 @@ fn should_allow_installer_to_fund_freely() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_fund_amount = U512::from(200_000_000_000u64);
@@ -605,7 +605,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // Fund installer account
@@ -663,7 +663,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut helper = FaucetDeployHelper::new()
@@ -822,7 +822,7 @@ fn faucet_costs() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let fund_installer_account_request = ExecuteRequestBuilder::transfer(

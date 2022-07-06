@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use rand::Rng;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
@@ -21,7 +21,7 @@ const RANDOM_BYTES_RESULT: &str = "random_bytes_result";
 const RANDOM_BYTES_PAYMENT_WASM: &str = "random_bytes_payment.wasm";
 const RANDOM_BYTES_PAYMENT_RESULT: &str = "random_bytes_payment_result";
 
-fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str) -> [u8; COUNT] {
+fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) -> [u8; COUNT] {
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -41,7 +41,7 @@ fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str
 #[ignore]
 #[test]
 fn should_return_different_random_bytes_on_different_phases() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let execute_request = {
@@ -77,7 +77,7 @@ fn should_return_different_random_bytes_on_different_phases() {
 fn should_return_different_random_bytes_on_each_call() {
     const RUNS: usize = 10;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -107,7 +107,7 @@ fn should_hash() {
     const RUNS: usize = 100;
 
     let mut rng = rand::thread_rng();
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

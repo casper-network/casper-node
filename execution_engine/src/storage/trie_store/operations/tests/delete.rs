@@ -83,28 +83,6 @@ mod partial_tries {
         }
     }
 
-    #[test]
-    fn in_memory_delete_from_partial_trie_had_expected_results() {
-        for i in 0..TEST_LEAVES_LENGTH {
-            let correlation_id = CorrelationId::new();
-            let (initial_root_hash, initial_tries) = TEST_TRIE_GENERATORS[i + 1]().unwrap();
-            let (updated_root_hash, updated_tries) = TEST_TRIE_GENERATORS[i]().unwrap();
-            let key_to_delete = &TEST_LEAVES[i];
-            let context = InMemoryTestContext::new(&initial_tries).unwrap();
-
-            delete_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &initial_root_hash,
-                key_to_delete.key().unwrap(),
-                &updated_root_hash,
-                updated_tries.as_slice(),
-            )
-            .unwrap();
-        }
-    }
-
     fn delete_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, K, V, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
@@ -153,31 +131,6 @@ mod partial_tries {
             .unwrap();
         }
     }
-
-    #[test]
-    fn in_memory_delete_non_existent_key_from_partial_trie_should_return_does_not_exist() {
-        for i in 0..TEST_LEAVES_LENGTH {
-            let correlation_id = CorrelationId::new();
-            let (initial_root_hash, initial_tries) = TEST_TRIE_GENERATORS[i]().unwrap();
-            let key_to_delete = &TEST_LEAVES_ADJACENTS[i];
-            let context = InMemoryTestContext::new(&initial_tries).unwrap();
-
-            delete_non_existent_key_from_partial_trie_should_return_does_not_exist::<
-                TestKey,
-                TestValue,
-                _,
-                _,
-                error::Error,
-            >(
-                correlation_id,
-                &context.environment,
-                &context.store,
-                &initial_root_hash,
-                key_to_delete.key().unwrap(),
-            )
-            .unwrap();
-        }
-    }
 }
 
 mod full_tries {
@@ -199,10 +152,7 @@ mod full_tries {
             trie_store::{
                 operations::{
                     delete,
-                    tests::{
-                        InMemoryTestContext, LmdbTestContext, TestKey, TestValue,
-                        TEST_TRIE_GENERATORS,
-                    },
+                    tests::{LmdbTestContext, TestKey, TestValue, TEST_TRIE_GENERATORS},
                     write, DeleteResult, WriteResult,
                 },
                 TrieStore,
@@ -263,27 +213,6 @@ mod full_tries {
         let correlation_id = CorrelationId::new();
         let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
         let context = LmdbTestContext::new(&empty_trie).unwrap();
-
-        serially_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
-            correlation_id,
-            &context.environment,
-            &context.store,
-            &empty_root_hash,
-            &[
-                (TestKey([1u8; 7]), TestValue([1u8; 6])),
-                (TestKey([0u8; 7]), TestValue([0u8; 6])),
-                (TestKey([0u8, 1, 1, 1, 1, 1, 1]), TestValue([2u8; 6])),
-                (TestKey([2u8; 7]), TestValue([2u8; 6])),
-            ],
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn in_memory_serially_insert_and_delete() {
-        let correlation_id = CorrelationId::new();
-        let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
-        let context = InMemoryTestContext::new(&empty_trie).unwrap();
 
         serially_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
             correlation_id,
@@ -386,23 +315,6 @@ mod full_tries {
         .unwrap();
     }
 
-    #[test]
-    fn in_memory_interleaved_insert_and_delete() {
-        let correlation_id = CorrelationId::new();
-        let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
-        let context = InMemoryTestContext::new(&empty_trie).unwrap();
-
-        interleaved_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
-            correlation_id,
-            &context.environment,
-            &context.store,
-            &empty_root_hash,
-            &INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1,
-            &INTERLEAVED_DELETE_TEST_KEYS_1,
-        )
-        .unwrap();
-    }
-
     const DEFAULT_MIN_LENGTH: usize = 1;
 
     const DEFAULT_MAX_LENGTH: usize = 6;
@@ -419,12 +331,12 @@ mod full_tries {
 
     proptest! {
         #[test]
-        fn prop_in_memory_interleaved_insert_and_delete(
+        fn prop_lmdb_interleaved_insert_and_delete(
             pairs_to_insert in collection::vec((colliding_key_arb(), stored_value_arb()), get_range())
         ) {
             let correlation_id = CorrelationId::new();
             let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
-            let context = InMemoryTestContext::new(&empty_trie).unwrap();
+            let context = LmdbTestContext::new(&empty_trie).unwrap();
 
             let keys_to_delete = {
                 let mut tmp = Vec::new();

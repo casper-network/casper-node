@@ -55,22 +55,31 @@ use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry}
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
+use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 use casper_types::EraId;
-use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    components::fetcher,
+    components::{deploy_acceptor, fetcher, fetcher::FetchedOrNotFound},
     effect::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
+        incoming::NetResponse,
         Effect, EffectBuilder, EffectExt, Effects,
     },
-    types::{ExitCode, Item, NodeId},
+    types::{
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId,
+        Item, NodeId,
+    },
     unregister_metric,
-    utils::{self, SharedFlag, WeightedRoundRobin},
+    utils::{
+        self,
+        rlimit::{Limit, OpenFiles, ResourceLimit},
+        SharedFlag, Source, WeightedRoundRobin,
+    },
     NodeRng, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
@@ -79,7 +88,6 @@ use crate::{
     types::{Chainspec, ChainspecRawBytes},
 };
 pub(crate) use queue_kind::QueueKind;
-use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -916,7 +924,7 @@ where
         .collect()
 }
 
-pub(crate) fn handle_fetch_response<R, T>(
+fn handle_fetch_response<R, I>(
     reactor: &mut R,
     effect_builder: EffectBuilder<<R as Reactor>::Event>,
     rng: &mut NodeRng,
@@ -925,11 +933,11 @@ pub(crate) fn handle_fetch_response<R, T>(
     verifiable_chunked_hash_activation: EraId,
 ) -> Effects<<R as Reactor>::Event>
 where
-    T: Item,
+    I: Item,
     R: Reactor,
-    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement>,
+    <R as Reactor>::Event: From<fetcher::Event<I>> + From<BlocklistAnnouncement>,
 {
-    match fetcher::Event::<T>::from_get_response_serialized_item(
+    match fetcher::Event::<I>::from_get_response_serialized_item(
         sender,
         serialized_item,
         verifiable_chunked_hash_activation,
@@ -941,11 +949,159 @@ where
             info!(
                 "{} sent us a {:?} item we couldn't parse, banning peer",
                 sender,
-                T::TAG
+                I::TAG
             );
             effect_builder
                 .announce_disconnect_from_peer(sender)
                 .ignore()
+        }
+    }
+}
+
+fn handle_get_response<R>(
+    reactor: &mut R,
+    effect_builder: EffectBuilder<<R as Reactor>::Event>,
+    rng: &mut NodeRng,
+    sender: NodeId,
+    message: NetResponse,
+    verifiable_chunked_hash_activation: EraId,
+) -> Effects<<R as Reactor>::Event>
+where
+    R: Reactor,
+    <R as Reactor>::Event: From<deploy_acceptor::Event>
+        + From<fetcher::Event<FinalizedApprovalsWithId>>
+        + From<fetcher::Event<Block>>
+        + From<fetcher::Event<BlockWithMetadata>>
+        + From<fetcher::Event<BlockHeader>>
+        + From<fetcher::Event<BlockHeaderWithMetadata>>
+        + From<fetcher::Event<BlockAndDeploys>>
+        + From<fetcher::Event<BlockHeadersBatch>>
+        + From<fetcher::Event<BlockSignatures>>
+        + From<fetcher::Event<Deploy>>
+        + From<BlocklistAnnouncement>,
+{
+    match message {
+        NetResponse::Deploy(ref serialized_item) => {
+            // Incoming Deploys should be routed to the `DeployAcceptor` rather than directly to the
+            // `DeployFetcher`.
+            let event = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                serialized_item,
+            ) {
+                Ok(FetchedOrNotFound::Fetched(deploy)) => {
+                    <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
+                        deploy: Box::new(deploy),
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    })
+                }
+                Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                    info!(%sender, ?deploy_hash, "peer did not have deploy",);
+                    <R as Reactor>::Event::from(fetcher::Event::<Deploy>::AbsentRemotely {
+                        id: deploy_hash,
+                        peer: sender,
+                    })
+                }
+                Err(error) => {
+                    warn!(
+                        %sender,
+                        %error,
+                        "received a deploy item we couldn't parse, banning peer",
+                    );
+                    return effect_builder
+                        .announce_disconnect_from_peer(sender)
+                        .ignore();
+                }
+            };
+            <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
+        }
+        NetResponse::FinalizedApprovals(ref serialized_item) => {
+            handle_fetch_response::<R, FinalizedApprovalsWithId>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::Block(ref serialized_item) => handle_fetch_response::<R, Block>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+            verifiable_chunked_hash_activation,
+        ),
+        NetResponse::GossipedAddress(_) => {
+            // The item trait is used for both fetchers and gossiped things, but this kind of
+            // item is never fetched, only gossiped.
+            warn!(
+                ?sender,
+                "gossiped addresses are never fetched, banning peer",
+            );
+            effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore()
+        }
+        NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
+            handle_fetch_response::<R, BlockWithMetadata>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::BlockHeaderByHash(ref serialized_item) => {
+            handle_fetch_response::<R, BlockHeader>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
+            handle_fetch_response::<R, BlockHeaderWithMetadata>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::BlockAndDeploys(ref serialized_item) => {
+            handle_fetch_response::<R, BlockAndDeploys>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::BlockHeadersBatch(ref serialized_item) => {
+            handle_fetch_response::<R, BlockHeadersBatch>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
+        }
+        NetResponse::FinalitySignatures(ref serialized_item) => {
+            handle_fetch_response::<R, BlockSignatures>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+                verifiable_chunked_hash_activation,
+            )
         }
     }
 }

@@ -1,8 +1,5 @@
 //! Global state.
 
-/// In-memory implementation of global state.
-pub mod in_memory;
-
 /// Lmdb implementation of global state.
 pub mod lmdb;
 

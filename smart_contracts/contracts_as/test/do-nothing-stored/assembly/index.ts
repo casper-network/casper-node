@@ -1,10 +1,10 @@
 //@ts-nocheck
 import * as CL from "../../../../contract_as/assembly";
-import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
-import {fromBytesString, toBytesMap} from "../../../../contract_as/assembly/bytesrepr";
-import {Key} from "../../../../contract_as/assembly/key";
-import {CLValue, CLType, CLTypeTag} from "../../../../contract_as/assembly/clvalue";
-import {Pair} from "../../../../contract_as/assembly/pair";
+import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
+import { fromBytesString, toBytesMap } from "../../../../contract_as/assembly/bytesrepr";
+import { Key } from "../../../../contract_as/assembly/key";
+import { CLValue, CLType, CLTypeTag } from "../../../../contract_as/assembly/clvalue";
+import { Pair } from "../../../../contract_as/assembly/pair";
 
 const ENTRY_FUNCTION_NAME = "delegate";
 const HASH_KEY_NAME = "do_nothing_hash";
@@ -31,10 +31,10 @@ export function call(): void {
     PACKAGE_HASH_KEY_NAME,
     ACCESS_KEY_NAME,
   );
-  const key = Key.create(CLValue.fromI32(result.contractVersion));
-  if (key === null) {
+  const versionKey = Key.create(CLValue.fromI32(result.contractVersion));
+  if (!versionKey) {
     return;
   }
-  CL.putKey(CONTRACT_VERSION, key);
+  CL.putKey(CONTRACT_VERSION, <Key>versionKey);
   CL.putKey(HASH_KEY_NAME, Key.fromHash(result.contractHash));
 }

@@ -1,7 +1,7 @@
 use rand::Rng;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
@@ -357,7 +357,7 @@ impl Default for FaucetFundRequestBuilder {
 }
 
 pub fn query_stored_value<T: CLTyped + FromBytes>(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     base_key: Key,
     path: Vec<String>,
 ) -> T {
@@ -372,7 +372,7 @@ pub fn query_stored_value<T: CLTyped + FromBytes>(
 }
 
 pub fn get_faucet_contract_hash(
-    builder: &InMemoryWasmTestBuilder,
+    builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
 ) -> ContractHash {
     builder
@@ -386,7 +386,7 @@ pub fn get_faucet_contract_hash(
 }
 
 pub fn get_faucet_contract(
-    builder: &InMemoryWasmTestBuilder,
+    builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
 ) -> Contract {
     builder
@@ -394,7 +394,7 @@ pub fn get_faucet_contract(
         .expect("failed to find faucet contract")
 }
 
-pub fn get_faucet_purse(builder: &InMemoryWasmTestBuilder, installer_account: AccountHash) -> URef {
+pub fn get_faucet_purse(builder: &LmdbWasmTestBuilder, installer_account: AccountHash) -> URef {
     get_faucet_contract(builder, installer_account)
         .named_keys()
         .get(FAUCET_PURSE_NAMED_KEY)
@@ -404,7 +404,7 @@ pub fn get_faucet_purse(builder: &InMemoryWasmTestBuilder, installer_account: Ac
 }
 
 pub fn get_available_amount(
-    builder: &InMemoryWasmTestBuilder,
+    builder: &LmdbWasmTestBuilder,
     faucet_contract_hash: ContractHash,
 ) -> U512 {
     builder
@@ -422,7 +422,7 @@ pub fn get_available_amount(
 }
 
 pub fn get_remaining_requests(
-    builder: &InMemoryWasmTestBuilder,
+    builder: &LmdbWasmTestBuilder,
     faucet_contract_hash: ContractHash,
 ) -> U512 {
     builder
@@ -502,7 +502,7 @@ impl FaucetDeployHelper {
 
     pub fn query_and_set_faucet_contract_hash(
         &mut self,
-        builder: &InMemoryWasmTestBuilder,
+        builder: &LmdbWasmTestBuilder,
     ) -> ContractHash {
         let contract_hash = get_faucet_contract_hash(builder, self.installer_account());
         self.faucet_contract_hash = Some(contract_hash);
@@ -510,11 +510,11 @@ impl FaucetDeployHelper {
         contract_hash
     }
 
-    pub fn query_faucet_purse(&self, builder: &InMemoryWasmTestBuilder) -> URef {
+    pub fn query_faucet_purse(&self, builder: &LmdbWasmTestBuilder) -> URef {
         get_faucet_purse(builder, self.installer_account())
     }
 
-    pub fn query_faucet_purse_balance(&self, builder: &InMemoryWasmTestBuilder) -> U512 {
+    pub fn query_faucet_purse_balance(&self, builder: &LmdbWasmTestBuilder) -> U512 {
         let faucet_purse = self.query_faucet_purse(builder);
         builder.get_purse_balance(faucet_purse)
     }

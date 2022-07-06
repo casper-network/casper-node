@@ -14,7 +14,7 @@
 // charge)
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
@@ -75,7 +75,7 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
     };
     let do_minimum_request = do_minimum_request_builder.build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();

@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
@@ -25,7 +25,6 @@ use casper_execution_engine::{
         execution,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-    storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     self,
@@ -173,7 +172,7 @@ fn should_add_new_bid() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -217,7 +216,7 @@ fn should_increase_existing_bid() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -276,7 +275,7 @@ fn should_decrease_existing_bid() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -344,7 +343,7 @@ fn should_run_delegate_and_undelegate() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -524,7 +523,7 @@ fn should_calculate_era_validators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -682,7 +681,7 @@ fn should_get_first_seigniorage_recipients() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -774,7 +773,7 @@ fn should_release_founder_stake() {
         .map(U512::from)
         .collect();
 
-    let expect_unbond_success = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+    let expect_unbond_success = |builder: &mut LmdbWasmTestBuilder, amount: u64| {
         let partial_unbond = ExecuteRequestBuilder::standard(
             *ACCOUNT_1_ADDR,
             CONTRACT_WITHDRAW_BID,
@@ -788,7 +787,7 @@ fn should_release_founder_stake() {
         builder.exec(partial_unbond).commit().expect_success();
     };
 
-    let expect_unbond_failure = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+    let expect_unbond_failure = |builder: &mut LmdbWasmTestBuilder, amount: u64| {
         let full_unbond = ExecuteRequestBuilder::standard(
             *ACCOUNT_1_ADDR,
             CONTRACT_WITHDRAW_BID,
@@ -833,7 +832,7 @@ fn should_release_founder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -963,7 +962,7 @@ fn should_fail_to_get_era_validators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -994,7 +993,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -1052,7 +1051,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -1221,7 +1220,7 @@ fn undelegated_funds_should_be_released() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1347,7 +1346,7 @@ fn fully_undelegated_funds_should_be_released() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1508,7 +1507,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1745,7 +1744,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -1851,7 +1850,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 #[ignore]
 #[test]
 fn should_handle_evictions() {
-    let activate_bid = |builder: &mut InMemoryWasmTestBuilder, validator_public_key: PublicKey| {
+    let activate_bid = |builder: &mut LmdbWasmTestBuilder, validator_public_key: PublicKey| {
         const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
         let run_request = ExecuteRequestBuilder::standard(
             AccountHash::from(&validator_public_key),
@@ -1864,7 +1863,7 @@ fn should_handle_evictions() {
         builder.exec(run_request).commit().expect_success();
     };
 
-    let latest_validators = |builder: &mut InMemoryWasmTestBuilder| {
+    let latest_validators = |builder: &mut LmdbWasmTestBuilder| {
         let era_validators: EraValidators = builder.get_era_validators();
         let validators = era_validators
             .iter()
@@ -1930,7 +1929,7 @@ fn should_handle_evictions() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2073,7 +2072,7 @@ fn should_validate_orphaned_genesis_delegators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2128,7 +2127,7 @@ fn should_validate_duplicated_genesis_delegators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2153,7 +2152,7 @@ fn should_validate_delegation_rate_of_genesis_validator() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2175,7 +2174,7 @@ fn should_validate_bond_amount_of_genesis_validator() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2212,7 +2211,7 @@ fn should_setup_genesis_delegators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2277,7 +2276,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2351,7 +2350,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2425,7 +2424,7 @@ fn should_not_undelegate_vfta_holder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2536,7 +2535,7 @@ fn should_release_vfta_holder_stake() {
         .map(U512::from)
         .collect();
 
-    let expect_undelegate_success = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+    let expect_undelegate_success = |builder: &mut LmdbWasmTestBuilder, amount: u64| {
         let partial_unbond = ExecuteRequestBuilder::standard(
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
@@ -2551,7 +2550,7 @@ fn should_release_vfta_holder_stake() {
         builder.exec(partial_unbond).commit().expect_success();
     };
 
-    let expect_undelegate_failure = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+    let expect_undelegate_failure = |builder: &mut LmdbWasmTestBuilder, amount: u64| {
         let full_undelegate = ExecuteRequestBuilder::standard(
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
@@ -2620,9 +2619,7 @@ fn should_release_vfta_holder_stake() {
         SystemConfig::default(),
     );
 
-    let global_state = InMemoryGlobalState::empty().expect("should create global state");
-
-    let mut builder = InMemoryWasmTestBuilder::new(global_state, custom_engine_config, None);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2893,7 +2890,7 @@ fn should_reset_delegators_stake_after_slashing() {
         delegator_2_validator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -3046,7 +3043,7 @@ fn should_validate_genesis_delegators_bond_amount() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -3080,7 +3077,7 @@ fn check_validator_slots_for_accounts(accounts: usize) {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -3184,7 +3181,7 @@ fn should_delegate_and_redelegate() {
         delegator_1_validator_1_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -3367,7 +3364,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         delegator_2_validator_1_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

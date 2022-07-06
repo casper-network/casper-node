@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution::Error as ExecError};
@@ -17,7 +17,7 @@ const UNAPPROVED_SPENDING_AMOUNT_ERR: Error = Error::Exec(ExecError::Revert(ApiE
 #[ignore]
 #[test]
 fn should_transfer_within_approved_limit_multiple_transfers() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let part_1 = U512::from(100u64);
@@ -41,7 +41,7 @@ fn should_transfer_within_approved_limit_multiple_transfers() {
 #[ignore]
 #[test]
 fn should_not_transfer_above_approved_limit_multiple_transfers() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let part_1 = U512::from(100u64);

@@ -1,10 +1,10 @@
 // The entry file of your WebAssembly module.
 import * as CL from "../../../../contract_as/assembly";
-import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
-import {removeAssociatedKey, RemoveKeyFailure} from "../../../../contract_as/assembly/account";
-import {arrayToTyped, typedToArray} from "../../../../contract_as/assembly/utils";
-import {AccountHash} from "../../../../contract_as/assembly/key";
-import {CLValue, CLType, CLTypeTag} from "../../../../contract_as/assembly/clvalue";
+import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
+import { removeAssociatedKey, RemoveKeyFailure } from "../../../../contract_as/assembly/account";
+import { arrayToTyped, typedToArray } from "../../../../contract_as/assembly/utils";
+import { AccountHash } from "../../../../contract_as/assembly/key";
+import { CLValue, CLType, CLTypeTag } from "../../../../contract_as/assembly/clvalue";
 import { Key } from "../../../../contract_as/assembly/key";
 import { AccessRights, URef } from "../../../../contract_as/assembly/uref";
 import { Pair } from "../../../../contract_as/assembly/pair";
@@ -28,15 +28,15 @@ const DICTIONARY_REF = "new_dictionary";
 const MALICIOUS_KEY_NAME = "invalid dictionary name";
 
 function getDictionaryURef(): URef {
-  let key = CL.getKey(DICTIONARY_NAME);
-  if (key === null) {
+  let dictionaryKey = CL.getKey(DICTIONARY_NAME);
+  if (!dictionaryKey) {
     Error.fromUserError(0).revert();
-    return <URef>unreachable();
+    throw 0;
   }
-  const dictionaryURef = key.uref;
-  if (dictionaryURef === null) {
+  const dictionaryURef = dictionaryKey.uref;
+  if (!dictionaryURef) {
     Error.fromUserError(1).revert();
-    return <URef>unreachable();
+    throw 0;
   }
   return dictionaryURef;
 }
@@ -53,7 +53,7 @@ export function modify_write(): void {
   else {
     res1 = "";
   }
-  
+
   res1 += HELLO_PREFIX;
   dictionaryPut(dictionaryURef, DICTIONARY_PUT_KEY, CLValue.fromString(res1));
 
@@ -89,12 +89,12 @@ export function invalid_put_dictionary_item_key(): void {
   const urefBytes = dictionaryURef.toBytes();
   const valueBytes = value.toBytes();
   let ret = dictionary_put(
-      urefBytes.dataStart,
-      urefBytes.length,
-      invalid_key.dataStart,
-      invalid_key.length,
-      valueBytes.dataStart,
-      valueBytes.length
+    urefBytes.dataStart,
+    urefBytes.length,
+    invalid_key.dataStart,
+    invalid_key.length,
+    valueBytes.dataStart,
+    valueBytes.length
   )
   const error = Error.fromResult(ret);
   if (error != null) {
@@ -109,11 +109,11 @@ export function invalid_get_dictionary_item_key(): void {
 
   let valueSize = new Uint8Array(1);
   let ret = dictionary_get(
-      urefBytes.dataStart,
-      urefBytes.length,
-      invalid_key.dataStart,
-      invalid_key.length,
-      valueSize.dataStart,
+    urefBytes.dataStart,
+    urefBytes.length,
+    invalid_key.dataStart,
+    invalid_key.length,
+    valueSize.dataStart,
   );
   const error = Error.fromResult(ret);
   if (error != null) {
@@ -161,8 +161,8 @@ export function call(): void {
     CONTRACT_PACKAGE_HASH_NAME,
     ACCESS_KEY_NAME,
   );
-  const key = Key.create(CLValue.fromI32(result.contractVersion));
-  if (key === null) {
+  const purseKey = Key.create(CLValue.fromI32(result.contractVersion));
+  if (!purseKey) {
     return;
   }
   CL.putKey(CONTRACT_HASH_NAME, Key.fromHash(result.contractHash));

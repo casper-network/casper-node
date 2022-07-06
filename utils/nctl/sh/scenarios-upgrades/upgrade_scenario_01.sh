@@ -113,7 +113,7 @@ function _step_05()
         config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_1.config.toml"
 
     log "... awaiting 2 eras + 1 block"
-    await_n_eras 2 'true' '2.0'
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 }
 

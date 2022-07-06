@@ -1,8 +1,8 @@
 //@ts-nocheck
 import * as externals from "./externals";
-import {Error, ErrorCode} from "./error";
-import {CLValue} from "./clvalue";
-import {readHostBuffer} from "./index";
+import { Error, ErrorCode } from "./error";
+import { CLValue } from "./clvalue";
+import { readHostBuffer } from "./index";
 import { URef } from "./uref";
 import { arrayToTyped, encodeUTF8 } from "./utils";
 import { Key } from "./key";
@@ -10,26 +10,26 @@ import * as CL from "./";
 
 /**
  * Creates new seed for a dictionary partition of the global state.
- * 
+ *
  * @category Storage
  * @returns Returns newly provisioned [[URef]]
  */
 export function newDictionary(keyName: String): URef {
     if (keyName.length == 0 || CL.hasKey(keyName)) {
         Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
-        return <URef>unreachable();
+        throw 0;
     }
     let outputSize = new Uint32Array(1);
     let ret = externals.casper_new_dictionary(outputSize.dataStart);
     const error = Error.fromResult(ret);
     if (error !== null) {
         error.revert();
-        return <URef>unreachable();
+        throw 0;
     }
     let urefBytes = readHostBuffer(outputSize[0]);
     const uref = URef.fromBytes(urefBytes).unwrap();
-    const key = Key.fromURef(uref);
-    CL.putKey(keyName, key);
+    const urefKey = Key.fromURef(uref);
+    CL.putKey(keyName, urefKey);
     return uref;
 }
 
@@ -45,13 +45,13 @@ export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
 
     let valueSize = new Uint8Array(1);
     const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
-    if (ret == ErrorCode.ValueNotFound){
+    if (ret == ErrorCode.ValueNotFound) {
         return null;
     }
     const error = Error.fromResult(ret);
     if (error != null) {
         error.revert();
-        return <Uint8Array>unreachable();
+        throw 0;
     }
     return readHostBuffer(valueSize[0]);
 }
