@@ -9,6 +9,7 @@ pub(super) mod debug;
 mod era;
 
 use std::{
+    cmp,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
@@ -39,17 +40,17 @@ use crate::{
             },
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
-            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, HighwayProtocol,
-            NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
+            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
+            Event, HighwayProtocol, NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
         },
         storage::Storage,
     },
     effect::{
         announcements::ControlAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
-    fatal,
+    fatal, protocol,
     types::{
         chainspec::ConsensusProtocolName, ActivationPoint, BlockHash, BlockHeader, Chainspec,
         Deploy, DeployHash, DeployOrTransferHash, FinalitySignature, FinalizedApprovals,
@@ -64,6 +65,8 @@ use crate::components::consensus::error::CreateNewEraError;
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
+/// A warning is printed if a timer is delayed by more than this.
+const TIMER_DELAY_WARNING_MILLIS: u64 = 1000;
 
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
@@ -529,7 +532,7 @@ impl EraSupervisor {
                         Ok(_) => {}
                         Err(err) => match err.kind() {
                             io::ErrorKind::NotFound => {}
-                            err => warn!(?err, "could not delete unit hash file"),
+                            err => warn!(%err, "could not delete unit hash file"),
                         },
                     }
                 }
@@ -564,17 +567,22 @@ impl EraSupervisor {
     {
         match self.open_eras.get_mut(&era_id) {
             None => {
-                if era_id > self.current_era {
-                    info!(era = era_id.value(), "received message for future era");
-                } else {
-                    info!(era = era_id.value(), "received message for obsolete era");
-                }
+                self.log_missing_era(era_id);
                 Effects::new()
             }
             Some(era) => {
                 let outcomes = f(&mut *era.consensus, rng);
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
+        }
+    }
+
+    fn log_missing_era(&self, era_id: EraId) {
+        let era = era_id.value();
+        match era_id.cmp(&self.current_era) {
+            cmp::Ordering::Greater => info!(era, "received message for future era"),
+            cmp::Ordering::Equal => error!(era, "missing current era"),
+            cmp::Ordering::Less => info!(era, "received message for obsolete era"),
         }
     }
 
@@ -586,6 +594,12 @@ impl EraSupervisor {
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event> {
+        if timestamp.elapsed().millis() > TIMER_DELAY_WARNING_MILLIS {
+            warn!(
+                era = era_id.value(), timer_id = timer_id.0, delay = %timestamp.elapsed(),
+                "timer called with long delay"
+            );
+        }
         self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
             consensus.handle_timer(timestamp, timer_id, rng)
         })
@@ -612,8 +626,6 @@ impl EraSupervisor {
     ) -> Effects<Event> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
-                // If the era is already unbonded, only accept new evidence, because still-bonded
-                // eras could depend on that.
                 trace!(era = era_id.value(), "received a consensus message");
                 self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
                     consensus.handle_message(rng, sender, payload, Timestamp::now())
@@ -633,6 +645,41 @@ impl EraSupervisor {
                         })
                     })
                     .collect()
+            }
+        }
+    }
+
+    pub(super) fn handle_demand<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        demand: ConsensusRequestMessage,
+        auto_closing_responder: AutoClosingResponder<protocol::Message>,
+    ) -> Effects<Event> {
+        let ConsensusRequestMessage { era_id, payload } = demand;
+        trace!(era = era_id.value(), "received a consensus request");
+        match self.open_eras.get_mut(&era_id) {
+            None => {
+                self.log_missing_era(era_id);
+                auto_closing_responder.respond_none().ignore()
+            }
+            Some(era) => {
+                let (outcomes, response) =
+                    era.consensus
+                        .handle_request_message(rng, sender, payload, Timestamp::now());
+                let mut effects =
+                    self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes);
+                if let Some(payload) = response {
+                    effects.extend(
+                        auto_closing_responder
+                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
+                            .ignore(),
+                    );
+                } else {
+                    effects.extend(auto_closing_responder.respond_none().ignore());
+                }
+                effects
             }
         }
     }
@@ -832,15 +879,29 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                // TODO: we'll want to gossip instead of broadcast here
                 effect_builder.broadcast_message(message.into()).ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder.send_message(to, message.into()).ignore()
+                effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
+                async move {
+                    let peers = effect_builder.get_fully_connected_peers().await;
+                    if let Some(to) = peers.into_iter().next() {
+                        effect_builder.enqueue_message(to, message.into()).await;
+                    }
+                }
+                .ignore()
+            }
+            ProtocolOutcome::CreatedTargetedRequest(payload, to) => {
+                let message = ConsensusRequestMessage { era_id, payload };
+                effect_builder.enqueue_message(to, message.into()).ignore()
+            }
+            ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
+                let message = ConsensusRequestMessage { era_id, payload };
 
                 async move {
                     let peers = effect_builder.get_fully_connected_peers().await;
@@ -929,9 +990,9 @@ impl EraSupervisor {
                     proposer,
                 );
                 info!(
-                    era_id = ?finalized_block.era_id(),
-                    height = ?finalized_block.height(),
-                    timestamp = ?finalized_block.timestamp(),
+                    era_id = finalized_block.era_id().value(),
+                    height = finalized_block.height(),
+                    timestamp = %finalized_block.timestamp(),
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
@@ -1132,8 +1193,8 @@ where
             Some(switch_block) => switch_blocks.push(switch_block),
             None => {
                 error!(
-                    ?era_id,
-                    ?switch_block_era_id,
+                    era = era_id.value(),
+                    switch_block_era = switch_block_era_id.value(),
                     "switch block header era must exist to initialize era"
                 );
                 panic!("switch block header not found in storage");

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{
-        protocols::zug::message::{Content, Proposal},
+        protocols::zug::{Content, HashedProposal},
         traits::Context,
         utils::{ValidatorIndex, ValidatorMap},
     },
@@ -26,7 +26,7 @@ where
     /// The leader, who is allowed to create a proposal in this round.
     leader_idx: ValidatorIndex,
     /// The unique proposal signed by the leader, or the unique proposal with a quorum of echoes.
-    proposal: Option<Proposal<C>>,
+    proposal: Option<HashedProposal<C>>,
     /// The echoes we've received for each proposal so far.
     #[data_size(with = ds::hashmap_sample)]
     echoes: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
@@ -53,7 +53,7 @@ impl<C: Context> Round<C> {
     }
 
     /// Returns the map of all proposals sent to us this round from the leader
-    pub(super) fn proposal(&self) -> Option<&Proposal<C>> {
+    pub(super) fn proposal(&self) -> Option<&HashedProposal<C>> {
         self.proposal.as_ref()
     }
 
@@ -74,9 +74,9 @@ impl<C: Context> Round<C> {
 
     /// Inserts a `Proposal` and returns `false` if we already had it or it cannot be added due to
     /// missing echoes.
-    pub(super) fn insert_proposal(&mut self, proposal: Proposal<C>) -> bool {
+    pub(super) fn insert_proposal(&mut self, proposal: HashedProposal<C>) -> bool {
         let hash = proposal.hash();
-        if self.has_echoes_for_proposal(&hash) && self.proposal.as_ref() != Some(&proposal) {
+        if self.has_echoes_for_proposal(hash) && self.proposal.as_ref() != Some(&proposal) {
             self.proposal = Some(proposal);
             true
         } else {
@@ -116,7 +116,7 @@ impl<C: Context> Round<C> {
         if self
             .proposal
             .as_ref()
-            .map_or(false, |proposal| proposal.hash() != hash)
+            .map_or(false, |proposal| *proposal.hash() != hash)
         {
             self.proposal = None;
         }
@@ -181,7 +181,7 @@ impl<C: Context> Round<C> {
     }
 
     /// Returns the accepted proposal, if any, together with its height.
-    pub(super) fn accepted_proposal(&self) -> Option<(u64, &Proposal<C>)> {
+    pub(super) fn accepted_proposal(&self) -> Option<(u64, &HashedProposal<C>)> {
         let height = self.outcome.accepted_proposal_height?;
         let proposal = self.proposal.as_ref()?;
         Some((height, proposal))
@@ -202,6 +202,11 @@ impl<C: Context> Round<C> {
     pub(super) fn prune_skipped(&mut self) {
         self.proposal = None;
         self.outcome.accepted_proposal_height = None;
+    }
+
+    /// Returns the validator index of this round's leader.
+    pub(super) fn leader(&self) -> ValidatorIndex {
+        self.leader_idx
     }
 }
 

@@ -285,14 +285,12 @@ impl BlockPayload {
 
 impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
-            HexList(self.deploy_hashes()),
-            HexList(self.transfer_hashes()),
-            self.accusations,
-            self.random_bit,
-        )
+        let count = self.deploys.len() + self.transfers.len();
+        write!(formatter, "payload: {} deploys", count,)?;
+        if !self.accusations.is_empty() {
+            write!(formatter, ", {} accusations", self.accusations.len())?;
+        }
+        Ok(())
     }
 }
 
@@ -591,9 +589,9 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block in era {:?}, height {}, deploys {:10}, transfers {:10}, \
+            "finalized block in era {}, height {}, deploys {:10}, transfers {:10}, \
             random bit {}, timestamp {}",
-            self.era_id,
+            self.era_id.value(),
             self.height,
             HexList(&self.deploy_hashes),
             HexList(&self.transfer_hashes),

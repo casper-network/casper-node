@@ -1,67 +1,18 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-};
+use std::{collections::BTreeMap, fmt::Debug};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::Timestamp;
 use either::Either;
 
-use crate::components::consensus::{
-    consensus_protocol::ProposedBlock,
-    protocols::zug::RoundId,
-    traits::{Context, ValidatorSecret},
-    utils::ValidatorIndex,
+use crate::{
+    components::consensus::{
+        protocols::zug::{Proposal, RoundId},
+        traits::{Context, ValidatorSecret},
+        utils::ValidatorIndex,
+    },
+    utils::ds,
 };
-
-/// A proposal in the consensus protocol.
-#[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct Proposal<C>
-where
-    C: Context,
-{
-    pub(super) timestamp: Timestamp,
-    pub(super) maybe_block: Option<C::ConsensusValue>,
-    pub(super) maybe_parent_round_id: Option<RoundId>,
-    /// The set of validators that appear to be inactive in this era.
-    /// This is `None` in round 0 and in dummy blocks.
-    pub(super) inactive: Option<BTreeSet<ValidatorIndex>>,
-}
-
-impl<C: Context> Proposal<C> {
-    pub(super) fn dummy(timestamp: Timestamp, parent_round_id: RoundId) -> Self {
-        Proposal {
-            timestamp,
-            maybe_block: None,
-            maybe_parent_round_id: Some(parent_round_id),
-            inactive: None,
-        }
-    }
-
-    pub(super) fn with_block(
-        proposed_block: &ProposedBlock<C>,
-        maybe_parent_round_id: Option<RoundId>,
-        inactive: impl Iterator<Item = ValidatorIndex>,
-    ) -> Self {
-        Proposal {
-            maybe_block: Some(proposed_block.value().clone()),
-            timestamp: proposed_block.context().timestamp(),
-            maybe_parent_round_id,
-            inactive: maybe_parent_round_id.map(|_| inactive.collect()),
-        }
-    }
-
-    pub(super) fn hash(&self) -> C::Hash {
-        let serialized = bincode::serialize(&self).expect("failed to serialize fields");
-        <C as Context>::hash(&serialized)
-    }
-}
 
 /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
 /// which are somewhat decoupled from the rest of the protocol. These messages, along with the
@@ -136,6 +87,7 @@ impl<C: Context> SignedMessage<C> {
             signature: secret.sign(&hash),
         }
     }
+
     /// Creates a new signed message with the alternative content and signature.
     pub(crate) fn with(&self, content: Content<C>, signature: C::Signature) -> SignedMessage<C> {
         SignedMessage {
@@ -184,7 +136,7 @@ impl<C: Context> SignedMessage<C> {
 ///
 /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
 /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -214,8 +166,32 @@ where
     pub(crate) instance_id: C::InstanceId,
 }
 
+impl<C: Context> SyncRequest<C> {
+    /// Creates a `SyncRequest` for a round in which we haven't received any messages yet.
+    pub(super) fn new_empty_round(
+        round_id: RoundId,
+        first_validator_idx: ValidatorIndex,
+        faulty: u128,
+        active: u128,
+        instance_id: C::InstanceId,
+    ) -> Self {
+        SyncRequest {
+            round_id,
+            proposal_hash: None,
+            has_proposal: false,
+            first_validator_idx,
+            echoes: 0,
+            true_votes: 0,
+            false_votes: 0,
+            active,
+            faulty,
+            instance_id,
+        }
+    }
+}
+
 /// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is missing.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -227,6 +203,7 @@ where
     /// The round the information refers to.
     pub(crate) round_id: RoundId,
     /// The proposal in this round, or its hash.
+    #[data_size(with = ds::maybe_either)]
     pub(crate) proposal_or_hash: Option<Either<Proposal<C>, C::Hash>>,
     /// Echo signatures the requester is missing.
     pub(crate) echo_sigs: BTreeMap<ValidatorIndex, C::Signature>,
@@ -242,15 +219,15 @@ where
 }
 
 /// All messages of the protocol.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum Message<C: Context> {
-    /// Partial information about the sender's protocol state. The receiver should send missing
-    /// data.
-    SyncRequest(SyncRequest<C>),
+pub(crate) enum Message<C>
+where
+    C: Context,
+{
     /// Signatures, proposals and evidence the requester was missing.
     SyncResponse(SyncResponse<C>),
     /// A proposal for a new block. This does not contain any signature; instead, the proposer is
@@ -269,34 +246,9 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
-    pub(super) fn new_empty_round_sync_request(
-        round_id: RoundId,
-        first_validator_idx: ValidatorIndex,
-        faulty: u128,
-        instance_id: C::InstanceId,
-    ) -> Self {
-        Message::SyncRequest(SyncRequest {
-            round_id,
-            proposal_hash: None,
-            has_proposal: false,
-            first_validator_idx,
-            echoes: 0,
-            true_votes: 0,
-            false_votes: 0,
-            active: 0,
-            faulty,
-            instance_id,
-        })
-    }
-
-    pub(super) fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize message")
-    }
-
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
-            Message::SyncRequest(SyncRequest { instance_id, .. })
-            | Message::SyncResponse(SyncResponse { instance_id, .. })
+            Message::SyncResponse(SyncResponse { instance_id, .. })
             | Message::Signed(SignedMessage { instance_id, .. })
             | Message::Proposal { instance_id, .. }
             | Message::Evidence(SignedMessage { instance_id, .. }, ..) => instance_id,

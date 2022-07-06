@@ -49,7 +49,7 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
@@ -290,6 +290,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieDemand(TrieDemand),
 
+    /// Incoming consensus demand.
+    #[from]
+    ConsensusDemand(ConsensusDemand),
+
     /// Incoming trie response network message.
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
@@ -371,6 +375,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             JoinerEvent::TrieDemand(_) => "TrieDemand",
+            JoinerEvent::ConsensusDemand(_) => "ConsensusDemand",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
@@ -502,6 +507,7 @@ impl Display for JoinerEvent {
             JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieDemand(inner) => write!(f, "demand: {}", inner),
+            JoinerEvent::ConsensusDemand(inner) => write!(f, "demand: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::ContractRuntimeRequest(req) => {
@@ -1035,6 +1041,9 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, demand.into()),
             ),
+            JoinerEvent::ConsensusDemand(demand) => {
+                demand.auto_closing_responder.respond_none().ignore()
+            }
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
                 reactor::handle_fetch_response::<Self, TrieOrChunk>(
                     self,

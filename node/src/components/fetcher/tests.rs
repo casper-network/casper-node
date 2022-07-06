@@ -115,6 +115,7 @@ reactor!(Reactor {
         StateStoreRequest -> storage;
         FetcherRequest<Deploy> -> deploy_fetcher;
         TrieDemand -> !;
+        ConsensusDemand -> !;
 
         // The only contract runtime request will be the commit of genesis, which we discard.
         ContractRuntimeRequest -> #;

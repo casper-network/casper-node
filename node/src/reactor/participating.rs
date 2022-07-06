@@ -55,7 +55,7 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
@@ -224,6 +224,9 @@ pub(crate) enum ParticipatingEvent {
     /// Incoming trie demand.
     #[from]
     TrieDemand(TrieDemand),
+    /// Incoming consensus demand.
+    #[from]
+    ConsensusDemand(ConsensusDemand),
     /// Incoming trie response network message.
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
@@ -300,6 +303,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::NetResponseIncoming(_) => "NetResponseIncoming",
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             ParticipatingEvent::TrieDemand(_) => "TrieDemand",
+            ParticipatingEvent::ConsensusDemand(_) => "ConsensusDemand",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
@@ -429,6 +433,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieDemand(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
@@ -1267,6 +1272,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::TrieDemand(demand) => reactor::wrap_effects(
                 ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
+                    .handle_event(effect_builder, rng, demand.into()),
+            ),
+            ParticipatingEvent::ConsensusDemand(demand) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus
                     .handle_event(effect_builder, rng, demand.into()),
             ),
             ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {

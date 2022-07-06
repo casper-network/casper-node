@@ -43,8 +43,9 @@ use crate::{
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
@@ -94,6 +95,8 @@ enum Event {
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
+    #[from]
+    ConsensusDemand(ConsensusDemand),
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
@@ -178,6 +181,7 @@ impl Display for Event {
             Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
+            Event::ConsensusDemand(inner) => write!(formatter, "demand: {}", inner),
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
@@ -414,6 +418,7 @@ impl reactor::Reactor for Reactor {
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)
+            | Event::ConsensusDemand(_)
             | Event::TrieResponseIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }

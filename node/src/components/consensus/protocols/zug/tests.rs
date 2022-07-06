@@ -18,6 +18,7 @@ use crate::{
             BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
         },
         traits::Context,
+        EraMessage,
     },
     testing,
     types::BlockPayload,
@@ -70,31 +71,34 @@ where
     )
 }
 
-/// Creates a serialized `Message::Signed`.
+/// Creates a `Message::Signed`.
 fn create_message(
     validators: &Validators<PublicKey>,
     round_id: RoundId,
     content: Content<ClContext>,
     keypair: &Keypair,
-) -> Vec<u8> {
+) -> EraMessage<ClContext> {
     let validator_idx = validators.get_index(keypair.public_key()).unwrap();
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let signed_msg =
         SignedMessage::sign_new(round_id, instance_id, content, validator_idx, keypair);
-    Message::Signed(signed_msg).serialize()
+    Message::Signed(signed_msg).into()
 }
 
-/// Creates a serialized `Message::Proposal`
-fn create_proposal_message(round_id: RoundId, proposal: &Proposal<ClContext>) -> Vec<u8> {
+/// Creates a `Message::Proposal`
+fn create_proposal_message(
+    round_id: RoundId,
+    proposal: &Proposal<ClContext>,
+) -> EraMessage<ClContext> {
     Message::Proposal {
         round_id,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         proposal: proposal.clone(),
     }
-    .serialize()
+    .into()
 }
 
-/// Removes all `CreatedGossipMessage`s from `outcomes` and returns the deserialized messages, after
+/// Removes all `CreatedGossipMessage`s from `outcomes` and returns the messages, after
 /// verifying the signatures and instance ID.
 fn remove_gossip(
     validators: &Validators<PublicKey>,
@@ -104,20 +108,18 @@ fn remove_gossip(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let msg = match outcome {
-            ProtocolOutcome::CreatedGossipMessage(msg) => msg,
+            ProtocolOutcome::CreatedGossipMessage(EraMessage::Zug(msg)) => &**msg,
             _ => return true,
         };
-        let message = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-            .expect("deserialize message");
-        assert_eq!(*message.instance_id(), expected_instance_id);
-        if let Message::Signed(signed_msg) = &message {
+        assert_eq!(*msg.instance_id(), expected_instance_id);
+        if let Message::Signed(signed_msg) = msg {
             let public_key = validators
                 .id(signed_msg.validator_idx)
                 .expect("validator ID")
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(message);
+        result.push(msg.clone());
         false
     });
     result
@@ -180,32 +182,27 @@ fn remove_proposal(
     }
 }
 
-/// Removes all `CreatedMessageToRandomPeer`s from `outcomes` and returns the deserialized messages.
-fn remove_messages_to_random(
+/// Removes all `CreatedRequestToRandomPeer`s from `outcomes` and returns the deserialized messages.
+fn remove_requests_to_random(
     outcomes: &mut ProtocolOutcomes<ClContext>,
-) -> Vec<Message<ClContext>> {
+) -> Vec<SyncRequest<ClContext>> {
     let mut result = Vec::new();
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
-        let msg = match outcome {
-            ProtocolOutcome::CreatedMessageToRandomPeer(msg) => {
-                bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-                    .expect("deserialize message")
+        let msg: SyncRequest<ClContext> = match outcome {
+            ProtocolOutcome::CreatedRequestToRandomPeer(msg) => {
+                msg.clone().try_into_zug().expect("Zug request")
             }
             _ => return true,
         };
-        assert_eq!(*msg.instance_id(), expected_instance_id);
-        if let Message::SyncRequest(_) = &msg {
-            result.push(msg);
-            false
-        } else {
-            panic!("unexpected message to random peer: {:?}", msg);
-        }
+        assert_eq!(msg.instance_id, expected_instance_id);
+        result.push(msg);
+        false
     });
     result
 }
 
-/// Removes all `CreatedTargetedMessage`s from `outcomes` and returns the deserialized content of
+/// Removes all `CreatedTargetedMessage`s from `outcomes` and returns the content of
 /// all `Message::Signed`, after verifying the signatures.
 fn remove_targeted_messages(
     validators: &Validators<PublicKey>,
@@ -216,23 +213,21 @@ fn remove_targeted_messages(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let (msg, peer) = match outcome {
-            ProtocolOutcome::CreatedTargetedMessage(msg, peer) => (msg, *peer),
+            ProtocolOutcome::CreatedTargetedMessage(EraMessage::Zug(msg), peer) => (&**msg, *peer),
             _ => return true,
         };
         if peer != expected_peer {
             return true;
         }
-        let message = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-            .expect("deserialize message");
-        assert_eq!(*message.instance_id(), expected_instance_id);
-        if let Message::Signed(signed_msg) = &message {
+        assert_eq!(*msg.instance_id(), expected_instance_id);
+        if let Message::Signed(signed_msg) = msg {
             let public_key = validators
                 .id(signed_msg.validator_idx)
                 .expect("validator ID")
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(message);
+        result.push(msg.clone());
         false
     });
     result
@@ -281,10 +276,8 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
     for outcome in outcomes {
         match outcome {
             ProtocolOutcome::FinalizedBlock(fb) => panic!("unexpected finalized block: {:?}", fb),
-            ProtocolOutcome::CreatedGossipMessage(msg) => {
-                let deserialized = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
-                    .expect("deserialize message");
-                panic!("unexpected gossip message {:?}", deserialized);
+            ProtocolOutcome::CreatedGossipMessage(EraMessage::Zug(msg)) => {
+                panic!("unexpected gossip message {:?}", msg);
             }
             ProtocolOutcome::CreateNewBlock(block_context) => {
                 panic!("unexpected CreateNewBlock: {:?}", block_context);
@@ -725,10 +718,10 @@ fn zug_sends_sync_request() {
     // The protocol state is empty and the SyncRequest should reflect that.
     let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
-    let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
+    let mut msg_iter = remove_requests_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncRequest(SyncRequest {
+            Some(SyncRequest {
                 round_id: 0,
                 proposal_hash: None,
                 has_proposal: false,
@@ -739,7 +732,7 @@ fn zug_sends_sync_request() {
                 active: 0,
                 faulty: 0,
                 instance_id: _,
-            })),
+            }),
             None,
         ) => {}
         (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
@@ -762,10 +755,10 @@ fn zug_sends_sync_request() {
     // The next SyncRequest message must include all the new information.
     let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
-    let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
+    let mut msg_iter = remove_requests_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncRequest(SyncRequest {
+            Some(SyncRequest {
                 round_id: 0,
                 proposal_hash: Some(hash),
                 has_proposal: true,
@@ -776,7 +769,7 @@ fn zug_sends_sync_request() {
                 active,
                 faulty,
                 instance_id: _,
-            })),
+            }),
             None,
         ) => {
             assert_eq!(hash0, hash);
@@ -853,7 +846,7 @@ fn zug_handles_sync_request() {
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
 
     // The sender has everything we have except the proposal itself.
-    let msg = Message::<ClContext>::SyncRequest(SyncRequest {
+    let msg = SyncRequest::<ClContext> {
         round_id: 0,
         proposal_hash: Some(hash0),
         has_proposal: false,
@@ -869,11 +862,14 @@ fn zug_handles_sync_request() {
         ),
         faulty: sc.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
         instance_id: *sc.instance_id(),
-    });
-    let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
+    };
+    let (outcomes, response) = sc.handle_request_message(&mut rng, sender, msg.into(), timestamp);
     assert_eq!(
-        &*remove_targeted_messages(&validators, sender, &mut outcomes),
-        [Message::SyncResponse(SyncResponse {
+        response
+            .expect("response")
+            .try_into_zug()
+            .expect("Zug message"),
+        Message::SyncResponse(SyncResponse {
             round_id: 0,
             proposal_or_hash: Some(Either::Left(proposal0)),
             echo_sigs: BTreeMap::new(),
@@ -882,12 +878,12 @@ fn zug_handles_sync_request() {
             signed_messages: Vec::new(),
             evidence: Vec::new(),
             instance_id: *sc.instance_id(),
-        })]
+        })
     );
     expect_no_gossip_block_finalized(outcomes);
 
     // But if there are missing messages, these are sent back.
-    let msg = Message::<ClContext>::SyncRequest(SyncRequest {
+    let msg = SyncRequest::<ClContext> {
         round_id: 0,
         proposal_hash: Some(hash1), // Wrong proposal!
         has_proposal: true,
@@ -899,17 +895,18 @@ fn zug_handles_sync_request() {
         active: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         faulty: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
         instance_id: *sc.instance_id(),
-    });
-    let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
-    let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
+    };
+    let (mut outcomes, response) =
+        sc.handle_request_message(&mut rng, sender, msg.into(), timestamp);
+    assert_eq!(
+        remove_targeted_messages(&validators, sender, &mut outcomes),
+        vec![]
+    );
     expect_no_gossip_block_finalized(outcomes);
 
-    let sync_response_msg = msgs.pop().expect("sync response");
-    assert_eq!(msgs, vec![]);
-
-    let sync_response = match sync_response_msg {
-        Message::SyncResponse(sync_response) => sync_response,
-        msg => panic!("unexpected message: {:?}", msg),
+    let sync_response = match response.expect("response").try_into_zug() {
+        Ok(Message::SyncResponse(sync_response)) => sync_response,
+        result => panic!("unexpected message: {:?}", result),
     };
 
     assert_eq!(sync_response.round_id, 0);
@@ -944,18 +941,16 @@ fn zug_handles_sync_request() {
     for _ in 0..2 {
         let mut outcomes = sc2.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
         let msg = loop {
-            if let ProtocolOutcome::CreatedMessageToRandomPeer(payload) =
-                outcomes.pop().expect("expected message to random peer")
+            if let ProtocolOutcome::CreatedRequestToRandomPeer(payload) =
+                outcomes.pop().expect("expected request to random peer")
             {
                 break payload;
             }
         };
-        let mut outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
-        let msg = match outcomes.pop() {
-            Some(ProtocolOutcome::CreatedTargetedMessage(msg, _)) => msg,
-            outcome => panic!("expected targeted message: {:?}", outcome),
-        };
-        let mut _outcomes = sc2.handle_message(&mut rng, sender, msg, timestamp);
+        let (_outcomes, response) = sc.handle_request_message(&mut rng, sender, msg, timestamp);
+        if let Some(msg) = response {
+            let mut _outcomes = sc2.handle_message(&mut rng, sender, msg, timestamp);
+        }
     }
 
     // They should be synced up now:

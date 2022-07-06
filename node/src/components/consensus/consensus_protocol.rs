@@ -12,7 +12,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
-    components::consensus::{traits::Context, ActionId, TimerId},
+    components::consensus::{traits::Context, ActionId, EraMessage, EraRequest, TimerId},
     types::NodeId,
     NodeRng,
 };
@@ -82,10 +82,7 @@ impl<C: Context> ProposedBlock<C> {
     }
 }
 
-impl<C: Context> Display for ProposedBlock<C>
-where
-    C::ConsensusValue: Display,
-{
+impl<C: Context> Display for ProposedBlock<C> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
@@ -193,9 +190,11 @@ pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
-    CreatedGossipMessage(Vec<u8>),
-    CreatedTargetedMessage(Vec<u8>, NodeId),
-    CreatedMessageToRandomPeer(Vec<u8>),
+    CreatedGossipMessage(EraMessage<C>),
+    CreatedTargetedMessage(EraMessage<C>, NodeId),
+    CreatedMessageToRandomPeer(EraMessage<C>),
+    CreatedTargetedRequest(EraRequest<C>, NodeId),
+    CreatedRequestToRandomPeer(EraRequest<C>),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -241,9 +240,18 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: EraMessage<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
+
+    /// Handles an incoming request message and returns an optional response.
+    fn handle_request_message(
+        &mut self,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        msg: EraRequest<C>,
+        now: Timestamp,
+    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;
