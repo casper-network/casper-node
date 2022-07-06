@@ -530,7 +530,7 @@ impl EraSupervisor {
                         Ok(_) => {}
                         Err(err) => match err.kind() {
                             io::ErrorKind::NotFound => {}
-                            err => warn!(?err, "could not delete unit hash file"),
+                            err => warn!(%err, "could not delete unit hash file"),
                         },
                     }
                 }
@@ -982,9 +982,9 @@ impl EraSupervisor {
                     proposer,
                 );
                 info!(
-                    era_id = ?finalized_block.era_id(),
-                    height = ?finalized_block.height(),
-                    timestamp = ?finalized_block.timestamp(),
+                    era_id = finalized_block.era_id().value(),
+                    height = finalized_block.height(),
+                    timestamp = %finalized_block.timestamp(),
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
@@ -1185,8 +1185,8 @@ where
             Some(switch_block) => switch_blocks.push(switch_block),
             None => {
                 error!(
-                    ?era_id,
-                    ?switch_block_era_id,
+                    era = era_id.value(),
+                    switch_block_era = switch_block_era_id.value(),
                     "switch block header era must exist to initialize era"
                 );
                 panic!("switch block header not found in storage");

@@ -519,7 +519,7 @@ impl ContractRuntime {
                 deploys,
                 transfers,
             } => {
-                info!(?finalized_block, "enqueuing finalized block for execution");
+                info!(%finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
