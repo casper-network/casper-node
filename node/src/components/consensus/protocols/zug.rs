@@ -614,6 +614,9 @@ impl<C: Context + 'static> Zug<C> {
 
     /// Returns the leader in the specified round.
     pub(crate) fn leader(&self, round_id: RoundId) -> ValidatorIndex {
+        if let Some(round) = self.round(round_id) {
+            return round.leader();
+        }
         self.leader_sequence.leader(u64::from(round_id))
     }
 
@@ -800,7 +803,7 @@ impl<C: Context + 'static> Zug<C> {
                     proposal_or_hash = Some(Either::Right(hash));
                 } else {
                     // If they don't have the proposal make sure we include the leader's echo.
-                    let leader_idx = self.leader(round_id);
+                    let leader_idx = round.leader();
                     if !self.validator_bit_field_includes(first_validator_idx, leader_idx) {
                         if let Some(signature) = echo_map.get(&leader_idx) {
                             echo_sigs.insert(leader_idx, *signature);
@@ -1416,12 +1419,15 @@ impl<C: Context + 'static> Zug<C> {
         if self.finalized_switch_block() || self.faulty_weight() > self.params.ftt() {
             return outcomes; // This era has ended or the FTT was exceeded.
         }
-        while let Some(round_id) = self.maybe_dirty_round_id.take() {
-            outcomes.extend(self.update_round(round_id, now));
-            if let Some(next_round_id) = round_id.checked_add(1) {
-                self.mark_dirty(next_round_id);
+        if let Some(dirty_round_id) = self.maybe_dirty_round_id {
+            for round_id in dirty_round_id.. {
+                outcomes.extend(self.update_round(round_id, now));
+                if round_id >= self.current_round {
+                    break;
+                }
             }
         }
+        self.maybe_dirty_round_id = None;
         outcomes
     }
 
@@ -1464,16 +1470,16 @@ impl<C: Context + 'static> Zug<C> {
             let current_timeout = self
                 .current_round_start
                 .saturating_add(self.proposal_timeout());
-            if now >= current_timeout || self.faults.contains_key(&self.leader(round_id)) {
+            if now >= current_timeout {
                 outcomes.extend(self.create_message(round_id, Content::Vote(false)));
-                if !self.faults.contains_key(&self.leader(round_id)) {
-                    self.update_proposal_timeout(now);
-                }
+                self.update_proposal_timeout(now);
+            } else if self.faults.contains_key(&self.leader(round_id)) {
+                outcomes.extend(self.create_message(round_id, Content::Vote(false)));
             }
             if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
                 self.current_round_start = Timestamp::MAX;
                 self.current_round = self.current_round.saturating_add(1);
-                debug!(
+                info!(
                     round_id = self.current_round,
                     leader = self.leader(self.current_round).0,
                     "started a new round"
@@ -1573,6 +1579,10 @@ impl<C: Context + 'static> Zug<C> {
         ancestor_values: Vec<C::ConsensusValue>,
         sender: NodeId,
     ) -> ProtocolOutcomes<C> {
+        if proposal.timestamp() < self.params.start_timestamp() {
+            info!("rejecting proposal with timestamp earlier than era start");
+            return vec![];
+        }
         if let Some((_, parent_proposal)) = proposal
             .maybe_parent_round_id()
             .and_then(|parent_round_id| self.accepted_proposal(parent_round_id))
@@ -1613,10 +1623,6 @@ impl<C: Context + 'static> Zug<C> {
                 vec![] // Proposal was already known.
             }
         } else {
-            if proposal.timestamp() < self.params.start_timestamp() {
-                info!("rejecting proposal with timestamp earlier than era start");
-                return vec![];
-            }
             self.log_proposal(&proposal, round_id, "proposal does not need validation");
             if self.round_mut(round_id).insert_proposal(proposal.clone()) {
                 self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
