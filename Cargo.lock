@@ -1263,6 +1263,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dictionary-read"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3582,6 +3590,14 @@ dependencies = [
  "crossbeam-deque 0.8.1",
  "crossbeam-utils 0.8.10",
  "num_cpus",
+]
+
+[[package]]
+name = "read-from-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
 ]
 
 [[package]]
