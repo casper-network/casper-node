@@ -59,7 +59,7 @@ impl<C: Context> Proposal<C> {
         }
     }
 
-    /// Returns the proposal hash. Memoizes the hash, so it is only computed the first time this is called.
+    /// Returns the proposal hash.
     #[cfg(test)] // Only used in tests; in production use HashedProposal below.
     pub(super) fn hash(&self) -> C::Hash {
         let serialized = bincode::serialize(&self).expect("failed to serialize fields");

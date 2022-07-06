@@ -9,6 +9,7 @@ pub(super) mod debug;
 mod era;
 
 use std::{
+    cmp,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
@@ -564,17 +565,22 @@ impl EraSupervisor {
     {
         match self.open_eras.get_mut(&era_id) {
             None => {
-                if era_id > self.current_era {
-                    info!(era = era_id.value(), "received message for future era");
-                } else {
-                    info!(era = era_id.value(), "received message for obsolete era");
-                }
+                self.log_missing_era(era_id);
                 Effects::new()
             }
             Some(era) => {
                 let outcomes = f(&mut *era.consensus, rng);
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
+        }
+    }
+
+    fn log_missing_era(&self, era_id: EraId) {
+        let era = era_id.value();
+        match era_id.cmp(&self.current_era) {
+            cmp::Ordering::Greater => info!(era, "received message for future era"),
+            cmp::Ordering::Equal => error!(era, "missing current era"),
+            cmp::Ordering::Less => info!(era, "received message for obsolete era"),
         }
     }
 
@@ -647,11 +653,7 @@ impl EraSupervisor {
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
             None => {
-                if era_id > self.current_era {
-                    info!(era = era_id.value(), "received demand for future era");
-                } else {
-                    info!(era = era_id.value(), "received demand for obsolete era");
-                }
+                self.log_missing_era(era_id);
                 auto_closing_responder.respond_none().ignore()
             }
             Some(era) => {
