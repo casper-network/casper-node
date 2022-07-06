@@ -1362,13 +1362,11 @@ impl reactor::Reactor for Reactor {
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::SyncStateFinished,
-            ) => {
-                self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    ParticipatingEvent::SmallNetwork(small_network::Event::SyncStateFinished),
-                )
-            }
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::SmallNetwork(small_network::Event::SyncStateFinished),
+            ),
             ParticipatingEvent::ChainspecLoaderAnnouncement(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {

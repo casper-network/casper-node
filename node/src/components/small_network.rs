@@ -184,6 +184,9 @@ where
 
     /// The era that is considered the active era by the small network component.
     active_era: EraId,
+
+    /// The flag specifying if the node is in the chain sync process.
+    chain_sync_in_progress: bool,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -339,6 +342,7 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
+            chain_sync_in_progress: true,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -773,7 +777,7 @@ where
                 effect_builder.announce_incoming(peer_id, payload).ignore()
             }
             Message::SyncStateChanged => {
-                // TODO[RC]: Mark peer as non joiner
+                info!(%peer_id, "peer reported sync finished");
                 self.update_joining_set(peer_id, false);
                 Effects::new()
             }
@@ -1072,9 +1076,10 @@ where
                 effects
             }
             Event::SyncStateFinished => {
-                // TODO[RC]: Update internal flag
+                info!("notifying peers that chain sync has finished");
                 self.net_metrics.broadcast_requests.inc();
                 self.broadcast_message(Arc::new(Message::SyncStateChanged));
+                self.chain_sync_in_progress = false;
                 Effects::new()
             }
         }

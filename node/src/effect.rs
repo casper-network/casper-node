@@ -112,7 +112,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -1667,6 +1667,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<LinearChainAnnouncement>,
     {
+        info!("announcing chain sync finished");
         self.event_queue
             .schedule(
                 LinearChainAnnouncement::SyncStateFinished,
