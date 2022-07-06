@@ -39,6 +39,7 @@ use casper_global_state::{
         trie::{TrieOrChunk, TrieOrChunkId},
         trie_store::lmdb::LmdbTrieStore,
     },
+    BlockStore, DataAccessLayer,
 };
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
@@ -196,7 +197,7 @@ impl Display for Event {
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
     verifiable_chunked_hash_activation: EraId,
@@ -635,20 +636,30 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         }));
 
-        let environment = Arc::new(LmdbEnvironment::new(
-            storage_dir,
-            contract_runtime_config.max_global_state_size(),
-            contract_runtime_config.max_readers(),
-            contract_runtime_config.manual_sync_enabled(),
-        )?);
+        let data_access_layer = {
+            let environment = Arc::new(LmdbEnvironment::new(
+                storage_dir,
+                contract_runtime_config.max_global_state_size(),
+                contract_runtime_config.max_readers(),
+                contract_runtime_config.manual_sync_enabled(),
+            )?);
 
-        let trie_store = Arc::new(LmdbTrieStore::new(
-            &environment,
-            None,
-            DatabaseFlags::empty(),
-        )?);
+            let trie_store = Arc::new(LmdbTrieStore::new(
+                &environment,
+                None,
+                DatabaseFlags::empty(),
+            )?);
 
-        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+            let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+
+            let block_store = BlockStore::new();
+
+            DataAccessLayer {
+                state: global_state,
+                block_store,
+            }
+        };
+
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -659,7 +670,9 @@ impl ContractRuntime {
             system_config,
         );
 
-        let engine_state = Arc::new(EngineState::new(global_state, engine_config));
+        let engine_state = EngineState::new(data_access_layer, engine_config);
+
+        let engine_state = Arc::new(engine_state);
 
         let metrics = Arc::new(Metrics::new(registry)?);
 
@@ -779,7 +792,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -874,7 +887,7 @@ impl ContractRuntime {
     }
 
     fn do_get_trie(
-        engine_state: &EngineState<LmdbGlobalState>,
+        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
@@ -886,7 +899,7 @@ impl ContractRuntime {
     }
 
     fn get_trie_full(
-        engine_state: &EngineState<LmdbGlobalState>,
+        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
         metrics: &Metrics,
         trie_key: Digest,
     ) -> Result<Option<Bytes>, engine_state::Error> {
@@ -899,7 +912,7 @@ impl ContractRuntime {
 
     /// Returns the engine state, for testing only.
     #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
         &self.engine_state
     }
 }

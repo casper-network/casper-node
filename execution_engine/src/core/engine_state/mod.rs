@@ -40,6 +40,7 @@ use casper_global_state::{
         lmdb,
         trie::{TrieOrChunk, TrieOrChunkId},
     },
+    DataAccessLayer,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -124,6 +125,42 @@ impl EngineState<ScratchGlobalState> {
     /// Returns the inner state
     pub fn into_inner(self) -> ScratchGlobalState {
         self.state
+    }
+}
+
+impl EngineState<DataAccessLayer<LmdbGlobalState>> {
+    /// Gets underlyng LmdbGlobalState
+    pub fn get_state(&self) -> &DataAccessLayer<LmdbGlobalState> {
+        &self.state
+    }
+
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+        if self.state.state().environment().is_manual_sync_enabled() {
+            self.state.state().environment().sync()?
+        }
+        Ok(())
+    }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
+        EngineState {
+            config: self.config,
+            state: self.state.state().create_scratch(),
+        }
+    }
+
+    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    pub fn write_scratch_to_db(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, Error> {
+        let stored_values = scratch_global_state.into_inner();
+        self.state
+            .state()
+            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .map_err(Into::into)
     }
 }
 

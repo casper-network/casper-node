@@ -118,8 +118,8 @@ pub fn run_blocks_with_transfers_and_step(
     let mut total_transfers = 0;
     {
         let engine_state = builder.get_engine_state();
-        let lmdb_env = engine_state.get_state().environment().env();
-        let db = engine_state.get_state().trie_store().get_db();
+        let lmdb_env = engine_state.get_state().state().environment().env();
+        let db = engine_state.get_state().state().trie_store().get_db();
 
         let txn = lmdb_env.begin_ro_txn().unwrap();
         let mut cursor = txn.open_ro_cursor(db).unwrap();
@@ -178,8 +178,8 @@ pub fn run_blocks_with_transfers_and_step(
 
         let total_tries = {
             let engine_state = builder.get_engine_state();
-            let lmdb_env = engine_state.get_state().environment().env();
-            let db = engine_state.get_state().trie_store().get_db();
+            let lmdb_env = engine_state.get_state().state().environment().env();
+            let db = engine_state.get_state().state().trie_store().get_db();
             let txn = lmdb_env.begin_ro_txn().unwrap();
             let mut cursor = txn.open_ro_cursor(db).unwrap();
             cursor.iter().count()

@@ -11,6 +11,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::global_state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+    DataAccessLayer,
 };
 use casper_hashing::Digest;
 use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
@@ -32,7 +33,7 @@ use super::SpeculativeExecutionState;
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
