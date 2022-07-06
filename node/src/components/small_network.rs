@@ -434,7 +434,6 @@ where
         }
     }
 
-    #[allow(clippy::redundant_clone)]
     fn handle_incoming_connection(
         &mut self,
         incoming: Box<IncomingConnection<P>>,
@@ -515,6 +514,15 @@ where
                     // By default, we assume that the peer is syncing. It'll send us the
                     // `SyncStateChanged` message in case it isn't.
                     self.update_joining_set(peer_id, true);
+                }
+
+                // Tell the peer that we have finished syncing, because he'll asssume he's
+                // connecting to a node that is still syncing. If we're actually
+                // still syncing, the peer will be notified later by the chain synchronizer
+                // component.
+                if !self.chain_sync_in_progress {
+                    info!("telling the newly connected peer that we already finished syncing");
+                    self.send_message(peer_id, Arc::new(Message::SyncStateChanged), None);
                 }
 
                 // Now we can start the message reader.
