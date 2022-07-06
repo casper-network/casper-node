@@ -60,9 +60,7 @@ function _step_01()
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
-        stage="$STAGE_ID" \
-        chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_8.chainspec.toml.in" \
-        config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_8.config.toml"
+        stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -87,8 +85,7 @@ function _step_03()
         verbose=false \
         node="6" \
         era="$ACTIVATION_POINT" \
-        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_8.chainspec.toml.in" \
-        config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_8.config.toml"
+        chainspec_path="$NCTL_CASPER_HOME/resources/local/chainspec.toml.in"
 }
 
 # Step 04: Join passive node.

@@ -21,6 +21,7 @@ _REMOTE_FILES=(
     "casper-node"
     "chainspec.toml.in"
     "config.toml"
+    "accounts.toml"
     "delegate.wasm"
     "transfer_to_account_u512.wasm"
     "undelegate.wasm"

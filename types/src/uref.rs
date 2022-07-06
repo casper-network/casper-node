@@ -38,6 +38,7 @@ pub type URefAddr = [u8; UREF_ADDR_LENGTH];
 
 /// Error while parsing a URef from a formatted string.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     /// Prefix is not "uref-".
     InvalidPrefix,
