@@ -14,7 +14,6 @@ license = "Apache-2.0"
 bytes = "1.1.0"
 futures = "0.3.21"
 http = "0.2.7"
-itertools = "0.10.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1.34"

@@ -11,7 +11,7 @@ use warp::{filters::BoxedFilter, Filter, Reply};
 use super::ResponseBodyOnRejection;
 use crate::{
     filters::{handle_rejection, main_filter},
-    Error, Params, RequestHandlersBuilder, ReservedErrorCode, Response,
+    Error, RequestHandlersBuilder, ReservedErrorCode, Response,
 };
 
 const GET_GOOD_THING: &str = "get good thing";
@@ -31,16 +31,14 @@ impl Serialize for BadThing {
     }
 }
 
-async fn get_good_thing(params: Option<Params>) -> Result<GoodThing, Error> {
+async fn get_good_thing(params: Option<Value>) -> Result<GoodThing, Error> {
     match params {
-        Some(Params::Array(array)) => Ok(GoodThing {
-            good_thing: array[0].as_str().unwrap().to_string(),
-        }),
+        Some(Value::String(good_thing)) => Ok(GoodThing { good_thing }),
         _ => Err(Error::new(ReservedErrorCode::InvalidParams, "no params")),
     }
 }
 
-async fn get_bad_thing(_params: Option<Params>) -> Result<BadThing, Error> {
+async fn get_bad_thing(_params: Option<Value>) -> Result<BadThing, Error> {
     Ok(BadThing)
 }
 
@@ -67,7 +65,7 @@ async fn should_handle_valid_request() {
     // This should get handled by `fn get_good_thing` and return `Ok` as "params" is Some, causing a
     // Response::Success to be returned to the client.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get good thing","params":["one"]}"#)
+        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get good thing","params":"one"}"#)
         .filter(&filter)
         .await
         .unwrap()
@@ -93,7 +91,7 @@ async fn should_handle_valid_request_where_rpc_returns_error() {
     // This should get handled by `fn get_good_thing` and return `Err` as "params" is None, causing
     // a Response::Failure (invalid params) to be returned to the client.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get good thing"}"#)
+        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get good thing","params":null}"#)
         .filter(&filter)
         .await
         .unwrap()
@@ -144,7 +142,7 @@ async fn should_handle_request_for_method_not_registered() {
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
     // request) to the client as the ID has fractional parts.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1,"method":"not registered","params":["one"]}"#)
+        .body(r#"{"jsonrpc":"2.0","id":1,"method":"not registered","params":"one"}"#)
         .filter(&filter)
         .await
         .unwrap()
@@ -171,7 +169,7 @@ async fn should_handle_request_with_invalid_id() {
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
     // request) to the client as the ID has fractional parts.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1.1,"method":"get good thing","params":["one"]}"#)
+        .body(r#"{"jsonrpc":"2.0","id":1.1,"method":"get good thing","params":"one"}"#)
         .filter(&filter)
         .await
         .unwrap()
@@ -198,7 +196,7 @@ async fn should_handle_request_with_no_id() {
     // This should get handled by `filters::handle_body` and return no JSON-RPC response, only an
     // HTTP response (bad request) to the client as no ID was provided.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","method":"get good thing","params":["one"]}"#)
+        .body(r#"{"jsonrpc":"2.0","method":"get good thing","params":"one"}"#)
         .filter(&filter)
         .await
         .unwrap()
@@ -219,9 +217,9 @@ async fn should_handle_request_with_extra_field() {
     let filter = main_filter_with_recovery();
 
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
-    // request) to the client as the request has an extra field.
+    // request) to the client as the ID has fractional parts.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1,"method":"get good thing","params":[2],"extra":"field"}"#)
+        .body(r#"{"jsonrpc":"2.0","id":1,"method":"get good thing","params":2,"extra":"field"}"#)
         .filter(&filter)
         .await
         .unwrap()
@@ -234,7 +232,7 @@ async fn should_handle_request_with_extra_field() {
         rpc_response.error().unwrap(),
         &Error::new(
             ReservedErrorCode::InvalidRequest,
-            "Unexpected field: 'extra'"
+            "unknown field `extra`, expected one of `jsonrpc`, `id`, `method`, `params` at line 1 column 68"
         )
     );
 }
@@ -261,7 +259,7 @@ async fn should_handle_malformed_request_with_valid_id() {
         rpc_response.error().unwrap(),
         &Error::new(
             ReservedErrorCode::InvalidRequest,
-            "Expected 'method' to be a String"
+            "invalid type: map, expected a string at line 1 column 33"
         )
     );
 }
@@ -286,7 +284,10 @@ async fn should_handle_malformed_request_but_valid_json() {
     assert_eq!(rpc_response.id(), &Value::Null);
     assert_eq!(
         rpc_response.error().unwrap(),
-        &Error::new(ReservedErrorCode::InvalidRequest, "Missing 'jsonrpc' field")
+        &Error::new(
+            ReservedErrorCode::InvalidRequest,
+            "unknown field `a`, expected one of `jsonrpc`, `id`, `method`, `params` at line 1 column 4"
+        )
     );
 }
 

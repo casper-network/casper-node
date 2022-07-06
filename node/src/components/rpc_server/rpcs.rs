@@ -24,7 +24,7 @@ use tower::ServiceBuilder;
 use tracing::info;
 use warp::Filter;
 
-use casper_json_rpc::{Error, Params, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode};
+use casper_json_rpc::{Error, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode};
 use casper_types::ProtocolVersion;
 
 use super::{ReactorEventT, RpcRequest};
@@ -57,16 +57,14 @@ pub(super) trait RpcWithParams {
         + 'static;
 
     /// Tries to parse the incoming JSON-RPC request's "params" field as `RequestParams`.
-    fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, Error> {
-        let params = match maybe_params {
-            Some(params) => Value::from(params),
-            None => {
-                return Err(Error::new(
-                    ReservedErrorCode::InvalidParams,
-                    "Missing 'params' field",
-                ))
-            }
-        };
+    fn try_parse_params(maybe_params: Option<Value>) -> Result<Self::RequestParams, Error> {
+        let params = maybe_params.unwrap_or(Value::Null);
+        if params.is_null() {
+            return Err(Error::new(
+                ReservedErrorCode::InvalidParams,
+                "Missing or null 'params' field",
+            ));
+        }
         serde_json::from_value::<Self::RequestParams>(params).map_err(|error| {
             Error::new(
                 ReservedErrorCode::InvalidParams,
@@ -122,13 +120,12 @@ pub(super) trait RpcWithoutParams {
         + Send
         + 'static;
 
-    /// Returns an error if the incoming JSON-RPC request's "params" field is not `None` or an empty
-    /// Array or Object.
-    fn check_no_params(maybe_params: Option<Params>) -> Result<(), Error> {
-        if !maybe_params.unwrap_or_default().is_empty() {
+    /// Returns an error if the incoming JSON-RPC request's "params" field is not `None` or `Null`.
+    fn check_no_params(maybe_params: Option<Value>) -> Result<(), Error> {
+        if !maybe_params.unwrap_or(Value::Null).is_null() {
             return Err(Error::new(
                 ReservedErrorCode::InvalidParams,
-                "'params' field should be an empty Array '[]', an empty Object '{}' or absent",
+                "'params' field should be null or absent",
             ));
         }
         Ok(())
@@ -165,9 +162,6 @@ pub(super) trait RpcWithoutParams {
 }
 
 /// A JSON-RPC where the "params" field is optional.
-///
-/// Note that "params" being an empty JSON Array or empty JSON Object is treated the same as if
-/// the "params" field is absent - i.e. it represents the `None` case.
 #[async_trait]
 pub(super) trait RpcWithOptionalParams {
     /// The JSON-RPC "method" name.
@@ -194,19 +188,12 @@ pub(super) trait RpcWithOptionalParams {
     /// Tries to parse the incoming JSON-RPC request's "params" field as
     /// `Option<OptionalRequestParams>`.
     fn try_parse_params(
-        maybe_params: Option<Params>,
+        maybe_params: Option<Value>,
     ) -> Result<Option<Self::OptionalRequestParams>, Error> {
-        let params = match maybe_params {
-            Some(params) => {
-                if params.is_empty() {
-                    Value::Null
-                } else {
-                    Value::from(params)
-                }
-            }
-            None => Value::Null,
-        };
-        serde_json::from_value::<Option<Self::OptionalRequestParams>>(params).map_err(|error| {
+        serde_json::from_value::<Option<Self::OptionalRequestParams>>(
+            maybe_params.unwrap_or(Value::Null),
+        )
+        .map_err(|error| {
             Error::new(
                 ReservedErrorCode::InvalidParams,
                 format!("Failed to parse 'params' field: {}", error),
@@ -362,16 +349,18 @@ mod tests {
             let rpc_response = send_request(GetDeploy::METHOD, None, &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
-                &Error::new(ReservedErrorCode::InvalidParams, "Missing 'params' field")
+                &Error::new(
+                    ReservedErrorCode::InvalidParams,
+                    "Missing or null 'params' field"
+                )
             );
 
-            let rpc_response = send_request(GetDeploy::METHOD, Some("[]"), &filter).await;
+            let rpc_response = send_request(GetDeploy::METHOD, Some("null"), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &Error::new(
                     ReservedErrorCode::InvalidParams,
-                    "Failed to parse 'params' field: invalid length 0, expected struct \
-                    GetDeployParams with 2 elements"
+                    "Missing or null 'params' field"
                 )
             );
         }
@@ -380,12 +369,13 @@ mod tests {
         async fn should_return_error_on_failure_to_parse_params() {
             let filter = main_filter_with_recovery();
 
-            let rpc_response = send_request(GetDeploy::METHOD, Some("[3]"), &filter).await;
+            let rpc_response = send_request(GetDeploy::METHOD, Some("3"), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &Error::new(
                     ReservedErrorCode::InvalidParams,
-                    "Failed to parse 'params' field: invalid type: integer `3`, expected a string"
+                    "Failed to parse 'params' field: invalid type: integer `3`, expected struct \
+                    GetDeployParams"
                 )
             );
         }
@@ -415,13 +405,7 @@ mod tests {
                 Some(GetPeersResult::doc_example())
             );
 
-            let rpc_response = send_request(GetPeers::METHOD, Some("[]"), &filter).await;
-            assert_eq!(
-                rpc_response.result().as_ref(),
-                Some(GetPeersResult::doc_example())
-            );
-
-            let rpc_response = send_request(GetPeers::METHOD, Some("{}"), &filter).await;
+            let rpc_response = send_request(GetPeers::METHOD, Some("null"), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetPeersResult::doc_example())
@@ -429,15 +413,15 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn should_return_error_if_params_not_empty() {
+        async fn should_return_error_if_params_not_null() {
             let filter = main_filter_with_recovery();
 
-            let rpc_response = send_request(GetPeers::METHOD, Some("[3]"), &filter).await;
+            let rpc_response = send_request(GetPeers::METHOD, Some("3"), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &Error::new(
                     ReservedErrorCode::InvalidParams,
-                    "'params' field should be an empty Array '[]', an empty Object '{}' or absent"
+                    "'params' field should be null or absent"
                 )
             );
         }
@@ -469,13 +453,7 @@ mod tests {
                 Some(GetBlockResult::doc_example())
             );
 
-            let rpc_response = send_request(GetBlock::METHOD, Some("[]"), &filter).await;
-            assert_eq!(
-                rpc_response.result().as_ref(),
-                Some(GetBlockResult::doc_example())
-            );
-
-            let rpc_response = send_request(GetBlock::METHOD, Some("{}"), &filter).await;
+            let rpc_response = send_request(GetBlock::METHOD, Some("null"), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetBlockResult::doc_example())
@@ -503,13 +481,13 @@ mod tests {
         async fn should_return_error_on_failure_to_parse_params() {
             let filter = main_filter_with_recovery();
 
-            let rpc_response = send_request(GetBlock::METHOD, Some(r#"["a"]"#), &filter).await;
+            let rpc_response = send_request(GetBlock::METHOD, Some("3"), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &Error::new(
                     ReservedErrorCode::InvalidParams,
-                    "Failed to parse 'params' field: unknown variant `a`, expected `Hash` or \
-                    `Height`"
+                    "Failed to parse 'params' field: invalid type: integer `3`, expected struct \
+                    GetBlockParams"
                 )
             );
         }
