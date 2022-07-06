@@ -47,7 +47,7 @@ use crate::{
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest},
+        requests::{ConsensusRequest, ContractRuntimeRequest, MarkBlockCompletedRequest},
         Responder,
     },
     fatal,
@@ -81,6 +81,8 @@ enum Event {
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
     StorageRequest(StorageRequest),
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
@@ -159,6 +161,9 @@ impl Display for Event {
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
+            Event::MarkBlockCompletedRequest(req) => {
+                write!(formatter, "mark block completed: {}", req)
+            }
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
@@ -308,6 +313,9 @@ impl reactor::Reactor for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            Event::MarkBlockCompletedRequest(_) => {
+                panic!("gossiper tests should never mark blocks completed")
+            }
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
@@ -409,7 +417,8 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)
-                | NetResponse::BlockHeadersBatch(_)) => {
+                | NetResponse::BlockHeadersBatch(_)
+                | NetResponse::FinalitySignatures(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
                 }
             },

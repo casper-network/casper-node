@@ -41,7 +41,7 @@ impl Config {
         node_config: NodeConfig,
         small_network_config: SmallNetworkConfig,
     ) -> Self {
-        let total_retry_ms = 2 * small_network_config.gossip_interval.millis() + 10_000;
+        let total_retry_ms = 3 * small_network_config.gossip_interval.millis() + 10_000;
         let max_retries_while_not_connected = total_retry_ms / node_config.retry_interval.millis();
 
         Config {

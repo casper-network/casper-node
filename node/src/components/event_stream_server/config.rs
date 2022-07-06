@@ -17,6 +17,9 @@ const DEFAULT_MAX_CONCURRENT_SUBSCRIBERS: u32 = 100;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Setting to enable the HTTP server.
+    pub enable_server: bool,
+
     /// Address to bind event stream SSE HTTP server to.
     pub address: String,
 
@@ -31,6 +34,7 @@ impl Config {
     /// Creates a default instance for `EventStreamServer`.
     pub fn new() -> Self {
         Config {
+            enable_server: true,
             address: DEFAULT_ADDRESS.to_string(),
             event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
             max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,

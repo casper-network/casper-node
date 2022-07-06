@@ -4,14 +4,11 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
+    utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        genesis::{GenesisAccount, GenesisValidator},
-        RewardItem, SlashItem,
-    },
-    storage::global_state::in_memory::InMemoryGlobalState,
+use casper_execution_engine::core::engine_state::{
+    genesis::{GenesisAccount, GenesisValidator},
+    RewardItem, SlashItem,
 };
 use casper_types::{
     system::{
@@ -39,7 +36,7 @@ const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn get_named_key(
-    builder: &mut InMemoryWasmTestBuilder,
+    builder: &mut LmdbWasmTestBuilder,
     contract_hash: ContractHash,
     name: &str,
 ) -> Key {
@@ -51,8 +48,8 @@ fn get_named_key(
         .expect("should have bid purses")
 }
 
-fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn initialize_builder() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

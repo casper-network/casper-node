@@ -25,16 +25,12 @@
 //! * Storing a deploy or block that already exists (same hash) is fine and will silently be
 //!   accepted.
 //!
-//! ## Indices
-//!
-//! The current implementation keeps only in-memory indices, which are not persisted, based upon the
-//! estimate that they are reasonably quick to rebuild on start-up and do not take up much memory.
-//!
 //! ## Errors
 //!
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+pub(crate) mod disjoint_sequences;
 mod error;
 mod lmdb_ext;
 mod object_pool;
@@ -44,6 +40,7 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
+    borrow::Cow,
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
@@ -78,7 +75,7 @@ use crate::{
     components::{consensus, fetcher::FetchedOrNotFound, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
-        requests::{NetworkRequest, StateStoreRequest},
+        requests::{MarkBlockCompletedRequest, NetworkRequest, StateStoreRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -95,6 +92,7 @@ use crate::{
     utils::{display_error, WithDir},
     NodeRng,
 };
+use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
 use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
@@ -102,9 +100,10 @@ use object_pool::ObjectPool;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
-/// The key in the state store DB under which the storage component's
-/// `lowest_available_block_height` field is persisted.
-const KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT: &str = "lowest_available_block_height";
+
+/// We can set this very low, as there is only a single reader/writer accessing the component at any
+/// one time.
+const MAX_TRANSACTIONS: u32 = 1;
 
 /// One Gibibyte.
 const GIB: usize = 1024 * 1024 * 1024;
@@ -119,6 +118,8 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
 const MAX_DB_COUNT: u32 = 12;
+/// Key under which completed blocks are to be stored.
+const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -199,11 +200,8 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes and heights of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
-    /// The height of the highest block from which this node has an unbroken sequence of full
-    /// blocks stored (and the corresponding global state).
-    lowest_available_block_height: u64,
-    /// Highest block available when storage is constructed.
-    highest_block_at_startup: u64,
+    /// Runs of completed blocks known in storage.
+    completed_blocks: DisjointSequences,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
@@ -231,6 +229,9 @@ pub(crate) enum Event {
     /// Incoming state storage request.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Block completion announcement.
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
 }
 
 impl Display for Event {
@@ -239,6 +240,7 @@ impl Display for Event {
             Event::StorageRequest(req) => req.fmt(f),
             Event::NetRequestIncoming(incoming) => incoming.fmt(f),
             Event::StateStoreRequest(req) => req.fmt(f),
+            Event::MarkBlockCompletedRequest(req) => req.fmt(f),
         }
     }
 }
@@ -285,6 +287,7 @@ where
             Event::StateStoreRequest(req) => {
                 self.handle_state_store_request::<REv>(effect_builder, req)
             }
+            Event::MarkBlockCompletedRequest(req) => self.handle_mark_block_completed_request(req),
         };
 
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
@@ -341,12 +344,10 @@ impl Storage {
                 | EnvironmentFlags::NO_SUB_DIR
                 // Disable thread local storage, strongly suggested for operation with tokio.
                 | EnvironmentFlags::NO_TLS
-                // Disable read-ahead. Our data is not storead/read in sequence that would benefit from the read-ahead.
+                // Disable read-ahead. Our data is not stored/read in sequence that would benefit from the read-ahead.
                 | EnvironmentFlags::NO_READAHEAD,
             )
-            // We need at least `max_sync_tasks` readers, add an additional 8 for unforseen external
-            // reads (not likely, but it does not hurt to increase this limit).
-            .set_max_readers(config.max_sync_tasks as u32 + 8)
+            .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(MAX_DB_COUNT)
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
@@ -440,23 +441,6 @@ impl Storage {
         drop(cursor);
         block_txn.commit()?;
 
-        let mut lowest_available_block_height = {
-            let mut txn = env.begin_ro_txn()?;
-            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
-                .unwrap_or_default()
-        };
-        let highest_block_at_startup = block_height_index
-            .keys()
-            .last()
-            .copied()
-            .unwrap_or_default();
-        if let Err(error) =
-            AvailableBlockRange::new(lowest_available_block_height, highest_block_at_startup)
-        {
-            error!(%error);
-            lowest_available_block_height = highest_block_at_startup;
-        }
-
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
         initialize_block_body_v1_db(
@@ -472,7 +456,7 @@ impl Storage {
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
-        Ok(Self {
+        let mut component = Self {
             root,
             env,
             block_header_db,
@@ -490,14 +474,43 @@ impl Storage {
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
-            lowest_available_block_height,
-            highest_block_at_startup,
+            completed_blocks: Default::default(),
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
-        })
+        };
+
+        match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
+            Some(raw) => {
+                let (sequences, _) = DisjointSequences::from_vec(raw)
+                    .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
+                // We can restore the previous state.
+                component.completed_blocks = sequences;
+            }
+            None => {
+                // No state so far. We can make the following observations:
+                //
+                // 1. Any block already in storage from versions prior to 1.5 (no fast-sync) MUST
+                //    have the corresponding global state in contract runtime, due to the way sync
+                //    worked previously.
+                // 2. Any block acquired from that point onwards was subject to the insertion of the
+                //    appropriate announcements (`BlockCompletedAnnouncement`), which would have
+                //    caused the creation of the completed blocks index, thus would not have
+                //    resulted in a `None` value here.
+                //
+                // For this reason, it is safe to assume that, when handling the `None` case, all
+                // blocks in storage are complete blocks.
+                if let Some(&highest_block) = component.block_height_index.keys().last() {
+                    component.completed_blocks =
+                        DisjointSequences::new(Sequence::new(0, highest_block));
+                    component.persist_completed_blocks()?;
+                } // the `else` case here would mean genesis, so no change.
+            }
+        }
+
+        Ok(component)
     }
 
     /// Handles a state store request.
@@ -514,9 +527,7 @@ impl Storage {
                 data,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
-                txn.put(self.state_store_db, &key, &data, WriteFlags::default())?;
-                txn.commit()?;
+                self.write_state_store(key, &data)?;
                 Ok(responder.respond(()).ignore())
             }
             StateStoreRequest::Load { key, responder } => {
@@ -526,7 +537,8 @@ impl Storage {
         }
     }
 
-    /// Reads from the state storage DB.
+    /// Reads from the state storage database.
+    ///
     /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
     /// May also fail with storage errors.
     fn read_state_store<K: AsRef<[u8]>>(
@@ -540,6 +552,24 @@ impl Storage {
             Err(err) => return Err(err.into()),
         };
         Ok(bytes)
+    }
+
+    /// Writes a key to the state storage database.
+    // See note below why `key` and `data` are not `&[u8]`s.
+    fn write_state_store(
+        &self,
+        key: Cow<'static, [u8]>,
+        data: &Vec<u8>,
+    ) -> Result<(), FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+
+        // Note: The interface of `lmdb` seems suboptimal: `&K` and `&V` could simply be `&[u8]` for
+        //       simplicity. At the very least it seems to be missing a `?Sized` trait bound. For
+        //       this reason, we need to use actual sized types in the function signature above.
+        txn.put(self.state_store_db, &key, data, WriteFlags::default())?;
+        txn.commit()?;
+
+        Ok(())
     }
 
     /// Returns the path to the storage folder.
@@ -684,6 +714,19 @@ impl Storage {
                 let item_id = decode_item_id::<BlockHeadersBatch>(serialized_id)?;
 
                 let opt_item = self.read_block_headers_batch(&item_id)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
+            NetRequest::FinalitySignatures(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
+
+                let opt_item = self.read_finality_signatures(&item_id)?;
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -1018,6 +1061,16 @@ impl Storage {
                     .respond(self.get_finality_signatures(&mut txn, &block_hash)?)
                     .ignore()
             }
+            StorageRequest::GetSufficientBlockSignatures {
+                block_hash,
+                responder,
+            } => {
+                let result = self.get_sufficient_finality_signatures_by_hash(
+                    &mut self.env.begin_ro_txn()?,
+                    &block_hash,
+                )?;
+                responder.respond(result).ignore()
+            }
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
@@ -1064,13 +1117,9 @@ impl Storage {
             } => responder
                 .respond(self.put_block_headers(block_headers)?)
                 .ignore(),
-            StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
-                self.update_lowest_available_block_height(height)?;
-                responder.respond(()).ignore()
+            StorageRequest::GetAvailableBlockRange { responder } => {
+                responder.respond(self.get_available_block_range()).ignore()
             }
-            StorageRequest::GetAvailableBlockRange { responder } => responder
-                .respond(self.get_available_block_range()?)
-                .ignore(),
             StorageRequest::StoreFinalizedApprovals {
                 ref deploy_hash,
                 ref finalized_approvals,
@@ -1093,13 +1142,30 @@ impl Storage {
             } => responder
                 .respond(self.read_block_headers_batch(&block_headers_id)?)
                 .ignore(),
-            StorageRequest::GetBlockHashByHeight {
-                block_height,
-                responder,
-            } => responder
-                .respond(self.get_block_hash_by_height(block_height)?)
-                .ignore(),
         })
+    }
+
+    /// Handles a [`BlockCompletedAnnouncement`].
+    fn handle_mark_block_completed_request(
+        &mut self,
+        MarkBlockCompletedRequest {
+            block_height,
+            responder,
+        }: MarkBlockCompletedRequest,
+    ) -> Result<Effects<Event>, FatalStorageError> {
+        self.completed_blocks.insert(block_height);
+        self.persist_completed_blocks()?;
+
+        Ok(responder.respond(()).ignore())
+    }
+
+    /// Persists the completed blocks disjoint sequences state to the database.
+    fn persist_completed_blocks(&mut self) -> Result<(), FatalStorageError> {
+        let serialized = self
+            .completed_blocks
+            .to_bytes()
+            .map_err(FatalStorageError::UnexpectedSerializationFailure)?;
+        self.write_state_store(Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY), &serialized)
     }
 
     /// Put a single deploy into storage.
@@ -1277,14 +1343,6 @@ impl Storage {
                     .map(|deploys| BlockAndDeploys { block, deploys }))
             }
         }
-    }
-
-    /// Retrieves block hash by height.
-    fn get_block_hash_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockHash>, FatalStorageError> {
-        Ok(self.block_height_index.get(&height).cloned())
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1686,13 +1744,22 @@ impl Storage {
         Ok(txn.get_value(self.transfer_db, block_hash)?)
     }
 
-    /// Retrieves finality signatures for a block with a given block hash
+    /// Retrieves finality signatures for a block with a given block hash.
     fn get_finality_signatures<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         Ok(txn.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Retrieves finality signatures for a block with a given block hash.
+    fn read_finality_signatures(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockSignatures>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        self.get_finality_signatures(&mut txn, block_hash)
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
@@ -1815,7 +1882,7 @@ impl Storage {
         }))
     }
 
-    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// Retrieves finality signatures for a block with a given header; returns `None` if they
     /// are less than the fault tolerance threshold or if the block is from before the most recent
     /// emergency upgrade.
     fn get_sufficient_finality_signatures<Tx: Transaction>(
@@ -1825,7 +1892,7 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         if let Some(last_emergency_restart) = self.last_emergency_restart {
             if block_header.era_id() <= last_emergency_restart {
-                debug!(
+                warn!(
                     ?block_header,
                     ?last_emergency_restart,
                     "finality signatures from before last emergency restart requested"
@@ -1840,9 +1907,11 @@ impl Storage {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
+        // If `block_header` is from era 0, we can use the switch block from era 0 to ascertain the
+        // validators for that era.
         let switch_block_hash = match self
             .switch_block_era_id_index
-            .get(&(block_header.era_id() - 1))
+            .get(&(block_header.era_id().saturating_sub(1)))
         {
             None => return Ok(None),
             Some(switch_block_hash) => switch_block_hash,
@@ -1872,6 +1941,24 @@ impl Storage {
         Ok(block_signatures)
     }
 
+    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
+    /// are less than the fault tolerance threshold or if the block is from before the most recent
+    /// emergency upgrade.
+    fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockSignatures>, FatalStorageError> {
+        // Needed to know what era the block was in, so that we can check what the validators were
+        // and figure out if the signatures are sufficient.
+        let block_header = match self.get_single_block_header(txn, block_hash)? {
+            Some(header) => header,
+            None => return Ok(None),
+        };
+
+        self.get_sufficient_finality_signatures(txn, &block_header)
+    }
+
     /// Retrieves a deploy from the deploy store.
     fn get_deploy(&self, deploy_hash: DeployHash) -> Result<Option<Deploy>, LmdbExtError> {
         self.env
@@ -1884,11 +1971,11 @@ impl Storage {
         &self,
         block_header_ids: &BlockHeadersBatchId,
     ) -> Result<Option<BlockHeadersBatch>, FatalStorageError> {
-        let mut tx = self.env.begin_ro_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
 
         let mut headers = Vec::with_capacity(block_header_ids.len() as usize);
         for block_height in block_header_ids.iter() {
-            match self.get_block_header_by_height_restricted(&mut tx, block_height, true)? {
+            match self.get_block_header_by_height_restricted(&mut txn, block_height, true)? {
                 Some(block_header) => headers.push(block_header),
                 None => {
                     debug!(?block_height, "block header not found");
@@ -1943,76 +2030,17 @@ impl Storage {
         only_from_available_block_range: bool,
     ) -> Result<bool, FatalStorageError> {
         if only_from_available_block_range {
-            Ok(self.get_available_block_range()?.contains(block_height))
+            Ok(self.get_available_block_range().contains(block_height))
         } else {
             Ok(true)
         }
     }
 
-    fn get_available_block_range(&self) -> Result<AvailableBlockRange, FatalStorageError> {
-        let high = self
-            .block_height_index
-            .keys()
-            .last()
-            .copied()
-            .unwrap_or_default();
-        let low = self.lowest_available_block_height;
-        match AvailableBlockRange::new(low, high) {
-            Ok(range) => Ok(range),
-            Err(error) => {
-                error!(%error);
-                Ok(AvailableBlockRange::default())
-            }
+    fn get_available_block_range(&self) -> AvailableBlockRange {
+        match self.completed_blocks.highest_sequence() {
+            Some(&seq) => seq.into(),
+            None => AvailableBlockRange::RANGE_0_0,
         }
-    }
-
-    fn update_lowest_available_block_height(
-        &mut self,
-        new_height: u64,
-    ) -> Result<(), FatalStorageError> {
-        // We should update the value if
-        // * it wasn't already stored, or
-        // * the new value is lower than the available range at startup, or
-        // * the new value is 2 or more higher than (after pruning due to hard-reset) the available
-        //   range at startup, as that would mean there's a gap of at least one block with
-        //   unavailable global state.
-        let should_update = {
-            let mut txn = self.env.begin_ro_txn()?;
-            match txn.get_value_bytesrepr::<_, u64>(
-                self.state_store_db,
-                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
-            )? {
-                Some(height) => {
-                    new_height < height || new_height > self.highest_block_at_startup + 1
-                }
-                None => true,
-            }
-        };
-
-        if !should_update {
-            return Ok(());
-        }
-
-        if self.block_height_index.contains_key(&new_height) {
-            let mut txn = self.env.begin_rw_txn()?;
-            txn.put_value_bytesrepr::<_, u64>(
-                self.state_store_db,
-                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
-                &new_height,
-                true,
-            )?;
-            txn.commit()?;
-            self.lowest_available_block_height = new_height;
-        } else {
-            error!(
-                %new_height,
-                "failed to update lowest_available_block_height as not in height index"
-            );
-            // We don't need to return a fatal error here as an invalid
-            // `lowest_available_block_height` is not a critical error.
-        }
-
-        Ok(())
     }
 }
 
@@ -2191,8 +2219,6 @@ pub struct Config {
     enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
     mem_pool_prune_interval: u16,
-    /// Maximum number of parallel synchronous storage tasks to spawn.
-    max_sync_tasks: u16,
 }
 
 impl Default for Config {
@@ -2206,7 +2232,6 @@ impl Default for Config {
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
             enable_mem_deduplication: true,
             mem_pool_prune_interval: 4096,
-            max_sync_tasks: 32,
         }
     }
 }

@@ -106,6 +106,8 @@ pub(crate) enum NetRequest {
     BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
     /// Request for a batch of block headers.
     BlockHeadersBatch(Vec<u8>),
+    /// Request for finality signatures for a block.
+    FinalitySignatures(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -124,6 +126,7 @@ impl Display for NetRequest {
             }
             NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
             NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
+            NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
         }
     }
 }
@@ -145,6 +148,7 @@ impl NetRequest {
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
             NetRequest::BlockAndDeploys(ref id) => id,
             NetRequest::BlockHeadersBatch(ref id) => id,
+            NetRequest::FinalitySignatures(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -167,6 +171,7 @@ impl NetRequest {
             }
             NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
             NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
+            NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
         }
     }
 }
@@ -204,6 +209,8 @@ pub(crate) enum NetResponse {
     BlockAndDeploys(Arc<[u8]>),
     /// Response of a block headers batch.
     BlockHeadersBatch(Arc<[u8]>),
+    /// Response of finality signatures.
+    FinalitySignatures(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -233,6 +240,7 @@ impl Display for NetResponse {
             }
             NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
             NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
+            NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
         }
     }
 }

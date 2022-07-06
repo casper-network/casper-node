@@ -262,6 +262,9 @@ finalized_approvals_responses = 0
 # ==================================================
 [rpc_server]
 
+# Flag which enables the JSON-RPC HTTP server.
+enable_server = true
+
 # Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
@@ -272,23 +275,45 @@ address = '0.0.0.0:7777'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 50
+qps_limit = 100
 
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
 
-# Address to which the speculative execution endpoint binds to.
-speculative_execution_address = "0.0.0.0:7778"
+
+# ========================================================================
+# Configuration options for the speculative execution JSON-RPC HTTP server
+# ========================================================================
+[speculative_exec_server]
+
+# Flag which enables the speculative execution JSON-RPC HTTP server.
+enable_server = false
+
+# Listening address for speculative execution JSON-RPC HTTP server.  If the port
+# is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.
+# If binding fails, the speculative execution JSON-RPC HTTP server will not run,
+# but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:7778'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-# Setting to 0 disables the endpoint.
-speculative_execution_qps_limit = 0
+qps_limit = 1
+
+# Maximum number of bytes to accept in a single request body.
+max_body_bytes = 2_621_440
+
 
 # ==============================================
 # Configuration options for the REST HTTP server
 # ==============================================
 [rest_server]
+
+# Flag which enables the REST HTTP server.
+enable_server = true
 
 # Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
 #
@@ -307,6 +332,9 @@ qps_limit = 10
 # Configuration options for the SSE HTTP event stream server
 # ==========================================================
 [event_stream_server]
+
+# Flag which enables the SSE HTTP event stream server.
+enable_server = true
 
 # Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
 #
@@ -375,11 +403,6 @@ enable_mem_deduplication = true
 # Sets the frequency how often the memory pool cache is swept for free references.
 # For example, setting this value to 5 means that every 5th time something is put in the pool the cache is swept.
 mem_pool_prune_interval = 4096
-
-# Parallel storage request execution.
-#
-# Controls the maximum number of threads that are spawned to access storage in parallel.
-max_sync_tasks = 32
 
 
 # ===================================

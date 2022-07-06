@@ -14,8 +14,10 @@ use futures::{
     stream::{futures_unordered::FuturesUnordered, StreamExt},
     TryStreamExt,
 };
+use num::rational::Ratio;
 use prometheus::IntGauge;
 use quanta::Instant;
+use serde::Serialize;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
@@ -25,16 +27,24 @@ use casper_types::{
     bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp, U512,
 };
 
-use super::{metrics::Metrics, Config};
 use crate::{
     components::{
-        chain_synchronizer::error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
-        consensus::{self},
+        chain_synchronizer::{
+            error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
+            Config, Metrics,
+        },
+        consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
-    effect::{requests::FetcherRequest, EffectBuilder},
-    reactor::joiner::JoinerEvent,
+    effect::{
+        announcements::BlocklistAnnouncement,
+        requests::{
+            ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
+        },
+        EffectBuilder,
+    },
+    storage::StorageRequest,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
@@ -43,6 +53,21 @@ use crate::{
     },
     utils::work_queue::WorkQueue,
 };
+
+const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
+
+/// The outcome of `run_fast_sync_task`.
+#[derive(Debug, Serialize)]
+pub(crate) enum FastSyncOutcome {
+    ShouldCommitGenesis,
+    ShouldCommitUpgrade {
+        switch_block_header_before_upgrade: BlockHeader,
+        is_emergency_upgrade: bool,
+    },
+    Synced {
+        highest_block_header: BlockHeader,
+    },
+}
 
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
@@ -70,10 +95,13 @@ impl<'a> Drop for ScopeTimer<'a> {
     }
 }
 
-struct ChainSyncContext<'a> {
-    effect_builder: &'a EffectBuilder<JoinerEvent>,
+struct ChainSyncContext<'a, REv>
+where
+    REv: 'static,
+{
+    effect_builder: &'a EffectBuilder<REv>,
     config: &'a Config,
-    trusted_block_header: Option<&'a BlockHeader>,
+    trusted_block_header: Option<Arc<BlockHeader>>,
     metrics: &'a Metrics,
     /// A list of peers which should be asked for data in the near future.
     bad_peer_list: RwLock<VecDeque<NodeId>>,
@@ -84,14 +112,22 @@ struct ChainSyncContext<'a> {
     trie_fetch_limit: Semaphore,
 }
 
-impl<'a> ChainSyncContext<'a> {
-    fn new(
-        effect_builder: &'a EffectBuilder<JoinerEvent>,
+impl<'a, REv> ChainSyncContext<'a, REv>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<BlockHeader>> + From<NetworkInfoRequest>,
+{
+    /// Returns `None` if there is no trusted hash specified in `config` and if storage has no
+    /// blocks.  Otherwise returns a new `ChainSyncContext`.
+    async fn new(
+        effect_builder: &'a EffectBuilder<REv>,
         config: &'a Config,
         metrics: &'a Metrics,
-        locally_available_block_range_on_start: AvailableBlockRange,
-    ) -> Self {
-        Self {
+    ) -> Result<Option<ChainSyncContext<'a, REv>>, Error> {
+        let locally_available_block_range_on_start = effect_builder
+            .get_available_block_range_from_storage()
+            .await;
+
+        let mut ctx = Self {
             effect_builder,
             config,
             trusted_block_header: None,
@@ -100,29 +136,36 @@ impl<'a> ChainSyncContext<'a> {
             filter_count: AtomicI64::new(0),
             locally_available_block_range_on_start,
             trie_fetch_limit: Semaphore::new(config.max_parallel_trie_fetches()),
-        }
+        };
+
+        let trusted_block_header = match config.trusted_hash() {
+            Some(trusted_hash) => {
+                *fetch_and_store_initial_trusted_block_header(&ctx, metrics, trusted_hash).await?
+            }
+            None => match effect_builder.get_highest_block_header_from_storage().await {
+                Some(block_header) => block_header,
+                None => {
+                    debug!("no highest block header found in storage");
+                    return Ok(None);
+                }
+            },
+        };
+
+        ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
+
+        Ok(Some(ctx))
     }
+}
 
-    /// Initializes the trusted block header.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if set more than once.
-    fn set_trusted_block_header(&mut self, header: &'a BlockHeader) {
-        if self.trusted_block_header.is_some() {
-            panic!("cannot set trusted block header twice");
-        }
-
-        self.trusted_block_header = Some(header);
-    }
-
+impl<'a, REv> ChainSyncContext<'a, REv> {
     /// Returns the trusted block header.
     ///
     /// # Panics
     ///
-    /// Will panic if not initialized properly using `set_trusted_block_header` before being called.
+    /// Will panic if not initialized properly using `ChainSyncContext::new`.
     fn trusted_block_header(&self) -> &BlockHeader {
         self.trusted_block_header
+            .as_ref()
             .expect("trusted block header not initialized")
     }
 
@@ -130,10 +173,15 @@ impl<'a> ChainSyncContext<'a> {
     ///
     /// # Panics
     ///
-    /// Will panic if not initialized properly using `set_trusted_block_header` before being called.
+    /// Will panic if not initialized properly using `ChainSyncContext::new`.
     fn trusted_hash(&self) -> BlockHash {
         self.trusted_block_header()
             .hash(self.config.verifiable_chunked_hash_activation())
+    }
+
+    fn trusted_block_is_last_before_activation(&self) -> bool {
+        self.config
+            .is_last_block_before_activation(self.trusted_block_header())
     }
 
     /// Removes known bad peers from a given peer list.
@@ -210,19 +258,78 @@ impl<'a> ChainSyncContext<'a> {
 /// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
 const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
+/// Allows us to decide whether joiner peers can also be used when calling `fetch_retry_forever`.
+trait CanUseJoiners {
+    fn can_use_joiners() -> bool {
+        true
+    }
+}
+
+/// Tries and trie chunks can only be retrieved from non-joining peers to avoid joining nodes
+/// deadlocking while requesting these from each other.
+impl CanUseJoiners for TrieOrChunk {
+    fn can_use_joiners() -> bool {
+        false
+    }
+}
+
+/// All other `Item` types can safely be retrieved from joiner peers, as there is no networking
+/// backpressure implemented for these fetch requests.
+impl CanUseJoiners for BlockHeader {}
+impl CanUseJoiners for Block {}
+impl CanUseJoiners for Deploy {}
+impl CanUseJoiners for BlockAndDeploys {}
+impl CanUseJoiners for BlockHeadersBatch {}
+
+/// Returns fully-connected, non-joiner peers that are known to be not banned.
+async fn get_filtered_fully_connected_non_joiner_peers<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Vec<NodeId>
+where
+    REv: From<NetworkInfoRequest>,
+{
+    let mut peer_list = ctx
+        .effect_builder
+        .get_fully_connected_non_joiner_peers()
+        .await;
+    ctx.filter_bad_peers(&mut peer_list);
+    peer_list
+}
+
+/// Returns fully-connected, joiner and non-joiner peers that are known to be not banned.
+async fn get_filtered_fully_connected_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
+where
+    REv: From<NetworkInfoRequest>,
+{
+    let mut peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+    ctx.filter_bad_peers(&mut peer_list);
+    peer_list
+}
+
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
-async fn fetch_retry_forever<T>(ctx: &ChainSyncContext<'_>, id: T::Id) -> FetchResult<T>
+async fn fetch_retry_forever<REv, T>(ctx: &ChainSyncContext<'_, REv>, id: T::Id) -> FetchResult<T>
 where
-    T: Item + 'static,
-    JoinerEvent: From<FetcherRequest<T>>,
+    T: Item + CanUseJoiners + 'static,
+    REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
+    let mut attempts = 0_usize;
     loop {
-        let mut new_peer_list = ctx
-            .effect_builder
-            .get_fully_connected_non_joiner_peers()
-            .await;
-        ctx.filter_bad_peers(&mut new_peer_list);
+        let new_peer_list = if T::can_use_joiners() {
+            get_filtered_fully_connected_peers(ctx).await
+        } else {
+            get_filtered_fully_connected_non_joiner_peers(ctx).await
+        };
+
+        if new_peer_list.is_empty() && attempts % 100 == 0 {
+            warn!(
+                attempts,
+                item_type = ?T::TAG,
+                ?id,
+                can_use_joiners = %T::can_use_joiners(),
+                "failed to attempt to fetch item due to no fully-connected peers"
+            );
+        }
 
         for peer in new_peer_list {
             trace!(
@@ -266,7 +373,8 @@ where
                 Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
             }
         }
-        tokio::time::sleep(ctx.config.retry_interval()).await
+        tokio::time::sleep(ctx.config.retry_interval()).await;
+        attempts += 1;
     }
 }
 
@@ -275,19 +383,23 @@ enum TrieAlreadyPresentOrDownloaded {
     Downloaded(Bytes),
 }
 
-async fn fetch_trie_retry_forever(
+async fn fetch_trie_retry_forever<REv>(
     id: Digest,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
-    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
-        FetchedData::FromStorage { .. } => {
-            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
-        }
-        FetchedData::FromPeer {
-            item: trie_or_chunk,
-            ..
-        } => *trie_or_chunk,
-    };
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError>
+where
+    REv: From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest>,
+{
+    let trie_or_chunk =
+        match fetch_retry_forever::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
+            FetchedData::FromStorage { .. } => {
+                return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
+            }
+            FetchedData::FromPeer {
+                item: trie_or_chunk,
+                ..
+            } => *trie_or_chunk,
+        };
     let chunk_with_proof = match trie_or_chunk {
         TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
         TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
@@ -305,7 +417,7 @@ async fn fetch_trie_retry_forever(
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
+            match fetch_retry_forever::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
                 FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
@@ -350,10 +462,13 @@ async fn fetch_trie_retry_forever(
 }
 
 /// Fetches and stores a block header from the network.
-async fn fetch_and_store_block_header(
-    ctx: &ChainSyncContext<'_>,
+async fn fetch_and_store_block_header<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
     block_hash: BlockHash,
-) -> Result<Box<BlockHeader>, Error> {
+) -> Result<Box<BlockHeader>, Error>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<BlockHeader>> + From<NetworkInfoRequest>,
+{
     // Only genesis should have this as previous hash, so no block should ever have it...
     if block_hash == BlockHash::default() {
         return Err(Error::NoSuchBlockHash {
@@ -373,7 +488,7 @@ async fn fetch_and_store_block_header(
         return Ok(Box::new(stored_block_header));
     }
 
-    let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash).await?;
+    let fetched_block_header = fetch_retry_forever::<_, BlockHeader>(ctx, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
@@ -388,10 +503,13 @@ async fn fetch_and_store_block_header(
 }
 
 /// Fetches and stores a deploy.
-async fn fetch_and_store_deploy(
+async fn fetch_and_store_deploy<REv>(
     deploy_or_transfer_hash: DeployHash,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<Box<Deploy>, FetcherError<Deploy>> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Box<Deploy>, FetcherError<Deploy>>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<Deploy>> + From<NetworkInfoRequest>,
+{
     // We're querying storage directly and short-circuiting here (before using the fetcher)
     // as joiners don't talk to joiners and in a network comprised only of joining nodes
     // we would never move past the initial sync since we would wait on fetcher
@@ -404,7 +522,7 @@ async fn fetch_and_store_deploy(
         return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
     }
 
-    let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash).await?;
+    let fetched_deploy = fetch_retry_forever::<_, Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -419,11 +537,14 @@ async fn fetch_and_store_deploy(
 /// Fetches finalized approvals for a deploy.
 /// Note: this function doesn't store the approvals. They are intended to be stored after
 /// confirming that the execution results match the received block.
-async fn fetch_finalized_approvals(
+async fn fetch_finalized_approvals<REv>(
     deploy_hash: DeployHash,
     peer: NodeId,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>>
+where
+    REv: From<FetcherRequest<FinalizedApprovalsWithId>>,
+{
     let fetched_approvals = ctx
         .effect_builder
         .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer)
@@ -444,7 +565,7 @@ async fn fetch_finalized_approvals(
 ///
 /// If the data was scraped from genesis, then `era_id` is 0.
 /// Otherwise if it came from a switch block it is that switch block's `era_id + 1`.
-#[derive(DataSize, Clone, Debug)]
+#[derive(DataSize, Clone, Serialize, Debug)]
 pub(crate) struct KeyBlockInfo {
     /// The block hash of the key block
     key_block_hash: BlockHash,
@@ -498,7 +619,9 @@ trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
 
     fn finality_signatures(&self) -> &BlockSignatures;
 
-    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>);
+    async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
+    where
+        REv: From<StorageRequest> + Send;
 }
 
 #[async_trait]
@@ -511,7 +634,10 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
         &self.finality_signatures
     }
 
-    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
+    async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
+    where
+        REv: From<StorageRequest> + Send,
+    {
         let block = Box::new(self.block.clone());
         effect_builder.put_block_to_storage(block).await;
     }
@@ -527,21 +653,28 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
         &self.block_signatures
     }
 
-    async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
+    async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
+    where
+        REv: From<StorageRequest> + Send,
+    {
         let header = Box::new(self.block_header.clone());
         effect_builder.put_block_header_to_storage(header).await;
     }
 }
 
 /// Fetches the next block or block header from the network by height.
-async fn fetch_and_store_next<I>(
+async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<Option<Box<I>>, Error>
 where
     I: BlockOrHeaderWithMetadata,
-    JoinerEvent: From<FetcherRequest<I>>,
+    REv: From<FetcherRequest<I>>
+        + From<NetworkInfoRequest>
+        + From<BlocklistAnnouncement>
+        + From<StorageRequest>
+        + Send,
     Error: From<FetcherError<I>>,
 {
     let height = parent_header
@@ -555,10 +688,7 @@ where
     // fetch the data.
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = ctx
-            .effect_builder
-            .get_fully_connected_non_joiner_peers()
-            .await;
+        peers = get_filtered_fully_connected_peers(ctx).await;
         if !peers.is_empty() {
             break;
         }
@@ -566,6 +696,15 @@ where
         // We have no peers left, might as well redeem all the bad ones.
         ctx.redeem_all();
         tokio::time::sleep(ctx.config.retry_interval()).await;
+    }
+
+    if peers.is_empty() {
+        warn!(
+            %height,
+            attempts_to_get_fully_connected_peers =
+                %ctx.config.max_retries_while_not_connected(),
+            "unable to fetch item as no peers available"
+        );
     }
 
     let item = loop {
@@ -602,7 +741,7 @@ where
                 if let Err(error) = consensus::check_sufficient_finality_signatures(
                     trusted_key_block_info.validator_weights(),
                     ctx.config.finality_threshold_fraction(),
-                    item.finality_signatures(),
+                    Some(item.finality_signatures()),
                 ) {
                     warn!(?error, ?peer, "insufficient finality signatures from peer");
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
@@ -670,10 +809,14 @@ fn check_block_version(
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
 /// returns any outstanding descendant tries.
-async fn fetch_and_store_trie(
+async fn fetch_and_store_trie<REv>(
     trie_key: Digest,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<Vec<Digest>, Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Vec<Digest>, Error>
+where
+    REv:
+        From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest> + From<ContractRuntimeRequest>,
+{
     let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await?;
     match fetched_trie {
         TrieAlreadyPresentOrDownloaded::AlreadyPresent => Ok(ctx
@@ -688,11 +831,14 @@ async fn fetch_and_store_trie(
 }
 
 /// Downloads and stores a block.
-async fn fetch_and_store_block_by_hash(
+async fn fetch_and_store_block_by_hash<REv>(
     block_hash: BlockHash,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<Box<Block>, FetcherError<Block>> {
-    let fetched_block = fetch_retry_forever::<Block>(ctx, block_hash).await?;
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Box<Block>, FetcherError<Block>>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
+{
+    let fetched_block = fetch_retry_forever::<_, Block>(ctx, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -703,12 +849,15 @@ async fn fetch_and_store_block_by_hash(
 }
 
 /// Downloads and stores a block with all its deploys.
-async fn fetch_and_store_block_with_deploys_by_hash(
+async fn fetch_and_store_block_with_deploys_by_hash<REv>(
     block_hash: BlockHash,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>>
+where
+    REv: From<NetworkInfoRequest> + From<FetcherRequest<BlockAndDeploys>> + From<StorageRequest>,
+{
     let start = Timestamp::now();
-    let fetched_block = fetch_retry_forever::<BlockAndDeploys>(ctx, block_hash).await?;
+    let fetched_block = fetch_retry_forever::<_, BlockAndDeploys>(ctx, block_hash).await?;
     let res = match fetched_block {
         FetchedData::FromStorage {
             item: block_and_deploys,
@@ -730,12 +879,16 @@ async fn fetch_and_store_block_with_deploys_by_hash(
 }
 
 /// A worker task that takes trie keys from a queue and downloads the trie.
-async fn sync_trie_store_worker(
+async fn sync_trie_store_worker<REv>(
     worker_id: usize,
     abort: Arc<AtomicBool>,
     queue: Arc<WorkQueue<Digest>>,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv:
+        From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest> + From<ContractRuntimeRequest>,
+{
     while let Some(job) = queue.next_job().await {
         let permit = match ctx.trie_fetch_limit.acquire().await {
             Ok(permit) => permit,
@@ -768,10 +921,14 @@ async fn sync_trie_store_worker(
 }
 
 /// Synchronizes the trie store under a given state root hash.
-async fn sync_trie_store(
+async fn sync_trie_store<REv>(
     block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv:
+        From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest> + From<ContractRuntimeRequest>,
+{
     let state_root_hash = *block_header.state_root_hash();
     trace!(?state_root_hash, "syncing trie store");
 
@@ -830,24 +987,34 @@ async fn sync_trie_store(
 ///
 /// Performs the following:
 ///
-///  1. Fetches block headers back towards genesis until we get to a switch block.
-///  2. Starting at the trusted block, fetches block headers by iterating forwards towards tip until
+///  1. Starting at the trusted block, fetches block headers by iterating forwards towards tip until
 ///     getting to one from the current era or failing to get a higher one from any peer.
-///  3. Starting at that most recent block, iterates backwards towards genesis, fetching
+///  2. Starting at that most recent block, iterates backwards towards genesis, fetching
 ///     `deploy_max_ttl`'s worth of blocks (for deploy replay protection).
-///  4. Starting at the most recent block, again iterates backwards, fetching enough block headers
+///  3. Starting at the most recent block, again iterates backwards, fetching enough block headers
 ///     to allow consensus to be initialized.
-///  5. Fetches the tries under the most recent block's state root hash (parallelized tasks).
+///  4. Fetches the tries under the most recent block's state root hash (parallelized tasks).
 ///
-/// Returns the most recent block header along with the last trusted key block information for
-/// validation.
-async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+/// Returns the most recent block header.
+async fn fast_sync<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+    trusted_key_block_info: &KeyBlockInfo,
+) -> Result<BlockHeader, Error>
+where
+    REv: From<FetcherRequest<TrieOrChunk>>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<BlocklistAnnouncement>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + Send,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fast_sync_total_duration_seconds);
 
-    let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-
     let (most_recent_block_header, most_recent_key_block_info) =
-        fetch_block_headers_up_to_the_most_recent_one(&trusted_key_block_info, ctx).await?;
+        fetch_block_headers_up_to_the_most_recent_one(trusted_key_block_info, ctx).await?;
 
     fetch_blocks_for_deploy_replay_protection(
         &most_recent_block_header,
@@ -862,15 +1029,19 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(&most_recent_block_header, ctx).await?;
 
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
-        .await;
-
-    Ok((trusted_key_block_info, most_recent_block_header))
+    Ok(most_recent_block_header)
 }
 
 /// Gets the trusted key block info for a trusted block header.
-async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlockInfo, Error> {
+///
+/// Fetches block headers back towards genesis from the trusted hash until we get to a switch block.
+/// If the trusted hash _is_ from a switch block, the trusted key block is the same block.
+async fn get_trusted_key_block_info<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<KeyBlockInfo, Error>
+where
+    REv: From<StorageRequest> + From<NetworkInfoRequest> + From<FetcherRequest<BlockHeader>>,
+{
     let _metric = ScopeTimer::new(
         &ctx.metrics
             .chain_sync_get_trusted_key_block_info_duration_seconds,
@@ -884,14 +1055,15 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
         });
     }
 
-    // Fetch each parent hash one by one until we have the switch block info
+    // Fetch each parent hash one by one until we have the switch block info.
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
     let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
         // Check that we are not restarting right after an emergency restart, which is too early
         match ctx.config.last_emergency_restart() {
             Some(last_emergency_restart)
-                if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
+                if last_emergency_restart > current_header_to_walk_back_from.era_id()
+                    && !ctx.trusted_block_is_last_before_activation() =>
             {
                 return Err(Error::TrustedHeaderEraTooEarly {
                     trusted_header: Box::new(ctx.trusted_block_header().clone()),
@@ -905,7 +1077,6 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             &current_header_to_walk_back_from,
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
-            check_block_version(ctx.trusted_block_header(), ctx.config.protocol_version())?;
             break Ok(key_block_info);
         }
 
@@ -921,19 +1092,42 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
     }
 }
 
-/// Get the most recent header which has the same version as ours
+/// Get the most recent header which has the same version as ours.
+///
 /// We keep fetching by height until none of our peers have a block at that height and we are in
 /// the current era.
-async fn fetch_block_headers_up_to_the_most_recent_one(
+async fn fetch_block_headers_up_to_the_most_recent_one<REv>(
     trusted_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(BlockHeader, KeyBlockInfo), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(BlockHeader, KeyBlockInfo), Error>
+where
+    REv: From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<NetworkInfoRequest>
+        + From<BlocklistAnnouncement>
+        + From<StorageRequest>
+        + Send,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_block_headers_duration_seconds);
 
     let mut most_recent_block_header = ctx.trusted_block_header().clone();
     let mut most_recent_key_block_info = trusted_key_block_info.clone();
     loop {
-        let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
+        // If we synced up to the current era, we can consider syncing done.
+        if is_current_era(
+            &most_recent_block_header,
+            &most_recent_key_block_info,
+            ctx.config,
+        ) {
+            info!(
+                era = most_recent_block_header.era_id().value(),
+                height = most_recent_block_header.height(),
+                timestamp = %most_recent_block_header.timestamp(),
+                "fetched block headers up to the current era",
+            );
+            break;
+        }
+
+        let maybe_fetched_block = fetch_and_store_next::<_, BlockHeaderWithMetadata>(
             &most_recent_block_header,
             &most_recent_key_block_info,
             ctx,
@@ -952,15 +1146,12 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
             }
         } else {
             // If we timed out, consider syncing done.
-            break;
-        }
-
-        // If we synced up to the current era, we can also consider syncing done.
-        if is_current_era(
-            &most_recent_block_header,
-            &most_recent_key_block_info,
-            ctx.config,
-        ) {
+            info!(
+                era = most_recent_block_header.era_id().value(),
+                height = most_recent_block_header.height(),
+                timestamp = %most_recent_block_header.timestamp(),
+                "failed to fetch a more recent block header",
+            );
             break;
         }
     }
@@ -969,11 +1160,14 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
 
 /// Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
 /// replay detection.
-async fn fetch_blocks_for_deploy_replay_protection(
+async fn fetch_blocks_for_deploy_replay_protection<REv>(
     most_recent_block_header: &BlockHeader,
     most_recent_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_replay_protection_duration_seconds);
 
     let mut current_header = most_recent_block_header.clone();
@@ -992,10 +1186,13 @@ async fn fetch_blocks_for_deploy_replay_protection(
 
 /// The era supervisor requires enough switch blocks to be stored in the database to be able to
 /// initialize the most recent eras.
-async fn fetch_block_headers_needed_for_era_supervisor_initialization(
+async fn fetch_block_headers_needed_for_era_supervisor_initialization<REv>(
     most_recent_block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<BlockHeader>> + From<NetworkInfoRequest>,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_era_supervisor_init_duration_seconds);
 
     let earliest_open_era = ctx
@@ -1012,16 +1209,33 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
 }
 
 /// Downloads and saves the deploys and transfers for a block.
-async fn sync_deploys_and_transfers_and_state(
+///
+/// This function assumes that the block along with its header has been persisted to storage.
+async fn sync_deploys_and_transfers_and_state<REv>(
     block: &Block,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<Deploy>>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<MarkBlockCompletedRequest>,
+{
     fetch_and_store_deploys(
         block.deploy_hashes().iter().chain(block.transfer_hashes()),
         ctx,
     )
     .await?;
-    sync_trie_store(block.header(), ctx).await
+    sync_trie_store(block.header(), ctx).await?;
+
+    ctx.effect_builder
+        .mark_block_completed(block.height())
+        .await;
+
+    Ok(())
 }
 
 /// Sync to genesis.
@@ -1047,7 +1261,24 @@ async fn sync_deploys_and_transfers_and_state(
 ///
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
-async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+async fn sync_to_genesis<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(KeyBlockInfo, BlockHeader), Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_to_genesis_total_duration_seconds);
 
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
@@ -1072,11 +1303,22 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
 
-async fn fetch_forward(
+async fn fetch_forward<REv>(
     trusted_block: Block,
     trusted_key_block_info: &mut KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<Block, Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Block, Error>
+where
+    REv: From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<NetworkInfoRequest>
+        + From<BlocklistAnnouncement>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
 
     let mut most_recent_block = trusted_block;
@@ -1084,7 +1326,7 @@ async fn fetch_forward(
     // need to download this rather than execute it as, in order to execute it, we would first have
     // to commit the upgrade via the contract runtime.
     while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
-        let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
+        let maybe_fetched_block_with_metadata = fetch_and_store_next::<_, BlockWithMetadata>(
             most_recent_block.header(),
             &*trusted_key_block_info,
             ctx,
@@ -1108,7 +1350,22 @@ async fn fetch_forward(
     Ok(most_recent_block)
 }
 
-async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+async fn fetch_to_genesis<REv>(
+    trusted_block: &Block,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<NetworkInfoRequest>
+        + From<BlocklistAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<MarkBlockCompletedRequest>,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
     info!(
@@ -1118,14 +1375,7 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
     );
 
     fetch_headers_till_genesis(trusted_block, ctx).await?;
-
-    fetch_blocks_and_state_since_genesis(ctx).await?;
-
-    // Now that we have sync'd the whole chain (including transactions and tries) from Genesis till
-    // trusted block, we can update the lowest available block of the continuous range.
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(0)
-        .await;
+    fetch_blocks_and_state_and_finality_signatures_since_genesis(ctx).await?;
 
     Ok(())
 }
@@ -1133,10 +1383,16 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 
 // Fetches headers starting from `trusted_block` till the Genesis.
-async fn fetch_headers_till_genesis(
+async fn fetch_headers_till_genesis<REv>(
     trusted_block: &Block,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<FetcherRequest<BlockHeadersBatch>>
+        + From<NetworkInfoRequest>
+        + From<StorageRequest>
+        + From<BlocklistAnnouncement>,
+{
     let mut lowest_trusted_block_header = trusted_block.header().clone();
 
     loop {
@@ -1169,16 +1425,22 @@ async fn fetch_headers_till_genesis(
 
 // Fetches a batch of block headers, validates and stores in storage.
 // Returns either an error or lowest valid block in the chain.
-async fn fetch_block_headers_batch(
+async fn fetch_block_headers_batch<REv>(
     lowest_trusted_block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<BlockHeader, FetchBlockHeadersBatchError> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<BlockHeader, FetchBlockHeadersBatchError>
+where
+    REv: From<FetcherRequest<BlockHeadersBatch>>
+        + From<NetworkInfoRequest>
+        + From<StorageRequest>
+        + From<BlocklistAnnouncement>,
+{
     let batch_id =
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
 
     loop {
         let fetched_headers_data: FetchedData<BlockHeadersBatch> =
-            fetch_retry_forever::<BlockHeadersBatch>(ctx, batch_id).await?;
+            fetch_retry_forever::<_, BlockHeadersBatch>(ctx, batch_id).await?;
         match fetched_headers_data {
             FetchedData::FromStorage { item } => {
                 return item
@@ -1216,7 +1478,20 @@ async fn fetch_block_headers_batch(
 }
 
 // Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
-async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+async fn fetch_blocks_and_state_and_finality_signatures_since_genesis<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>,
+{
     info!("syncing blocks and deploys and state since Genesis");
 
     // NOTE: Currently there's no good way to read the known, highest *FULL* block.
@@ -1242,11 +1517,22 @@ async fn fetch_blocks_and_state_since_genesis(ctx: &ChainSyncContext<'_>) -> Res
     Ok(())
 }
 
-async fn fetch_block_worker(
+async fn fetch_block_worker<REv>(
     worker_id: usize,
     latest_height_requested: Arc<AtomicU64>,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(), Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>,
+{
     let trusted_block_height = ctx.trusted_block_header().height();
     loop {
         let next_block_height = latest_height_requested.fetch_add(1, Ordering::SeqCst);
@@ -1255,32 +1541,37 @@ async fn fetch_block_worker(
             return Ok(());
         }
 
-        let block_hash = ctx
+        let block_header = ctx
             .effect_builder
-            .get_block_hash_by_height_from_storage(next_block_height)
+            .get_block_header_at_height_from_storage(next_block_height, false)
             .await
             .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
+
+        let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
 
         if next_block_height % 1_000 == 0 {
             info!(
                 worker_id,
-                ?block_hash,
+                ?block_header_hash,
                 ?next_block_height,
                 "syncing block and deploys"
             );
         }
-        match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
+        match fetch_and_store_block_with_deploys_by_hash(block_header_hash, ctx).await {
             Ok(fetched_block) => {
-                trace!(?block_hash, "downloaded block and deploys");
+                trace!(?block_header_hash, "downloaded block and deploys");
                 // We want to download the trie only when we know we have the block.
                 if let Err(error) = sync_trie_store(fetched_block.block.header(), ctx).await {
                     error!(
                         ?error,
-                        ?block_hash,
+                        ?block_header_hash,
                         "failed to download trie with infinite retries"
                     );
                     return Err(error);
                 }
+                ctx.effect_builder
+                    .mark_block_completed(fetched_block.block.height())
+                    .await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
@@ -1289,81 +1580,450 @@ async fn fetch_block_worker(
                 // want to retry.
                 error!(
                     ?err,
-                    ?block_hash,
+                    ?block_header_hash,
                     "failed to download block with infinite retries"
                 );
             }
         }
+
+        fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
     }
 }
 
-/// Runs the chain synchronization task.
-pub(super) async fn run_chain_sync_task(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: Config,
-    metrics: Metrics,
-    trusted_hash: BlockHash,
-) -> Result<BlockHeader, Error> {
-    let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
+#[derive(Clone, Debug)]
+enum HandleSignaturesResult {
+    ContinueFetching,
+    HaveSufficient,
+}
 
-    let locally_available_block_range_on_start = effect_builder
-        .get_available_block_range_from_storage()
+struct BlockSignaturesCollector(Option<BlockSignatures>);
+
+impl BlockSignaturesCollector {
+    fn new() -> Self {
+        Self(None)
+    }
+
+    fn add(&mut self, signatures: BlockSignatures) {
+        match &mut self.0 {
+            None => {
+                self.0 = Some(signatures);
+            }
+            Some(old_sigs) => {
+                for (pub_key, signature) in signatures.proofs {
+                    old_sigs.insert_proof(pub_key, signature);
+                }
+            }
+        }
+    }
+
+    fn check_if_sufficient(
+        &self,
+        validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+    ) -> Result<(), FinalitySignatureError> {
+        are_signatures_sufficient_for_sync_to_genesis(
+            consensus::check_sufficient_finality_signatures(
+                validator_weights,
+                finality_threshold_fraction,
+                self.0.as_ref(),
+            ),
+        )
+    }
+
+    fn check_if_sufficient_for_sync_to_genesis(
+        &self,
+        validator_weights: &BTreeMap<PublicKey, U512>,
+        finality_threshold_fraction: Ratio<u64>,
+    ) -> Result<(), FinalitySignatureError> {
+        are_signatures_sufficient_for_sync_to_genesis(
+            consensus::check_sufficient_finality_signatures_with_quorum_formula(
+                validator_weights,
+                finality_threshold_fraction,
+                self.0.as_ref(),
+                std::convert::identity,
+            ),
+        )
+    }
+
+    fn into_inner(self) -> Option<BlockSignatures> {
+        self.0
+    }
+
+    /// Handles the new signatures fetched from peer.
+    /// The signatures are validated. In case they don't pass validation, the peer is disconnected
+    /// and the `ContinueFetching` is returned. Valid signatures are added to the buffer and then
+    /// checked for sufficiency. If they are sufficient `HaveSufficient` is returned, otherwise
+    /// `ContinueFetching` is returned.
+    async fn handle_incoming_signatures<REv>(
+        &mut self,
+        block_header: &BlockHeader,
+        signatures: BlockSignatures,
+        peer: NodeId,
+        ctx: &ChainSyncContext<'_, REv>,
+    ) -> Result<HandleSignaturesResult, Error>
+    where
+        REv: From<StorageRequest> + From<BlocklistAnnouncement>,
+    {
+        if signatures.proofs.is_empty() {
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+
+        let (era_for_validators_retrieval, validator_weights) =
+            era_validator_weights_for_block(block_header, ctx).await?;
+
+        if let Err(err) = consensus::validate_finality_signatures(&signatures, &validator_weights) {
+            warn!(
+                ?peer,
+                ?err,
+                height = block_header.height(),
+                "peer sent invalid finality signatures, banning peer"
+            );
+            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+
+            // Try with next peer.
+            return Ok(HandleSignaturesResult::ContinueFetching);
+        }
+        self.add(signatures);
+
+        if self
+            .check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction())
+            .is_ok()
+        {
+            info!(
+                block_header_hash =
+                    ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
+                height = block_header.height(),
+                ?era_for_validators_retrieval,
+                "fetched sufficient finality signatures"
+            );
+            Ok(HandleSignaturesResult::HaveSufficient)
+        } else {
+            Ok(HandleSignaturesResult::ContinueFetching)
+        }
+    }
+}
+
+/// Reads the validator weights that should be used to check the finality signatures for the given
+/// block.
+async fn era_validator_weights_for_block<'a, REv>(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error>
+where
+    REv: From<StorageRequest>,
+{
+    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
+        &block_header.era_id(),
+        ctx.config.last_emergency_restart(),
+    );
+    let switch_block_of_previous_era = ctx
+        .effect_builder
+        .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+        .await
+        .ok_or(Error::NoSwitchBlockForEra {
+            era_id: era_for_validators_retrieval,
+        })?;
+    let validator_weights = switch_block_of_previous_era
+        .next_era_validator_weights()
+        .ok_or(Error::MissingNextEraValidators {
+            height: switch_block_of_previous_era.height(),
+            era_id: era_for_validators_retrieval,
+        })?;
+    Ok((era_for_validators_retrieval, validator_weights.clone()))
+}
+
+// Fetches the finality signatures from the given peer. In case of timeout, it'll
+// retry up to `retries` times. Other errors interrupt the process immediately.
+async fn fetch_finality_signatures_with_retry<REv>(
+    block_hash: BlockHash,
+    peer: NodeId,
+    retries: usize,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<FetchedData<BlockSignatures>, FetcherError<BlockSignatures>>
+where
+    REv: From<FetcherRequest<BlockSignatures>>,
+{
+    for _ in 0..retries {
+        let maybe_signatures = ctx
+            .effect_builder
+            .fetch::<BlockSignatures>(block_hash, peer)
+            .await;
+        match maybe_signatures {
+            Ok(result) => return Ok(result),
+            Err(FetcherError::TimedOut { .. }) => continue,
+            Err(_) => return maybe_signatures,
+        }
+    }
+
+    Err(FetcherError::TimedOut {
+        id: block_hash,
+        peer,
+    })
+}
+
+async fn fetch_and_store_finality_signatures_by_block_header<REv>(
+    block_header: BlockHeader,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<BlocklistAnnouncement>,
+{
+    let start = Timestamp::now();
+    let peer_list = get_filtered_fully_connected_peers(ctx).await;
+
+    let mut sig_collector = BlockSignaturesCollector::new();
+
+    let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+
+    for peer in peer_list {
+        let fetched_signatures = fetch_finality_signatures_with_retry(
+            block_header_hash,
+            peer,
+            FINALITY_SIGNATURE_FETCH_RETRY_COUNT,
+            ctx,
+        )
         .await;
 
-    let mut chain_sync_context = ChainSyncContext::new(
-        &effect_builder,
-        &config,
-        &metrics,
-        locally_available_block_range_on_start,
+        let signatures = match fetched_signatures {
+            Ok(FetchedData::FromStorage { .. }) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    "fetched FinalitySignatures from storage",
+                );
+                // We're guaranteed that if the signatures are in our local storage, they fulfill
+                // the sufficiency requirement for the default quorum fraction.
+                return Ok(());
+            }
+            Ok(FetchedData::FromPeer { item, .. }) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    "fetched FinalitySignatures from peer"
+                );
+                *item
+            }
+            Err(err) => {
+                trace!(
+                    ?block_header_hash,
+                    ?peer,
+                    ?err,
+                    "error fetching FinalitySignatures"
+                );
+                continue;
+            }
+        };
+
+        if let HandleSignaturesResult::HaveSufficient = sig_collector
+            .handle_incoming_signatures(&block_header, signatures, peer, ctx)
+            .await?
+        {
+            // Sufficient signatures were fetched from peers, store them and finish fetching for
+            // this block.
+            finalize_finality_signature_fetch(ctx, start, sig_collector).await;
+            return Ok(());
+        };
+    }
+
+    // We run out of peers, but still don't have sufficient finality signatures according to the
+    // default quorum fraction. However, in the "sync to genesis" process, we can consider
+    // finality signatures as valid when their total weight is at least
+    // `finality_threshold_fraction` of the total validator weights.
+    let (_, validator_weights) = era_validator_weights_for_block(&block_header, ctx).await?;
+    sig_collector.check_if_sufficient_for_sync_to_genesis(
+        &validator_weights,
+        ctx.config.finality_threshold_fraction(),
+    )?;
+    info!(
+        height = block_header.height(),
+        "block below default finality signatures threshold, but enough for sync to genesis"
     );
+    finalize_finality_signature_fetch(ctx, start, sig_collector).await;
+    Ok(())
+}
 
-    let trusted_block_header =
-        fetch_and_store_initial_trusted_block_header(&chain_sync_context, &metrics, trusted_hash)
-            .await?;
-
-    chain_sync_context.set_trusted_block_header(&trusted_block_header);
-
-    verify_trusted_block_header(&chain_sync_context)?;
-
-    if handle_emergency_restart(&chain_sync_context).await? {
-        return Ok(*trusted_block_header);
+// Returns true if the output from consensus can be interpreted
+// as "sufficient finality signatures for the sync to genesis process".
+// We need to make sure that for "sync_to_genesis" the `TooManySignatures` error should
+// be interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that
+// protects against peers that send too many finality signatures during normal chain operation).
+fn are_signatures_sufficient_for_sync_to_genesis(
+    result: Result<(), FinalitySignatureError>,
+) -> Result<(), FinalitySignatureError> {
+    match result {
+        Err(err) if !matches!(err, FinalitySignatureError::TooManySignatures { .. }) => Err(err),
+        Err(_) | Ok(_) => Ok(()),
     }
+}
 
-    if handle_upgrade(&chain_sync_context).await? {
-        return Ok(*trusted_block_header);
+// Puts the signatures to storage and updates the fetch metric.
+async fn finalize_finality_signature_fetch<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+    start: Timestamp,
+    sig_collector: BlockSignaturesCollector,
+) where
+    REv: From<StorageRequest>,
+{
+    ctx.metrics
+        .observe_fetch_finality_signatures_duration_seconds(start);
+    if let Some(finality_signatures) = sig_collector.into_inner() {
+        let block_hash = finality_signatures.block_hash;
+        ctx.effect_builder
+            .put_signatures_to_storage(finality_signatures)
+            .await;
+        trace!(?block_hash, "stored FinalitySignatures");
     }
+}
 
-    let (trusted_key_block_info, most_recent_block_header) = if config.sync_to_genesis() {
-        sync_to_genesis(&chain_sync_context).await?
+/// Returns the EraId whose switch block should be used to obtain validator weights.
+fn get_era_id_for_validators_retrieval(
+    era_id: &EraId,
+    last_emergency_restart: Option<EraId>,
+) -> EraId {
+    // TODO: This function needs to handle multiple emergency restarts.
+    if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
+        // For eras > 0 which are not the last emergency restart eras we need to use validator set
+        // from the previous era
+        *era_id - 1
     } else {
-        fast_sync(&chain_sync_context).await?
+        // When we're in era 0 or in the era of last emergency restart we
+        // use that era as a source for validators, because:
+        //
+        // 1) If we're in Era 0 there's no previous era, but since validators never change during
+        // that era we can safely use the Era 0's switch block.
+        //
+        // 2) In case of being in last emergency restart era, the validators from the previous era
+        // may no longer be valid.
+        *era_id
+    }
+}
+
+/// Runs the initial chain synchronization task ("fast sync").
+pub(super) async fn run_fast_sync_task<REv>(
+    effect_builder: EffectBuilder<REv>,
+    config: Config,
+    metrics: Metrics,
+) -> Result<FastSyncOutcome, Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
+    info!("fast syncing chain");
+    let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
+
+    let ctx = match ChainSyncContext::new(&effect_builder, &config, &metrics).await? {
+        Some(ctx) => ctx,
+        None => return Ok(FastSyncOutcome::ShouldCommitGenesis),
     };
+    verify_trusted_block_header(&ctx)?;
+
+    // We should have at least one block header in storage now as a result of calling
+    // `ChainSyncContext::new`.
+    let mut highest_block_header =
+        match effect_builder.get_highest_block_header_from_storage().await {
+            Some(block_header) => block_header,
+            None => return Err(Error::NoHighestBlockHeader),
+        };
+
+    if let Some(outcome) = should_emergency_upgrade(&ctx, &highest_block_header).await? {
+        return Ok(outcome);
+    }
+
+    if let Some(outcome) = should_upgrade(&ctx, &highest_block_header).await? {
+        return Ok(outcome);
+    }
+
+    let trusted_key_block_info = get_trusted_key_block_info(&ctx).await?;
+    let most_recent_block_header = fast_sync(&ctx, &trusted_key_block_info).await?;
 
     // Iterate forwards, fetching each full block and deploys but executing each block to generate
     // global state. Stop once we get to a block in the current era.
-    let most_recent_block_header = execute_blocks(
-        &most_recent_block_header,
-        &trusted_key_block_info,
-        &chain_sync_context,
-    )
-    .await?;
+    let most_recent_block_header =
+        execute_blocks(&most_recent_block_header, &trusted_key_block_info, &ctx).await?;
+
+    // If we just committed an emergency upgrade and are re-syncing right after this, potentially
+    // the call to `fast_sync` and `execute_blocks` could yield a `most_recent_block_header` which
+    // is older than the `highest_block_header` (which is the immediate switch block of the
+    // upgrade).  Ensure we take the actual highest block to allow consensus to be initialised
+    // properly.
+    if most_recent_block_header.height() > highest_block_header.height() {
+        highest_block_header = most_recent_block_header;
+    }
 
     info!(
-        era_id = ?most_recent_block_header.era_id(),
-        height = most_recent_block_header.height(),
+        era_id = ?highest_block_header.era_id(),
+        height = highest_block_header.height(),
         now = %Timestamp::now(),
-        block_timestamp = %most_recent_block_header.timestamp(),
-        "finished synchronizing",
+        block_timestamp = %highest_block_header.timestamp(),
+        "finished initial chain sync",
     );
 
-    Ok(most_recent_block_header)
+    Ok(FastSyncOutcome::Synced {
+        highest_block_header,
+    })
 }
 
-async fn fetch_and_store_initial_trusted_block_header(
-    ctx: &ChainSyncContext<'_>,
+/// Runs the sync-to-genesis task.
+pub(super) async fn run_sync_to_genesis_task<REv>(
+    effect_builder: EffectBuilder<REv>,
+    config: Config,
+    metrics: Metrics,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
+    info!("starting chain sync to genesis");
+    let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
+    let ctx = ChainSyncContext::new(&effect_builder, &config, &metrics)
+        .await?
+        .ok_or_else(|| {
+            error!("should have highest block header");
+            Error::NoHighestBlockHeader
+        })?;
+    sync_to_genesis(&ctx).await?;
+    info!("finished chain sync to genesis");
+    Ok(())
+}
+
+async fn fetch_and_store_initial_trusted_block_header<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
     metrics: &Metrics,
     trusted_hash: BlockHash,
-) -> Result<Box<BlockHeader>, Error> {
+) -> Result<Box<BlockHeader>, Error>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<BlockHeader>> + From<NetworkInfoRequest>,
+{
     let _metric = ScopeTimer::new(
         &metrics.chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
     );
@@ -1371,7 +2031,7 @@ async fn fetch_and_store_initial_trusted_block_header(
     Ok(trusted_block_header)
 }
 
-fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(), Error> {
     if ctx.trusted_block_header().protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
@@ -1402,76 +2062,124 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
     Ok(())
 }
 
-async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_emergency_restart_duration_seconds);
+/// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an emergency
+/// upgrade before syncing further, or `Ok(None)` if not.
+async fn should_emergency_upgrade<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+    highest_block_header: &BlockHeader,
+) -> Result<Option<FastSyncOutcome>, Error>
+where
+    REv: From<FetcherRequest<TrieOrChunk>>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>,
+{
+    let emergency_restart_era = match ctx.config.last_emergency_restart() {
+        Some(era_id) if era_id == ctx.config.activation_point() => era_id,
+        _ => return Ok(None),
+    };
 
-    let maybe_last_emergency_restart_era_id = ctx.config.last_emergency_restart();
-    if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
-        // After an emergency restart, the old validators cannot be trusted anymore. So the last
-        // block before the restart or a later block must be given by the trusted hash. That way we
-        // never have to use the untrusted validators' finality signatures.
-        if ctx.trusted_block_header().next_block_era_id() < last_emergency_restart_era {
-            return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
-                last_emergency_restart_era,
-                trusted_hash: ctx.trusted_hash(),
-                trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
-            });
-        }
-        // If the trusted hash specifies the last block before the emergency restart, we have to
-        // compute the immediate switch block ourselves, since there's no other way to verify that
-        // block. We just sync the trie there and return, so the upgrade can be applied.
-        if ctx.trusted_block_header().is_switch_block()
-            && ctx.trusted_block_header().next_block_era_id() == last_emergency_restart_era
-        {
-            info!("synchronizing trie store before committing emergency upgrade");
-            sync_trie_store(ctx.trusted_block_header(), ctx).await?;
-            info!("finished synchronizing before committing emergency upgrade");
-            return Ok(true);
-        }
+    // After an emergency restart, the old validators cannot be trusted anymore. So the last block
+    // before the restart or a later block must be given by the trusted hash. That way we never have
+    // to use the untrusted validators' finality signatures.
+    if ctx.trusted_block_header().next_block_era_id() < emergency_restart_era {
+        return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
+            last_emergency_restart_era: emergency_restart_era,
+            trusted_hash: ctx.trusted_hash(),
+            trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
+        });
+    }
+    // If the trusted block is the last block before an emergency restart, and we haven't
+    // already run the upgrade, we have to compute the immediate switch block ourselves, since
+    // there's no other way to verify that block. We just sync the trie there and return, so the
+    // upgrade can be applied.
+    if ctx.trusted_block_is_last_before_activation()
+        && highest_block_header.protocol_version() < ctx.config.protocol_version()
+    {
+        info!("synchronizing trie store before committing emergency upgrade");
+        sync_trie_store(ctx.trusted_block_header(), ctx).await?;
+        info!("finished synchronizing before committing emergency upgrade");
+        return Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
+            switch_block_header_before_upgrade: ctx.trusted_block_header().clone(),
+            is_emergency_upgrade: true,
+        }));
     }
 
-    Ok(false)
+    Ok(None)
 }
 
-async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_upgrade_duration_seconds);
-
-    // If we are at an upgrade:
-    // 1. Sync the trie store
-    // 2. Get the trusted era validators from the last switch block
-    // 3. Try to get the next block by height; if there is `None` then switch to the participating
-    //    reactor.
-    if ctx.trusted_block_header().is_switch_block()
-        && ctx.trusted_block_header().next_block_era_id() == ctx.config.activation_point()
+/// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an upgrade before
+/// syncing further, or `Ok(None)` if not.
+async fn should_upgrade<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+    highest_block_header: &BlockHeader,
+) -> Result<Option<FastSyncOutcome>, Error>
+where
+    REv: From<NetworkInfoRequest>
+        + From<BlocklistAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<FetcherRequest<BlockHeaderWithMetadata>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockHeader>>
+        + From<StorageRequest>
+        + Send,
+{
+    // If the trusted block is the last switch block before an upgrade, and we haven't already run
+    // the upgrade:
+    // 1. Get the trusted era validators from this last switch block
+    // 2. Try to get the next block by height; if there is `None` then,
+    // 3. Sync the trie store
+    if !ctx.trusted_block_is_last_before_activation()
+        || highest_block_header.protocol_version() >= ctx.config.protocol_version()
     {
-        let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
+        return Ok(None);
+    }
+    let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
-        let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
+    if is_current_era(
+        ctx.trusted_block_header(),
+        &trusted_key_block_info,
+        ctx.config,
+    ) {
+        info!(
+            era = ctx.trusted_block_header().era_id().value(),
+            height = ctx.trusted_block_header().height(),
+            timestamp = %ctx.trusted_block_header().timestamp(),
+            "in current era, so synchronizing trie store before committing upgrade",
+        );
+    } else {
+        let fetch_and_store_next_result = fetch_and_store_next::<_, BlockHeaderWithMetadata>(
             ctx.trusted_block_header(),
             &trusted_key_block_info,
             ctx,
         )
         .await?;
 
-        if fetch_and_store_next_result.is_none() {
-            info!("synchronizing trie store before committing upgrade");
-            sync_trie_store(ctx.trusted_block_header(), ctx).await?;
-            info!("finished synchronizing before committing upgrade");
-            return Ok(true);
+        if fetch_and_store_next_result.is_some() {
+            return Ok(None);
         }
+        info!("synchronizing trie store before committing upgrade");
     }
 
-    Ok(false)
+    sync_trie_store(ctx.trusted_block_header(), ctx).await?;
+    info!("finished synchronizing before committing upgrade");
+    Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
+        switch_block_header_before_upgrade: ctx.trusted_block_header().clone(),
+        is_emergency_upgrade: false,
+    }))
 }
 
-async fn retry_execution_with_approvals_from_peer(
+async fn retry_execution_with_approvals_from_peer<REv>(
     deploys: &mut [Deploy],
     transfers: &mut [Deploy],
     peer: NodeId,
     block: &Block,
     execution_pre_state: &ExecutionPreState,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<BlockAndExecutionEffects, Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<BlockAndExecutionEffects, Error>
+where
+    REv: From<FetcherRequest<FinalizedApprovalsWithId>> + From<ContractRuntimeRequest>,
+{
     for deploy in deploys.iter_mut().chain(transfers.iter_mut()) {
         let new_approvals = fetch_finalized_approvals(*deploy.id(), peer, ctx).await?;
         deploy.replace_approvals(new_approvals.into_inner());
@@ -1488,11 +2196,22 @@ async fn retry_execution_with_approvals_from_peer(
         .await?)
 }
 
-async fn execute_blocks(
+async fn execute_blocks<REv>(
     most_recent_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<BlockHeader, Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<BlockHeader, Error>
+where
+    REv: From<FetcherRequest<BlockWithMetadata>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<Deploy>>
+        + From<NetworkInfoRequest>
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<StorageRequest>
+        + From<MarkBlockCompletedRequest>
+        + Send,
+{
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
 
     // Execute blocks to get to current.
@@ -1511,7 +2230,7 @@ async fn execute_blocks(
     let mut most_recent_block_header = most_recent_block_header.clone();
     let mut trusted_key_block_info = trusted_key_block_info.clone();
     loop {
-        let result = fetch_and_store_next::<BlockWithMetadata>(
+        let result = fetch_and_store_next::<_, BlockWithMetadata>(
             &most_recent_block_header,
             &trusted_key_block_info,
             ctx,
@@ -1562,12 +2281,7 @@ async fn execute_blocks(
 
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            for peer in ctx
-                .effect_builder
-                .get_fully_connected_non_joiner_peers()
-                .await
-                .into_iter()
-            {
+            for peer in get_filtered_fully_connected_peers(ctx).await {
                 info!(block_hash=%block.hash(), "start - re-executing finalized block");
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
@@ -1602,6 +2316,9 @@ async fn execute_blocks(
                 )
                 .await;
         }
+        ctx.effect_builder
+            .mark_block_completed(block_and_execution_effects.block().height())
+            .await;
 
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
@@ -1635,10 +2352,13 @@ async fn execute_blocks(
     Ok(most_recent_block_header)
 }
 
-async fn fetch_and_store_deploys(
+async fn fetch_and_store_deploys<REv>(
     hashes: impl Iterator<Item = &DeployHash>,
-    ctx: &ChainSyncContext<'_>,
-) -> Result<Vec<Deploy>, Error> {
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Vec<Deploy>, Error>
+where
+    REv: From<StorageRequest> + From<FetcherRequest<Deploy>> + From<NetworkInfoRequest>,
+{
     let start_instant = Timestamp::now();
 
     let hashes: Vec<_> = hashes.cloned().collect();
@@ -1657,7 +2377,10 @@ async fn fetch_and_store_deploys(
     Ok(deploys)
 }
 
-/// Returns `true` if `most_recent_block` belongs to an era that is still ongoing.
+/// Returns `true` if `most_recent_block` indicates that we're currently in an ongoing era.
+///
+/// The ongoing era is either the one in which `most_recent_block` was created, or in the case where
+/// `most_recent_block` is a switch block, it is the era immediately following it.
 pub(super) fn is_current_era(
     most_recent_block: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
@@ -1891,5 +2614,88 @@ mod tests {
             }
             result => panic!("expected future block version error, got {:?}", result),
         }
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0), None)
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1), None)
+        );
+
+        assert_eq!(
+            EraId::from(1),
+            get_era_id_for_validators_retrieval(&EraId::from(2), None)
+        );
+
+        assert_eq!(
+            EraId::from(999),
+            get_era_id_for_validators_retrieval(&EraId::from(1000), None)
+        );
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators_when_emergency_restart() {
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(0), Some(EraId::from(7)))
+        );
+
+        assert_eq!(
+            EraId::from(0),
+            get_era_id_for_validators_retrieval(&EraId::from(1), Some(EraId::from(2)))
+        );
+
+        assert_eq!(
+            EraId::from(2),
+            get_era_id_for_validators_retrieval(&EraId::from(2), Some(EraId::from(2)))
+        );
+    }
+
+    #[test]
+    fn validates_signatures_sufficiency_for_sync_to_genesis() {
+        let consensus_verdict = Ok(());
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
+
+        let mut rng = TestRng::new();
+        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            signature_weight: Box::new(U512::from(0u16)),
+            weight_minus_minimum: Box::new(U512::from(0u16)),
+            total_validator_weight: Box::new(U512::from(0u16)),
+            finality_threshold_fraction: Ratio::new_raw(1, 2),
+        });
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
+
+        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Some(Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            ))),
+            signature_weight: Some(Box::new(U512::from(0u16))),
+            total_validator_weight: Box::new(U512::from(0u16)),
+            finality_threshold_fraction: Ratio::new_raw(1, 2),
+        });
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
+
+        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
+            trusted_validator_weights: BTreeMap::new(),
+            block_signatures: Box::new(BlockSignatures::new(
+                BlockHash::random(&mut rng),
+                EraId::from(0),
+            )),
+            bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
+        });
+        assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
     }
 }

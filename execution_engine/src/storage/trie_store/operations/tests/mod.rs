@@ -7,7 +7,7 @@ mod scan;
 mod synchronize;
 mod write;
 
-use std::{collections::HashMap, convert, ops::Not};
+use std::{convert, ops::Not};
 
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
@@ -18,15 +18,10 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use crate::{
     shared::newtypes::CorrelationId,
     storage::{
-        error::{self, in_memory},
-        transaction_source::{
-            in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
-            TransactionSource,
-        },
+        error,
+        transaction_source::{lmdb::LmdbEnvironment, Readable, Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
         trie_store::{
-            self,
-            in_memory::InMemoryTrieStore,
             lmdb::LmdbTrieStore,
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
@@ -547,34 +542,6 @@ impl LmdbTestContext {
     }
 }
 
-// A context for holding in-memory test resources
-struct InMemoryTestContext {
-    environment: InMemoryEnvironment,
-    store: InMemoryTrieStore,
-}
-
-impl InMemoryTestContext {
-    fn new<K, V>(tries: &[HashedTrie<K, V>]) -> anyhow::Result<Self>
-    where
-        K: ToBytes,
-        V: ToBytes,
-    {
-        let environment = InMemoryEnvironment::new();
-        let store = InMemoryTrieStore::new(&environment, None);
-        put_tries::<_, _, _, _, in_memory::Error>(&environment, &store, tries)?;
-        Ok(InMemoryTestContext { environment, store })
-    }
-
-    fn update<K, V>(&self, tries: &[HashedTrie<K, V>]) -> anyhow::Result<()>
-    where
-        K: ToBytes,
-        V: ToBytes,
-    {
-        put_tries::<_, _, _, _, in_memory::Error>(&self.environment, &self.store, tries)?;
-        Ok(())
-    }
-}
-
 fn check_leaves_exist<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &T,
@@ -932,28 +899,4 @@ where
     }
 
     Ok(states)
-}
-
-impl InMemoryEnvironment {
-    pub fn dump<K, V>(
-        &self,
-        maybe_name: Option<&str>,
-    ) -> Result<HashMap<Digest, Trie<K, V>>, in_memory::Error>
-    where
-        K: FromBytes,
-        V: FromBytes,
-    {
-        let name = maybe_name
-            .map(|name| format!("{}-{}", trie_store::NAME, name))
-            .unwrap_or_else(|| trie_store::NAME.to_string());
-        let data = self.data(Some(&name))?.unwrap();
-        data.into_iter()
-            .map(|(hash_bytes, trie_bytes)| {
-                let hash: Digest = bytesrepr::deserialize_from_slice(hash_bytes)?;
-                let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(trie_bytes)?;
-                Ok((hash, trie))
-            })
-            .collect::<Result<HashMap<Digest, Trie<K, V>>, bytesrepr::Error>>()
-            .map_err(Into::into)
-    }
 }

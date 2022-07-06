@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
     DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
@@ -95,7 +95,7 @@ fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -109,7 +109,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -130,7 +130,7 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -144,7 +144,7 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -161,7 +161,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -184,7 +184,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -205,7 +205,7 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -228,7 +228,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -251,7 +251,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 

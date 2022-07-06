@@ -33,9 +33,9 @@ use crate::{
     storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockPayload,
-        BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, FinalizedBlock,
+        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockPayload, BlockSignatures, Deploy,
+        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, FinalizedBlock,
     },
     utils::WithDir,
 };
@@ -54,7 +54,6 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
         max_state_store_size: 50 * MIB,
         enable_mem_deduplication: true,
         mem_pool_prune_interval: 4,
-        max_sync_tasks: 32,
     }
 }
 
@@ -347,7 +346,7 @@ fn put_execution_results(
     block_hash: BlockHash,
     execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
-    let response = harness.send_request(storage, move |responder| {
+    harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
             block_hash: Box::new(block_hash),
             execution_results,
@@ -356,7 +355,6 @@ fn put_execution_results(
         .into()
     });
     assert!(harness.is_idle());
-    response
 }
 
 #[test]
@@ -1773,271 +1771,6 @@ fn can_put_and_get_blocks_v2() {
 }
 
 #[test]
-fn should_update_lowest_available_block_height_when_not_stored() {
-    const NEW_LOW: u64 = 100;
-    let mut harness = ComponentHarness::default();
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(0, 0).unwrap()
-        );
-
-        // Updating to a block height we don't have in storage should not change the range.
-        storage
-            .update_lowest_available_block_height(NEW_LOW)
-            .unwrap();
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(0, 0).unwrap()
-        );
-
-        // Store a block at height 100 and update.  Should update the range.
-        let (mut block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
-        storage
-            .write_block(block.disable_switch_block(verifiable_chunked_hash_activation))
-            .unwrap();
-        storage
-            .update_lowest_available_block_height(NEW_LOW)
-            .unwrap();
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
-        );
-
-        // Store a block at height 101.  Should update the high value only.
-        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW + 1, Block::random_v1);
-        storage.write_block(&block).unwrap();
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
-        );
-    }
-
-    // Should have persisted the `lowest_available_block_height`, so that a new instance will be
-    // initialized with the previous value.
-    {
-        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
-        );
-    }
-}
-
-fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
-    let mut harness = ComponentHarness::default();
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    let era_id = EraId::new(harness.rng.gen_range(0..100));
-    let block = Block::random_with_specifics(
-        &mut harness.rng,
-        era_id,
-        low,
-        ProtocolVersion::V1_0_0,
-        false,
-        verifiable_chunked_hash_activation,
-        None,
-    );
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    storage.write_block(&block).unwrap();
-
-    let is_switch = harness.rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
-        &mut harness.rng,
-        era_id,
-        high,
-        ProtocolVersion::V1_0_0,
-        is_switch,
-        verifiable_chunked_hash_activation,
-        None,
-    );
-    storage.write_block(&block).unwrap();
-
-    storage.update_lowest_available_block_height(low).unwrap();
-    assert_eq!(
-        storage
-            .get_available_block_range()
-            .expect("failed to available block range"),
-        AvailableBlockRange::new(low, high).unwrap()
-    );
-
-    harness
-}
-
-#[test]
-fn should_update_lowest_available_block_height_when_below_stored_range() {
-    // Set an initial storage instance to have a range of [100, 101].
-    const INITIAL_LOW: u64 = 100;
-    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
-    const NEW_LOW: u64 = INITIAL_LOW - 1;
-
-    let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
-        );
-
-        // Check that updating to a value lower than the current low is actioned.
-        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
-        storage.write_block(&block).unwrap();
-        storage
-            .update_lowest_available_block_height(NEW_LOW)
-            .unwrap();
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
-        );
-    }
-
-    // Check the update was persisted.
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    assert_eq!(
-        storage
-            .get_available_block_range()
-            .expect("failed to available block range"),
-        AvailableBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
-    );
-}
-
-#[test]
-fn should_update_lowest_available_block_height_when_above_initial_range_with_gap() {
-    // Set an initial storage instance to have a range of [100, 101].
-    const INITIAL_LOW: u64 = 100;
-    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
-    const NEW_LOW: u64 = INITIAL_HIGH + 2;
-
-    let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
-        );
-
-        // Check that updating the low value to a value 2 higher than the INITIAL (not current) high
-        // is actioned.
-        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
-        storage.write_block(&block).unwrap();
-        storage
-            .update_lowest_available_block_height(NEW_LOW)
-            .unwrap();
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
-        );
-    }
-
-    // Check the update was persisted.
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    assert_eq!(
-        storage
-            .get_available_block_range()
-            .expect("failed to available block range"),
-        AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
-    );
-}
-
-#[test]
-fn should_not_update_lowest_available_block_height_when_above_initial_range_with_no_gap() {
-    // Set an initial storage instance to have a range of [100, 101].
-    const INITIAL_LOW: u64 = 100;
-    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
-    const NEW_LOW: u64 = INITIAL_HIGH + 1;
-
-    let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
-        );
-
-        // Check that updating the low value to a value 1 higher than the INITIAL (not current) high
-        // is a no-op.
-        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
-        storage.write_block(&block).unwrap();
-        storage
-            .update_lowest_available_block_height(NEW_LOW)
-            .unwrap();
-        assert_eq!(
-            storage
-                .get_available_block_range()
-                .expect("failed to available block range"),
-            AvailableBlockRange::new(INITIAL_LOW, NEW_LOW).unwrap()
-        );
-    }
-
-    // Check the update was persisted.
-    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    assert_eq!(
-        storage
-            .get_available_block_range()
-            .expect("failed to available block range"),
-        AvailableBlockRange::new(INITIAL_LOW, NEW_LOW).unwrap()
-    );
-}
-
-#[test]
-fn should_not_update_lowest_available_block_height_when_within_initial_range() {
-    // Set an initial storage instance to have a range of [100, 101].
-    const INITIAL_LOW: u64 = 100;
-    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
-    let harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    assert_eq!(
-        storage
-            .get_available_block_range()
-            .expect("failed to available block range"),
-        AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
-    );
-
-    storage
-        .update_lowest_available_block_height(INITIAL_HIGH)
-        .unwrap();
-    assert_eq!(
-        storage
-            .get_available_block_range()
-            .expect("failed to available block range"),
-        AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
-    );
-}
-
-#[test]
 fn should_restrict_returned_blocks() {
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
@@ -2056,9 +1789,8 @@ fn should_restrict_returned_blocks() {
             None,
         );
         storage.write_block(&block).unwrap();
+        storage.completed_blocks.insert(*height);
     });
-    // The available range is 4-5.
-    storage.update_lowest_available_block_height(4).unwrap();
 
     // Without restriction, the node should attempt to return any requested block
     // regardless if it is in the disjoint sequences.

@@ -84,6 +84,7 @@ impl Payload for Message {
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
+                    Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -123,6 +124,7 @@ impl Payload for Message {
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_requests,
+                Tag::FinalitySignaturesByHash => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -135,8 +137,23 @@ impl Payload for Message {
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_responses,
+                Tag::FinalitySignaturesByHash => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
+        }
+    }
+
+    fn is_unsafe_for_joiners(&self) -> bool {
+        match self {
+            Message::Consensus(_) => false,
+            Message::ConsensusRequest(_) => false,
+            Message::DeployGossiper(_) => false,
+            Message::AddressGossiper(_) => false,
+            // Trie requests can deadlock between joiners.
+            Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
+            Message::GetRequest { .. } => false,
+            Message::GetResponse { .. } => false,
+            Message::FinalitySignature(_) => false,
         }
     }
 }
@@ -293,6 +310,11 @@ where
                     message: NetRequest::BlockHeadersBatch(serialized_id),
                 }
                 .into(),
+                Tag::FinalitySignaturesByHash => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::FinalitySignatures(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -346,6 +368,11 @@ where
                 Tag::BlockHeaderBatch => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockHeadersBatch(serialized_item),
+                }
+                .into(),
+                Tag::FinalitySignaturesByHash => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::FinalitySignatures(serialized_item),
                 }
                 .into(),
             },

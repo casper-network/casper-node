@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
@@ -639,7 +639,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     );
 }
 
-fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &str) -> URef {
+fn get_default_account_named_uref(builder: &mut LmdbWasmTestBuilder, name: &str) -> URef {
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("default account should exist");
@@ -652,8 +652,8 @@ fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &
         .to_owned()
 }
 
-fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
 
     let id: Option<u64> = None;
 
@@ -1010,7 +1010,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         old_protocol_version.value().patch + 1,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder

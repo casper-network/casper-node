@@ -2,7 +2,7 @@ use core::convert::TryFrom;
 use std::path::PathBuf;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
 };
@@ -59,7 +59,7 @@ fn test_check_transfer_success_with_source_only() {
     // build a request to execute the deploy.
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     // we need this to figure out what the transfer fee is.
@@ -122,7 +122,7 @@ fn test_check_transfer_success_with_source_only_errors() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     // Set up test builder and run genesis.
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     // compare proposer balance before and after the transaction to get the tx fee.
@@ -178,7 +178,7 @@ fn test_check_transfer_success_with_source_and_target() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     // we need this to figure out what the transfer fee is.

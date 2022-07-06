@@ -29,23 +29,6 @@ fn get_range() -> RangeInclusive<usize> {
     RangeInclusive::new(start, end)
 }
 
-fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
-    use crate::storage::{
-        transaction_source::in_memory::InMemoryEnvironment,
-        trie_store::in_memory::InMemoryTrieStore,
-    };
-
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
-
-    let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
-        .into_iter()
-        .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
-        .collect();
-
-    store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap()
-}
-
 fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     use crate::storage::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
@@ -72,21 +55,6 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 }
 
 proptest! {
-    #[test]
-    fn prop_in_memory_roundtrip_succeeds_leaf(v in vec(trie_leaf_arb(), get_range())) {
-        assert!(in_memory_roundtrip_succeeds(v))
-    }
-
-    #[test]
-    fn prop_in_memory_roundtrip_succeeds_node(v in vec(trie_node_arb(), get_range())) {
-        assert!(in_memory_roundtrip_succeeds(v))
-    }
-
-    #[test]
-    fn prop_in_memory_roundtrip_succeeds_extension(v in vec(trie_extension_arb(), get_range())) {
-        assert!(in_memory_roundtrip_succeeds(v))
-    }
-
     #[test]
     fn prop_lmdb_roundtrip_succeeds_leaf(v in vec(trie_leaf_arb(), get_range())) {
         assert!(lmdb_roundtrip_succeeds(v))
