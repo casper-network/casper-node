@@ -1009,9 +1009,9 @@ impl EraSupervisor {
                     proposer,
                 );
                 info!(
-                    era_id = ?finalized_block.era_id(),
-                    height = ?finalized_block.height(),
-                    timestamp = ?finalized_block.timestamp(),
+                    era_id = finalized_block.era_id().value(),
+                    height = finalized_block.height(),
+                    timestamp = %finalized_block.timestamp(),
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
