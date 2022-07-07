@@ -260,31 +260,31 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
 /// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
 const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
-/// Allows us to decide whether joiner peers can also be used when calling `fetch_retry_forever`.
-trait CanUseJoiners {
-    fn can_use_joiners() -> bool {
+/// Allows us to decide whether syncing peers can also be used when calling `fetch_retry_forever`.
+trait CanUseSyncingNodes {
+    fn can_use_syncing_nodes() -> bool {
         true
     }
 }
 
-/// Tries and trie chunks can only be retrieved from non-joining peers to avoid joining nodes
+/// Tries and trie chunks can only be retrieved from non-syncing peers to avoid syncing nodes
 /// deadlocking while requesting these from each other.
-impl CanUseJoiners for TrieOrChunk {
-    fn can_use_joiners() -> bool {
+impl CanUseSyncingNodes for TrieOrChunk {
+    fn can_use_syncing_nodes() -> bool {
         false
     }
 }
 
-/// All other `Item` types can safely be retrieved from joiner peers, as there is no networking
+/// All other `Item` types can safely be retrieved from syncing peers, as there is no networking
 /// backpressure implemented for these fetch requests.
-impl CanUseJoiners for BlockHeader {}
-impl CanUseJoiners for Block {}
-impl CanUseJoiners for Deploy {}
-impl CanUseJoiners for BlockAndDeploys {}
-impl CanUseJoiners for BlockHeadersBatch {}
+impl CanUseSyncingNodes for BlockHeader {}
+impl CanUseSyncingNodes for Block {}
+impl CanUseSyncingNodes for Deploy {}
+impl CanUseSyncingNodes for BlockAndDeploys {}
+impl CanUseSyncingNodes for BlockHeadersBatch {}
 
-/// Returns fully-connected, non-joiner peers that are known to be not banned.
-async fn get_filtered_fully_connected_non_joiner_peers<REv>(
+/// Returns fully-connected, non-syncing peers that are known to be not banned.
+async fn get_filtered_fully_connected_non_syncing_peers<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Vec<NodeId>
 where
@@ -292,13 +292,13 @@ where
 {
     let mut peer_list = ctx
         .effect_builder
-        .get_fully_connected_non_joiner_peers()
+        .get_fully_connected_non_syncing_peers()
         .await;
     ctx.filter_bad_peers(&mut peer_list);
     peer_list
 }
 
-/// Returns fully-connected, joiner and non-joiner peers that are known to be not banned.
+/// Returns fully-connected, syncing and non-syncing peers that are known to be not banned.
 async fn get_filtered_fully_connected_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
 where
     REv: From<NetworkInfoRequest>,
@@ -312,15 +312,15 @@ where
 /// header or block by height, which require verification with finality signatures.
 async fn fetch_retry_forever<REv, T>(ctx: &ChainSyncContext<'_, REv>, id: T::Id) -> FetchResult<T>
 where
-    T: Item + CanUseJoiners + 'static,
+    T: Item + CanUseSyncingNodes + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     let mut attempts = 0_usize;
     loop {
-        let new_peer_list = if T::can_use_joiners() {
+        let new_peer_list = if T::can_use_syncing_nodes() {
             get_filtered_fully_connected_peers(ctx).await
         } else {
-            get_filtered_fully_connected_non_joiner_peers(ctx).await
+            get_filtered_fully_connected_non_syncing_peers(ctx).await
         };
 
         if new_peer_list.is_empty() && attempts % 100 == 0 {
@@ -328,7 +328,7 @@ where
                 attempts,
                 item_type = ?T::TAG,
                 ?id,
-                can_use_joiners = %T::can_use_joiners(),
+                can_use_syncing_nodes = %T::can_use_syncing_nodes(),
                 "failed to attempt to fetch item due to no fully-connected peers"
             );
         }

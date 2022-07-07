@@ -92,7 +92,8 @@ pub(crate) struct ChainSynchronizer<REv> {
     config: Config,
     /// This will be populated once the synchronizer has completed all work, indicating the joiner
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
-    /// config.
+    /// config. The participating reactor may still use the chain synchronizer component to run a
+    /// sync to genesis in the background.
     joining_outcome: Option<JoiningOutcome>,
     /// Metrics for the chain synchronization process.
     metrics: Metrics,

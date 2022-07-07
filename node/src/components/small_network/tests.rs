@@ -160,7 +160,7 @@ impl Payload for Message {
         0
     }
 
-    fn is_unsafe_for_joiners(&self) -> bool {
+    fn is_unsafe_for_syncing_peers(&self) -> bool {
         false
     }
 }

@@ -766,13 +766,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network non-joiner peers in random order.
-    pub async fn get_fully_connected_non_joiner_peers(self) -> Vec<NodeId>
+    /// Gets the current network non-syncing peers in random order.
+    pub async fn get_fully_connected_non_syncing_peers(self) -> Vec<NodeId>
     where
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder },
             QueueKind::Regular,
         )
         .await

@@ -41,7 +41,7 @@ pub(crate) enum Message<P> {
     },
     Payload(P),
     /// Indicates that peer has finished its syncing process and should no longer be considered a
-    /// "joiner".
+    /// "syncing peer".
     SyncFinished,
 }
 
@@ -73,12 +73,12 @@ impl<P: Payload> Message<P> {
         }
     }
 
-    /// Returns whether or not the payload is unsafe for joiner consumption.
+    /// Returns whether or not the payload is unsafe for syncing node consumption.
     #[inline]
-    pub(super) fn payload_is_unsafe_for_joiners(&self) -> bool {
+    pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
         match self {
             Message::Handshake { .. } | Message::SyncFinished => false,
-            Message::Payload(payload) => payload.is_unsafe_for_joiners(),
+            Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
         }
     }
 
@@ -337,10 +337,10 @@ pub(crate) trait Payload:
         false
     }
 
-    /// Indicates a message is not safe to send to a joiner.
+    /// Indicates a message is not safe to send to a syncing node.
     ///
     /// This functionality should be removed once multiplexed networking lands.
-    fn is_unsafe_for_joiners(&self) -> bool;
+    fn is_unsafe_for_syncing_peers(&self) -> bool;
 }
 
 /// Network message conversion support.

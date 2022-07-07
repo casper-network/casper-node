@@ -152,8 +152,8 @@ where
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
-    /// Tracks nodes that have announced themselves as joining nodes.
-    joining_nodes: HashSet<NodeId>,
+    /// Tracks nodes that have announced themselves as nodes that are syncing.
+    syncing: HashSet<NodeId>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -186,7 +186,7 @@ where
     active_era: EraId,
 
     /// The flag specifying if the node is in the chain sync process.
-    chain_sync_in_progress: bool,
+    syncing_in_progress: bool,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -333,7 +333,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            joining_nodes: HashSet::new(),
+            syncing: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -343,7 +343,7 @@ where
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             // Initially, we assume that we are in the sync process.
-            chain_sync_in_progress: true,
+            syncing_in_progress: true,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -512,21 +512,23 @@ where
                 {
                     self.connection_completed(peer_id);
 
-                    // We should not update the joining set when we receive an incoming connection,
+                    // We should NOT update the syncing set when we receive an incoming connection,
                     // because the `message_sender` which is handling the corresponding outgoing
-                    // connection will not receive the update of the remote joiner state.
+                    // connection will not receive the update of the syncing state of the remote
+                    // peer.
                     //
-                    // Such desync may cause the node to try to send requests that are not safe for
-                    // joiners, to the joining node, because the outgoing connection may outlive the
-                    // incoming connection, i.e. it may take some time to drop "our" outgoing
+                    // Such desync may cause the node to try to send "unsafe" requests to the
+                    // syncing node, because the outgoing connection may outlive the
+                    // incoming one, i.e. it may take some time to drop "our" outgoing
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
-                // Tell the peer that we have finished syncing because it'll assume it's
-                // connecting to a node that is still syncing. If we're actually
-                // still syncing, the peer will be notified later by the chain synchronizer
-                // component.
-                if !self.chain_sync_in_progress {
+                // Upon establishing a connection, peers will assume we're in the syncing process.
+                // If we're not, it's just about time to inform them we've finished syncing.
+                //
+                // If we actually are in the syncing process still, the peer will be notified by the
+                // chain synchronizer component when the process finishes.
+                if !self.syncing_in_progress {
                     info!("telling the newly connected peer that we already finished syncing");
                     self.send_message(peer_id, Arc::new(Message::SyncFinished), None);
                 }
@@ -696,9 +698,7 @@ where
 
                 // By default, we assume that the peer is syncing. It'll send us the
                 // `SyncFinished` message in case it isn't.
-                //
-                // TODO[RC]: Rename `remote_joiner_id` to make it clear it is related to "syncing".
-                let remote_joiner_id = Some((peer_addr, peer_id));
+                let remote_peer_id = Some((peer_addr, peer_id));
 
                 effects.extend(
                     tasks::message_sender(
@@ -707,7 +707,7 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
-                        remote_joiner_id,
+                        remote_peer_id,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
@@ -792,7 +792,7 @@ where
             }
             Message::SyncFinished => {
                 info!(%peer_id, "peer reported sync finished");
-                self.update_joining_set(peer_id, false);
+                self.update_syncing_set(peer_id, false);
                 Effects::new()
             }
         })
@@ -806,12 +806,12 @@ where
 
     /// Updates a set of known joining nodes.
     /// If we've just connected to a non-joining node that peer will be removed from the set.
-    fn update_joining_set(&mut self, peer_id: NodeId, is_joiner: bool) {
-        // Update set of joining peers.
-        if is_joiner {
-            self.joining_nodes.insert(peer_id);
+    fn update_syncing_set(&mut self, peer_id: NodeId, is_syncing: bool) {
+        // Update set of syncing peers.
+        if is_syncing {
+            self.syncing.insert(peer_id);
         } else {
-            self.joining_nodes.remove(&peer_id);
+            self.syncing.remove(&peer_id);
         }
     }
 
@@ -978,14 +978,14 @@ where
 
                     responder.respond(symmetric_peers).ignore()
                 }
-                NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder } => {
+                NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder } => {
                     let mut symmetric_validator_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
                         .filter_map(|(node_id, sym)| {
                             matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
                         })
-                        .filter(|node_id| !self.joining_nodes.contains(node_id))
+                        .filter(|node_id| !self.syncing.contains(node_id))
                         .collect();
 
                     symmetric_validator_peers.shuffle(rng);
@@ -1093,7 +1093,7 @@ where
                 info!("notifying peers that chain sync has finished");
                 self.net_metrics.broadcast_requests.inc();
                 self.broadcast_message(Arc::new(Message::SyncFinished));
-                self.chain_sync_in_progress = false;
+                self.syncing_in_progress = false;
                 Effects::new()
             }
         }
