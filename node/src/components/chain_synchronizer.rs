@@ -75,7 +75,10 @@ pub(crate) enum JoiningOutcome {
 /// A chain synchronizer announcement.
 #[derive(Debug)]
 pub(crate) enum ChainSynchronizerAnnouncement {
-    /// Synchronization has been finished.
+    /// The node has finished the synchronization it was doing (fast-sync or sync-to-genesis,
+    /// depending on config) and may now accept requests that are unsafe for nodes that are
+    /// synchronizing. Once this message is received, the only way for the peer to signal it's in
+    /// the syncing process is to reconnect.
     SyncFinished,
 }
 
