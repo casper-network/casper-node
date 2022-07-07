@@ -2158,7 +2158,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack
                 | ExecError::DisabledContract(_) => false,
-                | ExecError::Transform(_) => false,
+                ExecError::Transform(_) => false,
             },
             Error::WasmPreprocessing(_) => true,
             Error::WasmSerialization(_) => true,
