@@ -1093,8 +1093,8 @@ where
             }
             Event::SyncFinished => {
                 info!("notifying peers that chain sync has finished");
-                self.broadcast_message(Arc::new(Message::SyncFinished));
                 self.synchronization_in_progress = false;
+                self.broadcast_message(Arc::new(Message::SyncFinished));
                 Effects::new()
             }
         }
