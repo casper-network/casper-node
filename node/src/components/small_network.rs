@@ -518,8 +518,6 @@ where
                     // joiners, to the joining node, because the outgoing connection may outlive the
                     // incoming connection, i.e. it may take some time to drop "our" outgoing
                     // connection after a peer has closed the corresponding incoming connection.
-
-                    // self.update_joining_set(peer_id, is_joiner);
                 }
 
                 // Now we can start the message reader.
