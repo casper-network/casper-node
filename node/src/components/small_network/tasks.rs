@@ -63,10 +63,15 @@ use crate::{
 /// successfully handed over to the kernel for sending.
 pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
 
+/// The outcome of the handshake process.
 struct HandshakeOutcome {
+    /// A framed transport for peer.
     framed_transport: FramedTransport,
+    /// Public address advertised by the peer.
     public_addr: SocketAddr,
+    /// The public key the peer is validating with, if any.
     peer_consensus_public_key: Option<PublicKey>,
+    /// True, if the peer identifies itself as "joiner".
     is_peer_joiner: bool,
 }
 
