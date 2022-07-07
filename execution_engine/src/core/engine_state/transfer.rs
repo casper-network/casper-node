@@ -1,6 +1,6 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
-use casper_global_state::{shared::CorrelationId, storage::global_state::StateReader};
+use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
     account::{Account, AccountHash},
     system::mint,

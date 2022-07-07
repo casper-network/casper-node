@@ -2,7 +2,7 @@
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue, URef, U512};
 
-use casper_global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 
 /// Result enum that represents all possible outcomes of a balance request.
 #[derive(Debug)]

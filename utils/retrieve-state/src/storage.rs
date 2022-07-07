@@ -7,18 +7,18 @@ use std::{
 use lmdb::DatabaseFlags;
 
 use casper_execution_engine::core::engine_state::{EngineConfig, EngineState};
-use casper_global_state::{
-    storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
-    },
-    BlockStore, DataAccessLayer,
-};
 use casper_hashing::Digest;
 use casper_node::{
     storage::Storage,
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
+};
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::storage::{
+        state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
+    },
 };
 use casper_types::{EraId, ProtocolVersion};
 use num_rational::Ratio;

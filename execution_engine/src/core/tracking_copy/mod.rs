@@ -13,14 +13,14 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_global_state::{
+use casper_hashing::Digest;
+use casper_storage::global_state::{
     shared::{
         transform::{self, Transform},
         CorrelationId,
     },
-    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
+    storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self},
     CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,

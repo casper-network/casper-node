@@ -14,7 +14,7 @@ use casper_execution_engine::core::engine_state::{
     run_genesis_request::RunGenesisRequest,
     Error,
 };
-use casper_global_state::shared::{transform::Transform, AdditiveMap};
+use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
 use casper_types::{account::Account, Gas, Key, StoredValue};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};

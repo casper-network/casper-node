@@ -11,7 +11,7 @@ use casper_execution_engine::core::{
     engine_state::{Error, MAX_PAYMENT},
     execution,
 };
-use casper_global_state::shared::transform::Transform;
+use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
     account::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
     RuntimeArgs, U512,

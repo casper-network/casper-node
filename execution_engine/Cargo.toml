@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1.0.33"
 base16 = "0.2.1"
-casper-global-state = { version = "1.4.3", path = "../global_state" }
+casper-storage = { version = "1.4.3", path = "../storage" }
 casper-hashing = { version = "1.4.3", path = "../hashing" }
 casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "json-schema"] }
 chrono = "0.4.10"

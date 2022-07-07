@@ -122,8 +122,8 @@ use casper_execution_engine::{
     },
     shared::execution_journal::ExecutionJournal,
 };
-use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
+use casper_storage::global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
     EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp,

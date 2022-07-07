@@ -1,7 +1,7 @@
 use clap::ArgMatches;
 
 use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
-use casper_global_state::shared::{transform::Transform, AdditiveMap};
+use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AsymmetricType, Key, PublicKey, RuntimeArgs,
     U512,

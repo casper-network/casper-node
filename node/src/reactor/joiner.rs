@@ -19,7 +19,7 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
-use casper_global_state::storage::trie::TrieOrChunk;
+use casper_storage::global_state::storage::trie::TrieOrChunk;
 
 use crate::{
     components::{

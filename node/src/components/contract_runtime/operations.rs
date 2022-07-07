@@ -8,11 +8,14 @@ use casper_execution_engine::core::engine_state::{
     ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
     StepRequest, StepSuccess,
 };
-use casper_global_state::{
-    shared::{transform::Transform, AdditiveMap, CorrelationId},
-    storage::global_state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
-    DataAccessLayer,
+use casper_storage::{
+    data_access_layer::DataAccessLayer,
+    global_state::{
+        shared::{transform::Transform, AdditiveMap, CorrelationId},
+        storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+    },
 };
+
 use casper_hashing::Digest;
 use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 

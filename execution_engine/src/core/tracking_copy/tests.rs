@@ -3,14 +3,14 @@ use std::{cell::Cell, iter, rc::Rc};
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
-use casper_global_state::{
+use casper_hashing::Digest;
+use casper_storage::global_state::{
     shared::{transform::Transform, CorrelationId},
     storage::{
-        global_state::{self, StateProvider, StateReader},
+        state::{self, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
@@ -314,7 +314,7 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([(k, value)]);
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([(k, value)]);
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
@@ -353,7 +353,7 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state(
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(
             [(k, value), (contract_key, contract)]
         );
         let view = gs.checkout(root_hash).unwrap().unwrap();
@@ -395,7 +395,7 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state(
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(
             [(k, value), (account_key, account.into())],
         );
         let view = gs.checkout(root_hash).unwrap().unwrap();
@@ -453,7 +453,7 @@ proptest! {
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
             (k, value),
             (contract_key, contract),
             (account_key, account.into()),
@@ -541,7 +541,7 @@ fn query_for_circular_references_should_fail() {
     ));
 
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (cl_value_key, cl_value),
         (contract_key, contract),
     ]);
@@ -626,7 +626,7 @@ fn validate_query_proof_should_work() {
 
     // persist them
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_key, account_value.to_owned()),
         (contract_key, contract_value.to_owned()),
         (main_account_key, main_account_value.to_owned()),
@@ -773,7 +773,7 @@ fn validate_query_proof_should_work() {
     );
 
     let (misfit_global_state, misfit_root_hash, _tempdir) =
-        global_state::lmdb::make_temporary_global_state([
+        state::lmdb::make_temporary_global_state([
             (account_key, account_value.to_owned()),
             (contract_key, contract_value),
             (main_account_key, main_account_value),
@@ -843,7 +843,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
 
     // persist them
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_1_key, account_1_value),
         (account_2_key, account_2_value),
         (uref_key, uref_value),
@@ -890,7 +890,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
 
     // persist them
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_key, account_value),
         (uref_1_key, uref_1_value),
         (uref_2_key, uref_2_value),
@@ -932,7 +932,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
 #[test]
 fn get_keys_should_handle_reads_from_empty_trie() {
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) = global_state::lmdb::make_temporary_global_state([]);
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([]);
 
     let view = global_state
         .checkout(root_hash)
@@ -1050,8 +1050,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     }
 
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) =
-        global_state::lmdb::make_temporary_global_state(pairs);
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);
@@ -1109,8 +1108,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
     pairs.push((contract_key, contract));
 
     let correlation_id = CorrelationId::new();
-    let (global_state, root_hash, _tempdir) =
-        global_state::lmdb::make_temporary_global_state(pairs);
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);

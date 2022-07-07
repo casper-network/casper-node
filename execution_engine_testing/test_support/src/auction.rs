@@ -1,6 +1,6 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
-use casper_global_state::storage::lmdb::{Cursor, Transaction};
+use casper_storage::global_state::storage::lmdb::{Cursor, Transaction};
 use tempfile::TempDir;
 
 use casper_execution_engine::core::{
@@ -10,14 +10,14 @@ use casper_execution_engine::core::{
     },
     execution,
 };
-use casper_global_state::{
+use casper_hashing::Digest;
+use casper_storage::global_state::{
     shared::CorrelationId,
     storage::{
-        global_state::{CommitProvider, StateProvider},
+        state::{CommitProvider, StateProvider},
         trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
     PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,

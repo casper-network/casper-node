@@ -9,7 +9,10 @@ use std::{
     sync::Arc,
 };
 
-use casper_global_state::{storage::lmdb::DatabaseFlags, BlockStore, DataAccessLayer};
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::storage::lmdb::DatabaseFlags,
+};
 use filesize::PathExt;
 use log::LevelFilter;
 use num_rational::Ratio;
@@ -40,10 +43,11 @@ use casper_execution_engine::{
         utils::OS_PAGE_SIZE,
     },
 };
-use casper_global_state::{
+use casper_hashing::Digest;
+use casper_storage::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
-        global_state::{
+        state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
             StateReader,
         },
@@ -52,7 +56,6 @@ use casper_global_state::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes},

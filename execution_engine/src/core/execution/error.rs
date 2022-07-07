@@ -2,7 +2,7 @@
 use parity_wasm::elements;
 use thiserror::Error;
 
-use casper_global_state::{shared::transform, storage};
+use casper_storage::global_state::{shared::transform, storage};
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,

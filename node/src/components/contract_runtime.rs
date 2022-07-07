@@ -31,17 +31,19 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_global_state::{
-    shared::CorrelationId,
-    storage::{
-        global_state::lmdb::LmdbGlobalState,
-        transaction_source::lmdb::LmdbEnvironment,
-        trie::{TrieOrChunk, TrieOrChunkId},
-        trie_store::lmdb::LmdbTrieStore,
-    },
-    BlockStore, DataAccessLayer,
-};
 use casper_hashing::Digest;
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::{
+        shared::CorrelationId,
+        storage::{
+            state::lmdb::LmdbGlobalState,
+            transaction_source::lmdb::LmdbEnvironment,
+            trie::{TrieOrChunk, TrieOrChunkId},
+            trie_store::lmdb::LmdbTrieStore,
+        },
+    },
+};
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{

@@ -31,18 +31,21 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
-use casper_global_state::{
-    shared::{transform::Transform, AdditiveMap, CorrelationId},
-    storage::{
-        global_state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-        },
-        lmdb,
-        trie::{TrieOrChunk, TrieOrChunkId},
-    },
-    DataAccessLayer,
-};
 use casper_hashing::Digest;
+use casper_storage::{
+    data_access_layer::DataAccessLayer,
+    global_state::{
+        shared::{transform::Transform, AdditiveMap, CorrelationId},
+        storage::{
+            lmdb,
+            state::{
+                lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            },
+            trie::{TrieOrChunk, TrieOrChunkId},
+        },
+    },
+};
+
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
