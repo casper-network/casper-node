@@ -655,7 +655,7 @@ fn should_query_dictionary_items_with_test_builder() {
 #[ignore]
 #[test]
 fn should_be_able_to_perform_dictionary_read() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let dictionary_session_call =
@@ -671,7 +671,7 @@ fn should_be_able_to_perform_dictionary_read() {
 #[ignore]
 #[test]
 fn should_be_able_to_perform_read_from_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let read_from_key_session_call =
