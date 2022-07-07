@@ -423,6 +423,13 @@ where
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
+            if msg.payload_is_unsafe_for_syncing_nodes() && self.syncing.contains(&dest) {
+                // We should never attempt to send an unsafe message to a peer that we know is still
+                // syncing. Since "unsafe" does usually not mean immediately catastrophic, we
+                // attempt to carry on, but warn loudly.
+                error!(kind=%msg.classify(), node_id=%dest, "sending unsafe message to syncing node");
+            }
+
             if let Err(msg) = connection.sender.send((msg, opt_responder)) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
@@ -696,10 +703,6 @@ where
                     self.connection_completed(peer_id);
                 }
 
-                // By default, we assume that the peer is syncing. It'll send us the
-                // `SyncFinished` message in case it isn't.
-                let remote_peer_id = Some((peer_addr, peer_id));
-
                 effects.extend(
                     tasks::message_sender(
                         receiver,
@@ -707,7 +710,6 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
-                        remote_peer_id,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {

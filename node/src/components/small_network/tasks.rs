@@ -687,21 +687,11 @@ pub(super) async fn message_sender<P>(
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
-    remote_peer_id: Option<(SocketAddr, NodeId)>,
 ) where
     P: Payload,
 {
     while let Some((message, opt_responder)) = queue.recv().await {
         counter.dec();
-
-        if let Some((ref addr, ref node_id)) = remote_peer_id {
-            if message.payload_is_unsafe_for_syncing_nodes() {
-                // We should never attempt to send an unsafe message to a peer that we know is still
-                // syncing. Since "unsafe" does usually not mean immediately catastrophic, we
-                // attempt to carry on, but warn loudly.
-                error!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to syncing node");
-            }
-        }
 
         let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
             Ok(size) => size as u32,
