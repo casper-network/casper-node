@@ -376,6 +376,7 @@ where
 
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Arc<Message<P>>) {
+        self.net_metrics.broadcast_requests.inc();
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone(), None);
         }
@@ -944,7 +945,6 @@ where
                         auto_closing_responder,
                     } => {
                         // We're given a message to broadcast.
-                        self.net_metrics.broadcast_requests.inc();
                         self.broadcast_message(Arc::new(Message::Payload(*payload)));
                         auto_closing_responder.respond(()).ignore()
                     }
@@ -1093,7 +1093,6 @@ where
             }
             Event::SyncFinished => {
                 info!("notifying peers that chain sync has finished");
-                self.net_metrics.broadcast_requests.inc();
                 self.broadcast_message(Arc::new(Message::SyncFinished));
                 self.synchronization_in_progress = false;
                 Effects::new()
