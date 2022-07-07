@@ -1,6 +1,6 @@
 mod partial_tries {
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             transaction_source::{Transaction, TransactionSource},
             trie::Trie,
@@ -52,7 +52,7 @@ mod full_tries {
     use casper_hashing::Digest;
 
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             transaction_source::{Transaction, TransactionSource},
             trie::Trie,
@@ -116,7 +116,7 @@ mod keys_iterator {
     use casper_types::bytesrepr;
 
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             transaction_source::TransactionSource,
             trie::{Pointer, Trie},
@@ -215,7 +215,7 @@ mod keys_iterator {
 
 mod keys_with_prefix_iterator {
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             transaction_source::TransactionSource,
             trie::Trie,

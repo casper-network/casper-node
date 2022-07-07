@@ -3,6 +3,13 @@ use std::{cell::Cell, iter, rc::Rc};
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
+use casper_global_state::{
+    shared::{transform::Transform, CorrelationId},
+    storage::{
+        global_state::{self, StateProvider, StateReader},
+        trie::merkle_proof::TrieMerkleProof,
+    },
+};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
@@ -17,11 +24,7 @@ use super::{
 };
 use crate::{
     core::{engine_state::EngineConfig, runtime_context::dictionary, ValidationError},
-    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId, transform::Transform},
-    storage::{
-        global_state::{self, StateProvider, StateReader},
-        trie::merkle_proof::TrieMerkleProof,
-    },
+    shared::execution_journal::ExecutionJournal,
 };
 
 struct CountingDb {

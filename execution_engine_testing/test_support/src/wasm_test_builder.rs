@@ -9,8 +9,8 @@ use std::{
     sync::Arc,
 };
 
+use casper_global_state::storage::lmdb::DatabaseFlags;
 use filesize::PathExt;
-use lmdb::DatabaseFlags;
 use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
@@ -31,17 +31,17 @@ use casper_execution_engine::{
         execution,
     },
     shared::{
-        additive_map::AdditiveMap,
         execution_journal::ExecutionJournal,
         logging::{self, Settings, Style},
-        newtypes::CorrelationId,
         system_config::{
             auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
             mint_costs::MintCosts,
         },
-        transform::Transform,
         utils::OS_PAGE_SIZE,
     },
+};
+use casper_global_state::{
+    shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,

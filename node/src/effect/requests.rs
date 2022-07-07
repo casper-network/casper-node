@@ -16,18 +16,16 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self,
-        balance::{BalanceRequest, BalanceResult},
-        era_validators::GetEraValidatorsError,
-        genesis::GenesisSuccess,
-        get_bids::{GetBidsRequest, GetBidsResult},
-        query::{QueryRequest, QueryResult},
-        UpgradeConfig, UpgradeSuccess,
-    },
-    storage::trie::{TrieOrChunk, TrieOrChunkId},
+use casper_execution_engine::core::engine_state::{
+    self,
+    balance::{BalanceRequest, BalanceResult},
+    era_validators::GetEraValidatorsError,
+    genesis::GenesisSuccess,
+    get_bids::{GetBidsRequest, GetBidsResult},
+    query::{QueryRequest, QueryResult},
+    UpgradeConfig, UpgradeSuccess,
 };
+use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,

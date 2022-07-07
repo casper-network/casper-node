@@ -33,8 +33,6 @@ pub enum Error {
     MerkleConstruction(#[from] MerkleConstructionError),
 }
 
-impl wasmi::HostError for Error {}
-
 impl From<bytesrepr::Error> for Error {
     fn from(error: bytesrepr::Error) -> Self {
         Error::BytesRepr(error)

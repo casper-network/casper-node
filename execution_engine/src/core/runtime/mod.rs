@@ -20,6 +20,7 @@ use parity_wasm::elements::Module;
 use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     account::{Account, AccountHash, ActionType, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
@@ -52,7 +53,6 @@ use crate::{
         host_function_costs::{Cost, HostFunction},
         wasm_prep::{self, PreprocessingError},
     },
-    storage::global_state::StateReader,
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,

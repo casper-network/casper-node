@@ -13,6 +13,13 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
+use casper_global_state::{
+    shared::{
+        transform::{self, Transform},
+        CorrelationId,
+    },
+    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
+};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self},
@@ -24,12 +31,7 @@ use self::meter::{heap_meter::HeapSize, Meter};
 use super::engine_state::EngineConfig;
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, runtime_context::dictionary},
-    shared::{
-        execution_journal::ExecutionJournal,
-        newtypes::CorrelationId,
-        transform::{self, Transform},
-    },
-    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
+    shared::execution_journal::ExecutionJournal,
 };
 
 #[derive(Debug)]
@@ -220,6 +222,7 @@ pub enum AddResult {
     KeyNotFound(Key),
     TypeMismatch(StoredValueTypeMismatch),
     Serialization(bytesrepr::Error),
+    Transform(transform::Error),
 }
 
 impl From<CLValueError> for AddResult {
@@ -399,6 +402,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 Ok(AddResult::TypeMismatch(type_mismatch))
             }
             Err(transform::Error::Serialization(error)) => Ok(AddResult::Serialization(error)),
+            Err(transform_error) => Ok(AddResult::Transform(transform_error)),
         }
     }
 

@@ -11,7 +11,7 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
 
 use crate::{
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
         error,
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},

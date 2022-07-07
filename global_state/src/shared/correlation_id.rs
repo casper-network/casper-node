@@ -1,5 +1,4 @@
 //! Some newtypes.
-mod macros;
 use std::fmt::{self, Display, Formatter};
 
 use serde::Serialize;
@@ -32,7 +31,7 @@ impl Display for CorrelationId {
 mod tests {
     use std::hash::{Hash, Hasher};
 
-    use crate::shared::{newtypes::CorrelationId, utils};
+    use crate::shared::CorrelationId;
 
     #[test]
     fn should_be_able_to_generate_correlation_id() {
@@ -71,7 +70,7 @@ mod tests {
     fn should_support_to_json() {
         let correlation_id = CorrelationId::new();
 
-        let correlation_id_json = utils::jsonify(correlation_id, false);
+        let correlation_id_json = serde_json::to_string(&correlation_id).unwrap();
 
         assert!(
             !correlation_id_json.is_empty(),

@@ -4,16 +4,14 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::storage::lmdb::DatabaseFlags;
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
-#[cfg(test)]
-use lmdb::DatabaseFlags;
-#[cfg(test)]
 use tempfile::TempDir;
 use tracing::trace;
 
 use crate::{
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
         error,
         global_state::{
@@ -33,6 +31,7 @@ use crate::{
                 read_with_proof, ReadResult,
             },
         },
+        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     },
 };
 
@@ -379,12 +378,9 @@ impl StateProvider for LmdbGlobalState {
 /// Creates prepopulated LMDB global state instance that stores data in a temporary directory. As
 /// soon as the `TempDir` instance is dropped all the data stored will be removed from the disk as
 /// well.
-#[cfg(test)]
-pub(crate) fn make_temporary_global_state(
+pub fn make_temporary_global_state(
     initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
 ) -> (LmdbGlobalState, Digest, TempDir) {
-    use crate::storage::{DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS};
-
     let tempdir = tempfile::tempdir().expect("should create tempdir");
 
     let lmdb_global_state = {

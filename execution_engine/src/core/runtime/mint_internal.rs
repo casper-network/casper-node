@@ -1,3 +1,4 @@
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
@@ -8,7 +9,6 @@ use casper_types::{
 use super::Runtime;
 use crate::{
     core::execution,
-    storage::global_state::StateReader,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
         system_provider::SystemProvider, Mint,
