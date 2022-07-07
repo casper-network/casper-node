@@ -4,7 +4,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::{Sink, SinkExt};
+use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use thiserror::Error;
 
 /// Transcoder.
@@ -26,15 +26,15 @@ pub trait Transcoder<Input> {
     fn transcode(&mut self, input: Input) -> Result<Self::Output, Self::Error>;
 }
 
-/// Error transcoding data for an underlying sink.
+/// Error transcoding data from/for an underlying input/output type.
 #[derive(Debug, Error)]
-enum TranscodingSinkError<TransErr, SinkErr> {
+enum TranscodingIoError<TransErr, IoErr> {
     /// The transcoder failed to transcode the given value.
     #[error("transcoding failed")]
     Transcoder(#[source] TransErr),
-    /// The wrapped sink returned an error.
+    /// The wrapped io returned an error.
     #[error(transparent)]
-    Sink(SinkErr),
+    Io(IoErr),
 }
 
 /// A sink adapter for transcoding incoming values into an underlying sink.
@@ -57,7 +57,7 @@ where
     T: Transcoder<Input> + Unpin,
     S: Sink<T::Output> + Unpin,
 {
-    type Error = TranscodingSinkError<T::Error, S::Error>;
+    type Error = TranscodingIoError<T::Error, S::Error>;
 
     #[inline]
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -65,7 +65,7 @@ where
         self_mut
             .sink
             .poll_ready_unpin(cx)
-            .map_err(TranscodingSinkError::Sink)
+            .map_err(TranscodingIoError::Io)
     }
 
     #[inline]
@@ -75,12 +75,12 @@ where
         let transcoded = self_mut
             .transcoder
             .transcode(item)
-            .map_err(TranscodingSinkError::Transcoder)?;
+            .map_err(TranscodingIoError::Transcoder)?;
 
         self_mut
             .sink
             .start_send_unpin(transcoded)
-            .map_err(TranscodingSinkError::Sink)
+            .map_err(TranscodingIoError::Io)
     }
 
     #[inline]
@@ -93,5 +93,32 @@ where
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let self_mut = self.get_mut();
         self_mut.poll_close_unpin(cx)
+    }
+}
+
+#[derive(Debug)]
+struct TranscodingStream<T, S> {
+    /// Transcoder used to transcode data before returning from the stream.
+    transcoder: T,
+    /// Underlying stream where data is sent.
+    stream: S,
+}
+
+impl<T, S> Stream for TranscodingStream<T, S>
+where
+    T: Transcoder<S::Item> + Unpin,
+    S: Stream + Unpin,
+{
+    type Item = Result<T::Output, T::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let self_mut = self.get_mut();
+        match ready!(self_mut.stream.poll_next_unpin(cx)) {
+            Some(input) => match self_mut.transcoder.transcode(input) {
+                Ok(transcoded) => Poll::Ready(Some(Ok(transcoded))),
+                Err(err) => Poll::Ready(Some(Err(err))),
+            },
+            None => Poll::Ready(None),
+        }
     }
 }
