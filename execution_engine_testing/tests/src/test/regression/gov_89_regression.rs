@@ -10,12 +10,10 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        genesis::GenesisValidator, GenesisAccount, RewardItem, SlashItem, StepSuccess,
-    },
-    shared::transform::Transform,
+use casper_execution_engine::core::engine_state::{
+    genesis::GenesisValidator, GenesisAccount, RewardItem, SlashItem, StepSuccess,
 };
+use casper_global_state::shared::transform::Transform;
 use casper_types::{
     system::auction::{
         Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,

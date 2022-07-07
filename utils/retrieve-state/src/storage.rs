@@ -6,12 +6,10 @@ use std::{
 
 use lmdb::DatabaseFlags;
 
-use casper_execution_engine::{
-    core::engine_state::{EngineConfig, EngineState},
-    storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
-    },
+use casper_execution_engine::core::engine_state::{EngineConfig, EngineState};
+use casper_global_state::storage::{
+    global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+    trie_store::lmdb::LmdbTrieStore,
 };
 use casper_hashing::Digest;
 use casper_node::{

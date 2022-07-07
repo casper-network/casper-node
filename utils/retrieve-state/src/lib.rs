@@ -11,10 +11,8 @@ use futures_util::{future::Either, stream::StreamExt, FutureExt};
 pub use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::{
-    core::engine_state::EngineState, shared::newtypes::CorrelationId,
-    storage::global_state::lmdb::LmdbGlobalState,
-};
+use casper_execution_engine::core::engine_state::EngineState;
+use casper_global_state::{shared::CorrelationId, storage::global_state::lmdb::LmdbGlobalState};
 use casper_hashing::Digest;
 use casper_node::{
     rpcs::{

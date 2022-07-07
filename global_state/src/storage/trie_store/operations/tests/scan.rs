@@ -2,7 +2,7 @@ use casper_hashing::Digest;
 
 use super::*;
 use crate::{
-    shared::newtypes::CorrelationId,
+    shared::CorrelationId,
     storage::{
         error,
         trie_store::operations::{scan, TrieScan},

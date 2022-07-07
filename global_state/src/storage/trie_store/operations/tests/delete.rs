@@ -145,7 +145,7 @@ mod full_tries {
     };
 
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             error,
             transaction_source::TransactionSource,

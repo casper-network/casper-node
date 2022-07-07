@@ -121,8 +121,8 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
-    storage::trie::{TrieOrChunk, TrieOrChunkId},
 };
+use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,

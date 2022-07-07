@@ -15,7 +15,7 @@ use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
-    shared::newtypes::CorrelationId,
+    shared::CorrelationId,
     storage::{
         transaction_source::{Readable, Writable},
         trie::{

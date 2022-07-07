@@ -1,16 +1,16 @@
 use std::convert::TryInto;
 
+use casper_global_state::{
+    shared::CorrelationId,
+    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
+};
 use casper_types::{
     account::{Account, AccountHash},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
     ContractWasmHash, Key, Motes, StoredValue, StoredValueTypeMismatch, URef,
 };
 
-use crate::{
-    core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
-    shared::newtypes::CorrelationId,
-    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
-};
+use crate::core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy};
 
 pub trait TrackingCopyExt<R> {
     type Error;

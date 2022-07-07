@@ -31,6 +31,16 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
+use casper_global_state::{
+    shared::{transform::Transform, AdditiveMap, CorrelationId},
+    storage::{
+        global_state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+        },
+        lmdb,
+        trie::{TrieOrChunk, TrieOrChunkId},
+    },
+};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
@@ -83,13 +93,6 @@ use crate::{
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::{
-        global_state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-        },
-        trie::{TrieOrChunk, TrieOrChunkId},
-    },
     system::auction,
 };
 
@@ -132,8 +135,8 @@ impl EngineState<LmdbGlobalState> {
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
-        if self.state.environment.is_manual_sync_enabled() {
-            self.state.environment.sync()?
+        if self.state.environment().is_manual_sync_enabled() {
+            self.state.environment().sync()?
         }
         Ok(())
     }
@@ -2155,6 +2158,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack
                 | ExecError::DisabledContract(_) => false,
+                | ExecError::Transform(_) => false,
             },
             Error::WasmPreprocessing(_) => true,
             Error::WasmSerialization(_) => true,

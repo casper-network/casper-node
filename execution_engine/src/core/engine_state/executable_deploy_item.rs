@@ -18,6 +18,7 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use casper_global_state::{shared::CorrelationId, storage::global_state::StateReader};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -27,14 +28,10 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
-use crate::{
-    core::{
-        engine_state::{Error, ExecError, MAX_PAYMENT_AMOUNT},
-        execution,
-        tracking_copy::{TrackingCopy, TrackingCopyExt},
-    },
-    shared::newtypes::CorrelationId,
-    storage::global_state::StateReader,
+use crate::core::{
+    engine_state::{Error, ExecError, MAX_PAYMENT_AMOUNT},
+    execution,
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;

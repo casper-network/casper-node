@@ -9,6 +9,7 @@ base16 = "0.2.1"
 base64 = "0.13"
 casper-engine-test-support = { path = "../../execution_engine_testing/test_support" }
 casper-execution-engine = { path = "../../execution_engine" }
+casper-global-state = { version = "1.4.3", path = "../../global_state" }
 casper-hashing = { path = "../../hashing" }
 casper-types = { path = "../../types" }
 clap = "2.33"

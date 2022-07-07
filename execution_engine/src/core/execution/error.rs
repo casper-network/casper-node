@@ -2,6 +2,7 @@
 use parity_wasm::elements;
 use thiserror::Error;
 
+use casper_global_state::{shared::transform, storage};
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
@@ -11,7 +12,6 @@ use casper_types::{
 use crate::{
     core::{resolvers::error::ResolverError, runtime::stack},
     shared::wasm_prep,
-    storage,
 };
 
 /// Possible execution errors.
@@ -173,6 +173,9 @@ pub enum Error {
     /// Contract is disabled.
     #[error("Contract is disabled")]
     DisabledContract(ContractHash),
+    /// Transform error.
+    #[error(transparent)]
+    Transform(transform::Error),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

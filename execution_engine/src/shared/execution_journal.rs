@@ -4,11 +4,10 @@ use std::{iter::IntoIterator, vec::IntoIter};
 
 use datasize::DataSize;
 
+use casper_global_state::shared::transform::Transform;
 use casper_types::{
     ExecutionEffect as JsonExecutionEffect, Key, TransformEntry as JsonTransformEntry,
 };
-
-use crate::shared::transform::Transform;
 
 /// A log of all transforms produced during execution.
 #[derive(Debug, Default, Clone, Eq, PartialEq, DataSize)]

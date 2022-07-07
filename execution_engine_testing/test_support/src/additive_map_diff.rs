@@ -1,4 +1,4 @@
-use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
+use casper_global_state::shared::{transform::Transform, AdditiveMap};
 use casper_types::Key;
 
 /// Represents the difference between two `AdditiveMap`s.

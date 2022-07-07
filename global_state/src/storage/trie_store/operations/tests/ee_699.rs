@@ -283,7 +283,7 @@ fn create_0_leaf_trie() -> Result<(Digest, Vec<HashedTrie<TestKey, TestValue>>),
 mod empty_tries {
     use super::*;
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             error,
             trie_store::operations::tests::{self, LmdbTestContext},
@@ -316,7 +316,7 @@ mod proptests {
 
     use super::*;
     use crate::{
-        shared::newtypes::CorrelationId,
+        shared::CorrelationId,
         storage::{
             error::{self},
             trie_store::operations::tests::{self, LmdbTestContext},

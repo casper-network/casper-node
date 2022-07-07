@@ -2,6 +2,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     account::AccountHash,
     api_error,
@@ -17,7 +18,6 @@ use super::{args::Args, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
     shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
-    storage::global_state::StateReader,
 };
 
 impl<'a, R> Externals for Runtime<'a, R>
