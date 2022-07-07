@@ -96,7 +96,7 @@ pub(crate) enum Event<P> {
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 
-    #[from]
+    /// The chain synchronization process has finished.
     SyncFinished,
 }
 
