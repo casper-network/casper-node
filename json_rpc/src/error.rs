@@ -114,6 +114,10 @@ impl Error {
     /// reserved range as defined in the JSON-RPC specification, i.e. it must not be between -32768
     /// and -32100 inclusive.
     ///
+    /// Note that in an upcoming release, the restriction will be tightened to disallow error codes
+    /// in the implementation-defined server-errors range.  I.e. codes in the range -32768 to -32000
+    /// inclusive will be disallowed.
+    ///
     /// If the converted code is within the reserved range when it should not be, or if
     /// JSON-encoding `additional_data` fails, the returned `Self` is built from
     /// [`ReservedErrorCode::InternalError`] with the "data" field being a String providing more
