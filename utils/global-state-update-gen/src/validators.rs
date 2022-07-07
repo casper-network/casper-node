@@ -1,5 +1,6 @@
 use clap::ArgMatches;
 
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{AsymmetricType, PublicKey, U512};
 
 use crate::{
@@ -52,5 +53,6 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
         only_listed_validators: true,
     };
 
-    update_from_config(data_dir, state_hash, config);
+    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+    update_from_config(builder, config);
 }

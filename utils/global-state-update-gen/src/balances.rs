@@ -1,5 +1,6 @@
 use clap::ArgMatches;
 
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{account::AccountHash, U512};
 
 use crate::{
@@ -28,5 +29,6 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
         only_listed_validators: false,
     };
 
-    update_from_config(data_dir, state_hash, config);
+    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+    update_from_config(builder, config);
 }

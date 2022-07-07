@@ -6,24 +6,19 @@ use std::{
 
 use rand::Rng;
 
-use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    system::{
-        auction::{Bid, Bids, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
-        mint::TOTAL_SUPPLY_KEY,
-    },
+    system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot},
     AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
 };
 
 use crate::utils::print_entry;
 
-use super::config::Transfer;
+use super::{config::Transfer, state_reader::StateReader};
 
 /// A struct tracking changes to be made to the global state.
-pub struct StateTracker {
-    builder: LmdbWasmTestBuilder,
+pub struct StateTracker<T> {
+    reader: T,
     entries_to_write: BTreeMap<Key, StoredValue>,
     total_supply: U512,
     total_supply_key: Key,
@@ -32,30 +27,21 @@ pub struct StateTracker {
     bids_cache: Option<Bids>,
 }
 
-impl StateTracker {
+impl<T: StateReader> StateTracker<T> {
     /// Creates a new `StateTracker`.
-    pub fn new(data_dir: &str, state_hash: Digest) -> Self {
-        // Open the global state that should be in the supplied directory.
-        let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
-
-        // Find the hash of the mint contract.
-        let mint_contract_hash = builder.get_system_mint_hash();
+    pub fn new(mut reader: T) -> Self {
         // Read the URef under which total supply is stored.
-        let total_supply_key = builder
-            .get_contract(mint_contract_hash)
-            .expect("mint should exist")
-            .named_keys()[TOTAL_SUPPLY_KEY];
+        let total_supply_key = reader.get_total_supply_key();
+
         // Read the total supply.
-        let total_supply_sv = builder
-            .query(None, total_supply_key, &[])
-            .expect("should query");
+        let total_supply_sv = reader.query(total_supply_key).expect("should query");
         let total_supply = total_supply_sv
             .as_cl_value()
             .cloned()
             .expect("should be cl value");
 
         Self {
-            builder,
+            reader,
             entries_to_write: Default::default(),
             total_supply_key,
             total_supply: total_supply.into_t().expect("should be U512"),
@@ -115,9 +101,8 @@ impl StateTracker {
             None => {
                 let base_key = Key::Balance(purse.addr());
                 let amount = self
-                    .builder
-                    .query(None, base_key, &[])
-                    .ok()
+                    .reader
+                    .query(base_key)
                     .and_then(|v| CLValue::try_from(v).ok())
                     .and_then(|cl_value| cl_value.into_t().ok())
                     .unwrap_or_else(U512::zero);
@@ -165,7 +150,7 @@ impl StateTracker {
     pub fn get_account(&mut self, account_hash: &AccountHash) -> Option<Account> {
         match self.accounts_cache.entry(*account_hash) {
             Entry::Vacant(vac) => self
-                .builder
+                .reader
                 .get_account(*account_hash)
                 .map(|account| vac.insert(account).clone()),
             Entry::Occupied(occupied) => Some(occupied.into_mut().clone()),
@@ -203,22 +188,12 @@ impl StateTracker {
     }
 
     /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
-    pub fn read_snapshot(&self) -> (Key, SeigniorageRecipientsSnapshot) {
-        // Find the hash of the auction contract.
-        let auction_contract_hash = self.builder.get_system_auction_hash();
-
+    pub fn read_snapshot(&mut self) -> (Key, SeigniorageRecipientsSnapshot) {
         // Read the key under which the snapshot is stored.
-        let validators_key = self
-            .builder
-            .get_contract(auction_contract_hash)
-            .expect("auction should exist")
-            .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY];
+        let validators_key = self.reader.get_seigniorage_recipients_key();
 
         // Decode the old snapshot.
-        let stored_value = self
-            .builder
-            .query(None, validators_key, &[])
-            .expect("should query");
+        let stored_value = self.reader.query(validators_key).expect("should query");
         let cl_value = stored_value
             .as_cl_value()
             .cloned()
@@ -231,7 +206,7 @@ impl StateTracker {
         if let Some(ref bids) = self.bids_cache {
             bids.clone()
         } else {
-            let bids = self.builder.get_bids();
+            let bids = self.reader.get_bids();
             self.bids_cache = Some(bids.clone());
             bids
         }
@@ -273,7 +248,7 @@ impl StateTracker {
     /// Generates the writes to the global state that will remove the pending withdraws of all the
     /// old validators that will cease to be validators.
     pub fn remove_withdraws(&mut self, removed: &BTreeSet<PublicKey>) {
-        let withdraws = self.builder.get_unbonds();
+        let withdraws = self.reader.get_unbonds();
         let withdraw_keys: BTreeSet<_> = withdraws.keys().collect();
         for (key, value) in removed
             .iter()

@@ -1,4 +1,5 @@
 pub(crate) mod config;
+mod state_reader;
 mod state_tracker;
 
 use std::{
@@ -6,7 +7,7 @@ use std::{
     fs,
 };
 
-use casper_hashing::Digest;
+use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     system::auction::{Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
     CLValue, EraId, PublicKey, StoredValue, U512,
@@ -18,6 +19,7 @@ use crate::utils::{hash_from_str, validators_diff, ValidatorsDiff};
 
 use self::{
     config::{AccountConfig, Config, Transfer},
+    state_reader::StateReader,
     state_tracker::StateTracker,
 };
 
@@ -29,11 +31,13 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     let config_bytes = fs::read(config_path).expect("couldn't read the config file");
     let config: Config = toml::from_slice(&config_bytes).expect("couldn't parse the config file");
 
-    update_from_config(data_dir, state_hash, config);
+    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+
+    update_from_config(builder, config);
 }
 
-pub(crate) fn update_from_config(data_dir: &str, state_hash: Digest, config: Config) {
-    let mut state_tracker = StateTracker::new(data_dir, state_hash);
+pub(crate) fn update_from_config<T: StateReader>(reader: T, config: Config) {
+    let mut state_tracker = StateTracker::new(reader);
 
     process_transfers(&mut state_tracker, &config.transfers);
 
@@ -48,13 +52,16 @@ pub(crate) fn update_from_config(data_dir: &str, state_hash: Digest, config: Con
     state_tracker.print_all_entries();
 }
 
-fn process_transfers(state: &mut StateTracker, transfers: &[Transfer]) {
+fn process_transfers<T: StateReader>(state: &mut StateTracker<T>, transfers: &[Transfer]) {
     for transfer in transfers {
         state.execute_transfer(transfer);
     }
 }
 
-fn update_account_balances(state: &mut StateTracker, accounts: &[AccountConfig]) {
+fn update_account_balances<T: StateReader>(
+    state: &mut StateTracker<T>,
+    accounts: &[AccountConfig],
+) {
     for account in accounts {
         let target_balance = if let Some(balance) = account.balance {
             balance
@@ -70,8 +77,8 @@ fn update_account_balances(state: &mut StateTracker, accounts: &[AccountConfig])
     }
 }
 
-fn update_auction_state(
-    state: &mut StateTracker,
+fn update_auction_state<T: StateReader>(
+    state: &mut StateTracker<T>,
     accounts: &[AccountConfig],
     only_listed_validators: bool,
 ) {
@@ -176,8 +183,8 @@ fn gen_snapshot_from_old(
 /// - remove all the bids that are larger than the smallest bid among the new validators
 /// (necessary, because such bidders would outbid the validators decided by the social
 /// consensus).
-pub fn add_and_remove_bids(
-    state: &mut StateTracker,
+pub fn add_and_remove_bids<T: StateReader>(
+    state: &mut StateTracker<T>,
     validators_diff: &ValidatorsDiff,
     new_snapshot: &SeigniorageRecipientsSnapshot,
     only_listed_validators: bool,
@@ -211,8 +218,8 @@ pub fn add_and_remove_bids(
 
 /// Returns the set of public keys that have bids larger than the smallest bid among the new
 /// validators.
-fn find_large_bids(
-    state: &mut StateTracker,
+fn find_large_bids<T: StateReader>(
+    state: &mut StateTracker<T>,
     snapshot: &SeigniorageRecipientsSnapshot,
 ) -> BTreeSet<PublicKey> {
     let seigniorage_recipients = snapshot.values().next().unwrap();
@@ -234,7 +241,11 @@ fn find_large_bids(
 }
 
 /// Updates the amount of an existing bid for the given public key, or creates a new one.
-fn create_or_update_bid(state: &mut StateTracker, pub_key: &PublicKey, stake: U512) {
+fn create_or_update_bid<T: StateReader>(
+    state: &mut StateTracker<T>,
+    pub_key: &PublicKey,
+    stake: U512,
+) {
     if state
         .get_bids()
         .get(pub_key)
