@@ -132,6 +132,7 @@ where
 impl<F, E, W> FrameWriter<F, E, W>
 where
     E: Encoder<F>,
+    <E as Encoder<F>>::Output: Buf,
 {
     /// Creates a new frame writer with the given encoder.
     pub fn new(encoder: E, stream: W) -> Self {
@@ -186,6 +187,7 @@ impl<F, E, W> Sink<F> for FrameWriter<F, E, W>
 where
     Self: Unpin,
     E: Encoder<F>,
+    <E as Encoder<F>>::Output: Buf,
     F: Buf,
     W: AsyncWrite + Unpin,
 {
