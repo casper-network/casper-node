@@ -7,56 +7,57 @@ use std::{
 use futures::{Sink, SinkExt};
 use thiserror::Error;
 
-/// Encoder.
+/// Transcoder.
 ///
-/// An encoder takes a value of one kind and transforms it to another. Encoders may contain a state
-/// or configuration, which is why this trait is not just a function.
-pub trait Encoder<Input> {
-    /// Encoding error.
+/// A transcoder takes a value of one kind and transforms it to another. Transcoders may contain a
+/// state or configuration, which is why this trait is not just a function.
+pub trait Transcoder<Input> {
+    /// Transcoding error.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// The output produced by the encoder.
+    /// The output produced by the transcoder.
     type Output: Send + Sync + 'static;
 
-    /// Encodes a value.
+    /// Transcodes a value.
     ///
-    /// When encoding to type-erased values it must contain the information required for an
-    /// accompanying `Decoder` to be able to reconstruct the value from the encoded data.
-    fn encode(&mut self, input: Input) -> Result<Self::Output, Self::Error>;
+    /// When transcoding to type-erased values it should contain the information required for an
+    /// accompanying reverse-direction transcode to be able to reconstruct the value from the
+    /// transcoded data.
+    fn transcode(&mut self, input: Input) -> Result<Self::Output, Self::Error>;
 }
 
-/// Error encoding data for an underlying sink.
+/// Error transcoding data for an underlying sink.
 #[derive(Debug, Error)]
-enum EncodingSinkError<EncErr, SinkErr> {
-    /// The encoder failed to encode the given value.
-    #[error("encoding failed")]
-    Encoder(#[source] EncErr),
+enum TranscodingSinkError<TransErr, SinkErr> {
+    /// The transcoder failed to transcode the given value.
+    #[error("transcoding failed")]
+    Transcoder(#[source] TransErr),
     /// The wrapped sink returned an error.
     #[error(transparent)]
     Sink(SinkErr),
 }
 
-/// A sink adapter for encoding incoming values into an underlying sink.
-struct EncodingSink<E, Input, S>
+/// A sink adapter for transcoding incoming values into an underlying sink.
+struct TranscodingSink<T, Input, S>
 where
-    E: Encoder<Input>,
-    S: Sink<E::Output>,
+    T: Transcoder<Input>,
+    S: Sink<T::Output>,
 {
-    /// Encoder used to encode data before passing it to the sink.
-    encoder: E,
+    /// Transcoder used to transcode data before passing it to the sink.
+    transcoder: T,
     /// Underlying sink where data is sent.
     sink: S,
-    /// Phantom data to associate the input with this encoding sink.
+    /// Phantom data to associate the input with this transcoding sink.
     _input_frame: PhantomData<Input>,
 }
 
-impl<E, Input, S> Sink<Input> for EncodingSink<E, Input, S>
+impl<T, Input, S> Sink<Input> for TranscodingSink<T, Input, S>
 where
     Input: Unpin,
-    E: Encoder<Input> + Unpin,
-    S: Sink<E::Output> + Unpin,
+    T: Transcoder<Input> + Unpin,
+    S: Sink<T::Output> + Unpin,
 {
-    type Error = EncodingSinkError<E::Error, S::Error>;
+    type Error = TranscodingSinkError<T::Error, S::Error>;
 
     #[inline]
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -64,22 +65,22 @@ where
         self_mut
             .sink
             .poll_ready_unpin(cx)
-            .map_err(EncodingSinkError::Sink)
+            .map_err(TranscodingSinkError::Sink)
     }
 
     #[inline]
     fn start_send(self: Pin<&mut Self>, item: Input) -> Result<(), Self::Error> {
         let self_mut = self.get_mut();
 
-        let encoded = self_mut
-            .encoder
-            .encode(item)
-            .map_err(EncodingSinkError::Encoder)?;
+        let transcoded = self_mut
+            .transcoder
+            .transcode(item)
+            .map_err(TranscodingSinkError::Transcoder)?;
 
         self_mut
             .sink
-            .start_send_unpin(encoded)
-            .map_err(EncodingSinkError::Sink)
+            .start_send_unpin(transcoded)
+            .map_err(TranscodingSinkError::Sink)
     }
 
     #[inline]

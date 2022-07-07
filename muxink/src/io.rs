@@ -17,7 +17,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
 use thiserror::Error;
 
-use crate::{codec::Encoder, try_ready};
+use crate::{codec::Transcoder, try_ready};
 
 /// Frame decoder.
 ///
@@ -61,7 +61,7 @@ pub struct FrameReader<D, R> {
 }
 
 /// Writer for frames.
-pub struct FrameWriter<F, E: Encoder<F>, W> {
+pub struct FrameWriter<F, E: Transcoder<F>, W> {
     /// The encoder used to encode outgoing frames.
     encoder: E,
     /// Underlying async bytestream being written.
@@ -131,8 +131,8 @@ where
 
 impl<F, E, W> FrameWriter<F, E, W>
 where
-    E: Encoder<F>,
-    <E as Encoder<F>>::Output: Buf,
+    E: Transcoder<F>,
+    <E as Transcoder<F>>::Output: Buf,
 {
     /// Creates a new frame writer with the given encoder.
     pub fn new(encoder: E, stream: W) -> Self {
@@ -186,8 +186,8 @@ where
 impl<F, E, W> Sink<F> for FrameWriter<F, E, W>
 where
     Self: Unpin,
-    E: Encoder<F>,
-    <E as Encoder<F>>::Output: Buf,
+    E: Transcoder<F>,
+    <E as Transcoder<F>>::Output: Buf,
     F: Buf,
     W: AsyncWrite + Unpin,
 {
@@ -206,7 +206,7 @@ where
     fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
         let wrapped_frame = self
             .encoder
-            .encode(item)
+            .transcode(item)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         self.current_frame = Some(wrapped_frame);
 

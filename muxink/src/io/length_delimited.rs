@@ -8,7 +8,7 @@ use std::convert::Infallible;
 use bytes::{Buf, BytesMut};
 use thiserror::Error;
 
-use crate::{codec::Encoder, ImmediateFrame};
+use crate::{codec::Transcoder, ImmediateFrame};
 
 use super::{DecodeResult, FrameDecoder};
 
@@ -53,14 +53,14 @@ pub struct LengthExceededError(usize);
 /// The frame type for length prefixed frames.
 pub type LengthPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 2]>, F>;
 
-impl<F> Encoder<F> for LengthDelimited
+impl<F> Transcoder<F> for LengthDelimited
 where
     F: Buf + Send + Sync + 'static,
 {
     type Error = LengthExceededError;
     type Output = LengthPrefixedFrame<F>;
 
-    fn encode(&mut self, input: F) -> Result<Self::Output, Self::Error> {
+    fn transcode(&mut self, input: F) -> Result<Self::Output, Self::Error> {
         let remaining = input.remaining();
         let length: u16 = remaining
             .try_into()
