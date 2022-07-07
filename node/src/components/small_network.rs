@@ -473,7 +473,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
-                is_joiner,
             } => {
                 if self.cfg.max_incoming_peer_connections != 0 {
                     if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
@@ -510,7 +509,15 @@ where
                     .add_incoming(peer_addr, Instant::now())
                 {
                     self.connection_completed(peer_id);
-                    self.update_joining_set(peer_id, is_joiner);
+
+                    // We should not update the joining set when we receive an incoming connection,
+                    // because the `message_sender` which is handling the corresponding outgoing
+                    // connection will not receive the update of the remote joiner state.
+                    //
+                    // Such desync may cause the node to try to send requests that are not safe for
+                    // joiners, to the joining node, because the outgoing connection may outlive the
+                    // incoming connection, i.e. it may take some time to drop "our" outgoing
+                    // connection after a peer has closed the corresponding incoming connection.
                 }
 
                 // Now we can start the message reader.
