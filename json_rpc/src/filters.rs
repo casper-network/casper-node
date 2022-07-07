@@ -6,8 +6,6 @@
 #[cfg(test)]
 mod tests;
 
-use std::convert::TryFrom;
-
 use bytes::Bytes;
 use http::{header::CONTENT_TYPE, HeaderMap, StatusCode};
 use serde_json::{json, Map, Value};
@@ -74,9 +72,16 @@ pub fn base_filter<P: AsRef<str>>(path: P, max_body_bytes: u32) -> BoxedFilter<(
 /// Returns an `Err(Rejection)` only if the request is a Notification as per the JSON-RPC
 /// specification, i.e. the request doesn't contain an "id" field.  In this case, no JSON-RPC
 /// response is sent to the client.
-async fn handle_body(body: Bytes, handlers: RequestHandlers) -> Result<Response, Rejection> {
+///
+/// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
+/// respond with an error.
+async fn handle_body(
+    body: Bytes,
+    handlers: RequestHandlers,
+    allow_unknown_fields: bool,
+) -> Result<Response, Rejection> {
     let response = match serde_json::from_slice::<Map<String, Value>>(&*body) {
-        Ok(unvalidated_request) => match Request::try_from(unvalidated_request) {
+        Ok(unvalidated_request) => match Request::new(unvalidated_request, allow_unknown_fields) {
             Ok(request) => handlers.handle_request(request).await,
             Err(ErrorOrRejection::Error { id, error }) => {
                 debug!(?error, "got an invalid request");
@@ -104,11 +109,17 @@ async fn handle_body(body: Bytes, handlers: RequestHandlers) -> Result<Response,
 /// However, the reply could be built from a [`Rejection`] if the request is a Notification as per
 /// the JSON-RPC specification, i.e. the request doesn't contain an "id" field.  In this case, no
 /// JSON-RPC response is sent to the client, only an HTTP response.
-pub fn main_filter(handlers: RequestHandlers) -> BoxedFilter<(WithStatus<reply::Json>,)> {
+///
+/// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
+/// respond with an error.
+pub fn main_filter(
+    handlers: RequestHandlers,
+    allow_unknown_fields: bool,
+) -> BoxedFilter<(WithStatus<reply::Json>,)> {
     body::bytes()
         .and_then(move |body| {
             let handlers = handlers.clone();
-            async move { handle_body(body, handlers).await }
+            async move { handle_body(body, handlers, allow_unknown_fields).await }
         })
         .map(|response| reply::with_status(reply::json(&response), StatusCode::OK))
         .boxed()

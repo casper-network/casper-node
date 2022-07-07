@@ -112,7 +112,7 @@ impl Error {
     ///
     /// Other than when providing a [`ReservedErrorCode`], the converted "code" must not fall in the
     /// reserved range as defined in the JSON-RPC specification, i.e. it must not be between -32768
-    /// and -32000 inclusive.
+    /// and -32100 inclusive.
     ///
     /// If the converted code is within the reserved range when it should not be, or if
     /// JSON-encoding `additional_data` fails, the returned `Self` is built from
@@ -121,7 +121,7 @@ impl Error {
     pub fn new<C: ErrorCodeT, T: Serialize>(error_code: C, additional_info: T) -> Self {
         let (code, message): (i64, &'static str) = error_code.into();
 
-        if !C::is_reserved() && code >= -32768 && code <= -32000 {
+        if !C::is_reserved() && code >= -32768 && code <= -32100 {
             warn!(%code, "provided json-rpc error code is reserved; returning internal error");
             let (code, message) = ReservedErrorCode::InternalError.into();
             return Error {

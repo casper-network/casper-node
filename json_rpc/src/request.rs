@@ -1,7 +1,5 @@
 mod params;
 
-use std::convert::TryFrom;
-
 use itertools::Itertools;
 use serde_json::{Map, Value};
 use warp::reject::{self, Rejection};
@@ -55,9 +53,7 @@ fn is_valid(id: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-impl TryFrom<Map<String, Value>> for Request {
-    type Error = ErrorOrRejection;
-
+impl Request {
     /// Returns `Ok` if the request is valid as per
     /// [the JSON-RPC specification](https://www.jsonrpc.org/specification#request_object).
     ///
@@ -67,10 +63,13 @@ impl TryFrom<Map<String, Value>> for Request {
     ///   * "params" field is present, but is not an Array or Object
     ///   * "id" field is not a String, valid Number or Null
     ///   * "id" field is a Number with fractional part
-    ///   * extra fields exist
+    ///   * `allow_unknown_fields` is `false` and extra fields exist
     ///
     /// Returns a `Rejection` if the "id" field is `None`.
-    fn try_from(mut request: Map<String, Value>) -> Result<Self, Self::Error> {
+    pub(super) fn new(
+        mut request: Map<String, Value>,
+        allow_unknown_fields: bool,
+    ) -> Result<Self, ErrorOrRejection> {
         // Just copy "id" field for now to return verbatim in any errors before we get to actually
         // validating the "id" field itself.
         let id = request.get(ID_FIELD_NAME).cloned().unwrap_or_default();
@@ -85,10 +84,23 @@ impl TryFrom<Map<String, Value>> for Request {
                     return Err(ErrorOrRejection::Error { id, error });
                 }
             }
+            Some(Value::Number(jsonrpc)) => {
+                let error = Error::new(
+                    ReservedErrorCode::InvalidRequest,
+                    format!(
+                        "Expected 'jsonrpc' to be a String with value '2.0', but got a Number '{}'",
+                        jsonrpc
+                    ),
+                );
+                return Err(ErrorOrRejection::Error { id, error });
+            }
             Some(jsonrpc) => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
-                    format!("Expected 'jsonrpc' to be '2.0', but got '{}'", jsonrpc),
+                    format!(
+                        "Expected 'jsonrpc' to be a String with value '2.0', but got '{}'",
+                        jsonrpc
+                    ),
                 );
                 return Err(ErrorOrRejection::Error { id, error });
             }
@@ -135,7 +147,7 @@ impl TryFrom<Map<String, Value>> for Request {
             None => return Err(ErrorOrRejection::Rejection(reject::custom(MissingId))),
         };
 
-        if !request.is_empty() {
+        if !allow_unknown_fields && !request.is_empty() {
             let error = Error::new(
                 ReservedErrorCode::InvalidRequest,
                 format!(
@@ -173,7 +185,7 @@ mod tests {
             .cloned()
             .unwrap();
 
-            let request = Request::try_from(unvalidated).unwrap();
+            let request = Request::new(unvalidated, false).unwrap();
             assert_eq!(request.id, id);
             assert_eq!(request.method, method);
             assert_eq!(request.params.unwrap(), Params::Array(params_inner));
@@ -195,7 +207,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::Null,
                 error,
@@ -222,7 +234,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::Null,
                 error,
@@ -248,7 +260,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        match Request::try_from(request) {
+        match Request::new(request, false) {
             Err(ErrorOrRejection::Rejection(_)) => (),
             _ => panic!("should be rejection"),
         };
@@ -265,7 +277,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
@@ -292,7 +304,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
@@ -303,7 +315,7 @@ mod tests {
             error,
             Error::new(
                 ReservedErrorCode::InvalidRequest,
-                "Expected 'jsonrpc' to be '2.0', but got 'true'"
+                "Expected 'jsonrpc' to be a String with value '2.0', but got 'true'"
             )
         );
     }
@@ -318,7 +330,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
@@ -342,7 +354,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
@@ -368,7 +380,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
@@ -387,13 +399,13 @@ mod tests {
             JSONRPC_FIELD_NAME: JSON_RPC_VERSION,
             ID_FIELD_NAME: "a",
             METHOD_FIELD_NAME: "a",
-            PARAMS_FIELD_NAME: Value::Null,
+            PARAMS_FIELD_NAME: "a",
         })
         .as_object()
         .cloned()
         .unwrap();
 
-        let error = match Request::try_from(request) {
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
@@ -404,16 +416,13 @@ mod tests {
             error,
             Error::new(
                 ReservedErrorCode::InvalidRequest,
-                "If present, 'params' must be an Array or Object, but was 'null'. If not required \
-                for this request, omit the field or provide an empty Array '[]' or empty Object \
-                '{}'"
+                "If present, 'params' must be an Array or Object, but was a String"
             )
         );
     }
 
-    #[test]
-    fn should_fail_to_validate_with_extra_fields() {
-        let request = json!({
+    fn request_with_extra_fields() -> Map<String, Value> {
+        json!({
             JSONRPC_FIELD_NAME: JSON_RPC_VERSION,
             ID_FIELD_NAME: "a",
             METHOD_FIELD_NAME: "a",
@@ -422,9 +431,19 @@ mod tests {
         })
         .as_object()
         .cloned()
-        .unwrap();
+        .unwrap()
+    }
 
-        let error = match Request::try_from(request) {
+    #[test]
+    fn should_validate_with_extra_fields_if_allowed() {
+        let request = request_with_extra_fields();
+        assert!(Request::new(request, true).is_ok());
+    }
+
+    #[test]
+    fn should_fail_to_validate_with_extra_fields_if_disallowed() {
+        let request = request_with_extra_fields();
+        let error = match Request::new(request, false) {
             Err(ErrorOrRejection::Error {
                 id: Value::String(id),
                 error,
