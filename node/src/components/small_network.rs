@@ -153,7 +153,7 @@ where
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
     /// Tracks nodes that have announced themselves as nodes that are syncing.
-    syncing: HashSet<NodeId>,
+    syncing_nodes: HashSet<NodeId>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -186,7 +186,7 @@ where
     active_era: EraId,
 
     /// The flag specifying if the node is in the chain sync process.
-    syncing_in_progress: bool,
+    synchronization_in_progress: bool,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -333,7 +333,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            syncing: HashSet::new(),
+            syncing_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -343,7 +343,7 @@ where
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             // Initially, we assume that we are in the sync process.
-            syncing_in_progress: true,
+            synchronization_in_progress: true,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -423,7 +423,7 @@ where
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            if msg.payload_is_unsafe_for_syncing_nodes() && self.syncing.contains(&dest) {
+            if msg.payload_is_unsafe_for_syncing_nodes() && self.syncing_nodes.contains(&dest) {
                 // We should never attempt to send an unsafe message to a peer that we know is still
                 // syncing. Since "unsafe" does usually not mean immediately catastrophic, we
                 // attempt to carry on, but warn loudly.
@@ -535,7 +535,7 @@ where
                 //
                 // If we actually are in the syncing process still, the peer will be notified by the
                 // chain synchronizer component when the process finishes.
-                if !self.syncing_in_progress {
+                if !self.synchronization_in_progress {
                     info!("telling the newly connected peer that we already finished syncing");
                     self.send_message(peer_id, Arc::new(Message::SyncFinished), None);
                 }
@@ -811,9 +811,9 @@ where
     fn update_syncing_set(&mut self, peer_id: NodeId, is_syncing: bool) {
         // Update set of syncing peers.
         if is_syncing {
-            self.syncing.insert(peer_id);
+            self.syncing_nodes.insert(peer_id);
         } else {
-            self.syncing.remove(&peer_id);
+            self.syncing_nodes.remove(&peer_id);
         }
     }
 
@@ -987,7 +987,7 @@ where
                         .filter_map(|(node_id, sym)| {
                             matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
                         })
-                        .filter(|node_id| !self.syncing.contains(node_id))
+                        .filter(|node_id| !self.syncing_nodes.contains(node_id))
                         .collect();
 
                     symmetric_validator_peers.shuffle(rng);
@@ -1095,7 +1095,7 @@ where
                 info!("notifying peers that chain sync has finished");
                 self.net_metrics.broadcast_requests.inc();
                 self.broadcast_message(Arc::new(Message::SyncFinished));
-                self.syncing_in_progress = false;
+                self.synchronization_in_progress = false;
                 Effects::new()
             }
         }
