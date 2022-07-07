@@ -3,7 +3,6 @@
 use core::{
     convert::TryFrom,
     fmt::{self, Debug, Formatter},
-    u16, u8,
 };
 
 use crate::{
@@ -102,6 +101,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// assert_eq!(65_538, u32::from(ApiError::from(FailureCode::Two)));
 /// ```
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ApiError {
     /// Optional data was unexpectedly `None`.
     /// ```

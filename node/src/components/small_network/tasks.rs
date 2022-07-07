@@ -63,6 +63,16 @@ use crate::{
 /// successfully handed over to the kernel for sending.
 pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
 
+/// The outcome of the handshake process.
+struct HandshakeOutcome {
+    /// A framed transport for peer.
+    framed_transport: FramedTransport,
+    /// Public address advertised by the peer.
+    public_addr: SocketAddr,
+    /// The public key the peer is validating with, if any.
+    peer_consensus_public_key: Option<PublicKey>,
+}
+
 /// Low-level TLS connection function.
 ///
 /// Performs the actual TCP+TLS connection setup.
@@ -134,11 +144,15 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+        }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -152,7 +166,7 @@ where
             let full_transport = full_transport::<P>(
                 context.net_metrics.clone(),
                 connection_id,
-                framed,
+                framed_transport,
                 Role::Dialer,
             );
             let (sink, _stream) = full_transport.split();
@@ -243,11 +257,15 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+        }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -256,7 +274,7 @@ where
             let full_transport = full_transport::<P>(
                 context.net_metrics.clone(),
                 connection_id,
-                framed,
+                framed_transport,
                 Role::Listener,
             );
 
@@ -345,7 +363,7 @@ async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>), ConnectionError>
+) -> Result<HandshakeOutcome, ConnectionError>
 where
     P: Payload,
 {
@@ -436,11 +454,15 @@ where
             })
             .transpose()?;
 
-        let framed = sink
+        let framed_transport = sink
             .reunite(stream)
             .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
 
-        Ok((framed, public_addr, peer_consensus_public_key))
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+        })
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -537,113 +559,112 @@ where
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
-    let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Ok(msg) => {
-                    trace!(%msg, "message received");
+    let read_messages =
+        async move {
+            while let Some(msg_result) = stream.next().await {
+                match msg_result {
+                    Ok(msg) => {
+                        trace!(%msg, "message received");
 
-                    let effect_builder = EffectBuilder::new(context.event_queue);
+                        let effect_builder = EffectBuilder::new(context.event_queue);
 
-                    match msg.try_into_demand(effect_builder, peer_id) {
-                        Ok((event, wait_for_response)) => {
-                            // Note: For now, demands bypass the limiter, as we expect the
-                            //       backpressure to handle this instead.
+                        match msg.try_into_demand(effect_builder, peer_id) {
+                            Ok((event, wait_for_response)) => {
+                                // Note: For now, demands bypass the limiter, as we expect the
+                                //       backpressure to handle this instead.
 
-                            // Acquire a permit. If we are handling too many demands at this
-                            // time, this will block, halting the processing of new message,
-                            // thus letting the peer they have reached their maximum allowance.
-                            let in_flight = demands_in_flight
-                                .clone()
-                                .acquire_owned()
-                                .await
-                                // Note: Since the semaphore is reference counted, it must
-                                //       explicitly be closed for acquisition to fail, which we
-                                //       never do. If this happens, there is a bug in the code;
-                                //       we exit with an error and close the connection.
-                                .map_err(|_| {
-                                    io::Error::new(
-                                        io::ErrorKind::Other,
-                                        "demand limiter semaphore closed unexpectedly",
-                                    )
-                                })?;
+                                // Acquire a permit. If we are handling too many demands at this
+                                // time, this will block, halting the processing of new message,
+                                // thus letting the peer they have reached their maximum allowance.
+                                let in_flight = demands_in_flight
+                                    .clone()
+                                    .acquire_owned()
+                                    .await
+                                    // Note: Since the semaphore is reference counted, it must
+                                    //       explicitly be closed for acquisition to fail, which we
+                                    //       never do. If this happens, there is a bug in the code;
+                                    //       we exit with an error and close the connection.
+                                    .map_err(|_| {
+                                        io::Error::new(
+                                            io::ErrorKind::Other,
+                                            "demand limiter semaphore closed unexpectedly",
+                                        )
+                                    })?;
 
-                            Metrics::record_trie_request_start(&context.net_metrics);
+                                Metrics::record_trie_request_start(&context.net_metrics);
 
-                            let net_metrics = context.net_metrics.clone();
-                            // Spawn a future that will eventually send the returned message. It
-                            // will essentially buffer the response.
-                            tokio::spawn(async move {
-                                if let Some(payload) = wait_for_response.await {
-                                    // Send message and await its return. `send_message` should
-                                    // only return when the message has been buffered, if the
-                                    // peer is not accepting data, we will block here until the
-                                    // send buffer has sufficient room.
-                                    effect_builder.send_message(peer_id, payload).await;
+                                let net_metrics = context.net_metrics.clone();
+                                // Spawn a future that will eventually send the returned message. It
+                                // will essentially buffer the response.
+                                tokio::spawn(async move {
+                                    if let Some(payload) = wait_for_response.await {
+                                        // Send message and await its return. `send_message` should
+                                        // only return when the message has been buffered, if the
+                                        // peer is not accepting data, we will block here until the
+                                        // send buffer has sufficient room.
+                                        effect_builder.send_message(peer_id, payload).await;
 
-                                    // Note: We could short-circuit the event queue here and
-                                    //       directly insert into the outgoing message queue,
-                                    //       which may be potential performance improvement.
-                                }
+                                        // Note: We could short-circuit the event queue here and
+                                        //       directly insert into the outgoing message queue,
+                                        //       which may be potential performance improvement.
+                                    }
 
-                                // Missing else: The handler of the demand did not deem it
-                                // worthy a response. Just drop it.
+                                    // Missing else: The handler of the demand did not deem it
+                                    // worthy a response. Just drop it.
 
-                                // After we have either successfully buffered the message for
-                                // sending, failed to do so or did not have a message to send
-                                // out, we consider the request handled and free up the permit.
-                                Metrics::record_trie_request_end(&net_metrics);
-                                drop(in_flight);
-                            });
+                                    // After we have either successfully buffered the message for
+                                    // sending, failed to do so or did not have a message to send
+                                    // out, we consider the request handled and free up the permit.
+                                    Metrics::record_trie_request_end(&net_metrics);
+                                    drop(in_flight);
+                                });
 
-                            // Schedule the created event.
-                            context
-                                .event_queue
-                                .schedule::<REv>(event, QueueKind::NetworkDemand)
-                                .await;
-                        }
-                        Err(msg) => {
-                            // We've received a non-demand message. Ensure we have the proper amount
-                            // of resources, then push it to the reactor.
-                            limiter
-                                .request_allowance(
-                                    msg.payload_incoming_resource_estimate(
+                                // Schedule the created event.
+                                context
+                                    .event_queue
+                                    .schedule::<REv>(event, QueueKind::NetworkDemand)
+                                    .await;
+                            }
+                            Err(msg) => {
+                                // We've received a non-demand message. Ensure we have the proper amount
+                                // of resources, then push it to the reactor.
+                                limiter
+                                    .request_allowance(msg.payload_incoming_resource_estimate(
                                         &context.payload_weights,
-                                    ),
-                                )
-                                .await;
+                                    ))
+                                    .await;
 
-                            let queue_kind = if msg.is_low_priority() {
-                                QueueKind::NetworkLowPriority
-                            } else {
-                                QueueKind::NetworkIncoming
-                            };
+                                let queue_kind = if msg.is_low_priority() {
+                                    QueueKind::NetworkLowPriority
+                                } else {
+                                    QueueKind::NetworkIncoming
+                                };
 
-                            context
-                                .event_queue
-                                .schedule(
-                                    Event::IncomingMessage {
-                                        peer_id: Box::new(peer_id),
-                                        msg: Box::new(msg),
-                                        span: span.clone(),
-                                    },
-                                    queue_kind,
-                                )
-                                .await;
+                                context
+                                    .event_queue
+                                    .schedule(
+                                        Event::IncomingMessage {
+                                            peer_id: Box::new(peer_id),
+                                            msg: Box::new(msg),
+                                            span: span.clone(),
+                                        },
+                                        queue_kind,
+                                    )
+                                    .await;
+                            }
                         }
                     }
-                }
-                Err(err) => {
-                    warn!(
-                        err = display_error(&err),
-                        "receiving message failed, closing connection"
-                    );
-                    return Err(err);
+                    Err(err) => {
+                        warn!(
+                            err = display_error(&err),
+                            "receiving message failed, closing connection"
+                        );
+                        return Err(err);
+                    }
                 }
             }
-        }
-        Ok(())
-    };
+            Ok(())
+        };
 
     let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
 
@@ -677,7 +698,7 @@ pub(super) async fn message_sender<P>(
                 // We should never attempt to send an unsafe message to a peer that we know is a
                 // joiner. Since "unsafe" does usually not mean immediately catastrophic, we attempt
                 // to carry on, but warn loudly.
-                warn!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
+                error!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
             }
         }
 

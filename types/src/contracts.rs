@@ -44,6 +44,7 @@ const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum Error {
     /// Attempt to override an existing or previously existing version with a
     /// new header (this is not allowed to ensure immutability of a given
@@ -139,6 +140,7 @@ impl Display for TryFromSliceForContractHashError {
 
 /// An error from parsing a formatted contract string
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     /// Invalid formatted string prefix.
     InvalidPrefix,

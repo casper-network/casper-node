@@ -512,9 +512,14 @@ where
                 {
                     self.connection_completed(peer_id);
 
-                    // By default, we assume that the peer is syncing. It'll send us the
-                    // `SyncFinished` message in case it isn't.
-                    self.update_joining_set(peer_id, true);
+                    // We should not update the joining set when we receive an incoming connection,
+                    // because the `message_sender` which is handling the corresponding outgoing
+                    // connection will not receive the update of the remote joiner state.
+                    //
+                    // Such desync may cause the node to try to send requests that are not safe for
+                    // joiners, to the joining node, because the outgoing connection may outlive the
+                    // incoming connection, i.e. it may take some time to drop "our" outgoing
+                    // connection after a peer has closed the corresponding incoming connection.
                 }
 
                 // Tell the peer that we have finished syncing because it'll assume it's

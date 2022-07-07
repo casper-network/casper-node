@@ -318,6 +318,7 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(i32)]
+#[non_exhaustive]
 pub enum AddKeyFailure {
     /// There are already maximum [`AccountHash`]s associated with the given account.
     MaxKeysLimit = 1,
@@ -360,6 +361,7 @@ impl TryFrom<i32> for AddKeyFailure {
 /// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 #[repr(i32)]
+#[non_exhaustive]
 pub enum RemoveKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
     MissingKey = 1,
@@ -409,6 +411,7 @@ impl TryFrom<i32> for RemoveKeyFailure {
 /// associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(i32)]
+#[non_exhaustive]
 pub enum UpdateKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
     MissingKey = 1,

@@ -34,14 +34,14 @@ export function newDictionary(keyName: String): URef {
 }
 
 /**
- * Reads the value under `key` in the dictionary partition of global state.
+ * Reads the value under `dictionary_item_key` in the dictionary partition of global state.
  *
  * @category Storage
  * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, dictionary_item_key: String): Uint8Array | null {
     let seedUrefBytes = seed_uref.toBytes();
-    const keyBytes = encodeUTF8(key);
+    const keyBytes = encodeUTF8(dictionary_item_key);
 
     let valueSize = new Uint8Array(1);
     const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
@@ -52,6 +52,29 @@ export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
     if (error != null) {
         error.revert();
         throw 0;
+    }
+    return readHostBuffer(valueSize[0]);
+}
+
+/**
+ * Reads `value` under `dictionary-key` in a dictionary.
+ * @category Storage
+ */
+export function dictionaryRead(dictionaryKey: Key): Uint8Array | null {
+    const dictionaryKeyBytes = dictionaryKey.toBytes();
+    let valueSize = new Uint8Array(1);
+    const ret = externals.dictionary_read(
+        dictionaryKeyBytes.dataStart,
+        dictionaryKeyBytes.length,
+        valueSize.dataStart
+    )
+    if (ret == ErrorCode.ValueNotFound){
+        return null;
+    }
+    const error = Error.fromResult(ret);
+    if (error != null) {
+        error.revert();
+        return <Uint8Array>unreachable();
     }
     return readHostBuffer(valueSize[0]);
 }
@@ -73,3 +96,4 @@ export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
         valueBytes.length
     );
 }
+
