@@ -55,6 +55,7 @@ use crate::{
 };
 
 const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
+const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 
 /// The outcome of `run_fast_sync_task`.
 #[derive(Debug, Serialize)]
@@ -116,9 +117,12 @@ impl<'a, REv> ChainSyncContext<'a, REv>
 where
     REv: From<StorageRequest> + From<FetcherRequest<BlockHeader>> + From<NetworkInfoRequest>,
 {
+    /// Returns a new instance suitable for use in the fast-sync task.  It uses the trusted hash
+    /// from `config` or else the highest block header in storage as the trust anchor.
+    ///
     /// Returns `None` if there is no trusted hash specified in `config` and if storage has no
     /// blocks.  Otherwise returns a new `ChainSyncContext`.
-    async fn new(
+    async fn new_for_fast_sync(
         effect_builder: &'a EffectBuilder<REv>,
         config: &'a Config,
         metrics: &'a Metrics,
@@ -154,6 +158,55 @@ where
         ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
 
         Ok(Some(ctx))
+    }
+}
+
+impl<'a, REv> ChainSyncContext<'a, REv>
+where
+    REv: From<StorageRequest>,
+{
+    /// Returns a new instance suitable for use in the sync-to-genesis task.  It uses the highest
+    /// block from storage's available block range as the trust anchor, as that block should be the
+    /// one returned by the fast-sync task run previously, and used in participating mode to begin
+    /// executing forwards from.
+    async fn new_for_sync_to_genesis(
+        effect_builder: &'a EffectBuilder<REv>,
+        config: &'a Config,
+        metrics: &'a Metrics,
+    ) -> Result<ChainSyncContext<'a, REv>, Error> {
+        let locally_available_block_range_on_start = effect_builder
+            .get_available_block_range_from_storage()
+            .await;
+        let highest_available_block_height = locally_available_block_range_on_start.high();
+
+        let mut ctx = Self {
+            effect_builder,
+            config,
+            trusted_block_header: None,
+            metrics,
+            bad_peer_list: RwLock::new(VecDeque::new()),
+            filter_count: AtomicI64::new(0),
+            locally_available_block_range_on_start,
+            trie_fetch_limit: Semaphore::new(config.max_parallel_trie_fetches()),
+        };
+
+        let trusted_block_header = match effect_builder
+            .get_block_header_at_height_from_storage(highest_available_block_height, true)
+            .await
+        {
+            Some(block_header) => block_header,
+            None => {
+                error!(
+                    %highest_available_block_height,
+                    "block header should be available in storage"
+                );
+                return Err(Error::NoHighestBlockHeader);
+            }
+        };
+
+        ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
+
+        Ok(ctx)
     }
 }
 
@@ -1208,192 +1261,61 @@ where
     Ok(())
 }
 
-/// Downloads and saves the deploys and transfers for a block.
-///
-/// This function assumes that the block along with its header has been persisted to storage.
-async fn sync_deploys_and_transfers_and_state<REv>(
-    block: &Block,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<(), Error>
-where
-    REv: From<FetcherRequest<TrieOrChunk>>
-        + From<FetcherRequest<Deploy>>
-        + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>
-        + From<StorageRequest>
-        + From<NetworkInfoRequest>
-        + From<MarkBlockCompletedRequest>,
-{
-    fetch_and_store_deploys(
-        block.deploy_hashes().iter().chain(block.transfer_hashes()),
-        ctx,
-    )
-    .await?;
-    sync_trie_store(block.header(), ctx).await?;
-
-    ctx.effect_builder
-        .mark_block_completed(block.height())
-        .await;
-
-    Ok(())
-}
-
-/// Sync to genesis.
+/// Runs the sync-to-genesis task.
 ///
 /// Performs the following:
 ///
-///  1. Fetches block headers back towards genesis until we get to a switch block.
-///  2. Fetches the full trusted block.
-///  3. Starting at the trusted block and iterating one block at a time all the way back to genesis:
-///    a. Fetches the deploys for that block (parallelized tasks).
-///    b. Fetches the tries under that block's state root hash (parallelized tasks).
-///    c. Fetches the next block.
-///  4. Starting at the trusted block and iterating forwards towards tip until we have (or are past)
-///     the immediate switch block (the very first block after upgrade) of the same protocol version
-///     as we're currently running:
-///    a. Fetches the block.
-///    b. Fetches the deploys for that block (parallelized tasks).
-///    c. Fetches the tries under that block's state root hash (parallelized tasks).
-///
-/// Note that during step 3, if we have an existing available block range in storage, that range is
-/// skipped, as it represents a range of contiguous blocks for which we already have the deploys and
-/// global state stored locally.
-///
-/// Returns the block header with our current version and the last trusted key block information for
-/// validation.
-async fn sync_to_genesis<REv>(
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<(KeyBlockInfo, BlockHeader), Error>
-where
-    REv: From<StorageRequest>
-        + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>
-        + From<FetcherRequest<BlockHeader>>
-        + From<FetcherRequest<BlockHeadersBatch>>
-        + From<FetcherRequest<BlockAndDeploys>>
-        + From<FetcherRequest<BlockWithMetadata>>
-        + From<FetcherRequest<BlockSignatures>>
-        + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<TrieOrChunk>>
-        + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>
-        + Send,
-{
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_to_genesis_total_duration_seconds);
-
-    // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
-    // era 0.
-    let mut trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-
-    let BlockAndDeploys {
-        block: trusted_block,
-        deploys: _,
-    } = *fetch_and_store_block_with_deploys_by_hash(ctx.trusted_hash(), ctx).await?;
-    sync_deploys_and_transfers_and_state(&trusted_block, ctx).await?;
-
-    fetch_to_genesis(&trusted_block, ctx).await?;
-
-    info!("finished synchronization to genesis");
-
-    // Sync forward until we are at the current version.
-    let most_recent_block = fetch_forward(trusted_block, &mut trusted_key_block_info, ctx).await?;
-
-    info!("finished fetching forward");
-
-    Ok((trusted_key_block_info, most_recent_block.take_header()))
-}
-
-async fn fetch_forward<REv>(
-    trusted_block: Block,
-    trusted_key_block_info: &mut KeyBlockInfo,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<Block, Error>
-where
-    REv: From<FetcherRequest<BlockWithMetadata>>
-        + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<TrieOrChunk>>
-        + From<NetworkInfoRequest>
-        + From<BlocklistAnnouncement>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + From<MarkBlockCompletedRequest>
-        + Send,
-{
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
-
-    let mut most_recent_block = trusted_block;
-    // This iterates until we have downloaded the immediate switch block of the current version.  We
-    // need to download this rather than execute it as, in order to execute it, we would first have
-    // to commit the upgrade via the contract runtime.
-    while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
-        let maybe_fetched_block_with_metadata = fetch_and_store_next::<_, BlockWithMetadata>(
-            most_recent_block.header(),
-            &*trusted_key_block_info,
-            ctx,
-        )
-        .await?;
-        most_recent_block = match maybe_fetched_block_with_metadata {
-            Some(block_with_metadata) => block_with_metadata.block,
-            None => {
-                tokio::time::sleep(ctx.config.retry_interval()).await;
-                continue;
-            }
-        };
-        sync_deploys_and_transfers_and_state(&most_recent_block, ctx).await?;
-        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            most_recent_block.header(),
-            ctx.config.verifiable_chunked_hash_activation(),
-        ) {
-            *trusted_key_block_info = key_block_info;
-        }
-    }
-    Ok(most_recent_block)
-}
-
-async fn fetch_to_genesis<REv>(
-    trusted_block: &Block,
-    ctx: &ChainSyncContext<'_, REv>,
+///  1. Sets the trusted block as the highest available block, as this will be the one returned by
+///     the fast-sync task run previously.
+///  2. Starting at the trusted block and iterating in batches of `MAX_HEADERS_BATCH_SIZE` at a
+///     time, fetches block headers all the way back to genesis (not a parallelized task).
+///  3. Starting at genesis and iterating forwards towards tip until we reach the trusted block, in
+///     parallelized tasks:
+///    a. Fetches the full block and its deploys
+///    b. Fetches the tries under that block's state root hash (further parallelized tasks).
+///    c. Fetches the block signatures.
+pub(super) async fn run_sync_to_genesis_task<REv>(
+    effect_builder: EffectBuilder<REv>,
+    config: Config,
+    metrics: Metrics,
 ) -> Result<(), Error>
 where
     REv: From<StorageRequest>
-        + From<FetcherRequest<BlockHeadersBatch>>
-        + From<FetcherRequest<TrieOrChunk>>
+        + From<NetworkInfoRequest>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
+        + From<FetcherRequest<BlockHeadersBatch>>
         + From<NetworkInfoRequest>
-        + From<BlocklistAnnouncement>
         + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>,
 {
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
-
-    info!(
-        trusted_block_height = %trusted_block.height(),
-        locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
-        "starting fetch to genesis",
-    );
-
-    fetch_headers_till_genesis(trusted_block, ctx).await?;
-    fetch_blocks_and_state_and_finality_signatures_since_genesis(ctx).await?;
-
+    let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
+    info!("starting chain sync to genesis");
+    let ctx = ChainSyncContext::new_for_sync_to_genesis(&effect_builder, &config, &metrics).await?;
+    fetch_headers_till_genesis(&ctx).await?;
+    fetch_blocks_and_state_and_finality_signatures_since_genesis(&ctx).await?;
+    info!("finished chain sync to genesis");
     Ok(())
 }
 
-const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
-
-// Fetches headers starting from `trusted_block` till the Genesis.
-async fn fetch_headers_till_genesis<REv>(
-    trusted_block: &Block,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<(), Error>
+/// Fetches block headers in batches starting from `trusted_block` till the Genesis.
+async fn fetch_headers_till_genesis<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(), Error>
 where
     REv: From<FetcherRequest<BlockHeadersBatch>>
         + From<NetworkInfoRequest>
         + From<StorageRequest>
         + From<BlocklistAnnouncement>,
 {
-    let mut lowest_trusted_block_header = trusted_block.header().clone();
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
+    info!(
+        trusted_block_height = %ctx.trusted_block_header().height(),
+        locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
+        "starting to fetch headers to genesis",
+    );
+
+    let mut lowest_trusted_block_header = ctx.trusted_block_header().clone();
 
     loop {
         match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
@@ -1423,8 +1345,9 @@ where
     Ok(())
 }
 
-// Fetches a batch of block headers, validates and stores in storage.
-// Returns either an error or lowest valid block in the chain.
+/// Fetches a batch of block headers, validates and stores in storage.
+///
+/// Returns either an error or lowest valid block in the chain.
 async fn fetch_block_headers_batch<REv>(
     lowest_trusted_block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_, REv>,
@@ -1477,7 +1400,7 @@ where
     }
 }
 
-// Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
+/// Fetches blocks, their transactions and tries from Genesis until `trusted_block`.
 async fn fetch_blocks_and_state_and_finality_signatures_since_genesis<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
@@ -1492,6 +1415,7 @@ where
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>,
 {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
     info!("syncing blocks and deploys and state since Genesis");
 
     // NOTE: Currently there's no good way to read the known, highest *FULL* block.
@@ -1845,11 +1769,12 @@ where
     Ok(())
 }
 
-// Returns true if the output from consensus can be interpreted
-// as "sufficient finality signatures for the sync to genesis process".
-// We need to make sure that for "sync_to_genesis" the `TooManySignatures` error should
-// be interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that
-// protects against peers that send too many finality signatures during normal chain operation).
+/// Returns true if the output from consensus can be interpreted as "sufficient finality signatures
+/// for the sync to genesis process".
+///
+/// We need to make sure that for "sync_to_genesis" the `TooManySignatures` error should be
+/// interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that protects
+/// against peers that send too many finality signatures during normal chain operation).
 fn are_signatures_sufficient_for_sync_to_genesis(
     result: Result<(), FinalitySignatureError>,
 ) -> Result<(), FinalitySignatureError> {
@@ -1859,7 +1784,7 @@ fn are_signatures_sufficient_for_sync_to_genesis(
     }
 }
 
-// Puts the signatures to storage and updates the fetch metric.
+/// Puts the signatures to storage and updates the fetch metric.
 async fn finalize_finality_signature_fetch<REv>(
     ctx: &ChainSyncContext<'_, REv>,
     start: Timestamp,
@@ -1927,7 +1852,7 @@ where
     info!("fast syncing chain");
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    let ctx = match ChainSyncContext::new(&effect_builder, &config, &metrics).await? {
+    let ctx = match ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics).await? {
         Some(ctx) => ctx,
         None => return Ok(FastSyncOutcome::ShouldCommitGenesis),
     };
@@ -1966,6 +1891,10 @@ where
         highest_block_header = most_recent_block_header;
     }
 
+    ctx.effect_builder
+        .mark_block_completed(highest_block_header.height())
+        .await;
+
     info!(
         era_id = ?highest_block_header.era_id(),
         height = highest_block_header.height(),
@@ -1977,43 +1906,6 @@ where
     Ok(FastSyncOutcome::Synced {
         highest_block_header,
     })
-}
-
-/// Runs the sync-to-genesis task.
-pub(super) async fn run_sync_to_genesis_task<REv>(
-    effect_builder: EffectBuilder<REv>,
-    config: Config,
-    metrics: Metrics,
-) -> Result<(), Error>
-where
-    REv: From<StorageRequest>
-        + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>
-        + From<FetcherRequest<Block>>
-        + From<FetcherRequest<BlockHeader>>
-        + From<FetcherRequest<BlockHeadersBatch>>
-        + From<FetcherRequest<BlockAndDeploys>>
-        + From<FetcherRequest<BlockWithMetadata>>
-        + From<FetcherRequest<BlockHeaderWithMetadata>>
-        + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<FinalizedApprovalsWithId>>
-        + From<FetcherRequest<TrieOrChunk>>
-        + From<FetcherRequest<BlockSignatures>>
-        + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>
-        + Send,
-{
-    info!("starting chain sync to genesis");
-    let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
-    let ctx = ChainSyncContext::new(&effect_builder, &config, &metrics)
-        .await?
-        .ok_or_else(|| {
-            error!("should have highest block header");
-            Error::NoHighestBlockHeader
-        })?;
-    sync_to_genesis(&ctx).await?;
-    info!("finished chain sync to genesis");
-    Ok(())
 }
 
 async fn fetch_and_store_initial_trusted_block_header<REv>(
