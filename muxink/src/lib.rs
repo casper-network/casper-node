@@ -11,6 +11,9 @@ pub mod mux;
 pub(crate) mod pipe;
 
 use bytes::Buf;
+use codec::{Transcoder, TranscodingSink};
+use futures::Sink;
+use io::length_delimited::{LengthDelimited, LengthPrefixedFrame};
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
 ///
@@ -98,6 +101,44 @@ where
         // This is the only function modifying `pos`, upholding the invariant of it being smaller
         // than the length of the data we have.
         self.pos = (self.pos + cnt).min(self.value.as_ref().len());
+    }
+}
+
+/// Convenience trait for construction of sink chains.
+pub trait SinkMuxExt: Sized {
+    /// Wraps the current sink in a transcoder.
+    ///
+    /// The resulting sink will pass all items through the given transcoder before passing them on.
+    fn with_transcoder<Input, T, NewInput>(
+        self,
+        transcoder: T,
+    ) -> TranscodingSink<T, NewInput, Self>
+    where
+        Self: Sink<Input>,
+        T: Transcoder<NewInput, Output = Input>;
+
+    /// Wrap current sink in length delimination.
+    ///
+    /// Equivalent to `.with_transcoder(LengthDelimited)`.
+    fn length_delimited<F>(self) -> TranscodingSink<LengthDelimited, F, Self>
+    where
+        Self: Sink<LengthPrefixedFrame<F>>,
+        F: Buf + Send + Sync + 'static,
+    {
+        self.with_transcoder(LengthDelimited)
+    }
+}
+
+impl<S> SinkMuxExt for S {
+    fn with_transcoder<Input, T, NewInput>(
+        self,
+        transcoder: T,
+    ) -> TranscodingSink<T, NewInput, Self>
+    where
+        S: Sink<Input> + Sized,
+        T: Transcoder<NewInput, Output = Input>,
+    {
+        TranscodingSink::new(transcoder, self)
     }
 }
 
