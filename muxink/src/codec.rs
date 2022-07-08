@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
@@ -13,7 +14,7 @@ use thiserror::Error;
 /// state or configuration, which is why this trait is not just a function.
 pub trait Transcoder<Input> {
     /// Transcoding error.
-    type Error: std::error::Error + Send + Sync + 'static;
+    type Error: std::error::Error + Debug + Send + Sync + 'static;
 
     /// The output produced by the transcoder.
     type Output: Send + Sync + 'static;
@@ -28,7 +29,7 @@ pub trait Transcoder<Input> {
 
 /// Error transcoding data from/for an underlying input/output type.
 #[derive(Debug, Error)]
-enum TranscodingIoError<TransErr, IoErr> {
+pub enum TranscodingIoError<TransErr, IoErr> {
     /// The transcoder failed to transcode the given value.
     #[error("transcoding failed")]
     Transcoder(#[source] TransErr),
@@ -38,7 +39,8 @@ enum TranscodingIoError<TransErr, IoErr> {
 }
 
 /// A sink adapter for transcoding incoming values into an underlying sink.
-struct TranscodingSink<T, Input, S>
+#[derive(Debug)]
+pub struct TranscodingSink<T, Input, S>
 where
     T: Transcoder<Input>,
     S: Sink<T::Output>,
@@ -51,11 +53,28 @@ where
     _input_frame: PhantomData<Input>,
 }
 
+impl<T, Input, S> TranscodingSink<T, Input, S>
+where
+    T: Transcoder<Input>,
+    S: Sink<T::Output>,
+{
+    /// Creates a new transcoding sink.
+    pub fn new(transcoder: T, sink: S) -> Self {
+        Self {
+            transcoder,
+            sink,
+            _input_frame: PhantomData,
+        }
+    }
+}
+
 impl<T, Input, S> Sink<Input> for TranscodingSink<T, Input, S>
 where
-    Input: Unpin,
+    Input: Unpin + std::fmt::Debug,
     T: Transcoder<Input> + Unpin,
     S: Sink<T::Output> + Unpin,
+    T::Output: std::fmt::Debug,
+    <S as Sink<T::Output>>::Error: std::error::Error,
 {
     type Error = TranscodingIoError<T::Error, S::Error>;
 
@@ -103,7 +122,7 @@ where
 }
 
 #[derive(Debug)]
-struct TranscodingStream<T, S> {
+pub struct TranscodingStream<T, S> {
     /// Transcoder used to transcode data before returning from the stream.
     transcoder: T,
     /// Underlying stream where data is sent.
