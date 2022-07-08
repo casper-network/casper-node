@@ -703,7 +703,7 @@ where
                 {
                     self.connection_completed(peer_id);
 
-                    // By default, we assume that newly connecting peer is joiner.
+                    // By default, we assume that newly connecting peer is syncing.
                     self.update_syncing_nodes_set(peer_id, true);
                 }
 
