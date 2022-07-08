@@ -702,6 +702,9 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
+
+                    // By default, we assume that newly connecting peer is joiner.
+                    self.update_syncing_nodes_set(peer_id, true);
                 }
 
                 effects.extend(
@@ -795,7 +798,7 @@ where
             }
             Message::SyncFinished => {
                 info!(%peer_id, "peer reported sync finished");
-                self.update_syncing_set(peer_id, false);
+                self.update_syncing_nodes_set(peer_id, false);
                 Effects::new()
             }
         })
@@ -809,7 +812,7 @@ where
 
     /// Updates a set of known joining nodes.
     /// If we've just connected to a non-joining node that peer will be removed from the set.
-    fn update_syncing_set(&mut self, peer_id: NodeId, is_syncing: bool) {
+    fn update_syncing_nodes_set(&mut self, peer_id: NodeId, is_syncing: bool) {
         // Update set of syncing peers.
         if is_syncing {
             self.syncing_nodes.insert(peer_id);
