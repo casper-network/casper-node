@@ -1,4 +1,4 @@
-# Counter Contract
+# Counter Contract Installation
 
 This example code will install a simple counter using AssemblyScript. Instructions for getting started on Casper using AssemblyScript can be found in our [Getting Started with AssemblyScript](https://docs.casperlabs.io/dapp-dev-guide/writing-contracts/assembly-script/) guide.
 
