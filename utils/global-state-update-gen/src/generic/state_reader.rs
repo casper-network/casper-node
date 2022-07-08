@@ -22,6 +22,35 @@ pub trait StateReader {
     fn get_unbonds(&mut self) -> UnbondingPurses;
 }
 
+impl<'a, T> StateReader for &'a mut T
+where
+    T: StateReader,
+{
+    fn query(&mut self, key: Key) -> Option<StoredValue> {
+        T::query(self, key)
+    }
+
+    fn get_total_supply_key(&mut self) -> Key {
+        T::get_total_supply_key(self)
+    }
+
+    fn get_seigniorage_recipients_key(&mut self) -> Key {
+        T::get_seigniorage_recipients_key(self)
+    }
+
+    fn get_account(&mut self, account_hash: AccountHash) -> Option<Account> {
+        T::get_account(self, account_hash)
+    }
+
+    fn get_bids(&mut self) -> Bids {
+        T::get_bids(self)
+    }
+
+    fn get_unbonds(&mut self) -> UnbondingPurses {
+        T::get_unbonds(self)
+    }
+}
+
 impl StateReader for LmdbWasmTestBuilder {
     fn query(&mut self, key: Key) -> Option<StoredValue> {
         LmdbWasmTestBuilder::query(self, None, key, &[]).ok()

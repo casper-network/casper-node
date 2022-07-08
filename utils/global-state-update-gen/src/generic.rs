@@ -10,12 +10,12 @@ use std::{
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     system::auction::{Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
-    CLValue, EraId, PublicKey, StoredValue, U512,
+    CLValue, EraId, Key, PublicKey, StoredValue, U512,
 };
 
 use clap::ArgMatches;
 
-use crate::utils::{hash_from_str, validators_diff, ValidatorsDiff};
+use crate::utils::{hash_from_str, print_entry, validators_diff, ValidatorsDiff};
 
 use self::{
     config::{AccountConfig, Config, Transfer},
@@ -36,7 +36,7 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     update_from_config(builder, config);
 }
 
-pub(crate) fn update_from_config<T: StateReader>(reader: T, config: Config) {
+pub(crate) fn get_update<T: StateReader>(reader: T, config: Config) -> BTreeMap<Key, StoredValue> {
     let mut state_tracker = StateTracker::new(reader);
 
     process_transfers(&mut state_tracker, &config.transfers);
@@ -49,7 +49,14 @@ pub(crate) fn update_from_config<T: StateReader>(reader: T, config: Config) {
         config.only_listed_validators,
     );
 
-    state_tracker.print_all_entries();
+    state_tracker.get_entries()
+}
+
+pub(crate) fn update_from_config<T: StateReader>(reader: T, config: Config) {
+    let update = get_update(reader, config);
+    for (key, value) in update {
+        print_entry(&key, &value);
+    }
 }
 
 fn process_transfers<T: StateReader>(state: &mut StateTracker<T>, transfers: &[Transfer]) {

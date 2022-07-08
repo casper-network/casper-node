@@ -2,7 +2,7 @@ use casper_types::{account::AccountHash, PublicKey, U512};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub transfers: Vec<Transfer>,

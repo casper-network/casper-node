@@ -12,8 +12,6 @@ use casper_types::{
     AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
 };
 
-use crate::utils::print_entry;
-
 use super::{config::Transfer, state_reader::StateReader};
 
 /// A struct tracking changes to be made to the global state.
@@ -52,10 +50,8 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     /// Prints all the writes to be made to the global state.
-    pub fn print_all_entries(&self) {
-        for (key, value) in &self.entries_to_write {
-            print_entry(key, value);
-        }
+    pub fn get_entries(&self) -> BTreeMap<Key, StoredValue> {
+        self.entries_to_write.clone()
     }
 
     /// Stores a write of an entry in the global state.
