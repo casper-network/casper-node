@@ -1,6 +1,8 @@
 pub(crate) mod config;
 mod state_reader;
 mod state_tracker;
+#[cfg(test)]
+mod testing;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
