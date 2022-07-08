@@ -602,7 +602,7 @@ where
             | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
-            ConnectionError::WrongNetwork(_) => true,
+            ConnectionError::WrongNetwork(_) | ConnectionError::WrongChainspecHash => true,
         }
     }
 

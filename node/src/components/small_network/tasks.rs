@@ -420,6 +420,7 @@ where
         protocol_version,
         consensus_certificate,
         is_joiner,
+        chainspec_hash,
     } = remote_message
     {
         debug!(%protocol_version, "handshake received");
@@ -427,6 +428,14 @@ where
         // The handshake was valid, we can check the network name.
         if network_name != context.chain_info.network_name {
             return Err(ConnectionError::WrongNetwork(network_name));
+        }
+
+        // We check the chainspec hash to ensure peer is running on the
+        // same chainspec as us.
+        if let Some(hash) = chainspec_hash {
+            if hash != context.chain_info.chainspec_hash {
+                return Err(ConnectionError::WrongChainspecHash);
+            }
         }
 
         // If there is a version mismatch, we treat it as a connection error. We do not ban peers

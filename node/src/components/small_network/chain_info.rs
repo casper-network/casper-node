@@ -5,6 +5,7 @@
 
 use std::net::SocketAddr;
 
+use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 use datasize::DataSize;
 
@@ -27,16 +28,20 @@ pub(crate) struct ChainInfo {
     pub(super) maximum_net_message_size: u32,
     /// The protocol version.
     pub(super) protocol_version: ProtocolVersion,
+    /// The hash of the chainspec.
+    pub(super) chainspec_hash: Digest,
 }
 
 impl ChainInfo {
     /// Create an instance of `ChainInfo` for testing.
     #[cfg(test)]
     pub fn create_for_testing() -> Self {
+        let network_name = "rust-tests-network";
         ChainInfo {
-            network_name: "rust-tests-network".to_string(),
+            network_name: network_name.to_string(),
             maximum_net_message_size: 22 * 1024 * 1024, // Hardcoded at 22M.
             protocol_version: ProtocolVersion::V1_0_0,
+            chainspec_hash: Digest::hash(format!("{}-chainspec", network_name)),
         }
     }
 
@@ -55,6 +60,7 @@ impl ChainInfo {
             consensus_certificate: consensus_keys
                 .map(|key_pair| ConsensusCertificate::create(connection_id, key_pair)),
             is_joiner,
+            chainspec_hash: Some(self.chainspec_hash),
         }
     }
 }
@@ -65,6 +71,7 @@ impl From<&Chainspec> for ChainInfo {
             network_name: chainspec.network_config.name.clone(),
             maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
             protocol_version: chainspec.protocol_version(),
+            chainspec_hash: chainspec.hash(),
         }
     }
 }

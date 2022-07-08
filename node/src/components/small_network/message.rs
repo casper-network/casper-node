@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
@@ -41,6 +42,9 @@ pub(crate) enum Message<P> {
         /// Joiner node flag.
         #[serde(default)]
         is_joiner: bool,
+        /// Hash of the chainspec the node is running.
+        #[serde(default)]
+        chainspec_hash: Option<Digest>,
     },
     Payload(P),
 }
@@ -260,15 +264,22 @@ impl<P: Display> Display for Message<P> {
                 protocol_version,
                 consensus_certificate,
                 is_joiner,
+                chainspec_hash,
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: , is_joiner: {}",
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: , is_joiner: {}, chainspec_hash: ",
                     network_name, public_addr, protocol_version, is_joiner
                 )?;
 
                 if let Some(cert) = consensus_certificate {
-                    write!(f, "{}", cert)
+                    write!(f, "{}", cert)?;
+                } else {
+                    f.write_str("-")?;
+                }
+
+                if let Some(hash) = chainspec_hash {
+                    write!(f, "{}", hash)
                 } else {
                     f.write_str("-")
                 }
@@ -557,6 +568,7 @@ mod tests {
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
             consensus_certificate: Some(ConsensusCertificate::random(&mut rng)),
             is_joiner: false,
+            chainspec_hash: Some(Digest::hash("example-chainspec")),
         };
 
         let legacy_handshake: V1_0_0_Message = roundtrip_message(&modern_handshake);
@@ -591,12 +603,14 @@ mod tests {
                 protocol_version,
                 consensus_certificate,
                 is_joiner,
+                chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
-                assert!(!is_joiner)
+                assert!(!is_joiner);
+                assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -615,12 +629,14 @@ mod tests {
                 protocol_version,
                 consensus_certificate,
                 is_joiner,
+                chainspec_hash,
             } => {
                 assert_eq!(network_name, "serialization-test");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
                 assert!(!is_joiner);
+                assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -639,6 +655,7 @@ mod tests {
                 protocol_version,
                 consensus_certificate,
                 is_joiner,
+                chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
@@ -663,7 +680,8 @@ mod tests {
                     )
                     .unwrap()
                 );
-                assert!(!is_joiner)
+                assert!(!is_joiner);
+                assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -682,6 +700,7 @@ mod tests {
                 protocol_version,
                 consensus_certificate,
                 is_joiner,
+                chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
@@ -707,6 +726,7 @@ mod tests {
                     .unwrap()
                 );
                 assert!(!is_joiner);
+                assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
