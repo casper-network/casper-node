@@ -15,7 +15,9 @@ use tracing::Span;
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
+        },
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -96,8 +98,9 @@ pub(crate) enum Event<P> {
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 
-    /// The chain synchronization process has finished.
-    SyncFinished,
+    /// Chain synchronizer announcement.
+    #[from]
+    ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement),
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -147,7 +150,9 @@ impl<P: Display> Display for Event<P> {
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
             }
-            Event::SyncFinished => write!(f, "syncing finished"),
+            Event::ChainSynchronizerAnnouncement(ann) => {
+                write!(f, "handling chain synchronizer announcement: {}", ann)
+            }
         }
     }
 }

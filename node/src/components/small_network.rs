@@ -97,7 +97,9 @@ use self::{
 use crate::{
     components::{consensus, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
+        },
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects,
     },
@@ -1094,7 +1096,7 @@ where
 
                 effects
             }
-            Event::SyncFinished => {
+            Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
                 info!("notifying peers that chain sync has finished");
                 self.synchronization_in_progress = false;
                 self.broadcast_message(Arc::new(Message::SyncFinished));

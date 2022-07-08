@@ -133,7 +133,6 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chain_synchronizer::ChainSynchronizerAnnouncement,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
@@ -144,6 +143,7 @@ use crate::{
         small_network::FromIncoming,
     },
     contract_runtime::SpeculativeExecutionState,
+    effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,

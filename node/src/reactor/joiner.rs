@@ -23,9 +23,7 @@ use casper_execution_engine::storage::trie::TrieOrChunk;
 
 use crate::{
     components::{
-        chain_synchronizer::{
-            self, ChainSynchronizer, ChainSynchronizerAnnouncement, JoiningOutcome,
-        },
+        chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
@@ -43,9 +41,9 @@ use crate::{
     contract_runtime,
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement,
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ChainspecLoaderAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{

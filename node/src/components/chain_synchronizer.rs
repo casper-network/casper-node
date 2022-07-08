@@ -4,14 +4,7 @@ mod event;
 mod metrics;
 mod operations;
 
-use core::fmt;
-use std::{
-    collections::HashSet,
-    convert::Infallible,
-    fmt::{Debug, Display, Formatter},
-    marker::PhantomData,
-    sync::Arc,
-};
+use std::{collections::HashSet, convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -70,24 +63,6 @@ pub(crate) enum JoiningOutcome {
         validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
         highest_block_header: BlockHeader,
     },
-}
-
-/// A chain synchronizer announcement.
-#[derive(Debug)]
-pub(crate) enum ChainSynchronizerAnnouncement {
-    /// The node has finished the synchronization it was doing (fast-sync or sync-to-genesis,
-    /// depending on config) and may now accept requests that are unsafe for nodes that are
-    /// synchronizing. Once this message is received, the only way for the peer to signal it's in
-    /// the syncing process is to reconnect.
-    SyncFinished,
-}
-
-impl Display for ChainSynchronizerAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ChainSynchronizerAnnouncement::SyncFinished => write!(f, "chain sync finished"),
-        }
-    }
 }
 
 #[derive(DataSize, Debug)]

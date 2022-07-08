@@ -28,9 +28,7 @@ use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
-        chain_synchronizer::{
-            self, ChainSynchronizer, ChainSynchronizerAnnouncement, JoiningOutcome,
-        },
+        chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
@@ -50,10 +48,10 @@ use crate::{
     contract_runtime,
     effect::{
         announcements::{
-            BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
-            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            RpcServerAnnouncement,
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
+            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, RpcServerAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -1373,7 +1371,11 @@ impl reactor::Reactor for Reactor {
             ) => self.dispatch_event(
                 effect_builder,
                 rng,
-                ParticipatingEvent::SmallNetwork(small_network::Event::SyncFinished),
+                ParticipatingEvent::SmallNetwork(
+                    small_network::Event::ChainSynchronizerAnnouncement(
+                        ChainSynchronizerAnnouncement::SyncFinished,
+                    ),
+                ),
             ),
             ParticipatingEvent::ChainspecLoaderAnnouncement(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
