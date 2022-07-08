@@ -38,11 +38,10 @@ pub(crate) enum Message<P> {
         /// A self-signed certificate indicating validator status.
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
+        /// Holds the information whether the node is syncing.
+        is_syncing: bool,
     },
     Payload(P),
-    /// Indicates that peer has finished its syncing process and should no longer be considered a
-    /// "syncing peer".
-    SyncFinished,
 }
 
 impl<P: Payload> Message<P> {
@@ -50,7 +49,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } | Message::SyncFinished => MessageKind::Protocol,
+            Message::Handshake { .. } => MessageKind::Protocol,
             Message::Payload(payload) => payload.classify(),
         }
     }
@@ -59,7 +58,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn is_low_priority(&self) -> bool {
         match self {
-            Message::Handshake { .. } | Message::SyncFinished => false,
+            Message::Handshake { .. } => false,
             Message::Payload(payload) => payload.is_low_priority(),
         }
     }
@@ -70,7 +69,6 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
-            Message::SyncFinished => weights.sync_finished,
         }
     }
 
@@ -78,7 +76,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
         match self {
-            Message::Handshake { .. } | Message::SyncFinished => false,
+            Message::Handshake { .. } => false,
             Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
         }
     }
@@ -95,7 +93,7 @@ impl<P: Payload> Message<P> {
         REv: FromIncoming<P> + Send,
     {
         match self {
-            Message::Handshake { .. } | Message::SyncFinished => Err(self),
+            Message::Handshake { .. } => Err(self),
             Message::Payload(payload) => {
                 // Note: For now, the wrapping/unwrapp of the payload is a bit unfortunate here.
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
@@ -260,11 +258,12 @@ impl<P: Display> Display for Message<P> {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_syncing,
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {:?}",
-                    network_name, public_addr, protocol_version, consensus_certificate
+                    "handshake: {}, public addr: {}, protocol_version: {}, is_syncing: {}, consensus_certificate: ",
+                    network_name, public_addr, protocol_version, is_syncing
                 )?;
 
                 if let Some(cert) = consensus_certificate {
@@ -274,9 +273,6 @@ impl<P: Display> Display for Message<P> {
                 }
             }
             Message::Payload(payload) => write!(f, "payload: {}", payload),
-            Message::SyncFinished => {
-                write!(f, "sync_state_changed")
-            }
         }
     }
 }
@@ -396,8 +392,6 @@ pub struct EstimatorWeights {
     pub trie_requests: u32,
     /// Weight to attach to trie responses.
     pub trie_responses: u32,
-    /// Weight to attach to "sync finished" messages.
-    pub sync_finished: u32,
 }
 
 #[cfg(test)]
@@ -561,6 +555,7 @@ mod tests {
             public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
             consensus_certificate: Some(ConsensusCertificate::random(&mut rng)),
+            is_syncing: false,
         };
 
         let legacy_handshake: V1_0_0_Message = roundtrip_message(&modern_handshake);
@@ -594,17 +589,16 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_syncing,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
+                assert!(!is_syncing);
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
-            }
-            Message::SyncFinished => {
-                panic!("did not expect modern handshake to deserialize to sync finished")
             }
         }
     }
@@ -619,7 +613,9 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_syncing,
             } => {
+                assert!(!is_syncing);
                 assert_eq!(network_name, "serialization-test");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
@@ -627,9 +623,6 @@ mod tests {
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
-            }
-            Message::SyncFinished => {
-                panic!("did not expect modern handshake to deserialize to sync finished")
             }
         }
     }
@@ -644,10 +637,12 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_syncing,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
+                assert!(!is_syncing);
                 let ConsensusCertificate {
                     public_key,
                     signature,
@@ -672,9 +667,6 @@ mod tests {
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
             }
-            Message::SyncFinished => {
-                panic!("did not expect modern handshake to deserialize to sync finished")
-            }
         }
     }
 
@@ -688,7 +680,9 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
+                is_syncing,
             } => {
+                assert!(!is_syncing);
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
@@ -715,9 +709,6 @@ mod tests {
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
-            }
-            Message::SyncFinished => {
-                panic!("did not expect modern handshake to deserialize to sync finished")
             }
         }
     }

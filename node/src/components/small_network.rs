@@ -157,15 +157,16 @@ where
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
-    /// Channel signaling a shutdown of the small network.
+    /// Channel signaling a shutdown of the incoming connections.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
-    // they should cease operation.
+    // they should cease operation. It is also replaced with a new channel when we finished the
+    // synchronization process in order to force the reconnection with the correct syncing status.
     #[data_size(skip)]
-    shutdown_sender: Option<watch::Sender<()>>,
+    close_incoming_sender: Option<watch::Sender<()>>,
     /// A clone of the receiver is passed to the message reader for all new incoming connections in
     /// order that they can be gracefully terminated.
     #[data_size(skip)]
-    shutdown_receiver: watch::Receiver<()>,
+    close_incoming_receiver: watch::Receiver<()>,
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -312,6 +313,7 @@ where
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands: demand_max,
+            is_syncing: true,
         });
 
         // Run the server task.
@@ -319,8 +321,8 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, "starting server background task");
 
-        let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let shutdown_receiver = server_shutdown_receiver.clone();
+        let (close_incoming_sender, server_shutdown_receiver) = watch::channel(());
+        let close_incoming_receiver = server_shutdown_receiver.clone();
         let server_join_handle = tokio::spawn(
             tasks::server(
                 context.clone(),
@@ -336,8 +338,8 @@ where
             outgoing_manager,
             connection_symmetries: HashMap::new(),
             syncing_nodes: HashSet::new(),
-            shutdown_sender: Some(server_shutdown_sender),
-            shutdown_receiver,
+            close_incoming_sender: Some(close_incoming_sender),
+            close_incoming_receiver,
             server_join_handle: Some(server_join_handle),
             net_metrics,
             outgoing_limiter,
@@ -533,16 +535,6 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
-                // Upon establishing a connection, peers will assume we're in the syncing process.
-                // If we're not, it's just about time to inform them we've finished syncing.
-                //
-                // If we actually are in the syncing process still, the peer will be notified by the
-                // chain synchronizer component when the process finishes.
-                if !self.synchronization_in_progress {
-                    info!("telling the newly connected peer that we already finished syncing");
-                    self.send_message(peer_id, Arc::new(Message::SyncFinished), None);
-                }
-
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
@@ -551,7 +543,7 @@ where
                         stream,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
-                        self.shutdown_receiver.clone(),
+                        self.close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
                     )
@@ -680,6 +672,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
+                is_syncing,
             } => {
                 info!("new outgoing connection established");
 
@@ -704,9 +697,7 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
-
-                    // By default, we assume that newly connecting peer is syncing.
-                    self.update_syncing_nodes_set(peer_id, true);
+                    self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
 
                 effects.extend(
@@ -798,11 +789,6 @@ where
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()
             }
-            Message::SyncFinished => {
-                info!(%peer_id, "peer reported sync finished");
-                self.update_syncing_nodes_set(peer_id, false);
-                Effects::new()
-            }
         })
     }
 
@@ -861,7 +847,7 @@ where
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
             // Close the shutdown socket, causing the server to exit.
-            drop(self.shutdown_sender.take());
+            drop(self.close_incoming_sender.take());
 
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
@@ -1099,7 +1085,9 @@ where
             Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
                 info!("notifying peers that chain sync has finished");
                 self.synchronization_in_progress = false;
-                self.broadcast_message(Arc::new(Message::SyncFinished));
+                let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+                self.close_incoming_sender = Some(close_incoming_sender);
+                self.close_incoming_receiver = close_incoming_receiver;
                 Effects::new()
             }
         }

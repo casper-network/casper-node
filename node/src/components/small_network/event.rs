@@ -261,6 +261,8 @@ pub(crate) enum OutgoingConnection<P> {
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
         sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
+        /// Holds the information whether the remote node is syncing.
+        is_syncing: bool,
     },
 }
 
@@ -281,8 +283,13 @@ impl<P> Display for OutgoingConnection<P> {
                 peer_id,
                 peer_consensus_public_key,
                 sink: _,
+                is_syncing,
             } => {
-                write!(f, "connection established to {}/{}", peer_addr, peer_id)?;
+                write!(
+                    f,
+                    "connection established to {}/{}, is_syncing: {}",
+                    peer_addr, peer_id, is_syncing
+                )?;
 
                 if let Some(public_key) = peer_consensus_public_key {
                     write!(f, " [{}]", public_key)

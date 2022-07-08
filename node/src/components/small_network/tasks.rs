@@ -71,6 +71,8 @@ struct HandshakeOutcome {
     public_addr: SocketAddr,
     /// The public key the peer is validating with, if any.
     peer_consensus_public_key: Option<PublicKey>,
+    /// Holds the information whether the remote node is syncing.
+    is_peer_syncing: bool,
 }
 
 /// Low-level TLS connection function.
@@ -152,6 +154,7 @@ where
             framed_transport,
             public_addr,
             peer_consensus_public_key,
+            is_peer_syncing: is_syncing,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -176,6 +179,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
+                is_syncing,
             }
         }
         Err(error) => OutgoingConnection::Failed {
@@ -221,6 +225,8 @@ where
     pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     pub(super) max_in_flight_demands: usize,
+    /// Flag indicating whether this node is syncing node.
+    pub(super) is_syncing: bool,
 }
 
 /// Handles an incoming connection.
@@ -265,6 +271,7 @@ where
             framed_transport,
             public_addr,
             peer_consensus_public_key,
+            is_peer_syncing: _,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -374,6 +381,7 @@ where
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
+        context.is_syncing,
     );
 
     let serialized_handshake_message = Pin::new(&mut encoder)
@@ -411,6 +419,7 @@ where
         public_addr,
         protocol_version,
         consensus_certificate,
+        is_syncing,
     } = remote_message
     {
         debug!(%protocol_version, "handshake received");
@@ -462,6 +471,7 @@ where
             framed_transport,
             public_addr,
             peer_consensus_public_key,
+            is_peer_syncing: is_syncing,
         })
     } else {
         // Received a non-handshake, this is an error.
@@ -549,7 +559,7 @@ pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
     mut stream: SplitStream<FullTransport<P>>,
     limiter: Box<dyn LimiterHandle>,
-    mut shutdown_receiver: watch::Receiver<()>,
+    mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,
     span: Span,
 ) -> io::Result<()>
@@ -667,7 +677,7 @@ where
         Ok(())
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    let shutdown_messages = async move { while close_incoming_receiver.changed().await.is_ok() {} };
 
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // while loop to terminate.
