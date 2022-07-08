@@ -39,7 +39,8 @@
 //!     // Get the new route.
 //!     let path = "rpc";
 //!     let max_body_bytes = 1024;
-//!     let route = casper_json_rpc::route(path, max_body_bytes, handlers);
+//!     let allow_unknown_fields = false;
+//!     let route = casper_json_rpc::route(path, max_body_bytes, handlers, allow_unknown_fields);
 //!
 //!     // Convert it into a `Service` and run it.
 //!     let make_svc = hyper::service::make_service_fn(move |_| {
@@ -106,6 +107,9 @@ const JSON_RPC_VERSION: &str = "2.0";
 /// `handlers` is the map of functions to which incoming requests will be dispatched.  These are
 /// keyed by the JSON-RPC request's "method".
 ///
+/// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
+/// respond with an error.
+///
 /// Note that this is a convenience function combining the lower-level functions in [`filters`]
 /// along with [a warp CORS filter](https://docs.rs/warp/latest/warp/filters/cors/index.html) which
 ///   * allows any origin
@@ -117,9 +121,10 @@ pub fn route<P: AsRef<str>>(
     path: P,
     max_body_bytes: u32,
     handlers: RequestHandlers,
+    allow_unknown_fields: bool,
 ) -> BoxedFilter<(impl Reply,)> {
     filters::base_filter(path, max_body_bytes)
-        .and(filters::main_filter(handlers))
+        .and(filters::main_filter(handlers, allow_unknown_fields))
         .recover(filters::handle_rejection)
         .with(
             warp::cors()
