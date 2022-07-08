@@ -27,6 +27,7 @@ const WASM_STRING_PREFIX: &str = "contract-wasm-";
 pub struct TryFromSliceForContractHashError(());
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     InvalidPrefix,
     Hex(base16::DecodeError),

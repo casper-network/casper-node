@@ -97,7 +97,7 @@ vergen = "3"
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
-casper-types = { version = "1.4.5", path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
@@ -106,7 +106,8 @@ reqwest = { version = "0.11.3", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
-vendored-openssl = ['openssl/vendored']
+testing = ["casper-types/testing"]
+vendored-openssl = ["openssl/vendored"]
 
 [[bin]]
 name = "casper-node"
