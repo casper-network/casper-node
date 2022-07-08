@@ -86,13 +86,19 @@ where
     #[inline]
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let self_mut = self.get_mut();
-        self_mut.poll_flush_unpin(cx)
+        self_mut
+            .sink
+            .poll_flush_unpin(cx)
+            .map_err(TranscodingIoError::Io)
     }
 
     #[inline]
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let self_mut = self.get_mut();
-        self_mut.poll_close_unpin(cx)
+        self_mut
+            .sink
+            .poll_close_unpin(cx)
+            .map_err(TranscodingIoError::Io)
     }
 }
 
