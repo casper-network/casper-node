@@ -214,7 +214,7 @@ trie_requests = 1
 trie_responses = 0
 finalized_approvals_requests = 1
 finalized_approvals_responses = 0
-
+sync_finished = 1
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server

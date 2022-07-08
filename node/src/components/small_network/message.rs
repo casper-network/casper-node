@@ -68,8 +68,9 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
-            Message::Handshake { .. } | Message::SyncFinished => 0,
+            Message::Handshake { .. } => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
+            Message::SyncFinished => weights.sync_finished,
         }
     }
 
@@ -395,6 +396,8 @@ pub struct EstimatorWeights {
     pub trie_requests: u32,
     /// Weight to attach to trie responses.
     pub trie_responses: u32,
+    /// Weight to attach to "sync finished" messages.
+    pub sync_finished: u32,
 }
 
 #[cfg(test)]
