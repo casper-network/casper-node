@@ -65,12 +65,6 @@ impl Sequence {
         }
     }
 
-    /// Returns `true` if a sequence contains the value.
-    #[cfg(test)]
-    pub(super) fn contains(&self, value: u64) -> bool {
-        value >= self.low && value <= self.high
-    }
-
     /// Returns the inclusive high end of the sequence.
     pub(crate) fn high(&self) -> u64 {
         self.high
@@ -79,6 +73,12 @@ impl Sequence {
     /// Returns the inclusive low end of the sequence.
     pub(crate) fn low(&self) -> u64 {
         self.low
+    }
+
+    /// Returns `true` if a sequence contains the value.
+    #[cfg(test)]
+    pub(super) fn contains(&self, value: u64) -> bool {
+        value >= self.low && value <= self.high
     }
 }
 
@@ -171,18 +171,38 @@ impl DisjointSequences {
         trace!(%self, "current state of disjoint sequences");
     }
 
-    /// Inserts multiple values produced by the given interator.
-    #[cfg(test)]
-    pub(super) fn extend<T>(&mut self, iter: T)
-    where
-        T: IntoIterator<Item = u64>,
-    {
-        iter.into_iter().for_each(|height| self.insert(height))
-    }
-
     /// Returns the highest sequence, or `None` if there are no sequences.
     pub(super) fn highest_sequence(&self) -> Option<&Sequence> {
         self.sequences.first()
+    }
+
+    /// Reduces the sequence(s), keeping all entries below and including `max_value`.  If
+    /// `max_value` is not already included in a sequence, it will not be added.
+    ///
+    /// If the current highest value is lower than `max_value`, or if there are no sequences, this
+    /// has no effect.
+    pub(super) fn truncate(&mut self, max_value: u64) {
+        self.sequences.retain_mut(|sequence| {
+            if sequence.high <= max_value {
+                // Keep this sequence unchanged.
+                return true;
+            }
+
+            if sequence.low > max_value {
+                // Delete this entire sequence.
+                return false;
+            }
+
+            // This sequence contains `max_value`, so keep the sequence, but reduce its high value.
+            sequence.high = max_value;
+            true
+        })
+    }
+
+    /// Inserts multiple values produced by the given iterator.
+    #[cfg(test)]
+    pub(super) fn extend<T: IntoIterator<Item = u64>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|height| self.insert(height))
     }
 }
 
@@ -329,13 +349,13 @@ mod tests {
 
     #[test]
     fn check_contains() {
-        // Single item sequence
+        // Single item sequence.
         let seq = Sequence::new(1, 1);
         assert!(!seq.contains(0));
         assert!(seq.contains(1));
         assert!(!seq.contains(2));
 
-        // Mutliple item sequence
+        // Multiple item sequence.
         let seq = Sequence::new(1, 2);
         assert!(!seq.contains(0));
         assert!(seq.contains(1));
@@ -438,6 +458,94 @@ mod tests {
     }
 
     #[test]
+    fn should_truncate() {
+        const SEQ_HIGH: Sequence = Sequence { high: 11, low: 9 };
+        const SEQ_MID: Sequence = Sequence { high: 6, low: 6 };
+        const SEQ_LOW: Sequence = Sequence { high: 3, low: 1 };
+        fn new_sequences() -> DisjointSequences {
+            DisjointSequences {
+                sequences: vec![SEQ_HIGH, SEQ_MID, SEQ_LOW],
+            }
+        }
+
+        // Truncate with `max_value` greater or equal to current highest value should be a no-op.
+        let mut disjoint_sequences = new_sequences();
+        disjoint_sequences.truncate(12);
+        assert_eq!(disjoint_sequences.sequences, new_sequences().sequences);
+        disjoint_sequences.truncate(11);
+        assert_eq!(disjoint_sequences.sequences, new_sequences().sequences);
+
+        // Truncate with `max_value` between two sequences should cause the higher sequences to get
+        // removed and the lower ones retained unchanged.
+        disjoint_sequences = new_sequences();
+        disjoint_sequences.truncate(SEQ_HIGH.low - 1);
+        assert_eq!(disjoint_sequences.sequences, vec![SEQ_MID, SEQ_LOW]);
+
+        disjoint_sequences = new_sequences();
+        disjoint_sequences.truncate(SEQ_MID.high);
+        assert_eq!(disjoint_sequences.sequences, vec![SEQ_MID, SEQ_LOW]);
+
+        disjoint_sequences = new_sequences();
+        disjoint_sequences.truncate(SEQ_MID.low - 1);
+        assert_eq!(disjoint_sequences.sequences, vec![SEQ_LOW]);
+
+        disjoint_sequences = new_sequences();
+        disjoint_sequences.truncate(SEQ_LOW.high);
+        assert_eq!(disjoint_sequences.sequences, vec![SEQ_LOW]);
+
+        // Truncate with `max_value` lower than the lowest value should cause all sequences to get
+        // removed.
+        disjoint_sequences = new_sequences();
+        disjoint_sequences.truncate(SEQ_LOW.low - 1);
+        assert!(disjoint_sequences.sequences.is_empty());
+
+        // Truncate with `max_value` within a sequence should cause that sequence to get updated,
+        // any higher sequences to get removed, and any lower ones retained unchanged.
+        disjoint_sequences = new_sequences();
+        let max_value = SEQ_HIGH.high - 1;
+        disjoint_sequences.truncate(max_value);
+        assert_eq!(
+            disjoint_sequences.sequences,
+            vec![Sequence::new(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
+        );
+
+        disjoint_sequences = new_sequences();
+        let max_value = SEQ_HIGH.low;
+        disjoint_sequences.truncate(max_value);
+        assert_eq!(
+            disjoint_sequences.sequences,
+            vec![Sequence::new(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
+        );
+
+        disjoint_sequences = new_sequences();
+        let max_value = SEQ_MID.low;
+        disjoint_sequences.truncate(max_value);
+        assert_eq!(disjoint_sequences.sequences, vec![SEQ_MID, SEQ_LOW]);
+
+        disjoint_sequences = new_sequences();
+        let max_value = SEQ_LOW.high - 1;
+        disjoint_sequences.truncate(max_value);
+        assert_eq!(
+            disjoint_sequences.sequences,
+            vec![Sequence::new(max_value, SEQ_LOW.low)]
+        );
+
+        disjoint_sequences = new_sequences();
+        let max_value = SEQ_LOW.low;
+        disjoint_sequences.truncate(max_value);
+        assert_eq!(
+            disjoint_sequences.sequences,
+            vec![Sequence::new(max_value, SEQ_LOW.low)]
+        );
+
+        // Truncate on an empty set of sequences should have no effect.
+        disjoint_sequences = DisjointSequences::default();
+        assert!(disjoint_sequences.sequences.is_empty());
+        disjoint_sequences.truncate(100);
+        assert!(disjoint_sequences.sequences.is_empty());
+    }
+
+    #[test]
     fn roundtrip_to_bytes() {
         let mut disjoint_sequences = DisjointSequences::default();
 
@@ -452,7 +560,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
-        let actual = disjoint_sequences.to_bytes().expect("seralization failed");
+        let actual = disjoint_sequences.to_bytes().expect("serialization failed");
         assert_eq!(expected.as_slice(), &actual);
 
         let expected_inner_state = disjoint_sequences.sequences;
