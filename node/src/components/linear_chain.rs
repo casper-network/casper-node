@@ -177,23 +177,23 @@ where
                     .set(completion_duration as i64);
                 let outcomes = self
                     .linear_chain_state
-                    .handle_put_block(block, self.verifiable_chunked_hash_activation());
+                    .handle_put_block_result(block, self.verifiable_chunked_hash_activation());
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
                 let outcomes = self
                     .linear_chain_state
-                    .handle_finality_signature(fs, gossiped);
+                    .handle_finality_signature_received(fs, gossiped);
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
                 let outcomes = self
                     .linear_chain_state
-                    .handle_cached_signatures(maybe_signatures, fs);
+                    .handle_stored_signatures_result(maybe_signatures, fs);
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::IsBonded(maybe_known_signatures, new_fs, is_bonded) => {
-                let outcomes = self.linear_chain_state.handle_is_bonded(
+                let outcomes = self.linear_chain_state.handle_is_bonded_result(
                     maybe_known_signatures,
                     new_fs,
                     is_bonded,
@@ -206,7 +206,7 @@ where
             }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 self.linear_chain_state
-                    .got_upgrade_activation_point(activation_point);
+                    .handle_upgrade_activation_point(activation_point);
                 Effects::new()
             }
         }

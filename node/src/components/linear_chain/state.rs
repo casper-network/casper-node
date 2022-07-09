@@ -89,7 +89,7 @@ impl LinearChain {
     }
 
     /// Handles registering an upgrade activation point.
-    pub(super) fn got_upgrade_activation_point(&mut self, activation_point: ActivationPoint) {
+    pub(super) fn handle_upgrade_activation_point(&mut self, activation_point: ActivationPoint) {
         debug!(?activation_point, "got an activation point");
         self.next_upgrade_activation_point = Some(activation_point);
     }
@@ -246,7 +246,7 @@ impl LinearChain {
         vec![Outcome::StoreBlock(block, execution_results)]
     }
 
-    pub(super) fn handle_put_block(
+    pub(super) fn handle_put_block_result(
         &mut self,
         block: Box<Block>,
         verifiable_chunked_hash_activation: EraId,
@@ -316,7 +316,7 @@ impl LinearChain {
         )
     }
 
-    pub(super) fn handle_finality_signature(
+    pub(super) fn handle_finality_signature_received(
         &mut self,
         fs: Box<FinalitySignature>,
         gossiped: bool,
@@ -332,11 +332,13 @@ impl LinearChain {
             None => vec![Outcome::LoadSignatures(fs)],
             // We know about the block but we haven't seen any signatures for it yet.
             Some(signatures) if signatures.proofs.is_empty() => vec![Outcome::LoadSignatures(fs)],
-            Some(signatures) => self.handle_cached_signatures(Some(Box::new(signatures)), fs),
+            Some(signatures) => {
+                self.handle_stored_signatures_result(Some(Box::new(signatures)), fs)
+            }
         }
     }
 
-    pub(super) fn handle_cached_signatures(
+    pub(super) fn handle_stored_signatures_result(
         &mut self,
         signatures: Option<Box<BlockSignatures>>,
         fs: Box<FinalitySignature>,
@@ -367,7 +369,7 @@ impl LinearChain {
             let is_bonded = key_block_info
                 .validator_weights()
                 .contains_key(&fs.public_key);
-            return self.handle_is_bonded(signatures, fs, is_bonded);
+            return self.handle_is_bonded_result(signatures, fs, is_bonded);
         }
         // Check if the validator is bonded in the era in which the block was created.
         // TODO: Use protocol version that is valid for the block's height.
@@ -384,7 +386,7 @@ impl LinearChain {
         }]
     }
 
-    pub(super) fn handle_is_bonded(
+    pub(super) fn handle_is_bonded_result(
         &mut self,
         maybe_known_signatures: Option<Box<BlockSignatures>>,
         new_fs: Box<FinalitySignature>,
@@ -485,7 +487,7 @@ mod tests {
         let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
         let block_stored_outcomes =
-            lc.handle_put_block(Box::new(block.clone()), verifiable_chunked_hash_activation);
+            lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
         match &*block_stored_outcomes {
             [Outcome::AnnounceBlock(announced_block)] => {
                 assert_eq!(&**announced_block, &block);
@@ -507,14 +509,14 @@ mod tests {
         local: bool,
     ) -> FinalitySignature {
         let sig = FinalitySignature::random_for_block(block_hash, era_id.value());
-        let outcomes = lc.handle_finality_signature(Box::new(sig.clone()), !local);
+        let outcomes = lc.handle_finality_signature_received(Box::new(sig.clone()), !local);
         assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
         sig
     }
 
     // Mark the creator of the signature as bonded.
     fn mark_bonded(lc: &mut LinearChain, fs: FinalitySignature) {
-        let outcomes = lc.handle_is_bonded(None, Box::new(fs), true);
+        let outcomes = lc.handle_is_bonded_result(None, Box::new(fs), true);
         assert!(outcomes.is_empty());
     }
 
@@ -582,7 +584,8 @@ mod tests {
         // `verifiable_chunked_hash_activation` can be chosen arbitrarily
         let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
-        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes =
+            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
         // `sig_a` and `sig_b` are valid and created by bonded validators.
         let expected_outcomes = {
             let mut tmp = vec![];
@@ -601,7 +604,7 @@ mod tests {
         assert_equal(expected_outcomes, outcomes);
         // Simulate that the `IsValidatorBonded` event for `sig_c` just arrived.
         // When it was created, there was no `known_signatures` yet.
-        let outcomes = lc.handle_is_bonded(None, Box::new(sig_c.clone()), true);
+        let outcomes = lc.handle_is_bonded_result(None, Box::new(sig_c.clone()), true);
         #[allow(clippy::vec_init_then_push)]
         let expected_outcomes = {
             let mut tmp = vec![];
@@ -624,13 +627,14 @@ mod tests {
         let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
         let block_hash = BlockHash::random(&mut rng);
         let valid_sig = FinalitySignature::random_for_block(block_hash, 0);
-        let handle_sig_outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
+        let handle_sig_outcomes =
+            lc.handle_finality_signature_received(Box::new(valid_sig.clone()), false);
         assert!(matches!(
             &*handle_sig_outcomes,
             &[Outcome::LoadSignatures(_)]
         ));
         assert!(
-            lc.handle_finality_signature(Box::new(valid_sig), false)
+            lc.handle_finality_signature_received(Box::new(valid_sig), false)
                 .is_empty(),
             "adding already-pending signature should be a no-op"
         );
@@ -641,7 +645,7 @@ mod tests {
     fn cache_signature(lc: &mut LinearChain, fs: FinalitySignature) {
         // We need to signal that block is known. Otherwise we won't cache the signature.
         let mut block_signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
-        let outcomes = lc.handle_cached_signatures(
+        let outcomes = lc.handle_stored_signatures_result(
             Some(Box::new(block_signatures.clone())),
             Box::new(fs.clone()),
         );
@@ -650,7 +654,8 @@ mod tests {
                 new_fs, known_fs, ..
             }] => {
                 assert_eq!(&fs, &**new_fs);
-                let outcomes = lc.handle_is_bonded(known_fs.clone(), Box::new(fs.clone()), true);
+                let outcomes =
+                    lc.handle_is_bonded_result(known_fs.clone(), Box::new(fs.clone()), true);
                 // After confirming that signature is valid and block known, we want to store the
                 // signature and announce it.
                 match &*outcomes {
@@ -679,7 +684,7 @@ mod tests {
         let valid_sig =
             FinalitySignature::random_for_block(*block.hash(), block.header().era_id().value());
         cache_signature(&mut lc, valid_sig.clone());
-        let outcomes = lc.handle_finality_signature(Box::new(valid_sig), false);
+        let outcomes = lc.handle_finality_signature_received(Box::new(valid_sig), false);
         assert!(
             outcomes.is_empty(),
             "adding already-known signature should be a no-op"
@@ -718,7 +723,7 @@ mod tests {
         let block_era = block.header().era_id();
 
         let put_block_outcomes =
-            lc.handle_put_block(Box::new(block.clone()), verifiable_chunked_hash_activation);
+            lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
         assert_eq!(put_block_outcomes.len(), 1);
         assert_eq!(
             lc.latest_block(),
@@ -727,11 +732,11 @@ mod tests {
         );
         // signature's era either too low or too high
         let era_too_low_sig = FinalitySignature::random_for_block(block_hash, 0);
-        let outcomes = lc.handle_finality_signature(Box::new(era_too_low_sig), false);
+        let outcomes = lc.handle_finality_signature_received(Box::new(era_too_low_sig), false);
         assert!(outcomes.is_empty());
         let era_too_high_sig =
             FinalitySignature::random_for_block(block_hash, block_era.value() + auction_delay + 1);
-        let outcomes = lc.handle_finality_signature(Box::new(era_too_high_sig), false);
+        let outcomes = lc.handle_finality_signature_received(Box::new(era_too_high_sig), false);
         assert!(outcomes.is_empty());
         // signature is not valid
         let block_hash = BlockHash::random(&mut rng);
@@ -739,7 +744,7 @@ mod tests {
         let mut invalid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
         // replace the public key so that the verification fails.
         invalid_sig.public_key = pub_key;
-        let outcomes = lc.handle_finality_signature(Box::new(invalid_sig), false);
+        let outcomes = lc.handle_finality_signature_received(Box::new(invalid_sig), false);
         assert!(outcomes.is_empty())
     }
 
@@ -778,18 +783,19 @@ mod tests {
         assert_equal(expected_outcomes, new_block_outcomes);
 
         let put_block_outcomes =
-            lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
         // Verify that all outcomes are expected.
         assert_equal(vec![Outcome::AnnounceBlock(block)], put_block_outcomes);
         let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
-        let outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
+        let outcomes = lc.handle_finality_signature_received(Box::new(valid_sig.clone()), false);
         assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
-        let cached_sigs_outcomes = lc.handle_cached_signatures(None, Box::new(valid_sig.clone()));
+        let cached_sigs_outcomes =
+            lc.handle_stored_signatures_result(None, Box::new(valid_sig.clone()));
         assert!(matches!(
             &*cached_sigs_outcomes,
             [Outcome::VerifyIfBonded { .. }]
         ));
-        let outcomes = lc.handle_is_bonded(None, Box::new(valid_sig.clone()), true);
+        let outcomes = lc.handle_is_bonded_result(None, Box::new(valid_sig.clone()), true);
         assert!(!outcomes.is_empty(), "{:?} should not be empty", outcomes);
         let expected_outcomes = {
             let mut block_signatures = BlockSignatures::new(block_hash, block_era);
@@ -849,7 +855,8 @@ mod tests {
             .unwrap(),
         );
 
-        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes =
+            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
         assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
 
         // The switch block in era 2 is the last before the upgrade.
@@ -879,11 +886,11 @@ mod tests {
         let mut stored_sigs = Box::new(BlockSignatures::new(*block.hash(), era_id));
         assert_equal(
             vec![Outcome::LoadSignatures(signatures[0].clone())],
-            lc.handle_finality_signature(signatures[0].clone(), true),
+            lc.handle_finality_signature_received(signatures[0].clone(), true),
         );
         assert_equal(
             vec![],
-            lc.handle_cached_signatures(None, signatures[0].clone()),
+            lc.handle_stored_signatures_result(None, signatures[0].clone()),
         );
         stored_sigs.insert_proof(signatures[0].public_key.clone(), signatures[0].signature);
 
@@ -894,12 +901,12 @@ mod tests {
                 Outcome::AnnounceSignature(signatures[0].clone()),
                 Outcome::StoreBlockSignatures(*stored_sigs.clone(), false),
             ],
-            lc.handle_put_block(block, verifiable_chunked_hash_activation),
+            lc.handle_put_block_result(block, verifiable_chunked_hash_activation),
         );
 
         // Two signatures is not enough for an upgrade yet: The upgrade flag is false.
         let outcomes =
-            lc.handle_cached_signatures(Some(stored_sigs.clone()), signatures[1].clone());
+            lc.handle_stored_signatures_result(Some(stored_sigs.clone()), signatures[1].clone());
         stored_sigs.insert_proof(signatures[1].public_key.clone(), signatures[1].signature);
         assert_equal(
             vec![
@@ -911,7 +918,7 @@ mod tests {
 
         // With the third signature the switch block is signed by more than 67%: The flag is true.
         let outcomes =
-            lc.handle_cached_signatures(Some(stored_sigs.clone()), signatures[2].clone());
+            lc.handle_stored_signatures_result(Some(stored_sigs.clone()), signatures[2].clone());
         stored_sigs.insert_proof(signatures[2].public_key.clone(), signatures[2].signature);
         assert_equal(
             vec![
@@ -966,7 +973,8 @@ mod tests {
             )
             .unwrap(),
         );
-        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes =
+            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
         assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
 
         // The switch block in era 2 is the last before the upgrade.
@@ -996,13 +1004,14 @@ mod tests {
         for fs in &signatures {
             assert_equal(
                 vec![Outcome::LoadSignatures(fs.clone())],
-                lc.handle_finality_signature(fs.clone(), true),
+                lc.handle_finality_signature_received(fs.clone(), true),
             );
-            assert_equal(vec![], lc.handle_cached_signatures(None, fs.clone()));
+            assert_equal(vec![], lc.handle_stored_signatures_result(None, fs.clone()));
             expected_sigs.insert_proof(fs.public_key.clone(), fs.signature);
         }
 
-        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes =
+            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
         assert_equal(
             vec![
                 Outcome::AnnounceBlock(block),
