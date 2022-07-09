@@ -98,8 +98,8 @@ impl PendingSignatures {
 
         // Add the pending signature.
         let value = VerificationStatus::Unknown(signature);
-        sigs.insert(block_hash, value);
-        true
+        // Return boolean indicating whether `sigs` map already had this key.
+        sigs.insert(block_hash, value).is_none()
     }
 
     pub(super) fn remove(
