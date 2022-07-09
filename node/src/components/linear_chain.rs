@@ -138,6 +138,10 @@ where
                         panic!("couldn't check if validator is bonded")
                     },
                 ),
+            Outcome::DuplicateSignature(_) | Outcome::InvalidSignature { .. } => {
+                // No action. Yet.
+                Effects::new()
+            }
         })
         .concat()
 }

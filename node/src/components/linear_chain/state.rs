@@ -41,6 +41,14 @@ pub(crate) struct LinearChain {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub(super) enum SignatureVerificationError {
+    // Creator of the signature wasn't a bonded validator.
+    ValidatorNotBonded,
+    // Signature failed cryptographic verification.
+    InvalidSignature,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub(super) enum Outcome {
     // Store block signatures to storage.
     // If the flag is `true` this completes the signatures for the last block before an upgrade.
@@ -63,6 +71,20 @@ pub(super) enum Outcome {
         protocol_version: ProtocolVersion,
         latest_state_root_hash: Option<Digest>,
     },
+    DuplicateSignature(Box<FinalitySignature>),
+    InvalidSignature {
+        signature: Box<FinalitySignature>,
+        reason: SignatureVerificationError,
+    },
+}
+
+impl Outcome {
+    fn invalid_signature(fs: Box<FinalitySignature>, reason: SignatureVerificationError) -> Self {
+        Outcome::InvalidSignature {
+            signature: fs,
+            reason,
+        }
+    }
 }
 
 pub(super) type Outcomes = Vec<Outcome>;
@@ -153,23 +175,27 @@ impl LinearChain {
                 // TODO: Disconnect from the sender.
                 return vec![];
             }
+            // If signature is already known, we can remove the the new one from collection of
+            // pending signatures.
             if known_signatures.has_proof(&fs.public_key) {
                 self.remove_from_pending_fs(&fs);
-                return vec![];
+                return vec![Outcome::DuplicateSignature(fs)];
             }
             // Populate cache so that next incoming signatures don't trigger read from the
             // storage. If `known_signatures` are already from cache then this will be a
             // noop.
             self.cache_signatures(*known_signatures.clone());
         }
+
+        // Check if validator was bonded in the era for which it created the signature.
+        // If we have the key block in cache we can validate it immediately.
         if let Some(key_block_info) = self.key_block_info.get(&fs.era_id) {
             let is_bonded = key_block_info
                 .validator_weights()
                 .contains_key(&fs.public_key);
             return self.handle_is_bonded_result(known_signatures, fs, is_bonded);
         }
-        // Check if the validator is bonded in the era in which the block was created.
-        // TODO: Use protocol version that is valid for the block's height.
+        // If we don't have the key block in cache, we need to read from storage.
         let protocol_version = self.current_protocol_version();
         let latest_state_root_hash = self
             .latest_block()
@@ -183,8 +209,8 @@ impl LinearChain {
         }]
     }
 
-    /// Called after checking whether creator of `new_fs` was a correct, bonded validator at the time
-    /// of signature creation.
+    /// Called after checking whether creator of `new_fs` was a correct, bonded validator at the
+    /// time of signature creation.
     pub(super) fn handle_is_bonded_result(
         &mut self,
         maybe_known_signatures: Option<Box<BlockSignatures>>,
@@ -196,19 +222,26 @@ impl LinearChain {
             // validator. Neither in the current era nor in the eras for which
             // we have already run auctions for.
             self.remove_from_pending_fs(&new_fs);
-            let FinalitySignature {
-                public_key,
-                block_hash,
-                ..
-            } = *new_fs;
             warn!(
-                validator = %public_key,
-                %block_hash,
+                validator = %new_fs.public_key,
+                block_hash = %new_fs.block_hash,
                 "Received a signature from a validator that is not bonded."
             );
-            // TODO: Disconnect from the sender.
-            return vec![];
+            return vec![Outcome::invalid_signature(
+                new_fs,
+                SignatureVerificationError::ValidatorNotBonded,
+            )];
         }
+
+        // We want to verify cryptographic correctness at the very end.
+        if let Err(err) = new_fs.verify() {
+            self.remove_from_pending_fs(&new_fs);
+            warn!(block_hash=%new_fs.block_hash, signer=%new_fs.public_key, %err, "received invalid finality signature");
+            return vec![Outcome::invalid_signature(
+                new_fs,
+                SignatureVerificationError::InvalidSignature,
+            )];
+        };
 
         self.pending_finality_signatures
             .mark_bonded(new_fs.public_key.clone(), new_fs.block_hash);
@@ -251,7 +284,11 @@ impl LinearChain {
     }
 
     /// Updates cache of latest known block.
-    fn update_latest_block(&mut self, latest_block: Box<Block>, verifiable_chunked_hash_activation: EraId) {
+    fn update_latest_block(
+        &mut self,
+        latest_block: Box<Block>,
+        verifiable_chunked_hash_activation: EraId,
+    ) {
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             latest_block.header(),
             verifiable_chunked_hash_activation,
@@ -302,6 +339,7 @@ impl LinearChain {
     }
 
     /// Tries to add the finality signature to the collection of pending finality signatures.
+    ///
     /// Returns true if added successfully, otherwise false.
     fn add_pending_finality_signature(&mut self, fs: FinalitySignature, gossiped: bool) -> bool {
         let FinalitySignature {
@@ -323,20 +361,6 @@ impl LinearChain {
                 );
                 return false;
             }
-        }
-        if self.is_pending(&fs) {
-            debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
-                "finality signature already pending");
-            return false;
-        }
-        if !self.is_new(&fs) {
-            debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
-                "finality signature is already known");
-            return false;
-        }
-        if let Err(err) = fs.verify() {
-            warn!(%block_hash, %public_key, %err, "received invalid finality signature");
-            return false;
         }
         debug!(%block_hash, %public_key, "received new finality signature");
         let signature = if gossiped {
@@ -446,21 +470,25 @@ impl LinearChain {
         fs: Box<FinalitySignature>,
         gossiped: bool,
     ) -> Outcomes {
-        let FinalitySignature { block_hash, .. } = *fs;
+        if self.is_pending(&fs) {
+            debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                "finality signature already pending");
+            return vec![];
+        }
+        if !self.is_new(&fs) {
+            debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                "finality signature is already known");
+            return vec![];
+        }
+        // Not found in the cache, look in the storage.
+        // Add as pending check so that if we receive the same signature again we don't repeat the
+        // steps.
         if !self.add_pending_finality_signature(*fs.clone(), gossiped) {
             // If we did not add the signature it means it's either incorrect or we already
             // know it.
             return vec![];
         }
-        match self.get_signatures(&block_hash) {
-            // Not found in the cache, look in the storage.
-            None => vec![Outcome::LoadSignatures(fs)],
-            // We know about the block but we haven't seen any signatures for it yet.
-            Some(signatures) if signatures.proofs.is_empty() => vec![Outcome::LoadSignatures(fs)],
-            Some(signatures) => {
-                self.handle_stored_signatures_result(Some(Box::new(signatures)), fs)
-            }
-        }
+        vec![Outcome::LoadSignatures(fs)]
     }
 }
 
@@ -703,8 +731,68 @@ mod tests {
         );
     }
 
+    const AUCTION_DELAY: u64 = 1;
+
+    fn setup() -> (LinearChain, Block) {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let unbonding_delay = 2;
+        let mut lc = LinearChain::new(
+            protocol_version,
+            AUCTION_DELAY,
+            unbonding_delay,
+            Ratio::new(1, 3),
+            None,
+        );
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
+        // Set the latest known block so that we can trigger the following checks.
+        let block = Block::random_with_specifics(
+            &mut rng,
+            EraId::new(3),
+            10,
+            ProtocolVersion::V1_0_0,
+            false,
+            verifiable_chunked_hash_activation,
+            None,
+        );
+
+        let put_block_outcomes =
+            lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
+        assert_eq!(put_block_outcomes.len(), 1);
+        {
+            assert_eq!(
+                lc.latest_block(),
+                &Some(block.clone()),
+                "should update the latest block"
+            );
+        }
+
+        (lc, block)
+    }
+
     #[test]
-    fn invalid_sig_rejected() {
+    fn invalid_era_signature_rejected() {
+        let (mut lc, latest_block) = setup();
+
+        let block_hash = *latest_block.hash();
+        let block_era = latest_block.header().era_id();
+
+        // signature's era either too low or too high
+        let era_too_low_sig = FinalitySignature::random_for_block(block_hash, 0);
+        let outcomes = lc.handle_finality_signature_received(Box::new(era_too_low_sig), false);
+        assert!(outcomes.is_empty());
+        let era_too_high_sig =
+            FinalitySignature::random_for_block(block_hash, block_era.value() + AUCTION_DELAY + 1);
+        let outcomes = lc.handle_finality_signature_received(Box::new(era_too_high_sig), false);
+        assert!(outcomes.is_empty());
+    }
+
+    #[test]
+    fn reject_invalid_signature() {
         let _ = logging::init();
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
@@ -731,7 +819,6 @@ mod tests {
             verifiable_chunked_hash_activation,
             None,
         );
-        let block_hash = *block.hash();
         let block_era = block.header().era_id();
 
         let put_block_outcomes =
@@ -742,22 +829,26 @@ mod tests {
             &Some(block),
             "should update the latest block"
         );
-        // signature's era either too low or too high
-        let era_too_low_sig = FinalitySignature::random_for_block(block_hash, 0);
-        let outcomes = lc.handle_finality_signature_received(Box::new(era_too_low_sig), false);
-        assert!(outcomes.is_empty());
-        let era_too_high_sig =
-            FinalitySignature::random_for_block(block_hash, block_era.value() + auction_delay + 1);
-        let outcomes = lc.handle_finality_signature_received(Box::new(era_too_high_sig), false);
-        assert!(outcomes.is_empty());
+
         // signature is not valid
         let block_hash = BlockHash::random(&mut rng);
         let (_, pub_key) = generate_ed25519_keypair();
         let mut invalid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
         // replace the public key so that the verification fails.
         invalid_sig.public_key = pub_key;
-        let outcomes = lc.handle_finality_signature_received(Box::new(invalid_sig), false);
-        assert!(outcomes.is_empty())
+        let outcomes = lc.handle_finality_signature_received(Box::new(invalid_sig.clone()), false);
+        assert_eq!(
+            &*outcomes,
+            [Outcome::LoadSignatures(Box::new(invalid_sig.clone()))]
+        );
+        let outcomes = lc.handle_is_bonded_result(None, Box::new(invalid_sig.clone()), true);
+        assert_eq!(
+            outcomes,
+            vec![Outcome::invalid_signature(
+                Box::new(invalid_sig),
+                SignatureVerificationError::InvalidSignature,
+            )]
+        )
     }
 
     #[test]
