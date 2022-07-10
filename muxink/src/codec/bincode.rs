@@ -26,6 +26,15 @@ pub struct BincodeEncoder<T> {
     item_type: PhantomData<T>,
 }
 
+impl<T> BincodeEncoder<T> {
+    /// Creates a new bincode encoder.
+    pub fn new() -> Self {
+        BincodeEncoder {
+            item_type: PhantomData,
+        }
+    }
+}
+
 impl<T> Transcoder<T> for BincodeEncoder<T>
 where
     T: Serialize,
@@ -46,6 +55,15 @@ where
 /// caveats.
 pub struct BincodeDecoder<T> {
     item_type: PhantomData<T>,
+}
+
+impl<T> BincodeDecoder<T> {
+    /// Creates a new bincode decoder.
+    pub fn new() -> Self {
+        BincodeDecoder {
+            item_type: PhantomData,
+        }
+    }
 }
 
 impl<R, T> Transcoder<R> for BincodeDecoder<T>

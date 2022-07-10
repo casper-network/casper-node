@@ -94,6 +94,16 @@ pub trait SinkMuxExt: Sized {
         Self: Sink<Input>,
         T: Transcoder<NewInput, Output = Input>;
 
+    /// Wraps the current sink in a bincode transcoder.
+    #[cfg(feature = "bincode")]
+    fn bincode<T>(self) -> TranscodingSink<codec::bincode::BincodeEncoder<T>, T, Self>
+    where
+        Self: Sink<bytes::Bytes>,
+        T: serde::Serialize + Sync + Send + 'static,
+    {
+        self.with_transcoder(codec::bincode::BincodeEncoder::new())
+    }
+
     /// Wrap current sink in length delimination.
     ///
     /// Equivalent to `.with_transcoder(LengthDelimited)`.
