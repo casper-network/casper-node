@@ -2,20 +2,22 @@
 //!
 //! Allows for frames to be at most `u16::MAX` (64 KB) in size. Frames are encoded by prefixing
 //! their length in little endian byte order in front of every frame.
+//!
+//! The module provides an encoder through the [`Transcoder`] implementation, and a [`FrameDecoder`]
+//! for reading these length delimited frames back from a stream.
 
 use std::convert::Infallible;
 
 use bytes::{Buf, BytesMut};
 use thiserror::Error;
 
-use crate::{codec::Transcoder, ImmediateFrame};
-
-use super::{DecodeResult, FrameDecoder};
+use super::{DecodeResult, FrameDecoder, Transcoder};
+use crate::ImmediateFrame;
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 
-/// Two-byte length delimited frame encoder.
+/// Two-byte length delimited frame encoder and frame decoder.
 pub struct LengthDelimited;
 
 impl FrameDecoder for LengthDelimited {
