@@ -11,9 +11,9 @@ pub mod mux;
 pub(crate) mod pipe;
 
 use bytes::Buf;
+use codec::length_delimited::{LengthDelimited, LengthPrefixedFrame};
 use codec::{Transcoder, TranscodingSink};
 use futures::Sink;
-use io::length_delimited::{LengthDelimited, LengthPrefixedFrame};
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
 ///
@@ -159,8 +159,8 @@ pub(crate) mod tests {
     use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
 
     use crate::{
-        codec::{Transcoder, TranscodingSink},
-        io::{length_delimited::LengthDelimited, FrameReader, FrameWriter},
+        codec::{length_delimited::LengthDelimited, Transcoder, TranscodingSink},
+        io::{FrameReader, FrameWriter},
         pipe::pipe,
         SinkMuxExt,
     };

@@ -4,7 +4,6 @@
 //! reading them from `AsyncRead`. They can be given a flexible function to encode and decode
 //! frames.
 
-pub mod length_delimited;
 // pub mod serde;
 
 use std::{

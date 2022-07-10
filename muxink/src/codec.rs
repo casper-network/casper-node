@@ -1,3 +1,5 @@
+pub mod length_delimited;
+
 use std::{
     fmt::Debug,
     marker::PhantomData,
