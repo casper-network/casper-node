@@ -159,9 +159,10 @@ pub(crate) mod tests {
     use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
 
     use crate::{
-        fragmented::{make_defragmentizer, make_fragmentizer},
+        codec::{Transcoder, TranscodingSink},
         io::{length_delimited::LengthDelimited, FrameReader, FrameWriter},
         pipe::pipe,
+        SinkMuxExt,
     };
 
     // In tests use small value to make sure that we correctly merge data that was polled from the
@@ -348,6 +349,8 @@ pub(crate) mod tests {
         waker: Option<Waker>,
     }
 
+    /// Helper macro to implement forwarding the `Sink` traits methods to fixed methods on
+    /// `TestingSink`.
     macro_rules! sink_impl_fwd {
         ($ty:ty) => {
             impl<F: Buf> Sink<F> for $ty {
@@ -467,64 +470,133 @@ pub(crate) mod tests {
         join_handle.await.unwrap();
     }
 
-    /// Test an "end-to-end" instance of the assembled pipeline for sending.
+    // /// Test an "end-to-end" instance of the assembled pipeline for sending.
+    // #[test]
+    // fn fragmented_length_prefixed_sink() {
+    //     let (tx, rx) = pipe();
+
+    //     let frame_writer = FrameWriter::new(LengthDelimited, tx);
+    //     let mut fragmented_sink =
+    //         make_fragmentizer::<_, Infallible>(frame_writer, NonZeroUsize::new(5).unwrap());
+
+    //     let frame_reader = FrameReader::new(LengthDelimited, rx, TESTING_BUFFER_INCREMENT);
+    //     let fragmented_reader = make_defragmentizer(frame_reader);
+
+    //     let sample_data = Bytes::from(&b"QRSTUV"[..]);
+
+    //     fragmented_sink
+    //         .send(sample_data)
+    //         .now_or_never()
+    //         .unwrap()
+    //         .expect("send failed");
+
+    //     // Drop the sink, to ensure it is closed.
+    //     drop(fragmented_sink);
+
+    //     let round_tripped: Vec<_> = fragmented_reader.collect().now_or_never().unwrap();
+
+    //     assert_eq!(round_tripped, &[&b"QRSTUV"[..]])
+    // }
+
+    // #[test]
+    // fn from_bytestream_to_frame() {
+    //     let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
+    //     let expected = "ABCDEFGHIJKL";
+
+    //     let defragmentizer = make_defragmentizer(FrameReader::new(
+    //         LengthDelimited,
+    //         input,
+    //         TESTING_BUFFER_INCREMENT,
+    //     ));
+
+    //     let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
+    //     assert_eq!(
+    //         expected,
+    //         messages.first().expect("should have at least one message")
+    //     );
+    // }
+
+    // #[test]
+    // fn from_bytestream_to_multiple_frames() {
+    //     let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x10\x00\xffSINGLE_FRAGMENT\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
+    //     let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_FRAGMENT", b"CRUMBS"];
+
+    //     let defragmentizer = make_defragmentizer(FrameReader::new(
+    //         LengthDelimited,
+    //         input,
+    //         TESTING_BUFFER_INCREMENT,
+    //     ));
+
+    //     let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
+    //     assert_eq!(expected, messages);
+    // }
+
+    // #[test]
+    // fn ext_decorator_encoding() {
+    //     let mut sink: TranscodingSink<
+    //         LengthDelimited,
+    //         Bytes,
+    //         TranscodingSink<LengthDelimited, LengthPrefixedFrame<Bytes>, TestingSink>,
+    //     > = TranscodingSink::new(
+    //         LengthDelimited,
+    //         TranscodingSink::new(LengthDelimited, TestingSink::new()),
+    //     );
+
+    //     let inner: TranscodingSink<LengthDelimited, Bytes, TestingSink> =
+    //         TestingSink::new().with_transcoder(LengthDelimited);
+
+    //     let mut sink2: TranscodingSink<
+    //         LengthDelimited,
+    //         Bytes,
+    //         TranscodingSink<LengthDelimited, LengthPrefixedFrame<Bytes>, TestingSink>,
+    //     > = SinkMuxExt::<LengthPrefixedFrame<Bytes>>::with_transcoder(inner, LengthDelimited);
+
+    //     sink.send(Bytes::new()).now_or_never();
+    // }
+
+    struct StrLen;
+
+    impl Transcoder<String> for StrLen {
+        type Error = Infallible;
+
+        type Output = [u8; 4];
+
+        fn transcode(&mut self, input: String) -> Result<Self::Output, Self::Error> {
+            Ok((input.len() as u32).to_le_bytes())
+        }
+    }
+
+    struct BytesEnc;
+
+    impl<U> Transcoder<U> for BytesEnc
+    where
+        U: AsRef<[u8]>,
+    {
+        type Error = Infallible;
+
+        type Output = Bytes;
+
+        fn transcode(&mut self, input: U) -> Result<Self::Output, Self::Error> {
+            Ok(Bytes::copy_from_slice(input.as_ref()))
+        }
+    }
+
     #[test]
-    fn fragmented_length_prefixed_sink() {
-        let (tx, rx) = pipe();
+    fn ext_decorator_encoding() {
+        let sink = TranscodingSink::new(LengthDelimited, TestingSink::new());
+        let mut outer_sink = TranscodingSink::new(StrLen, TranscodingSink::new(BytesEnc, sink));
 
-        let frame_writer = FrameWriter::new(LengthDelimited, tx);
-        let mut fragmented_sink =
-            make_fragmentizer::<_, Infallible>(frame_writer, NonZeroUsize::new(5).unwrap());
-
-        let frame_reader = FrameReader::new(LengthDelimited, rx, TESTING_BUFFER_INCREMENT);
-        let fragmented_reader = make_defragmentizer(frame_reader);
-
-        let sample_data = Bytes::from(&b"QRSTUV"[..]);
-
-        fragmented_sink
-            .send(sample_data)
+        outer_sink
+            .send("xx".to_owned())
             .now_or_never()
             .unwrap()
-            .expect("send failed");
+            .unwrap();
 
-        // Drop the sink, to ensure it is closed.
-        drop(fragmented_sink);
+        let mut sink2 = TestingSink::new()
+            .length_delimited()
+            .with_transcoder(BytesEnc)
+            .with_transcoder(StrLen);
 
-        let round_tripped: Vec<_> = fragmented_reader.collect().now_or_never().unwrap();
-
-        assert_eq!(round_tripped, &[&b"QRSTUV"[..]])
-    }
-
-    #[test]
-    fn from_bytestream_to_frame() {
-        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL"[..];
-        let expected = "ABCDEFGHIJKL";
-
-        let defragmentizer = make_defragmentizer(FrameReader::new(
-            LengthDelimited,
-            input,
-            TESTING_BUFFER_INCREMENT,
-        ));
-
-        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
-        assert_eq!(
-            expected,
-            messages.first().expect("should have at least one message")
-        );
-    }
-
-    #[test]
-    fn from_bytestream_to_multiple_frames() {
-        let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x10\x00\xffSINGLE_FRAGMENT\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
-        let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_FRAGMENT", b"CRUMBS"];
-
-        let defragmentizer = make_defragmentizer(FrameReader::new(
-            LengthDelimited,
-            input,
-            TESTING_BUFFER_INCREMENT,
-        ));
-
-        let messages: Vec<_> = defragmentizer.collect().now_or_never().unwrap();
-        assert_eq!(expected, messages);
+        sink2.send("xx".to_owned()).now_or_never().unwrap().unwrap();
     }
 }
