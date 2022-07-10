@@ -1,7 +1,9 @@
 //! Frame reading and writing
 //!
 //! Frame readers and writers are responsible for writing a [`Bytes`] frame to an [`AsyncWrite`]
-//! writer, or reading them from [`AsyncRead`] reader.
+//! writer, or reading them from [`AsyncRead`] reader. While writing works for any value that
+//! implements the [`bytes::Buf`] trait, decoding requires an implementation of the [`FrameDecoder`]
+//! trait.
 
 use std::{
     io,
@@ -17,7 +19,14 @@ use crate::{
     try_ready,
 };
 
-/// Reader for frames being encoded.
+/// Frame decoder for an underlying reader.
+///
+/// Uses the given [`FrameDecoder`] `D` to read frames from the underlying IO.
+///
+/// # Cancellation safety
+///
+/// The [`Stream`] implementation on [`FrameDecoder`] is cancellation safe, as it buffers data
+/// inside the reader, not the `next` future.
 pub struct FrameReader<D, R> {
     /// Decoder used to decode frames.
     decoder: D,
@@ -30,6 +39,13 @@ pub struct FrameReader<D, R> {
 }
 
 /// Writer for frames.
+///
+/// Simply writes any given [`Buf`]-implementing frame to the underlying writer.
+///
+/// # Cancellation safety
+///
+/// The [`Sink`] methods on [`FrameWriter`] are cancellation safe. Only a single item is buffered
+/// inside the writer itself.
 pub struct FrameWriter<F, E: Transcoder<F>, W> {
     /// The encoder used to encode outgoing frames.
     encoder: E,
