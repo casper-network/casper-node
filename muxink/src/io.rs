@@ -1,10 +1,7 @@
 //! Frame reading and writing
 //!
-//! Frame readers and writers are responsible for writing a [`Bytes`] frame to an `AsyncWrite`, or
-//! reading them from `AsyncRead`. They can be given a flexible function to encode and decode
-//! frames.
-
-// pub mod serde;
+//! Frame readers and writers are responsible for writing a [`Bytes`] frame to an [`AsyncWrite`]
+//! writer, or reading them from [`AsyncRead`] reader.
 
 use std::{
     io,
@@ -14,38 +11,11 @@ use std::{
 
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
-use thiserror::Error;
 
-use crate::{codec::Transcoder, try_ready};
-
-/// Frame decoder.
-///
-/// A frame decoder is responsible for extracting a frame from a reader's internal buffer.
-pub trait FrameDecoder {
-    /// Decoding error.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// Decodes a frame from a buffer.
-    ///
-    /// Produces either a frame, an error or an indicator for incompletion. See [`DecodeResult`] for
-    /// details.
-    ///
-    /// Implementers of this function are expected to remove completed frames from `buffer`.
-    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
-}
-
-/// The outcome of a [`decode_frame`] call.
-#[derive(Debug, Error)]
-pub enum DecodeResult<E> {
-    /// A complete frame was decoded.
-    Frame(BytesMut),
-    /// No frame could be decoded, an unknown amount of bytes is still required.
-    Incomplete,
-    /// No frame could be decoded, but the remaining amount of bytes required is known.
-    Remaining(usize),
-    /// Irrecoverably failed to decode frame.
-    Failed(E),
-}
+use crate::{
+    codec::{DecodeResult, FrameDecoder, Transcoder},
+    try_ready,
+};
 
 /// Reader for frames being encoded.
 pub struct FrameReader<D, R> {

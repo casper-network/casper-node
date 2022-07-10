@@ -8,17 +8,19 @@
 //! [`SinkMuxExt::with_transcoder`](crate::SinkMuxExt::with_transcoder) and
 //! [`StreamMuxExt::with_transcoder`] provide convenient methods to construct these.
 //!
-//! # Transcoders
+//! # Transcoders and frame decoders
 //!
-//! A concrete [`Transcoder`] specifies how to translate an input value into an output value.
-//! Currently, the following transcoders are available:
+//! A concrete [`Transcoder`] specifies how to translate an input value into an output value. In
+//! constrast, a [`FrameDecoder`] is a special decoder that works on a continous stream of bytes (as
+//! opposed to already disjunct frames) with the help of an
+//! [`io::FrameReader`](crate::io::FrameReader).
 //!
-//! * [`length_delimited::LengthDelimited`]: Transforms byte-like values into self-contained frames
-//!   with a length-prefix.
+//! # Available implementations
 //!
-//! # FrameDecoders
+//! Currently, the following transcoders and frame decoders are available:
 //!
-//! TBW
+//! * [`length_delimited`]: Transforms byte-like values into self-contained frames with a
+//!   length-prefix.
 
 pub mod length_delimited;
 
@@ -29,6 +31,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use bytes::BytesMut;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use thiserror::Error;
 
@@ -45,10 +48,42 @@ pub trait Transcoder<Input> {
 
     /// Transcodes a value.
     ///
-    /// When transcoding to type-erased values it should contain the information required for an
-    /// accompanying reverse-direction transcode to be able to reconstruct the value from the
-    /// transcoded data.
+    /// Note: When transcoding to type-erased values it should contain the information required for
+    ///       an accompanying reverse-direction transcode to be able to reconstruct the value from
+    ///       the transcoded data.
     fn transcode(&mut self, input: Input) -> Result<Self::Output, Self::Error>;
+}
+
+/// Frame decoder.
+///
+/// A frame decoder extracts a frame from a continous bytestream.
+///
+/// Note that there is no `FrameEncoder` trait, since the direction would be covered by a "normal"
+/// transcoder implementing [`Transcoder`].
+pub trait FrameDecoder {
+    /// Decoding error.
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Decodes a frame from a buffer.
+    ///
+    /// Produces either a frame, an error or an indicator for incompletion. See [`DecodeResult`] for
+    /// details.
+    ///
+    /// Implementers of this function are expected to remove completed frames from `buffer`.
+    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
+}
+
+/// The outcome of a [`decode_frame`] call.
+#[derive(Debug, Error)]
+pub enum DecodeResult<E> {
+    /// A complete frame was decoded.
+    Frame(BytesMut),
+    /// No frame could be decoded, an unknown amount of bytes is still required.
+    Incomplete,
+    /// No frame could be decoded, but the remaining amount of bytes required is known.
+    Remaining(usize),
+    /// Irrecoverably failed to decode frame.
+    Failed(E),
 }
 
 /// Error transcoding data from/for an underlying input/output type.

@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::{codec::Transcoder, ImmediateFrame};
 
-use crate::io::{DecodeResult, FrameDecoder};
+use super::{DecodeResult, FrameDecoder};
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
