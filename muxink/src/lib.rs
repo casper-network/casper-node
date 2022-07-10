@@ -9,9 +9,12 @@ pub mod mux;
 #[cfg(test)]
 pub mod testing;
 
+use std::num::NonZeroUsize;
+
 use bytes::Buf;
 use codec::length_delimited::{LengthDelimited, LengthPrefixedFrame};
 use codec::{Transcoder, TranscodingSink, TranscodingStream};
+use fragmented::{Defragmentizer, Fragmentizer, SingleFragment};
 use futures::Sink;
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
@@ -103,6 +106,12 @@ pub trait SinkMuxExt: Sized {
         self.with_transcoder(codec::bincode::BincodeEncoder::new())
     }
 
+    /// Wraps the current sink in a fragmentizer.
+    fn fragmenting<F>(self, fragment_size: NonZeroUsize) -> Fragmentizer<Self, F>
+    where
+        Self: Sink<SingleFragment> + Unpin,
+        F: Buf + Send + Sync + 'static;
+
     /// Wrap current sink in length delimination.
     ///
     /// Equivalent to `.with_transcoder(LengthDelimited)`.
@@ -122,6 +131,14 @@ impl<S> SinkMuxExt for S {
     ) -> TranscodingSink<T, NewInput, Self> {
         TranscodingSink::new(transcoder, self)
     }
+
+    fn fragmenting<F>(self, fragment_size: NonZeroUsize) -> Fragmentizer<Self, F>
+    where
+        Self: Sink<SingleFragment> + Unpin,
+        F: Buf + Send + Sync + 'static,
+    {
+        Fragmentizer::new(fragment_size, self)
+    }
 }
 
 /// Convenience trait for the construction of stream chains.
@@ -134,6 +151,9 @@ pub trait StreamMuxExt: Sized {
     fn bincode<T>(self) -> TranscodingStream<codec::bincode::BincodeDecoder<T>, Self> {
         self.with_transcoder(codec::bincode::BincodeDecoder::new())
     }
+
+    /// Wraps the current stream in a defragmentizer.
+    fn defragmenting(self, max_frame_size: usize) -> Defragmentizer<Self>;
 }
 
 impl<S> StreamMuxExt for S
@@ -142,6 +162,10 @@ where
 {
     fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self> {
         TranscodingStream::new(transcoder, self)
+    }
+
+    fn defragmenting(self, max_frame_size: usize) -> Defragmentizer<Self> {
+        Defragmentizer::new(max_frame_size, self)
     }
 }
 
