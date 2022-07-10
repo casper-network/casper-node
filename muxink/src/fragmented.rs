@@ -4,15 +4,21 @@
 //! continuation byte, which is `0x00` if more fragments are following, `0xFF` if this is the frame's
 //! last fragment.
 
-use std::{future, io, num::NonZeroUsize};
+use std::{
+    future, io,
+    num::NonZeroUsize,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{
+    ready,
     stream::{self},
     Sink, SinkExt, Stream, StreamExt,
 };
 
-use crate::{error::Error, ImmediateFrame};
+use crate::{error::Error, try_ready, ImmediateFrame};
 
 pub type SingleFragment = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
@@ -21,6 +27,112 @@ const MORE_FRAGMENTS: u8 = 0x00;
 
 /// Final fragment indicator.
 const FINAL_FRAGMENT: u8 = 0xFF;
+
+#[derive(Debug)]
+struct Fragmentizer<S, F> {
+    current_frame: Option<F>,
+    current_fragment: Option<SingleFragment>,
+    sink: S,
+    fragment_size: NonZeroUsize,
+}
+
+impl<S, F> Fragmentizer<S, F>
+where
+    S: Sink<SingleFragment> + Unpin,
+    F: Buf,
+{
+    /// Creates a new fragmentizer with the given fragment size.
+    pub fn new(fragment_size: NonZeroUsize, sink: S) -> Self {
+        Fragmentizer {
+            current_frame: None,
+            current_fragment: None,
+            sink,
+            fragment_size,
+        }
+    }
+
+    fn flush_current_frame(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), <S as Sink<SingleFragment>>::Error>> {
+        loop {
+            if self.current_fragment.is_some() {
+                // There is fragment data to send, attempt to make progress:
+
+                // First, poll the sink until it is ready to accept another item.
+                try_ready!(ready!(self.sink.poll_ready_unpin(cx)));
+
+                // Extract the item and push it into the underlying sink.
+                try_ready!(self
+                    .sink
+                    .start_send_unpin(self.current_fragment.take().unwrap()));
+            }
+
+            // At this point, `current_fragment` is empty, so we try to create another one.
+            if let Some(ref mut current_frame) = self.current_frame {
+                let remaining = current_frame.remaining().min(self.fragment_size.into());
+                let fragment_data = current_frame.copy_to_bytes(remaining);
+
+                let continuation_byte: u8 = if current_frame.has_remaining() {
+                    MORE_FRAGMENTS
+                } else {
+                    // If it is the last fragment, remove the current frame.
+                    self.current_frame = None;
+                    FINAL_FRAGMENT
+                };
+
+                self.current_fragment =
+                    Some(ImmediateFrame::from(continuation_byte).chain(fragment_data));
+            } else {
+                // All our fragments are buffered and there are no more fragments to create.
+                return Poll::Ready(Ok(()));
+            }
+        }
+    }
+}
+
+impl<F, S> Sink<F> for Fragmentizer<S, F>
+where
+    F: Buf + Send + Sync + 'static + Unpin,
+    S: Sink<SingleFragment> + Unpin,
+{
+    type Error = <S as Sink<SingleFragment>>::Error;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let self_mut = self.get_mut();
+
+        // We will be ready to accept another item once the current one has been flushed fully.
+        self_mut.flush_current_frame(cx)
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
+        let self_mut = self.get_mut();
+
+        debug_assert!(self_mut.current_frame.is_none());
+        self_mut.current_frame = Some(item);
+
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let self_mut = self.get_mut();
+
+        try_ready!(ready!(self_mut.flush_current_frame(cx)));
+
+        // At this point everything has been buffered, so we defer to the underlying sink's flush to
+        // ensure the final fragment also has been sent.
+
+        self_mut.poll_flush_unpin(cx)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let self_mut = self.get_mut();
+
+        try_ready!(ready!(self_mut.flush_current_frame(cx)));
+
+        self_mut.poll_close_unpin(cx)
+    }
+}
 
 /// Splits a frame into ready-to-send fragments.
 ///
