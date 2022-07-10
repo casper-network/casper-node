@@ -6,7 +6,10 @@ use std::{
     io,
     net::SocketAddr,
     pin::Pin,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
     time::Duration,
 };
 
@@ -225,8 +228,8 @@ where
     pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     pub(super) max_in_flight_demands: usize,
-    /// Flag indicating whether this node is syncing node.
-    pub(super) is_syncing: bool,
+    /// Flag indicating whether this node is syncing.
+    pub(super) is_syncing: AtomicBool,
 }
 
 /// Handles an incoming connection.
@@ -381,7 +384,7 @@ where
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
-        context.is_syncing,
+        context.is_syncing.load(Ordering::SeqCst),
     );
 
     let serialized_handshake_message = Pin::new(&mut encoder)

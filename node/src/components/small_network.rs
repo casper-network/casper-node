@@ -47,7 +47,10 @@ use std::{
     io,
     net::{SocketAddr, TcpListener},
     result,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
     time::{Duration, Instant},
 };
 
@@ -187,9 +190,6 @@ where
 
     /// The era that is considered the active era by the small network component.
     active_era: EraId,
-
-    /// The flag specifying if the node is in the chain sync process.
-    synchronization_in_progress: bool,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -313,7 +313,7 @@ where
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands: demand_max,
-            is_syncing: true,
+            is_syncing: AtomicBool::new(true),
         });
 
         // Run the server task.
@@ -346,8 +346,6 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
-            // Initially, we assume that we are in the sync process.
-            synchronization_in_progress: true,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -376,6 +374,14 @@ where
         );
 
         Ok((component, effects))
+    }
+
+    /// Disconnects all incoming connections.
+    fn disconnect_incoming_connections(&mut self) {
+        info!("disconnecting incoming connections");
+        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        self.close_incoming_sender = Some(close_incoming_sender);
+        self.close_incoming_receiver = close_incoming_receiver;
     }
 
     /// Queues a message to be sent to all nodes.
@@ -803,8 +809,10 @@ where
     fn update_syncing_nodes_set(&mut self, peer_id: NodeId, is_syncing: bool) {
         // Update set of syncing peers.
         if is_syncing {
+            info!(%peer_id, "is syncing");
             self.syncing_nodes.insert(peer_id);
         } else {
+            info!(%peer_id, "is no longer syncing");
             self.syncing_nodes.remove(&peer_id);
         }
     }
@@ -1083,11 +1091,9 @@ where
                 effects
             }
             Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
-                info!("notifying peers that chain sync has finished");
-                self.synchronization_in_progress = false;
-                let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
-                self.close_incoming_sender = Some(close_incoming_sender);
-                self.close_incoming_receiver = close_incoming_receiver;
+                info!("node has finished syncing");
+                self.context.is_syncing.store(false, Ordering::SeqCst);
+                self.disconnect_incoming_connections();
                 Effects::new()
             }
         }
