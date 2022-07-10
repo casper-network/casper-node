@@ -1048,11 +1048,10 @@ where
 ///     to allow consensus to be initialized.
 ///  4. Fetches the tries under the most recent block's state root hash (parallelized tasks).
 ///
-/// Returns the most recent block header.
+/// Returns the most recent block header and the corresponding most recent key block info.
 async fn fast_sync<REv>(
     ctx: &ChainSyncContext<'_, REv>,
-    trusted_key_block_info: &KeyBlockInfo,
-) -> Result<BlockHeader, Error>
+) -> Result<(BlockHeader, KeyBlockInfo), Error>
 where
     REv: From<FetcherRequest<TrieOrChunk>>
         + From<NetworkInfoRequest>
@@ -1066,8 +1065,9 @@ where
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fast_sync_total_duration_seconds);
 
+    let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
     let (most_recent_block_header, most_recent_key_block_info) =
-        fetch_block_headers_up_to_the_most_recent_one(trusted_key_block_info, ctx).await?;
+        fetch_block_headers_up_to_the_most_recent_one(&trusted_key_block_info, ctx).await?;
 
     fetch_blocks_for_deploy_replay_protection(
         &most_recent_block_header,
@@ -1082,7 +1082,7 @@ where
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(&most_recent_block_header, ctx).await?;
 
-    Ok(most_recent_block_header)
+    Ok((most_recent_block_header, most_recent_key_block_info))
 }
 
 /// Gets the trusted key block info for a trusted block header.
@@ -1874,13 +1874,12 @@ where
         return Ok(outcome);
     }
 
-    let trusted_key_block_info = get_trusted_key_block_info(&ctx).await?;
-    let most_recent_block_header = fast_sync(&ctx, &trusted_key_block_info).await?;
+    let (most_recent_block_header, most_recent_key_block_info) = fast_sync(&ctx).await?;
 
     // Iterate forwards, fetching each full block and deploys but executing each block to generate
     // global state. Stop once we get to a block in the current era.
     let most_recent_block_header =
-        execute_blocks(&most_recent_block_header, &trusted_key_block_info, &ctx).await?;
+        execute_blocks(&most_recent_block_header, most_recent_key_block_info, &ctx).await?;
 
     // If we just committed an emergency upgrade and are re-syncing right after this, potentially
     // the call to `fast_sync` and `execute_blocks` could yield a `most_recent_block_header` which
@@ -2088,9 +2087,11 @@ where
         .await?)
 }
 
+/// Executes forwards from the block after `most_recent_block_header` until we can get no more
+/// recent block from any peer, or the block we executed is in the current era.
 async fn execute_blocks<REv>(
     most_recent_block_header: &BlockHeader,
-    trusted_key_block_info: &KeyBlockInfo,
+    most_recent_key_block_info: KeyBlockInfo,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<BlockHeader, Error>
 where
@@ -2120,21 +2121,18 @@ where
     );
 
     let mut most_recent_block_header = most_recent_block_header.clone();
-    let mut trusted_key_block_info = trusted_key_block_info.clone();
+    let mut key_block_info = most_recent_key_block_info;
     loop {
         let result = fetch_and_store_next::<_, BlockWithMetadata>(
             &most_recent_block_header,
-            &trusted_key_block_info,
+            &key_block_info,
             ctx,
         )
         .await?;
         let block = match result {
             None => {
-                let in_current_era = is_current_era(
-                    &most_recent_block_header,
-                    &trusted_key_block_info,
-                    ctx.config,
-                );
+                let in_current_era =
+                    is_current_era(&most_recent_block_header, &key_block_info, ctx.config);
                 info!(
                     era = most_recent_block_header.era_id().value(),
                     in_current_era,
@@ -2218,20 +2216,16 @@ where
             ctx.config.verifiable_chunked_hash_activation(),
         );
 
-        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+        if let Some(new_key_block_info) = KeyBlockInfo::maybe_from_block_header(
             &most_recent_block_header,
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
-            trusted_key_block_info = key_block_info;
+            key_block_info = new_key_block_info;
         }
 
         // If we managed to sync up to the current era, stop - we'll have to sync the consensus
         // protocol state, anyway.
-        if is_current_era(
-            &most_recent_block_header,
-            &trusted_key_block_info,
-            ctx.config,
-        ) {
+        if is_current_era(&most_recent_block_header, &key_block_info, ctx.config) {
             info!(
                 era = most_recent_block_header.era_id().value(),
                 height = most_recent_block_header.height(),
