@@ -11,7 +11,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Buf, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
 
 use crate::{
@@ -77,7 +77,7 @@ where
     D: FrameDecoder + Unpin,
     R: AsyncRead + Unpin,
 {
-    type Item = io::Result<Bytes>;
+    type Item = io::Result<<D as FrameDecoder>::Output>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let FrameReader {
@@ -88,7 +88,7 @@ where
         } = self.get_mut();
         loop {
             let next_read = match decoder.decode_frame(buffer) {
-                DecodeResult::Frame(frame) => return Poll::Ready(Some(Ok(frame.freeze()))),
+                DecodeResult::Item(frame) => return Poll::Ready(Some(Ok(frame))),
                 DecodeResult::Incomplete => *max_read_buffer_increment,
                 DecodeResult::Remaining(remaining) => remaining.min(*max_read_buffer_increment),
                 DecodeResult::Failed(error) => {

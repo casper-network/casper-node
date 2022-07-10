@@ -8,7 +8,7 @@
 
 use std::convert::Infallible;
 
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 
 use super::{DecodeResult, FrameDecoder, Transcoder};
@@ -22,8 +22,9 @@ pub struct LengthDelimited;
 
 impl FrameDecoder for LengthDelimited {
     type Error = Infallible;
+    type Output = Bytes;
 
-    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error> {
+    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Bytes, Self::Error> {
         let bytes_in_buffer = buffer.remaining();
         if bytes_in_buffer < LENGTH_MARKER_SIZE {
             return DecodeResult::Incomplete;
@@ -43,7 +44,7 @@ impl FrameDecoder for LengthDelimited {
         let mut full_frame = buffer.split_to(end);
         let _ = full_frame.get_u16_le();
 
-        DecodeResult::Frame(full_frame)
+        DecodeResult::Item(full_frame.freeze())
     }
 }
 

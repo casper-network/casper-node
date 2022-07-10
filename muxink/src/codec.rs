@@ -64,20 +64,22 @@ pub trait FrameDecoder {
     /// Decoding error.
     type Error: std::error::Error + Send + Sync + 'static;
 
+    type Output: Send + Sync + 'static;
+
     /// Decodes a frame from a buffer.
     ///
     /// Produces either a frame, an error or an indicator for incompletion. See [`DecodeResult`] for
     /// details.
     ///
     /// Implementers of this function are expected to remove completed frames from `buffer`.
-    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
+    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Output, Self::Error>;
 }
 
 /// The outcome of a [`decode_frame`] call.
 #[derive(Debug, Error)]
-pub enum DecodeResult<E> {
-    /// A complete frame was decoded.
-    Frame(BytesMut),
+pub enum DecodeResult<T, E> {
+    /// A complete item was decoded.
+    Item(T),
     /// No frame could be decoded, an unknown amount of bytes is still required.
     Incomplete,
     /// No frame could be decoded, but the remaining amount of bytes required is known.
