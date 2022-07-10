@@ -306,7 +306,7 @@ mod tests {
 
     use crate::{
         error::Error,
-        tests::{collect_bufs, TestingSink},
+        testing::{collect_bufs, testing_sink::TestingSink},
     };
 
     use super::{ChannelPrefixedFrame, Multiplexer};

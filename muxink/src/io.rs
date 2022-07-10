@@ -1,10 +1,9 @@
 //! Frame reading and writing
 //!
-//! Frame readers and writers are responsible for writing a [`Bytes`] frame to an `AsyncWrite`, or
-//! reading them from `AsyncRead`. They can be given a flexible function to encode and decode
-//! frames.
-
-pub mod length_delimited;
+//! Frame readers and writers are responsible for writing a [`Bytes`] frame to an [`AsyncWrite`]
+//! writer, or reading them from [`AsyncRead`] reader. While writing works for any value that
+//! implements the [`bytes::Buf`] trait, decoding requires an implementation of the [`FrameDecoder`]
+//! trait.
 
 use std::{
     io,
@@ -12,63 +11,22 @@ use std::{
     task::{Context, Poll},
 };
 
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Buf, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
-use thiserror::Error;
 
-use crate::try_ready;
+use crate::{
+    codec::{DecodeResult, FrameDecoder, Transcoder},
+    try_ready,
+};
 
-/// Frame decoder.
+/// Frame decoder for an underlying reader.
 ///
-/// A frame decoder is responsible for extracting a frame from a reader's internal buffer.
-pub trait Decoder {
-    /// Decoding error.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// Decodes a frame from a buffer.
-    ///
-    /// Produces either a frame, an error or an indicator for incompletion. See [`DecodeResult`] for
-    /// details.
-    ///
-    /// Implementers of this function are expected to remove completed frames from `buffer`.
-    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error>;
-}
-
-/// Frame encoder.
+/// Uses the given [`FrameDecoder`] `D` to read frames from the underlying IO.
 ///
-/// A frame encoder adds the framing envelope (or replaces the frame entirely) of a given raw frame.
-pub trait Encoder<F> {
-    /// Encoding error.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// The wrapped frame resulting from encoding the given raw frame.
-    ///
-    /// While this can be simply `Bytes`, using something like `bytes::Chain` allows for more
-    /// efficient encoding here.
-    type WrappedFrame: Buf + Send + Sync + 'static;
-
-    /// Encode a frame.
-    ///
-    /// The resulting `Bytes` should be the bytes to send into the outgoing stream, it must contain
-    /// the information required for an accompanying `Decoder` to be able to reconstruct the frame
-    /// from a raw byte stream.
-    fn encode_frame(&mut self, raw_frame: F) -> Result<Self::WrappedFrame, Self::Error>;
-}
-
-/// The outcome of a [`decode_frame`] call.
-#[derive(Debug, Error)]
-pub enum DecodeResult<E> {
-    /// A complete frame was decoded.
-    Frame(BytesMut),
-    /// No frame could be decoded, an unknown amount of bytes is still required.
-    Incomplete,
-    /// No frame could be decoded, but the remaining amount of bytes required is known.
-    Remaining(usize),
-    /// Irrecoverably failed to decode frame.
-    Failed(E),
-}
-
-/// Reader for frames being encoded.
+/// # Cancellation safety
+///
+/// The [`Stream`] implementation on [`FrameDecoder`] is cancellation safe, as it buffers data
+/// inside the reader, not the `next` future.
 pub struct FrameReader<D, R> {
     /// Decoder used to decode frames.
     decoder: D,
@@ -81,13 +39,20 @@ pub struct FrameReader<D, R> {
 }
 
 /// Writer for frames.
-pub struct FrameWriter<F, E: Encoder<F>, W> {
+///
+/// Simply writes any given [`Buf`]-implementing frame to the underlying writer.
+///
+/// # Cancellation safety
+///
+/// The [`Sink`] methods on [`FrameWriter`] are cancellation safe. Only a single item is buffered
+/// inside the writer itself.
+pub struct FrameWriter<F, E: Transcoder<F>, W> {
     /// The encoder used to encode outgoing frames.
     encoder: E,
     /// Underlying async bytestream being written.
     stream: W,
     /// The frame in process of being sent.
-    current_frame: Option<E::WrappedFrame>,
+    current_frame: Option<E::Output>,
 }
 
 impl<D, R> FrameReader<D, R> {
@@ -109,10 +74,10 @@ impl<D, R> FrameReader<D, R> {
 
 impl<D, R> Stream for FrameReader<D, R>
 where
-    D: Decoder + Unpin,
+    D: FrameDecoder + Unpin,
     R: AsyncRead + Unpin,
 {
-    type Item = io::Result<Bytes>;
+    type Item = io::Result<<D as FrameDecoder>::Output>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let FrameReader {
@@ -123,7 +88,7 @@ where
         } = self.get_mut();
         loop {
             let next_read = match decoder.decode_frame(buffer) {
-                DecodeResult::Frame(frame) => return Poll::Ready(Some(Ok(frame.freeze()))),
+                DecodeResult::Item(frame) => return Poll::Ready(Some(Ok(frame))),
                 DecodeResult::Incomplete => *max_read_buffer_increment,
                 DecodeResult::Remaining(remaining) => remaining.min(*max_read_buffer_increment),
                 DecodeResult::Failed(error) => {
@@ -151,7 +116,8 @@ where
 
 impl<F, E, W> FrameWriter<F, E, W>
 where
-    E: Encoder<F>,
+    E: Transcoder<F>,
+    <E as Transcoder<F>>::Output: Buf,
 {
     /// Creates a new frame writer with the given encoder.
     pub fn new(encoder: E, stream: W) -> Self {
@@ -205,7 +171,8 @@ where
 impl<F, E, W> Sink<F> for FrameWriter<F, E, W>
 where
     Self: Unpin,
-    E: Encoder<F>,
+    E: Transcoder<F>,
+    <E as Transcoder<F>>::Output: Buf,
     F: Buf,
     W: AsyncWrite + Unpin,
 {
@@ -224,7 +191,7 @@ where
     fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
         let wrapped_frame = self
             .encoder
-            .encode_frame(item)
+            .transcode(item)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         self.current_frame = Some(wrapped_frame);
 

@@ -2,26 +2,29 @@
 //!
 //! Allows for frames to be at most `u16::MAX` (64 KB) in size. Frames are encoded by prefixing
 //! their length in little endian byte order in front of every frame.
+//!
+//! The module provides an encoder through the [`Transcoder`] implementation, and a [`FrameDecoder`]
+//! for reading these length delimited frames back from a stream.
 
 use std::convert::Infallible;
 
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 
+use super::{DecodeResult, FrameDecoder, Transcoder};
 use crate::ImmediateFrame;
-
-use super::{DecodeResult, Decoder, Encoder};
 
 /// Lenght of the prefix that describes the length of the following frame.
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 
-/// Two-byte length delimited frame encoder.
+/// Two-byte length delimited frame encoder and frame decoder.
 pub struct LengthDelimited;
 
-impl Decoder for LengthDelimited {
+impl FrameDecoder for LengthDelimited {
     type Error = Infallible;
+    type Output = Bytes;
 
-    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Error> {
+    fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Bytes, Self::Error> {
         let bytes_in_buffer = buffer.remaining();
         if bytes_in_buffer < LENGTH_MARKER_SIZE {
             return DecodeResult::Incomplete;
@@ -41,7 +44,7 @@ impl Decoder for LengthDelimited {
         let mut full_frame = buffer.split_to(end);
         let _ = full_frame.get_u16_le();
 
-        DecodeResult::Frame(full_frame)
+        DecodeResult::Item(full_frame.freeze())
     }
 }
 
@@ -53,19 +56,19 @@ pub struct LengthExceededError(usize);
 /// The frame type for length prefixed frames.
 pub type LengthPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 2]>, F>;
 
-impl<F> Encoder<F> for LengthDelimited
+impl<F> Transcoder<F> for LengthDelimited
 where
     F: Buf + Send + Sync + 'static,
 {
     type Error = LengthExceededError;
-    type WrappedFrame = LengthPrefixedFrame<F>;
+    type Output = LengthPrefixedFrame<F>;
 
-    fn encode_frame(&mut self, raw_frame: F) -> Result<Self::WrappedFrame, Self::Error> {
-        let remaining = raw_frame.remaining();
+    fn transcode(&mut self, input: F) -> Result<Self::Output, Self::Error> {
+        let remaining = input.remaining();
         let length: u16 = remaining
             .try_into()
             .map_err(|_err| LengthExceededError(remaining))?;
-        Ok(ImmediateFrame::from(length).chain(raw_frame))
+        Ok(ImmediateFrame::from(length).chain(input))
     }
 }
 
@@ -73,13 +76,12 @@ where
 mod tests {
     use futures::io::Cursor;
 
-    use crate::{io::FrameReader, tests::collect_stream_results};
+    use crate::{
+        io::FrameReader,
+        testing::{collect_stream_results, TESTING_BUFFER_INCREMENT},
+    };
 
     use super::LengthDelimited;
-
-    // In tests use small value to make sure that we correctly merge data that was polled from the
-    // stream in small fragments.
-    const TESTING_BUFFER_INCREMENT: usize = 4;
 
     /// Decodes the input string, returning the decoded frames and the remainder.
     fn run_decoding_stream(input: &[u8]) -> (Vec<Vec<u8>>, Vec<u8>) {
