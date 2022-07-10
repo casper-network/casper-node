@@ -73,13 +73,12 @@ where
 mod tests {
     use futures::io::Cursor;
 
-    use crate::{io::FrameReader, tests::collect_stream_results};
+    use crate::{
+        io::FrameReader,
+        testing::{collect_stream_results, TESTING_BUFFER_INCREMENT},
+    };
 
     use super::LengthDelimited;
-
-    // In tests use small value to make sure that we correctly merge data that was polled from the
-    // stream in small fragments.
-    const TESTING_BUFFER_INCREMENT: usize = 4;
 
     /// Decodes the input string, returning the decoded frames and the remainder.
     fn run_decoding_stream(input: &[u8]) -> (Vec<Vec<u8>>, Vec<u8>) {

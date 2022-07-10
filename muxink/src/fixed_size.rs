@@ -126,7 +126,7 @@ mod tests {
 
     use crate::{
         fixed_size::ImmediateSink,
-        tests::{collect_stream_results, TestingSink},
+        testing::{collect_stream_results, testing_sink::TestingSink},
     };
 
     use super::ImmediateStream;

@@ -5,18 +5,13 @@
 //! last fragment.
 
 use std::{
-    future, io,
     num::NonZeroUsize,
     pin::Pin,
     task::{Context, Poll},
 };
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{
-    ready,
-    stream::{self},
-    Sink, SinkExt, Stream, StreamExt,
-};
+use bytes::{Buf, Bytes, BytesMut};
+use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use thiserror::Error;
 
 use crate::{error::Error, try_ready, ImmediateFrame};
@@ -30,7 +25,7 @@ const MORE_FRAGMENTS: u8 = 0x00;
 const FINAL_FRAGMENT: u8 = 0xFF;
 
 #[derive(Debug)]
-struct Fragmentizer<S, F> {
+pub struct Fragmentizer<S, F> {
     current_frame: Option<F>,
     current_fragment: Option<SingleFragment>,
     sink: S,
@@ -136,7 +131,7 @@ where
 }
 
 #[derive(Debug)]
-struct Defragmentizer<S> {
+pub struct Defragmentizer<S> {
     stream: S,
     buffer: BytesMut,
     max_output_frame_size: usize,
@@ -153,7 +148,7 @@ impl<S> Defragmentizer<S> {
 }
 
 #[derive(Debug, Error)]
-enum DefragmentizerError<StreamErr> {
+pub enum DefragmentizerError<StreamErr> {
     /// A fragment header was sent that is not `MORE_FRAGMENTS` or `FINAL_FRAGMENT`.
     #[error(
         "received invalid fragment header of {}, expected {} or {}",
@@ -278,11 +273,6 @@ pub fn fragment_frame<B: Buf>(
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
-
-    use bytes::Buf;
-
-    use crate::tests::collect_buf;
 
     // #[test]
     // fn basic_fragmenting_works() {
