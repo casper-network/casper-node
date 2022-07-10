@@ -22,6 +22,8 @@
 //! * [`length_delimited`]: Transforms byte-like values into self-contained frames with a
 //!   length-prefix.
 
+#[cfg(feature = "bincode")]
+pub mod bincode;
 pub mod length_delimited;
 
 use std::{
