@@ -17,6 +17,7 @@ use futures::{
     stream::{self},
     Sink, SinkExt, Stream, StreamExt,
 };
+use thiserror::Error;
 
 use crate::{error::Error, try_ready, ImmediateFrame};
 
@@ -131,6 +132,121 @@ where
         try_ready!(ready!(self_mut.flush_current_frame(cx)));
 
         self_mut.poll_close_unpin(cx)
+    }
+}
+
+#[derive(Debug)]
+struct Defragmentizer<S> {
+    stream: S,
+    buffer: BytesMut,
+    max_output_frame_size: usize,
+}
+
+impl<S> Defragmentizer<S> {
+    pub fn new(max_output_frame_size: usize, stream: S) -> Self {
+        Defragmentizer {
+            stream,
+            buffer: BytesMut::new(),
+            max_output_frame_size,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+enum DefragmentizerError<StreamErr> {
+    /// A fragment header was sent that is not `MORE_FRAGMENTS` or `FINAL_FRAGMENT`.
+    #[error(
+        "received invalid fragment header of {}, expected {} or {}",
+        0,
+        MORE_FRAGMENTS,
+        FINAL_FRAGMENT
+    )]
+    InvalidFragmentHeader(u8),
+    /// A fragment with a length of zero was received that was not final, which is not allowed to
+    /// prevent spam with this kind of frame.
+    #[error("received fragment with zero length that was not final")]
+    NonFinalZeroLengthFragment,
+    /// A zero-length fragment (including the envelope) was received, i.e. missing the header.
+    #[error("missing fragment header")]
+    MissingFragmentHeader,
+    /// The incoming stream was closed, with data still in the buffer, missing a final fragment.
+    #[error("stream closed mid-frame")]
+    IncompleteFrame,
+    /// Reading the next fragment would cause the frame to exceed the maximum size.
+    #[error("would exceed maximum frame size of {max}")]
+    MaximumFrameSizeExceeded {
+        /// The configure maximum frame size.
+        max: usize,
+    },
+    /// An error in the underlying transport stream.
+    #[error(transparent)]
+    Io(StreamErr),
+}
+
+impl<S, E> Stream for Defragmentizer<S>
+where
+    S: Stream<Item = Result<Bytes, E>> + Unpin,
+    E: std::error::Error,
+{
+    type Item = Result<Bytes, DefragmentizerError<E>>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let self_mut = self.get_mut();
+        loop {
+            match ready!(self_mut.stream.poll_next_unpin(cx)) {
+                Some(Ok(mut next_fragment)) => {
+                    let is_final = match next_fragment.get(0).cloned() {
+                        Some(MORE_FRAGMENTS) => true,
+                        Some(FINAL_FRAGMENT) => false,
+                        Some(invalid) => {
+                            return Poll::Ready(Some(Err(
+                                DefragmentizerError::InvalidFragmentHeader(invalid),
+                            )));
+                        }
+                        None => {
+                            return Poll::Ready(Some(Err(
+                                DefragmentizerError::MissingFragmentHeader,
+                            )))
+                        }
+                    };
+                    next_fragment.advance(1);
+
+                    // We do not allow 0-length continuation frames to prevent DOS attacks.
+                    if next_fragment.is_empty() && !is_final {
+                        return Poll::Ready(Some(Err(
+                            DefragmentizerError::NonFinalZeroLengthFragment,
+                        )));
+                    }
+
+                    // Check if we exceeded the maximum buffer.
+                    if self_mut.buffer.len() + next_fragment.remaining()
+                        > self_mut.max_output_frame_size
+                    {
+                        return Poll::Ready(Some(Err(
+                            DefragmentizerError::MaximumFrameSizeExceeded {
+                                max: self_mut.max_output_frame_size,
+                            },
+                        )));
+                    }
+
+                    self_mut.buffer.extend(next_fragment);
+
+                    if is_final {
+                        let frame = self_mut.buffer.split().freeze();
+                        return Poll::Ready(Some(Ok(frame)));
+                    }
+                }
+                Some(Err(err)) => return Poll::Ready(Some(Err(DefragmentizerError::Io(err)))),
+                None => {
+                    if self_mut.buffer.is_empty() {
+                        // All good, stream just closed.
+                        return Poll::Ready(None);
+                    } else {
+                        return Poll::Ready(Some(Err(DefragmentizerError::IncompleteFrame)));
+                    }
+                }
+            }
+        }
     }
 }
 
