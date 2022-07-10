@@ -1,3 +1,25 @@
+//! Value or frame transcoding.
+//!
+//! All operations on values or frame that can be expressed as a one-to-one mapping are performed a
+//! using transcoder that implementing the [`Transcoder`] trait.
+//!
+//! To use transcoders with [`Sink`]s or [`Stream`]s, the [`TranscodingSink`] and
+//! [`TranscodingStream`] should be used. Additionally,
+//! [`SinkMuxExt::with_transcoder`](crate::SinkMuxExt::with_transcoder) and
+//! [`StreamMuxExt::with_transcoder`] provide convenient methods to construct these.
+//!
+//! # Transcoders
+//!
+//! A concrete [`Transcoder`] specifies how to translate an input value into an output value.
+//! Currently, the following transcoders are available:
+//!
+//! * [`length_delimited::LengthDelimited`]: Transforms byte-like values into self-contained frames
+//!   with a length-prefix.
+//!
+//! # FrameDecoders
+//!
+//! TBW
+
 pub mod length_delimited;
 
 use std::{
@@ -35,7 +57,7 @@ pub enum TranscodingIoError<TransErr, IoErr> {
     /// The transcoder failed to transcode the given value.
     #[error("transcoding failed")]
     Transcoder(#[source] TransErr),
-    /// The wrapped io returned an error.
+    /// The wrapped input/output returned an error.
     #[error(transparent)]
     Io(IoErr),
 }
