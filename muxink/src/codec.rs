@@ -103,11 +103,7 @@ pub enum TranscodingIoError<TransErr, IoErr> {
 
 /// A sink adapter for transcoding incoming values into an underlying sink.
 #[derive(Debug)]
-pub struct TranscodingSink<T, Input, S>
-where
-    T: Transcoder<Input>,
-    S: Sink<T::Output>,
-{
+pub struct TranscodingSink<T, Input, S> {
     /// Transcoder used to transcode data before passing it to the sink.
     transcoder: T,
     /// Underlying sink where data is sent.
@@ -116,11 +112,7 @@ where
     _input_frame: PhantomData<Input>,
 }
 
-impl<T, Input, S> TranscodingSink<T, Input, S>
-where
-    T: Transcoder<Input>,
-    S: Sink<T::Output>,
-{
+impl<T, Input, S> TranscodingSink<T, Input, S> {
     /// Creates a new transcoding sink.
     pub fn new(transcoder: T, sink: S) -> Self {
         Self {
@@ -188,7 +180,7 @@ where
 pub struct TranscodingStream<T, S> {
     /// Transcoder used to transcode data before returning from the stream.
     transcoder: T,
-    /// Underlying stream where data is sent.
+    /// Underlying stream from which data is receveid.
     stream: S,
 }
 
@@ -208,5 +200,11 @@ where
             },
             None => Poll::Ready(None),
         }
+    }
+}
+impl<T, S> TranscodingStream<T, S> {
+    /// Creates a new transcoding stream.
+    pub(crate) fn new(transcoder: T, stream: S) -> TranscodingStream<T, S> {
+        TranscodingStream { transcoder, stream }
     }
 }

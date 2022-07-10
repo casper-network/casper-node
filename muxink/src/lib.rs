@@ -11,7 +11,7 @@ pub mod testing;
 
 use bytes::Buf;
 use codec::length_delimited::{LengthDelimited, LengthPrefixedFrame};
-use codec::{Transcoder, TranscodingSink};
+use codec::{Transcoder, TranscodingSink, TranscodingStream};
 use futures::Sink;
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
@@ -91,7 +91,6 @@ pub trait SinkMuxExt: Sized {
         transcoder: T,
     ) -> TranscodingSink<T, NewInput, Self>
     where
-        Self: Sink<Input>,
         T: Transcoder<NewInput, Output = Input>;
 
     /// Wraps the current sink in a bincode transcoder.
@@ -120,12 +119,29 @@ impl<S> SinkMuxExt for S {
     fn with_transcoder<Input, T, NewInput>(
         self,
         transcoder: T,
-    ) -> TranscodingSink<T, NewInput, Self>
-    where
-        S: Sink<Input> + Sized,
-        T: Transcoder<NewInput, Output = Input>,
-    {
+    ) -> TranscodingSink<T, NewInput, Self> {
         TranscodingSink::new(transcoder, self)
+    }
+}
+
+/// Convenience trait for the construction of stream chains.
+pub trait StreamMuxExt: Sized {
+    /// Wraps the current stream with a transcoder.
+    fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self>;
+
+    /// Wraps the current stream in a bincode transcoder.
+    #[cfg(feature = "bincode")]
+    fn bincode<T>(self) -> TranscodingStream<codec::bincode::BincodeDecoder<T>, Self> {
+        self.with_transcoder(codec::bincode::BincodeDecoder::new())
+    }
+}
+
+impl<S> StreamMuxExt for S
+where
+    S: Sized,
+{
+    fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self> {
+        TranscodingStream::new(transcoder, self)
     }
 }
 
