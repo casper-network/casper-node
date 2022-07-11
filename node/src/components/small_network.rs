@@ -303,7 +303,6 @@ where
             consensus_keys,
             handshake_timeout: cfg.handshake_timeout,
             payload_weights: cfg.estimator_weights.clone(),
-            reject_incompatible_versions: cfg.reject_incompatible_versions,
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
@@ -602,7 +601,9 @@ where
             | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
-            ConnectionError::WrongNetwork(_) | ConnectionError::WrongChainspecHash => true,
+            ConnectionError::WrongNetwork(_)
+            | ConnectionError::WrongChainspecHash(_)
+            | ConnectionError::MissingChainspecHash => true,
         }
     }
 

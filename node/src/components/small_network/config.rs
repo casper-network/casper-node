@@ -44,7 +44,6 @@ impl Default for Config {
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
             estimator_weights: Default::default(),
-            reject_incompatible_versions: true,
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
@@ -83,8 +82,6 @@ pub struct Config {
     pub max_incoming_message_rate_non_validators: u32,
     /// Weight distribution for the payload impact estimator.
     pub estimator_weights: EstimatorWeights,
-    /// Whether or not to reject incompatible versions during handshake.
-    pub reject_incompatible_versions: bool,
     /// The protocol version at which (or under) tarpitting is enabled.
     pub tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
