@@ -38,6 +38,7 @@ pub(crate) struct LinearChain {
     /// The next upgrade activation point. When the key block for this era is fully signed, the
     /// linear chain component indicates that the node should restart for an upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
+    verifiable_chunked_hash_activation: EraId,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -96,6 +97,7 @@ impl LinearChain {
         unbonding_delay: u64,
         finality_threshold_fraction: Ratio<u64>,
         next_upgrade_activation_point: Option<ActivationPoint>,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Self {
         LinearChain {
             latest_block: None,
@@ -107,6 +109,7 @@ impl LinearChain {
             unbonding_delay,
             next_upgrade_activation_point,
             finality_threshold_fraction,
+            verifiable_chunked_hash_activation,
         }
     }
 
@@ -127,14 +130,10 @@ impl LinearChain {
 
     /// Called when component gets notified about the fact of the `block` being successfully stored
     /// in the database.
-    pub(super) fn handle_put_block_result(
-        &mut self,
-        block: Box<Block>,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Outcomes {
+    pub(super) fn handle_put_block_result(&mut self, block: Box<Block>) -> Outcomes {
         let mut outcomes = Vec::new();
         let pending_signatures = self.new_block(&block);
-        self.update_latest_block(block.clone(), verifiable_chunked_hash_activation);
+        self.update_latest_block(block.clone());
         if !pending_signatures.is_empty() {
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
             for sig in pending_signatures.iter() {
@@ -287,14 +286,10 @@ impl LinearChain {
     }
 
     /// Updates cache of latest known block.
-    fn update_latest_block(
-        &mut self,
-        latest_block: Box<Block>,
-        verifiable_chunked_hash_activation: EraId,
-    ) {
+    fn update_latest_block(&mut self, latest_block: Box<Block>) {
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             latest_block.header(),
-            verifiable_chunked_hash_activation,
+            self.verifiable_chunked_hash_activation,
         ) {
             let current_era = key_block_info.era_id();
             self.key_block_info.insert(current_era, key_block_info);
@@ -509,11 +504,20 @@ mod tests {
 
     use super::*;
 
+    const VERIFIABLE_CHUNKED_HASH_ACTIVATION: EraId = EraId::new(10);
+
     #[test]
     fn new_block_no_sigs() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            1u64,
+            1u64,
+            Ratio::new(1, 3),
+            None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
+        );
         let block = Block::random(&mut rng);
         let execution_results = HashMap::new();
         let new_block_outcomes =
@@ -526,11 +530,7 @@ mod tests {
             others => panic!("unexpected outcome: {:?}", others),
         }
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
-        let block_stored_outcomes =
-            lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
+        let block_stored_outcomes = lc.handle_put_block_result(Box::new(block.clone()));
         match &*block_stored_outcomes {
             [Outcome::AnnounceBlock(announced_block)] => {
                 assert_eq!(&**announced_block, &block);
@@ -567,7 +567,14 @@ mod tests {
     fn new_block_unvalidated_pending_sigs() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            1u64,
+            1u64,
+            Ratio::new(1, 3),
+            None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
+        );
         let block = Block::random(&mut rng);
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
@@ -606,7 +613,14 @@ mod tests {
     fn new_block_bonded_pending_sigs() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            1u64,
+            1u64,
+            Ratio::new(1, 3),
+            None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
+        );
         let block = Box::new(Block::random(&mut rng));
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
@@ -624,11 +638,7 @@ mod tests {
             outcomes,
         );
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
-        let outcomes =
-            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes = lc.handle_put_block_result(block.clone());
         // `sig_a` and `sig_b` are valid and created by bonded validators.
         let expected_outcomes = {
             let mut tmp = vec![];
@@ -667,7 +677,14 @@ mod tests {
     fn pending_sig_rejected() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            1u64,
+            1u64,
+            Ratio::new(1, 3),
+            None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
+        );
         let block_hash = BlockHash::random(&mut rng);
         let valid_sig = FinalitySignature::random_for_block(block_hash, 0);
         let handle_sig_outcomes =
@@ -722,7 +739,14 @@ mod tests {
         let _ = logging::init();
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            1u64,
+            1u64,
+            Ratio::new(1, 3),
+            None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
+        );
         let block = Block::random(&mut rng);
         let valid_sig =
             FinalitySignature::random_for_block(*block.hash(), block.header().era_id().value());
@@ -747,10 +771,8 @@ mod tests {
             unbonding_delay,
             Ratio::new(1, 3),
             None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
         );
-
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
         // Set the latest known block so that we can trigger the following checks.
         let block = Block::random_with_specifics(
@@ -759,12 +781,11 @@ mod tests {
             10,
             ProtocolVersion::V1_0_0,
             false,
-            verifiable_chunked_hash_activation,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             None,
         );
 
-        let put_block_outcomes =
-            lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
+        let put_block_outcomes = lc.handle_put_block_result(Box::new(block.clone()));
         assert_eq!(put_block_outcomes.len(), 1);
         assert_eq!(
             lc.latest_block(),
@@ -797,19 +818,15 @@ mod tests {
         let _ = logging::init();
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let auction_delay = 1;
         let unbonding_delay = 2;
         let mut lc = LinearChain::new(
             protocol_version,
-            auction_delay,
+            AUCTION_DELAY,
             unbonding_delay,
             Ratio::new(1, 3),
             None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
         );
-
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
         // Set the latest known block so that we can trigger the following checks.
         let block = Block::random_with_specifics(
             &mut rng,
@@ -817,13 +834,12 @@ mod tests {
             10,
             ProtocolVersion::V1_0_0,
             false,
-            verifiable_chunked_hash_activation,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             None,
         );
         let block_era = block.header().era_id();
 
-        let put_block_outcomes =
-            lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
+        let put_block_outcomes = lc.handle_put_block_result(Box::new(block.clone()));
         assert_eq!(put_block_outcomes.len(), 1);
         assert_eq!(
             lc.latest_block(),
@@ -865,10 +881,8 @@ mod tests {
             unbonding_delay,
             Ratio::new(1, 3),
             None,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
         );
-
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
         // Set the latest known block so that we can trigger the following checks.
         let block = Box::new(Block::random_with_specifics(
@@ -877,7 +891,7 @@ mod tests {
             10,
             ProtocolVersion::V1_0_0,
             false,
-            verifiable_chunked_hash_activation,
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             None,
         ));
         let block_hash = *block.hash();
@@ -886,8 +900,7 @@ mod tests {
         let expected_outcomes = vec![Outcome::StoreBlock(block.clone(), HashMap::new())];
         assert_equal(expected_outcomes, new_block_outcomes);
 
-        let put_block_outcomes =
-            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
+        let put_block_outcomes = lc.handle_put_block_result(block.clone());
         // Verify that all outcomes are expected.
         assert_equal(vec![Outcome::AnnounceBlock(block)], put_block_outcomes);
         let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
@@ -929,6 +942,7 @@ mod tests {
             unbonding_delay,
             Ratio::new(1, 3),
             Some(ActivationPoint::EraId(3.into())),
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
         );
 
         // We have four validators, all with the same weight.
@@ -941,10 +955,6 @@ mod tests {
             .iter()
             .map(|sk| (PublicKey::from(sk), 100.into()))
             .collect();
-
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
         // The switch block in era 1 defines how many validators need to sign the one in era 2.
         let block = Box::new(
             Block::new(
@@ -954,13 +964,12 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true, None),
                 Some(validators.clone()),
                 protocol_version,
-                verifiable_chunked_hash_activation,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
         );
 
-        let outcomes =
-            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes = lc.handle_put_block_result(block.clone());
         assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
 
         // The switch block in era 2 is the last before the upgrade.
@@ -972,7 +981,7 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true, None),
                 Some(validators),
                 protocol_version,
-                verifiable_chunked_hash_activation,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
         );
@@ -1005,7 +1014,7 @@ mod tests {
                 Outcome::AnnounceSignature(signatures[0].clone()),
                 Outcome::StoreBlockSignatures(*stored_sigs.clone(), false),
             ],
-            lc.handle_put_block_result(block, verifiable_chunked_hash_activation),
+            lc.handle_put_block_result(block),
         );
 
         // Two signatures is not enough for an upgrade yet: The upgrade flag is false.
@@ -1048,6 +1057,7 @@ mod tests {
             unbonding_delay,
             Ratio::new(1, 3),
             Some(ActivationPoint::EraId(3.into())),
+            VERIFIABLE_CHUNKED_HASH_ACTIVATION,
         );
 
         // We have four validators, all with the same weight.
@@ -1061,9 +1071,6 @@ mod tests {
             .map(|sk| (PublicKey::from(sk), 100.into()))
             .collect();
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
         // The switch block in era 1 defines how many validators need to sign the one in era 2.
         let block = Box::new(
             Block::new(
@@ -1073,12 +1080,11 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true, None),
                 Some(validators.clone()),
                 protocol_version,
-                verifiable_chunked_hash_activation,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
         );
-        let outcomes =
-            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes = lc.handle_put_block_result(block.clone());
         assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
 
         // The switch block in era 2 is the last before the upgrade.
@@ -1090,7 +1096,7 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true, None),
                 Some(validators),
                 protocol_version,
-                verifiable_chunked_hash_activation,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
         );
@@ -1117,8 +1123,7 @@ mod tests {
             expected_sigs.insert_proof(fs.public_key.clone(), fs.signature);
         }
 
-        let outcomes =
-            lc.handle_put_block_result(block.clone(), verifiable_chunked_hash_activation);
+        let outcomes = lc.handle_put_block_result(block.clone());
         assert_equal(
             vec![
                 Outcome::AnnounceBlock(block),

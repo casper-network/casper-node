@@ -41,7 +41,6 @@ pub(crate) struct LinearChainComponent {
     metrics: Metrics,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
-    verifiable_chunked_hash_activation: EraId,
 }
 
 impl LinearChainComponent {
@@ -61,21 +60,17 @@ impl LinearChainComponent {
             unbonding_delay,
             finality_threshold_fraction,
             next_upgrade_activation_point,
+            verifiable_chunked_hash_activation,
         );
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
             stop_for_upgrade: false,
-            verifiable_chunked_hash_activation,
         })
     }
 
     pub(crate) fn stop_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
-    }
-
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
     }
 }
 
@@ -179,9 +174,7 @@ where
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
-                let outcomes = self
-                    .linear_chain_state
-                    .handle_put_block_result(block, self.verifiable_chunked_hash_activation());
+                let outcomes = self.linear_chain_state.handle_put_block_result(block);
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
