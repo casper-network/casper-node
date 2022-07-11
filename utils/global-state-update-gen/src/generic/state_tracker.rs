@@ -229,10 +229,7 @@ impl<T: StateReader> StateTracker<T> {
         let account_hash = public_key.to_account_hash();
 
         // Replace the bid.
-        self.write_entry(
-            Key::Bid(account_hash),
-            Bid::empty(public_key, *bid.bonding_purse()).into(),
-        );
+        self.write_entry(Key::Bid(account_hash), bid.clone().into());
 
         // Update the bonding purses - this will also take care of the total supply changes.
         if let Some(old_bid) = maybe_current_bid {
