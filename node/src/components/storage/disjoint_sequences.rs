@@ -96,6 +96,7 @@ impl Sequence {
 /// For example, if `sequences` contains `[9,9], [7,3]` and `8` is inserted, then `sequences` will
 /// be reduced to `[9,3]`.
 #[derive(Default, Debug, DataSize)]
+#[cfg_attr(test, derive(Clone))]
 pub(super) struct DisjointSequences {
     sequences: Vec<Sequence>,
 }
@@ -462,46 +463,44 @@ mod tests {
         const SEQ_HIGH: Sequence = Sequence { high: 11, low: 9 };
         const SEQ_MID: Sequence = Sequence { high: 6, low: 6 };
         const SEQ_LOW: Sequence = Sequence { high: 3, low: 1 };
-        fn new_sequences() -> DisjointSequences {
-            DisjointSequences {
-                sequences: vec![SEQ_HIGH, SEQ_MID, SEQ_LOW],
-            }
-        }
+        let initial_sequences = DisjointSequences {
+            sequences: vec![SEQ_HIGH, SEQ_MID, SEQ_LOW],
+        };
 
         // Truncate with `max_value` greater or equal to current highest value should be a no-op.
-        let mut disjoint_sequences = new_sequences();
+        let mut disjoint_sequences = initial_sequences.clone();
         disjoint_sequences.truncate(12);
-        assert_eq!(disjoint_sequences.sequences, new_sequences().sequences);
+        assert_eq!(disjoint_sequences.sequences, initial_sequences.sequences);
         disjoint_sequences.truncate(11);
-        assert_eq!(disjoint_sequences.sequences, new_sequences().sequences);
+        assert_eq!(disjoint_sequences.sequences, initial_sequences.sequences);
 
         // Truncate with `max_value` between two sequences should cause the higher sequences to get
         // removed and the lower ones retained unchanged.
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         disjoint_sequences.truncate(SEQ_HIGH.low - 1);
         assert_eq!(disjoint_sequences.sequences, vec![SEQ_MID, SEQ_LOW]);
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         disjoint_sequences.truncate(SEQ_MID.high);
         assert_eq!(disjoint_sequences.sequences, vec![SEQ_MID, SEQ_LOW]);
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         disjoint_sequences.truncate(SEQ_MID.low - 1);
         assert_eq!(disjoint_sequences.sequences, vec![SEQ_LOW]);
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         disjoint_sequences.truncate(SEQ_LOW.high);
         assert_eq!(disjoint_sequences.sequences, vec![SEQ_LOW]);
 
         // Truncate with `max_value` lower than the lowest value should cause all sequences to get
         // removed.
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         disjoint_sequences.truncate(SEQ_LOW.low - 1);
         assert!(disjoint_sequences.sequences.is_empty());
 
         // Truncate with `max_value` within a sequence should cause that sequence to get updated,
         // any higher sequences to get removed, and any lower ones retained unchanged.
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         let max_value = SEQ_HIGH.high - 1;
         disjoint_sequences.truncate(max_value);
         assert_eq!(
@@ -509,7 +508,7 @@ mod tests {
             vec![Sequence::new(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
         );
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         let max_value = SEQ_HIGH.low;
         disjoint_sequences.truncate(max_value);
         assert_eq!(
@@ -517,12 +516,12 @@ mod tests {
             vec![Sequence::new(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
         );
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         let max_value = SEQ_MID.low;
         disjoint_sequences.truncate(max_value);
         assert_eq!(disjoint_sequences.sequences, vec![SEQ_MID, SEQ_LOW]);
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences.clone();
         let max_value = SEQ_LOW.high - 1;
         disjoint_sequences.truncate(max_value);
         assert_eq!(
@@ -530,7 +529,7 @@ mod tests {
             vec![Sequence::new(max_value, SEQ_LOW.low)]
         );
 
-        disjoint_sequences = new_sequences();
+        disjoint_sequences = initial_sequences;
         let max_value = SEQ_LOW.low;
         disjoint_sequences.truncate(max_value);
         assert_eq!(
