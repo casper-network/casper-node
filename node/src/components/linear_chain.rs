@@ -193,7 +193,7 @@ where
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
                 let outcomes = self
                     .linear_chain_state
-                    .handle_stored_signatures_result(maybe_signatures, fs);
+                    .handle_get_stored_signatures_result(maybe_signatures, fs);
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::IsBonded(maybe_known_signatures, new_fs, is_bonded) => {

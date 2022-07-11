@@ -157,7 +157,7 @@ impl LinearChain {
     }
 
     /// Called upon receiving the result of reading finality signatures from the database.
-    pub(super) fn handle_stored_signatures_result(
+    pub(super) fn handle_get_stored_signatures_result(
         &mut self,
         known_signatures: Option<Box<BlockSignatures>>,
         fs: Box<FinalitySignature>,
@@ -236,7 +236,10 @@ impl LinearChain {
         // We want to verify cryptographic correctness at the very end.
         if let Err(err) = new_fs.verify() {
             self.remove_from_pending_fs(&new_fs);
-            warn!(block_hash=%new_fs.block_hash, signer=%new_fs.public_key, %err, "received invalid finality signature");
+            warn!(
+                block_hash=%new_fs.block_hash, signer=%new_fs.public_key, %err,
+                "received invalid finality signature"
+            );
             return vec![Outcome::invalid_signature(
                 new_fs,
                 SignatureVerificationError::InvalidSignature,
@@ -685,7 +688,7 @@ mod tests {
     fn cache_signature(lc: &mut LinearChain, fs: FinalitySignature) {
         // We need to signal that block is known. Otherwise we won't cache the signature.
         let mut block_signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
-        let outcomes = lc.handle_stored_signatures_result(
+        let outcomes = lc.handle_get_stored_signatures_result(
             Some(Box::new(block_signatures.clone())),
             Box::new(fs.clone()),
         );
@@ -763,13 +766,11 @@ mod tests {
         let put_block_outcomes =
             lc.handle_put_block_result(Box::new(block.clone()), verifiable_chunked_hash_activation);
         assert_eq!(put_block_outcomes.len(), 1);
-        {
-            assert_eq!(
-                lc.latest_block(),
-                &Some(block.clone()),
-                "should update the latest block"
-            );
-        }
+        assert_eq!(
+            lc.latest_block(),
+            &Some(block.clone()),
+            "should update the latest block"
+        );
 
         (lc, block)
     }
@@ -893,7 +894,7 @@ mod tests {
         let outcomes = lc.handle_finality_signature_received(Box::new(valid_sig.clone()), false);
         assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
         let cached_sigs_outcomes =
-            lc.handle_stored_signatures_result(None, Box::new(valid_sig.clone()));
+            lc.handle_get_stored_signatures_result(None, Box::new(valid_sig.clone()));
         assert!(matches!(
             &*cached_sigs_outcomes,
             [Outcome::VerifyIfBonded { .. }]
@@ -993,7 +994,7 @@ mod tests {
         );
         assert_equal(
             vec![],
-            lc.handle_stored_signatures_result(None, signatures[0].clone()),
+            lc.handle_get_stored_signatures_result(None, signatures[0].clone()),
         );
         stored_sigs.insert_proof(signatures[0].public_key.clone(), signatures[0].signature);
 
@@ -1008,8 +1009,8 @@ mod tests {
         );
 
         // Two signatures is not enough for an upgrade yet: The upgrade flag is false.
-        let outcomes =
-            lc.handle_stored_signatures_result(Some(stored_sigs.clone()), signatures[1].clone());
+        let outcomes = lc
+            .handle_get_stored_signatures_result(Some(stored_sigs.clone()), signatures[1].clone());
         stored_sigs.insert_proof(signatures[1].public_key.clone(), signatures[1].signature);
         assert_equal(
             vec![
@@ -1020,8 +1021,8 @@ mod tests {
         );
 
         // With the third signature the switch block is signed by more than 67%: The flag is true.
-        let outcomes =
-            lc.handle_stored_signatures_result(Some(stored_sigs.clone()), signatures[2].clone());
+        let outcomes = lc
+            .handle_get_stored_signatures_result(Some(stored_sigs.clone()), signatures[2].clone());
         stored_sigs.insert_proof(signatures[2].public_key.clone(), signatures[2].signature);
         assert_equal(
             vec![
@@ -1109,7 +1110,10 @@ mod tests {
                 vec![Outcome::LoadSignatures(fs.clone())],
                 lc.handle_finality_signature_received(fs.clone(), true),
             );
-            assert_equal(vec![], lc.handle_stored_signatures_result(None, fs.clone()));
+            assert_equal(
+                vec![],
+                lc.handle_get_stored_signatures_result(None, fs.clone()),
+            );
             expected_sigs.insert_proof(fs.public_key.clone(), fs.signature);
         }
 
