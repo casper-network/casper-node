@@ -23,8 +23,8 @@ To find out which branch of the client and launcher are compatible with the curr
 # Supervisor - cross-platform process manager.
 python3 -m pip install supervisor
 
-# toml - Config file parser.
-python3 -m pip install toml
+# Utilities for config file parsing and generation.
+python3 -m pip install toml tomlkit
 
 # Rust toolchain and smart contracts - required by casper-node software.
 cd YOUR_WORKING_DIRECTORY/casper-node
