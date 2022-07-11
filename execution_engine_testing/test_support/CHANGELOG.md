@@ -76,6 +76,7 @@ All notable changes to this project will be documented in this file.  The format
     * `AdditiveMapDiff` to allow easy comparison of two AdditiveMaps
     * `StepRequestBuilder` for building a `StepRequest` (generally only used by the execution engine itself)
     * `UpgradeRequestBuilder` for building an `UpgradeRequest` (generally only used by the execution engine itself)
+* Provide `InMemoryWasmTestBuilder` which will be suitable in most cases for testing a smart contract
 * Provide `LmdbWasmTestBuilder` can be used where global state needs to be persisted after execution of a smart contract
 * Provide several helper functions in `utils` module
 * Provide several default consts and statics useful across many test scenarios
@@ -91,7 +92,6 @@ All notable changes to this project will be documented in this file.  The format
     * `TestContext`
     * `TestContextBuilder`
     * `Value`
-* Remove `InMemoryWasmTestBuilder`.
 
 
 

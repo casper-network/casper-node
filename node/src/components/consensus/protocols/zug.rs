@@ -1962,6 +1962,7 @@ where
     /// Handles the firing of various timers in the protocol.
     fn handle_timer(
         &mut self,
+        timestamp: Timestamp,
         now: Timestamp,
         timer_id: TimerId,
         rng: &mut NodeRng,
@@ -1969,7 +1970,7 @@ where
         match timer_id {
             TIMER_ID_SYNC_PEER => self.handle_sync_peer_timer(now, rng),
             TIMER_ID_UPDATE => {
-                if now >= self.next_scheduled_update {
+                if timestamp >= self.next_scheduled_update {
                     self.next_scheduled_update = Timestamp::MAX;
                 }
                 self.mark_dirty(self.current_round);
@@ -1987,7 +1988,10 @@ where
             // TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => {
             //     self.synchronizer.add_past_due_stored_vertices(now)
             // }
-            _ => unreachable!("unexpected timer ID"),
+            timer_id => {
+                error!(timer_id = timer_id.0, "unexpected timer ID");
+                vec![]
+            }
         }
     }
 

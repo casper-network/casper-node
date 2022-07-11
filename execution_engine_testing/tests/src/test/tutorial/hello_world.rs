@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, Key, RuntimeArgs, StoredValue};
@@ -12,7 +12,7 @@ const MESSAGE_VALUE: &str = "Hello, world!";
 #[ignore]
 #[test]
 fn should_run_hello_world() {
-    let mut builder = LmdbWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = {
