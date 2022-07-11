@@ -317,12 +317,7 @@ fn should_change_one_validator() {
     );
 
     // check bid overwrite
-    let expected_bid = Bid::unlocked(
-        validator3.clone(),
-        bid_purse,
-        U512::from(104),
-        Default::default(),
-    );
+    let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
     assert_eq!(
         result.get(&Key::Bid(account3)),
         Some(&StoredValue::from(expected_bid))
@@ -385,12 +380,7 @@ fn should_change_only_stake_of_one_validator() {
     );
 
     // check bid overwrite
-    let expected_bid = Bid::unlocked(
-        validator3.clone(),
-        bid_purse,
-        U512::from(104),
-        Default::default(),
-    );
+    let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
     assert_eq!(
         result.get(&Key::Bid(account3)),
         Some(&StoredValue::from(expected_bid))
@@ -503,12 +493,7 @@ fn should_replace_one_validator() {
 
     // check bid overwrite
     let account1 = validator1.to_account_hash();
-    let mut expected_bid_1 = Bid::unlocked(
-        validator1.clone(),
-        bid_purse,
-        U512::zero(),
-        Default::default(),
-    );
+    let mut expected_bid_1 = Bid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
     expected_bid_1.deactivate();
     assert_eq!(
         result.get(&Key::Bid(account1)),
