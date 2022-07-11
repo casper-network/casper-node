@@ -260,6 +260,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
+        now: Timestamp,
         timer_id: TimerId,
         rng: &mut NodeRng,
     ) -> ProtocolOutcomes<C>;

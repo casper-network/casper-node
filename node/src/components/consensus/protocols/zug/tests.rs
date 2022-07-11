@@ -449,7 +449,7 @@ fn zug_no_fault() {
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // On timeout, Carol votes to make round 0 skippable.
-    let mut outcomes = sc_c.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    let mut outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_UPDATE, &mut rng);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 0, carol_idx, vote(false)));
     expect_no_gossip_block_finalized(outcomes);
@@ -471,8 +471,12 @@ fn zug_no_fault() {
 
     // On timeout, Carol votes to make round 1 skippable.
     // TODO: Come up with a better test scenario where timestamps are in order.
-    let mut outcomes =
-        sc_c.handle_timer(timestamp + proposal_timeout * 2, TIMER_ID_UPDATE, &mut rng);
+    let mut outcomes = sc_c.handle_timer(
+        timestamp + proposal_timeout * 2,
+        timestamp + proposal_timeout * 2,
+        TIMER_ID_UPDATE,
+        &mut rng,
+    );
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 1, carol_idx, vote(false)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
@@ -492,7 +496,7 @@ fn zug_no_fault() {
     timestamp += block_time;
 
     // In round 3 Carol is the leader, so she creates a new block to propose.
-    let mut outcomes = sc_c.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    let mut outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_UPDATE, &mut rng);
     let block_context = remove_create_new_block(&mut outcomes);
     expect_no_gossip_block_finalized(outcomes);
     assert_eq!(block_context.timestamp(), timestamp);
@@ -530,7 +534,7 @@ fn zug_no_fault() {
 
     let mut sc = new_test_zug(weights, vec![], leader_seq);
     sc.open_wal(dir.path().join("wal"), timestamp);
-    let outcomes = sc.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
+    let outcomes = sc.handle_timer(timestamp, timestamp, TIMER_ID_UPDATE, &mut rng);
     let proposals123 = [(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)];
     expect_finalized(&outcomes, &proposals123);
     assert!(sc.finalized_switch_block());
@@ -648,7 +652,7 @@ fn zug_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
+    let outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(!has_standstill_alert(&outcomes));
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
@@ -658,7 +662,7 @@ fn zug_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
+    let outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(!has_standstill_alert(&outcomes));
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
@@ -668,7 +672,7 @@ fn zug_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
+    let outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(!has_standstill_alert(&outcomes));
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
@@ -678,7 +682,7 @@ fn zug_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
+    let outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(has_standstill_alert(&outcomes));
 }
 
@@ -716,7 +720,7 @@ fn zug_sends_sync_request() {
     timestamp += timeout;
 
     // The protocol state is empty and the SyncRequest should reflect that.
-    let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+    let mut outcomes = sc.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_requests_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
@@ -753,7 +757,7 @@ fn zug_sends_sync_request() {
     sc.handle_message(&mut rng, sender, msg, timestamp);
 
     // The next SyncRequest message must include all the new information.
-    let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+    let mut outcomes = sc.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_requests_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
@@ -939,7 +943,7 @@ fn zug_handles_sync_request() {
     // and handle the responses.
     let mut sc2 = new_test_zug(weights, vec![], &[alice_idx]);
     for _ in 0..2 {
-        let mut outcomes = sc2.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+        let mut outcomes = sc2.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
         let msg = loop {
             if let ProtocolOutcome::CreatedRequestToRandomPeer(payload) =
                 outcomes.pop().expect("expected request to random peer")
@@ -1053,7 +1057,12 @@ fn update_proposal_timeout() {
 
     let (weights, _validators) = abc_weights(1, 2, 3);
     let mut sc = new_test_zug(weights, vec![], &[]);
-    let _outcomes = sc.handle_timer(Timestamp::from(100000), TIMER_ID_UPDATE, &mut rng);
+    let _outcomes = sc.handle_timer(
+        Timestamp::from(100000),
+        Timestamp::from(100000),
+        TIMER_ID_UPDATE,
+        &mut rng,
+    );
 
     let round_start = sc.current_round_start;
     let grace_factor = sc.config.proposal_grace_period as f64 / 100.0 + 1.0;
