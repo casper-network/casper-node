@@ -506,14 +506,16 @@ mod tests {
 
     const VERIFIABLE_CHUNKED_HASH_ACTIVATION: EraId = EraId::new(10);
 
+    const AUCTION_DELAY: u64 = 1;
+    const UNBONDING_DELAY: u64 = 2;
+
     #[test]
     fn new_block_no_sigs() {
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
         let mut lc = LinearChain::new(
-            protocol_version,
-            1u64,
-            1u64,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -566,11 +568,10 @@ mod tests {
     #[test]
     fn new_block_unvalidated_pending_sigs() {
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
         let mut lc = LinearChain::new(
-            protocol_version,
-            1u64,
-            1u64,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -612,11 +613,10 @@ mod tests {
     #[test]
     fn new_block_bonded_pending_sigs() {
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
         let mut lc = LinearChain::new(
-            protocol_version,
-            1u64,
-            1u64,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -676,11 +676,10 @@ mod tests {
     #[test]
     fn pending_sig_rejected() {
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
         let mut lc = LinearChain::new(
-            protocol_version,
-            1u64,
-            1u64,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -738,11 +737,10 @@ mod tests {
     fn known_sig_rejected() {
         let _ = logging::init();
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
         let mut lc = LinearChain::new(
-            protocol_version,
-            1u64,
-            1u64,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -758,17 +756,13 @@ mod tests {
         );
     }
 
-    const AUCTION_DELAY: u64 = 1;
-
     fn setup() -> (LinearChain, Block) {
         let _ = logging::init();
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let unbonding_delay = 2;
         let mut lc = LinearChain::new(
-            protocol_version,
+            ProtocolVersion::V1_0_0,
             AUCTION_DELAY,
-            unbonding_delay,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -817,12 +811,10 @@ mod tests {
     fn reject_invalid_signature() {
         let _ = logging::init();
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let unbonding_delay = 2;
         let mut lc = LinearChain::new(
-            protocol_version,
+            ProtocolVersion::V1_0_0,
             AUCTION_DELAY,
-            unbonding_delay,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -872,13 +864,10 @@ mod tests {
     fn new_block_then_own_sig() {
         let _ = logging::init();
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let auction_delay = 1;
-        let unbonding_delay = 2;
         let mut lc = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             None,
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -931,15 +920,11 @@ mod tests {
     fn upgrade_when_fully_signed() {
         let _ = logging::init();
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let auction_delay = 1;
-        let unbonding_delay = 2;
-
         // The next upgrade is scheduled for era 3.
         let mut lc = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             Some(ActivationPoint::EraId(3.into())),
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -963,7 +948,7 @@ mod tests {
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true, None),
                 Some(validators.clone()),
-                protocol_version,
+                ProtocolVersion::V1_0_0,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
@@ -980,7 +965,7 @@ mod tests {
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true, None),
                 Some(validators),
-                protocol_version,
+                ProtocolVersion::V1_0_0,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
@@ -1046,15 +1031,11 @@ mod tests {
     fn upgrade_when_fully_signed_and_got_signatures_before_block() {
         let _ = logging::init();
         let mut rng = TestRng::new();
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let auction_delay = 1;
-        let unbonding_delay = 2;
-
         // The next upgrade is scheduled for era 3.
         let mut lc = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
+            ProtocolVersion::V1_0_0,
+            AUCTION_DELAY,
+            UNBONDING_DELAY,
             Ratio::new(1, 3),
             Some(ActivationPoint::EraId(3.into())),
             VERIFIABLE_CHUNKED_HASH_ACTIVATION,
@@ -1079,7 +1060,7 @@ mod tests {
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true, None),
                 Some(validators.clone()),
-                protocol_version,
+                ProtocolVersion::V1_0_0,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
@@ -1095,7 +1076,7 @@ mod tests {
                 rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true, None),
                 Some(validators),
-                protocol_version,
+                ProtocolVersion::V1_0_0,
                 VERIFIABLE_CHUNKED_HASH_ACTIVATION,
             )
             .unwrap(),
