@@ -15,7 +15,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::{effect::EffectBuilder, types::NodeId};
+use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
 use super::counting_format::ConnectionId;
 
@@ -268,21 +268,14 @@ impl<P: Display> Display for Message<P> {
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: , is_joiner: {}, chainspec_hash: ",
-                    network_name, public_addr, protocol_version, is_joiner
-                )?;
-
-                if let Some(cert) = consensus_certificate {
-                    write!(f, "{}", cert)?;
-                } else {
-                    f.write_str("-")?;
-                }
-
-                if let Some(hash) = chainspec_hash {
-                    write!(f, "{}", hash)
-                } else {
-                    f.write_str("-")
-                }
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, is_joiner: {}, chainspec_hash: {}",
+                    network_name,
+                    public_addr,
+                    protocol_version,
+                    OptDisplay::new(consensus_certificate.as_ref(), "none"),
+                    is_joiner,
+                    OptDisplay::new(chainspec_hash.as_ref(), "none")
+                )
             }
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
