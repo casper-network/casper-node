@@ -174,7 +174,7 @@ impl LinearChain {
                 // TODO: Disconnect from the sender.
                 return vec![];
             }
-            // If signature is already known, we can remove the the new one from collection of
+            // If the signature is already known, we can remove the new one from the collection of
             // pending signatures.
             if known_signatures.has_proof(&fs.public_key) {
                 self.remove_from_pending_fs(&fs);
