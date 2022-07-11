@@ -157,7 +157,7 @@ pub enum ConnectionError {
     WrongChainspecHash(Digest),
     /// Peer should have included the chainspec hash in the handshake message,
     /// but didn't.
-    #[error("peer did not include mandatory chainspec hash in the handshake")]
+    #[error("peer did not include chainspec hash in the handshake when it was required")]
     MissingChainspecHash,
     /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
