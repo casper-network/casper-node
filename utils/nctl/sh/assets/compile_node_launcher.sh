@@ -11,7 +11,8 @@
 # Import utils.
 source "$NCTL"/sh/utils/main.sh
 
-pushd "$NCTL_CASPER_NODE_LAUNCHER_HOME" || exit
+pushd "$NCTL_CASPER_NODE_LAUNCHER_HOME" || \
+    { echo "Could not find the casper-node-launcher repo - have you cloned it into your working directory?"; exit; }
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
     cargo build
