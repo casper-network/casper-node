@@ -7,13 +7,11 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error, MAX_PAYMENT},
-        execution,
-    },
-    shared::transform::Transform,
+use casper_execution_engine::core::{
+    engine_state::{Error, MAX_PAYMENT},
+    execution,
 };
+use casper_global_state::shared::transform::Transform;
 use casper_types::{
     account::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
     RuntimeArgs, U512,

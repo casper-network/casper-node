@@ -14,6 +14,7 @@ use crate::{
 /// Errors which can occur while executing the Mint contract.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum Error {
     /// Insufficient funds to complete the transfer.
     /// ```

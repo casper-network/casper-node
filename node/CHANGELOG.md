@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add new JSON RPC endpoint `/speculative_exec` that accepts a deploy and a block hash and executes that deploy, returning the execution effects.
 * Add `enable_server` option to all HTTP server configuration sections (`rpc_server`, `rest_server`, `event_stream_server`) which allow users to enable/disable each server independently (enabled by default).
 * Add `enable_server`, `address`, `qps_limit` and `max_body_bytes` to new `speculative_exec_server` section to `config.toml` to configure speculative execution JSON-RPC server (disabled by default).
+* Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
 * Add a `[consensus.zug]` section to `config.toml` for the Zug protocol.
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 

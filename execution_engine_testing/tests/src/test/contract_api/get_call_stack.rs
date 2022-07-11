@@ -331,7 +331,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 
 mod session {
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-    use casper_execution_engine::shared::transform::Transform;
+    use casper_global_state::shared::transform::Transform;
     use casper_types::{runtime_args, system::mint, Key, RuntimeArgs};
 
     use super::{

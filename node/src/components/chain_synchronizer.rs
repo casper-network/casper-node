@@ -10,10 +10,8 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::{
-    core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess},
-    storage::trie::TrieOrChunk,
-};
+use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
+use casper_global_state::storage::trie::TrieOrChunk;
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{

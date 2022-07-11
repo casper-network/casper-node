@@ -10,8 +10,7 @@ use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-
+use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_types::EraId;
 
 use crate::{

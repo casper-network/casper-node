@@ -2,6 +2,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     account::AccountHash,
     api_error,
@@ -17,7 +18,6 @@ use super::{args::Args, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
     shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
-    storage::global_state::StateReader,
 };
 
 impl<'a, R> Externals for Runtime<'a, R>
@@ -995,6 +995,19 @@ where
                     value_ptr,
                     value_ptr_size,
                 )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
+            FunctionIndex::DictionaryReadFuncIndex => {
+                // args(0) = pointer to key in Wasm memory
+                // args(1) = size of key in Wasm memory
+                // args(2) = pointer to output size (output param)
+                let (key_ptr, key_size, output_size_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.read_value,
+                    [key_ptr, key_size, output_size_ptr],
+                )?;
+                let ret = self.dictionary_read(key_ptr, key_size, output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 

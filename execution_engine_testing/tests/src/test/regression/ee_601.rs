@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
+use casper_global_state::shared::{transform::Transform, AdditiveMap};
 use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, StoredValue};
 
 const ARG_AMOUNT: &str = "amount";

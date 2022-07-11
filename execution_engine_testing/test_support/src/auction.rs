@@ -1,17 +1,17 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
-use lmdb::{Cursor, Transaction};
+use casper_global_state::storage::lmdb::{Cursor, Transaction};
 use tempfile::TempDir;
 
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
-        },
-        execution,
+use casper_execution_engine::core::{
+    engine_state::{
+        self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, ChainspecRegistry,
+        EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
     },
-    shared::newtypes::CorrelationId,
+    execution,
+};
+use casper_global_state::{
+    shared::CorrelationId,
     storage::{
         global_state::{CommitProvider, StateProvider},
         trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},

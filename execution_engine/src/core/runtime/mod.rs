@@ -20,6 +20,7 @@ use parity_wasm::elements::Module;
 use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     account::{Account, AccountHash, ActionType, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
@@ -52,13 +53,22 @@ use crate::{
         host_function_costs::{Cost, HostFunction},
         wasm_prep::{self, PreprocessingError},
     },
-    storage::global_state::StateReader,
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,
     },
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
+
+enum CallContractIdentifier {
+    Contract {
+        contract_hash: ContractHash,
+    },
+    ContractPackage {
+        contract_package_hash: ContractPackageHash,
+        version: Option<ContractVersion>,
+    },
+}
 
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
@@ -1065,37 +1075,9 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
-        let key = contract_hash.into();
-        let contract = match self.context.read_gs(&key)? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::InvalidContract(contract_hash));
-            }
-            None => return Err(Error::KeyNotFound(key)),
-        };
+        let identifier = CallContractIdentifier::Contract { contract_hash };
 
-        let contract_entry_point = contract
-            .entry_point(entry_point_name)
-            .cloned()
-            .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
-
-        let contract_package_hash = contract.contract_package_hash();
-
-        let contract_package = match self.context.read_gs(&contract_package_hash.into())? {
-            Some(StoredValue::ContractPackage(contract_package)) => contract_package,
-            Some(_) => {
-                return Err(Error::InvalidContractPackage(contract_package_hash));
-            }
-            None => return Err(Error::KeyNotFound(key)),
-        };
-
-        self.execute_contract(
-            contract_package,
-            contract_hash,
-            contract,
-            contract_entry_point,
-            args,
-        )
+        self.execute_contract(identifier, entry_point_name, args)
     }
 
     /// Calls `version` of the contract living at `key`, invoking `method` with
@@ -1108,53 +1090,12 @@ where
         entry_point_name: String,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
-        let contract_package_key = contract_package_hash.into();
-        let contract_package = match self.context.read_gs(&contract_package_key)? {
-            Some(StoredValue::ContractPackage(contract_package)) => contract_package,
-            Some(_) => {
-                return Err(Error::InvalidContractPackage(contract_package_hash));
-            }
-            None => return Err(Error::KeyNotFound(contract_package_key)),
+        let identifier = CallContractIdentifier::ContractPackage {
+            contract_package_hash,
+            version: contract_version,
         };
 
-        let contract_version_key = match contract_version {
-            Some(version) => {
-                ContractVersionKey::new(self.context.protocol_version().value().major, version)
-            }
-            None => match contract_package.current_contract_version() {
-                Some(v) => v,
-                None => return Err(Error::NoActiveContractVersions(contract_package_hash)),
-            },
-        };
-
-        // Get contract entry point hash
-        let contract_hash = contract_package
-            .lookup_contract_hash(contract_version_key)
-            .cloned()
-            .ok_or(Error::InvalidContractVersion(contract_version_key))?;
-
-        // Get contract data
-        let contract_key = contract_hash.into();
-        let contract = match self.context.read_gs(&contract_key)? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::InvalidContract(contract_hash));
-            }
-            None => return Err(Error::KeyNotFound(contract_key)),
-        };
-
-        let contract_entry_point = contract
-            .entry_point(&entry_point_name)
-            .cloned()
-            .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
-
-        self.execute_contract(
-            contract_package,
-            contract_hash,
-            contract,
-            contract_entry_point,
-            args,
-        )
+        self.execute_contract(identifier, &entry_point_name, args)
     }
 
     fn get_context_key_for_contract_call(
@@ -1196,12 +1137,68 @@ where
 
     fn execute_contract(
         &mut self,
-        contract_package: ContractPackage,
-        contract_hash: ContractHash,
-        contract: Contract,
-        entry_point: EntryPoint,
+        identifier: CallContractIdentifier,
+        entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
+        let (contract, contract_hash, contract_package) = match identifier {
+            CallContractIdentifier::Contract { contract_hash } => {
+                let contract_key = contract_hash.into();
+                let contract: Contract = self.context.read_gs_typed(&contract_key)?;
+                let contract_package_key = Key::from(contract.contract_package_hash());
+                let contract_package: ContractPackage =
+                    self.context.read_gs_typed(&contract_package_key)?;
+
+                // System contract hashes are disabled at upgrade point
+                let is_calling_system_contract = self.is_system_contract(contract_key)?;
+
+                // Check if provided contract hash is disabled
+                let is_contract_enabled = contract_package.is_contract_enabled(&contract_hash);
+
+                if !is_calling_system_contract && !is_contract_enabled {
+                    return Err(Error::DisabledContract(contract_hash));
+                }
+
+                (contract, contract_hash, contract_package)
+            }
+            CallContractIdentifier::ContractPackage {
+                contract_package_hash,
+                version,
+            } => {
+                let contract_package_key = Key::from(contract_package_hash);
+                let contract_package: ContractPackage =
+                    self.context.read_gs_typed(&contract_package_key)?;
+
+                let contract_version_key = match version {
+                    Some(version) => ContractVersionKey::new(
+                        self.context.protocol_version().value().major,
+                        version,
+                    ),
+                    None => match contract_package.current_contract_version() {
+                        Some(v) => v,
+                        None => {
+                            return Err(Error::NoActiveContractVersions(contract_package_hash));
+                        }
+                    },
+                };
+                let contract_hash = contract_package
+                    .lookup_contract_hash(contract_version_key)
+                    .copied()
+                    .ok_or(Error::InvalidContractVersion(contract_version_key))?;
+
+                let contract_key = contract_hash.into();
+                let contract: Contract = self.context.read_gs_typed(&contract_key)?;
+
+                (contract, contract_hash, contract_package)
+            }
+        };
+
+        let entry_point = contract
+            .entry_point(entry_point_name)
+            .cloned()
+            .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
+
+        // Get contract entry point hash
         // if public, allowed
         // if not public, restricted to user group access
         self.validate_group_membership(&contract_package, entry_point.access())?;
@@ -2767,6 +2764,41 @@ where
         };
 
         let cl_value = match self.context.dictionary_get(uref, &dictionary_item_key)? {
+            Some(cl_value) => cl_value,
+            None => return Ok(Err(ApiError::ValueNotFound)),
+        };
+
+        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
+        if let Err(error) = self.write_host_buffer(cl_value) {
+            return Ok(Err(error));
+        }
+
+        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    /// Reads the `value` under a `Key::Dictionary`.
+    fn dictionary_read(
+        &mut self,
+        key_ptr: u32,
+        key_size: u32,
+        output_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        let dictionary_key = self.key_from_mem(key_ptr, key_size)?;
+        let cl_value = match self.context.dictionary_read(dictionary_key)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };

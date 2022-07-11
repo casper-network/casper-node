@@ -29,7 +29,10 @@ use casper_execution_engine::{
         GetEraValidatorsError, GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig,
         UpgradeSuccess,
     },
-    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+};
+use casper_global_state::{
+    shared::CorrelationId,
     storage::{
         global_state::lmdb::LmdbGlobalState,
         transaction_source::lmdb::LmdbEnvironment,
