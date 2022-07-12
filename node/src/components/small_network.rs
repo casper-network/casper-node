@@ -160,19 +160,26 @@ where
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
-    /// Channel signaling a shutdown of the incoming connections.
+    /// Channel signaling a shutdown of the server.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation. It is also replaced with a new channel when we finished the
     // synchronization process in order to force the reconnection with the correct syncing status.
     #[data_size(skip)]
-    close_incoming_sender: Option<watch::Sender<()>>,
-    /// A clone of the receiver is passed to the message reader for all new incoming connections in
-    /// order that they can be gracefully terminated.
-    #[data_size(skip)]
-    close_incoming_receiver: watch::Receiver<()>,
+    shutdown_sender: Option<watch::Sender<()>>,
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
+
+    /// Channel signaling a shutdown of the incoming connections.
+    // Note: This channel is closed when we finished syncing, so the `SmallNetwork` can close all
+    // connections. When they are re-established, the proper value of the now updated `is_syncing`
+    // flag will be exchanged on handshake.
+    #[data_size(skip)]
+    close_incoming_sender: Option<watch::Sender<()>>,
+    /// Handle used by the `message_reader` task to receive a notification that incoming
+    /// connections should be closed.
+    #[data_size(skip)]
+    close_incoming_receiver: watch::Receiver<()>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -321,8 +328,9 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, "starting server background task");
 
-        let (close_incoming_sender, server_shutdown_receiver) = watch::channel(());
-        let close_incoming_receiver = server_shutdown_receiver.clone();
+        let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
+        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+
         let server_join_handle = tokio::spawn(
             tasks::server(
                 context.clone(),
@@ -338,6 +346,7 @@ where
             outgoing_manager,
             connection_symmetries: HashMap::new(),
             syncing_nodes: HashSet::new(),
+            shutdown_sender: Some(server_shutdown_sender),
             close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
             server_join_handle: Some(server_join_handle),
@@ -376,8 +385,7 @@ where
         Ok((component, effects))
     }
 
-    /// Disconnects all incoming connections.
-    fn disconnect_incoming_connections(&mut self) {
+    fn close_incoming_connections(&mut self) {
         info!("disconnecting incoming connections");
         let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
         self.close_incoming_sender = Some(close_incoming_sender);
@@ -753,14 +761,17 @@ where
         for request in requests.into_iter() {
             trace!(%request, "processing dial request");
             match request {
-                DialRequest::Dial { addr, span } => effects.extend(
-                    tasks::connect_outgoing(self.context.clone(), addr)
-                        .instrument(span.clone())
-                        .event(|outgoing| Event::OutgoingConnection {
-                            outgoing: Box::new(outgoing),
-                            span,
-                        }),
-                ),
+                DialRequest::Dial { addr, span } => {
+                    info!(is_syncing = ?self.context.is_syncing, "connecting");
+                    effects.extend(
+                        tasks::connect_outgoing(self.context.clone(), addr)
+                            .instrument(span.clone())
+                            .event(|outgoing| Event::OutgoingConnection {
+                                outgoing: Box::new(outgoing),
+                                span,
+                            }),
+                    )
+                }
                 DialRequest::Disconnect { handle: _, span } => {
                     // Dropping the `handle` is enough to signal the connection to shutdown.
                     span.in_scope(|| {
@@ -855,6 +866,7 @@ where
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
             // Close the shutdown socket, causing the server to exit.
+            drop(self.shutdown_sender.take());
             drop(self.close_incoming_sender.take());
 
             // Wait for the server to exit cleanly.
@@ -1093,7 +1105,7 @@ where
             Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
                 info!("node has finished syncing");
                 self.context.is_syncing.store(false, Ordering::SeqCst);
-                self.disconnect_incoming_connections();
+                self.close_incoming_connections();
                 Effects::new()
             }
         }

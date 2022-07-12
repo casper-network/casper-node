@@ -39,6 +39,7 @@ pub(crate) enum Message<P> {
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
         /// Holds the information whether the node is syncing.
+        #[serde(default)]
         is_syncing: bool,
     },
     Payload(P),
