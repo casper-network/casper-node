@@ -182,8 +182,6 @@ pub(crate) enum IncomingConnection<P> {
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
         stream: SplitStream<FullTransport<P>>,
-        /// Flag indicating whether we've established a connection to a joining node.
-        is_joiner: bool,
     },
 }
 
@@ -205,12 +203,11 @@ impl<P> Display for IncomingConnection<P> {
                 peer_id,
                 peer_consensus_public_key,
                 stream: _,
-                is_joiner,
             } => {
                 write!(
                     f,
-                    "connection established from {}/{}; public: {}, joiner: {}",
-                    peer_addr, peer_id, public_addr, is_joiner,
+                    "connection established from {}/{}; public: {}",
+                    peer_addr, peer_id, public_addr,
                 )?;
 
                 if let Some(public_key) = peer_consensus_public_key {
