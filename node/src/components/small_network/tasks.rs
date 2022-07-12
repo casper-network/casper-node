@@ -215,8 +215,6 @@ where
     pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
     pub(super) payload_weights: EstimatorWeights,
-    /// Whether or not to reject incompatible versions during handshake.
-    pub(super) reject_incompatible_versions: bool,
     /// The protocol version at which (or under) tarpitting is enabled.
     pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
@@ -420,6 +418,7 @@ where
         protocol_version,
         consensus_certificate,
         is_joiner,
+        chainspec_hash,
     } = remote_message
     {
         debug!(%protocol_version, "handshake received");
@@ -435,9 +434,7 @@ where
         //
         // Since we are not using SemVer for versioning, we cannot make any assumptions about
         // compatibility, so we allow only exact version matches.
-        if context.reject_incompatible_versions
-            && protocol_version != context.chain_info.protocol_version
-        {
+        if protocol_version != context.chain_info.protocol_version {
             if let Some(threshold) = context.tarpit_version_threshold {
                 if protocol_version <= threshold {
                     let mut rng = crate::new_rng();
@@ -454,6 +451,14 @@ where
                 }
             }
             return Err(ConnectionError::IncompatibleVersion(protocol_version));
+        }
+
+        // We check the chainspec hash to ensure peer is using the same chainspec as us.
+        // The remote message should always have a chainspec hash at this point since
+        // we checked the protocol version previously.
+        let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
+        if peer_chainspec_hash != context.chain_info.chainspec_hash {
+            return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
         }
 
         let peer_consensus_public_key = consensus_certificate
