@@ -594,14 +594,16 @@ impl EraSupervisor {
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event> {
-        if timestamp.elapsed().millis() > TIMER_DELAY_WARNING_MILLIS {
+        let now = Timestamp::now();
+        let delay = now.saturating_diff(timestamp).millis();
+        if delay > TIMER_DELAY_WARNING_MILLIS {
             warn!(
-                era = era_id.value(), timer_id = timer_id.0, delay = %timestamp.elapsed(),
+                era = era_id.value(), timer_id = timer_id.0, %delay,
                 "timer called with long delay"
             );
         }
         self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
-            consensus.handle_timer(timestamp, timer_id, rng)
+            consensus.handle_timer(timestamp, now, timer_id, rng)
         })
     }
 

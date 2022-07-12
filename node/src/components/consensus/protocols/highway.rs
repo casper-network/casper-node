@@ -887,41 +887,48 @@ where
 
     fn handle_timer(
         &mut self,
-        now: Timestamp,
+        timestamp: Timestamp,
+        _now: Timestamp,
         timer_id: TimerId,
         _rng: &mut NodeRng,
     ) -> ProtocolOutcomes<C> {
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
-                let effects = self.highway.handle_timer(now);
-                self.process_av_effects(effects, now)
+                let effects = self.highway.handle_timer(timestamp);
+                self.process_av_effects(effects, timestamp)
             }
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => {
-                self.synchronizer.add_past_due_stored_vertices(now)
+                self.synchronizer.add_past_due_stored_vertices(timestamp)
             }
             TIMER_ID_PURGE_VERTICES => {
-                let oldest = now.saturating_sub(self.config.pending_vertex_timeout);
+                let oldest = timestamp.saturating_sub(self.config.pending_vertex_timeout);
                 self.synchronizer.purge_vertices(oldest);
                 self.pvv_cache.clear();
-                let next_time = now + self.config.pending_vertex_timeout;
+                let next_time = timestamp + self.config.pending_vertex_timeout;
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => {
                 self.log_participation();
                 match self.config.log_participation_interval {
                     Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
-                        vec![ProtocolOutcome::ScheduleTimer(now + interval, timer_id)]
+                        vec![ProtocolOutcome::ScheduleTimer(
+                            timestamp + interval,
+                            timer_id,
+                        )]
                     }
                     _ => vec![],
                 }
             }
-            TIMER_ID_REQUEST_STATE => self.handle_request_state_timer(now),
-            TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
+            TIMER_ID_REQUEST_STATE => self.handle_request_state_timer(timestamp),
+            TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(timestamp),
             TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
                 match self.config.log_synchronizer_interval {
                     Some(interval) if !self.finalized_switch_block() => {
-                        vec![ProtocolOutcome::ScheduleTimer(now + interval, timer_id)]
+                        vec![ProtocolOutcome::ScheduleTimer(
+                            timestamp + interval,
+                            timer_id,
+                        )]
                     }
                     _ => vec![],
                 }

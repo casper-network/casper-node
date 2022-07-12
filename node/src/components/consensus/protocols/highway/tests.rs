@@ -174,14 +174,14 @@ fn send_a_valid_wire_unit() {
 
     // Our protocol state has changed since initialization, so there is no alert.
     now += standstill_timeout;
-    let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT, &mut rng);
+    let outcomes = highway_protocol.handle_timer(now, now, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     let expected_outcome =
         ProtocolOutcome::ScheduleTimer(now + standstill_timeout, TIMER_ID_STANDSTILL_ALERT);
     assert_eq!(&*outcomes, [expected_outcome]);
 
     // If after another timeout, the state has not changed, an alert is raised.
     now += standstill_timeout;
-    let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT, &mut rng);
+    let outcomes = highway_protocol.handle_timer(now, now, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert_eq!(&*outcomes, [ProtocolOutcome::StandstillAlert]);
 }
 
