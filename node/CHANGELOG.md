@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `enable_server` option to all HTTP server configuration sections (`rpc_server`, `rest_server`, `event_stream_server`) which allow users to enable/disable each server independently (enabled by default).
 * Add `enable_server`, `address`, `qps_limit` and `max_body_bytes` to new `speculative_exec_server` section to `config.toml` to configure speculative execution JSON-RPC server (disabled by default).
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
+* The network handshake now contains the hash of the chainspec used and will be successful only if they match.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
@@ -60,6 +61,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
+* `null` should no longer be used as a value for `params` in JSON-RPC requests.  Prefer an empty Array or Object.
 
 ### Removed
 * Legacy synchronization from genesis in favor of fast sync has been removed.
@@ -69,11 +71,12 @@ All notable changes to this project will be documented in this file.  The format
 * Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
 * Remove asymmetric key functionality (move to `casper-types` crate behind feature "std").
 * Remove time types (move to `casper-types` with some functionality behind feature "std").
+* Remove `reject_incompatible_versions` option from `config.toml`, meaning now all versions different than the current one are rejected through the `chainspec_hash` check in the network handshake.
 
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
-* JSON-RPC server is now compliant with the standard. Specifically, correct error values are now returned in responses, and `null` is no longer accepted as a value for `params` in requests.
+* JSON-RPC server is now mostly compliant with the standard. Specifically, correct error values are now returned in responses in many failure cases.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).

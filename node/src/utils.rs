@@ -4,6 +4,7 @@
 mod display_error;
 pub(crate) mod ds;
 mod external;
+pub(crate) mod opt_display;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
 pub(crate) mod umask;
