@@ -1297,7 +1297,7 @@ where
     let ctx = ChainSyncContext::new_for_sync_to_genesis(&effect_builder, &config, &metrics).await?;
     fetch_headers_till_genesis(&ctx).await?;
     fetch_blocks_and_state_and_finality_signatures_since_genesis(&ctx).await?;
-    effect_builder.announce_finished_syncing().await;
+    effect_builder.announce_finished_chain_syncing().await;
     info!("finished chain sync to genesis");
     Ok(())
 }

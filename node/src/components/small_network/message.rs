@@ -39,7 +39,7 @@ pub(crate) enum Message<P> {
         /// A self-signed certificate indicating validator status.
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
-        /// Holds the information whether the node is syncing.
+        /// True if the node is syncing.
         #[serde(default)]
         is_syncing: bool,
         /// Hash of the chainspec the node is running.

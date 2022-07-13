@@ -160,10 +160,9 @@ where
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
-    /// Channel signaling a shutdown of the server.
+    /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
-    // they should cease operation. It is also replaced with a new channel when we finished the
-    // synchronization process in order to force the reconnection with the correct syncing status.
+    // they should cease operation.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
     /// Join handle for the server thread.
@@ -762,17 +761,14 @@ where
         for request in requests.into_iter() {
             trace!(%request, "processing dial request");
             match request {
-                DialRequest::Dial { addr, span } => {
-                    info!(is_syncing = ?self.context.is_syncing, "connecting");
-                    effects.extend(
-                        tasks::connect_outgoing(self.context.clone(), addr)
-                            .instrument(span.clone())
-                            .event(|outgoing| Event::OutgoingConnection {
-                                outgoing: Box::new(outgoing),
-                                span,
-                            }),
-                    )
-                }
+                DialRequest::Dial { addr, span } => effects.extend(
+                    tasks::connect_outgoing(self.context.clone(), addr)
+                        .instrument(span.clone())
+                        .event(|outgoing| Event::OutgoingConnection {
+                            outgoing: Box::new(outgoing),
+                            span,
+                        }),
+                ),
                 DialRequest::Disconnect { handle: _, span } => {
                     // Dropping the `handle` is enough to signal the connection to shutdown.
                     span.in_scope(|| {
@@ -821,10 +817,10 @@ where
     fn update_syncing_nodes_set(&mut self, peer_id: NodeId, is_syncing: bool) {
         // Update set of syncing peers.
         if is_syncing {
-            info!(%peer_id, "is syncing");
+            debug!(%peer_id, "is syncing");
             self.syncing_nodes.insert(peer_id);
         } else {
-            info!(%peer_id, "is no longer syncing");
+            debug!(%peer_id, "is no longer syncing");
             self.syncing_nodes.remove(&peer_id);
         }
     }
@@ -1104,7 +1100,6 @@ where
                 effects
             }
             Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
-                info!("node has finished syncing");
                 self.context.is_syncing.store(false, Ordering::SeqCst);
                 self.close_incoming_connections();
                 Effects::new()

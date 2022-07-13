@@ -126,7 +126,7 @@ impl ChainSynchronizer<ParticipatingEvent> {
         if !synchronizer.config.sync_to_genesis() {
             return Ok((
                 synchronizer,
-                effect_builder.announce_finished_syncing().ignore(),
+                effect_builder.announce_finished_chain_syncing().ignore(),
             ));
         }
 

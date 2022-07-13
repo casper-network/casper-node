@@ -112,7 +112,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -1664,11 +1664,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announce that the sync process has finished.
-    pub(crate) async fn announce_finished_syncing(self)
+    pub(crate) async fn announce_finished_chain_syncing(self)
     where
         REv: From<ChainSynchronizerAnnouncement>,
     {
-        info!("announcing chain sync finished");
         self.event_queue
             .schedule(
                 ChainSynchronizerAnnouncement::SyncFinished,
