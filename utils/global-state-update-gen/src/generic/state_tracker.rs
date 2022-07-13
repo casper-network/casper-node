@@ -99,8 +99,8 @@ impl<T: StateReader> StateTracker<T> {
                 let amount = self
                     .reader
                     .query(base_key)
-                    .and_then(|v| CLValue::try_from(v).ok())
-                    .and_then(|cl_value| cl_value.into_t().ok())
+                    .map(|v| CLValue::try_from(v).expect("purse balance should be a CLValue"))
+                    .map(|cl_value| cl_value.into_t().expect("purse balance should be a U512"))
                     .unwrap_or_else(U512::zero);
                 self.purses_cache.insert(purse, amount);
                 amount

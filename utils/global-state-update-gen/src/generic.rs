@@ -165,22 +165,15 @@ fn gen_snapshot_from_old(
         .collect();
 
     for recipients in snapshot.values_mut() {
-        let mut to_drop = vec![];
-        for (public_key, recipient) in recipients.iter_mut() {
-            match stakes_map.get(public_key) {
-                Some(stake) if *stake == U512::zero() => {
-                    to_drop.push(public_key.clone());
-                }
-                Some(stake) => {
-                    *recipient =
-                        SeigniorageRecipient::new(*stake, Default::default(), Default::default());
-                }
-                None => (),
+        recipients.retain(|public_key, recipient| match stakes_map.get(public_key) {
+            Some(stake) if *stake == U512::zero() => false,
+            Some(stake) => {
+                *recipient =
+                    SeigniorageRecipient::new(*stake, Default::default(), Default::default());
+                true
             }
-        }
-        for public_key in to_drop {
-            recipients.remove(&public_key);
-        }
+            None => true,
+        });
     }
 
     snapshot
@@ -189,9 +182,9 @@ fn gen_snapshot_from_old(
 /// Generates a set of writes necessary to "fix" the bids, ie.:
 /// - set the bids of the new validators to their desired stakes,
 /// - remove the bids of the old validators that are no longer validators,
-/// - remove all the bids that are larger than the smallest bid among the new validators
-/// (necessary, because such bidders would outbid the validators decided by the social
-/// consensus).
+/// - if `only_listed_validators` is true, remove all the bids that are larger than the smallest
+///   bid among the new validators (necessary, because such bidders would outbid the validators
+///   decided by the social consensus).
 pub fn add_and_remove_bids<T: StateReader>(
     state: &mut StateTracker<T>,
     validators_diff: &ValidatorsDiff,
@@ -234,7 +227,11 @@ fn find_large_bids<T: StateReader>(
     let seigniorage_recipients = snapshot.values().next().unwrap();
     let min_bid = seigniorage_recipients
         .values()
-        .map(SeigniorageRecipient::stake)
+        .map(|recipient| {
+            recipient
+                .total_stake()
+                .expect("should have valid total stake")
+        })
         .min()
         .unwrap();
     state
@@ -242,7 +239,7 @@ fn find_large_bids<T: StateReader>(
         .into_iter()
         .filter(|(pub_key, bid)| {
             bid.total_staked_amount()
-                .map_or(true, |amount| amount >= *min_bid)
+                .map_or(true, |amount| amount >= min_bid)
                 && !seigniorage_recipients.contains_key(pub_key)
         })
         .map(|(pub_key, _bid)| pub_key)

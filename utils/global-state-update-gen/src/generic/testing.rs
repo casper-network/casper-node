@@ -557,6 +557,6 @@ fn should_replace_one_validator() {
         ))
     );
 
-    // 8 keys above should be all that was overwritten
+    // 10 keys above should be all that was overwritten
     assert_eq!(result.len(), 10);
 }
