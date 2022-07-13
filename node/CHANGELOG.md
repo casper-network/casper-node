@@ -60,6 +60,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
+* `null` should no longer be used as a value for `params` in JSON-RPC requests.  Prefer an empty Array or Object.
 
 ### Removed
 * Legacy synchronization from genesis in favor of fast sync has been removed.
@@ -73,7 +74,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
-* JSON-RPC server is now compliant with the standard. Specifically, correct error values are now returned in responses, and `null` is no longer accepted as a value for `params` in requests.
+* JSON-RPC server is now mostly compliant with the standard. Specifically, correct error values are now returned in responses in many failure cases.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).

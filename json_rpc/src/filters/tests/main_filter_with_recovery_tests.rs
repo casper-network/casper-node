@@ -55,7 +55,9 @@ fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
     handlers.register_handler(GET_BAD_THING, Arc::new(get_bad_thing));
     let handlers = handlers.build();
 
-    main_filter(handlers).recover(handle_rejection).boxed()
+    main_filter(handlers, false)
+        .recover(handle_rejection)
+        .boxed()
 }
 
 #[tokio::test]
