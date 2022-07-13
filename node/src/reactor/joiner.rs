@@ -546,13 +546,14 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (chain_synchronizer, sync_effects) = ChainSynchronizer::<JoinerEvent>::new(
-            Arc::clone(chainspec_loader.chainspec()),
-            config.node.clone(),
-            config.network.clone(),
-            effect_builder,
-            registry,
-        )?;
+        let (chain_synchronizer, sync_effects) =
+            ChainSynchronizer::<JoinerEvent>::new_for_fast_sync(
+                Arc::clone(chainspec_loader.chainspec()),
+                config.node.clone(),
+                config.network.clone(),
+                effect_builder,
+                registry,
+            )?;
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainSynchronizer,
             sync_effects,

@@ -844,7 +844,7 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let (chain_synchronizer, chain_synchronizer_effects) =
-            ChainSynchronizer::<ParticipatingEvent>::new(
+            ChainSynchronizer::<ParticipatingEvent>::new_for_sync_to_genesis(
                 chainspec.clone(),
                 config.node.clone(),
                 config.network.clone(),

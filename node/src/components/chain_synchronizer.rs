@@ -23,7 +23,9 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
+        },
         requests::{
             ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, NetworkInfoRequest,
@@ -31,12 +33,11 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    reactor::{joiner::JoinerEvent, participating::ParticipatingEvent},
     storage::StorageRequest,
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockPayload, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
-        FinalizedBlock, NodeConfig,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
+        FinalizedApprovalsWithId, FinalizedBlock, NodeConfig,
     },
     NodeRng, SmallNetworkConfig,
 };
@@ -79,68 +80,6 @@ pub(crate) struct ChainSynchronizer<REv> {
     _phantom: PhantomData<REv>,
 }
 
-impl ChainSynchronizer<JoinerEvent> {
-    /// Constructs a new `ChainSynchronizer` suitable for use in the joiner reactor to perform the
-    /// initial fast sync.
-    pub(crate) fn new(
-        chainspec: Arc<Chainspec>,
-        node_config: NodeConfig,
-        small_network_config: SmallNetworkConfig,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        registry: &Registry,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let synchronizer = ChainSynchronizer {
-            config: Config::new(chainspec, node_config, small_network_config),
-            joining_outcome: None,
-            metrics: Metrics::new(registry)?,
-            _phantom: PhantomData,
-        };
-        let effects = synchronizer.fast_sync(effect_builder);
-        Ok((synchronizer, effects))
-    }
-
-    pub(crate) fn metrics(&self) -> Metrics {
-        self.metrics.clone()
-    }
-}
-
-impl ChainSynchronizer<ParticipatingEvent> {
-    /// Constructs a new `ChainSynchronizer` suitable for use in the participating reactor to sync
-    /// to genesis.
-    pub(crate) fn new(
-        chainspec: Arc<Chainspec>,
-        node_config: NodeConfig,
-        small_network_config: SmallNetworkConfig,
-        metrics: Metrics,
-        effect_builder: EffectBuilder<ParticipatingEvent>,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let synchronizer = ChainSynchronizer {
-            config: Config::new(chainspec, node_config, small_network_config),
-            joining_outcome: None,
-            metrics,
-            _phantom: PhantomData,
-        };
-
-        // If we're not configured to sync-to-genesis, return without doing anything but announcing
-        // that the sync process has finished.
-        if !synchronizer.config.sync_to_genesis() {
-            return Ok((
-                synchronizer,
-                effect_builder.announce_finished_chain_syncing().ignore(),
-            ));
-        }
-
-        let effects = operations::run_sync_to_genesis_task(
-            effect_builder,
-            synchronizer.config.clone(),
-            synchronizer.metrics.clone(),
-        )
-        .ignore();
-
-        Ok((synchronizer, effects))
-    }
-}
-
 impl<REv> ChainSynchronizer<REv>
 where
     REv: From<StorageRequest>
@@ -149,7 +88,6 @@ where
         + From<ChainspecLoaderRequest>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
-        + From<FetcherRequest<BlockHeadersBatch>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
@@ -161,17 +99,42 @@ where
         + From<MarkBlockCompletedRequest>
         + Send,
 {
+    /// Constructs a new `ChainSynchronizer` suitable for use in the joiner reactor to perform the
+    /// initial fast sync.
+    pub(crate) fn new_for_fast_sync(
+        chainspec: Arc<Chainspec>,
+        node_config: NodeConfig,
+        small_network_config: SmallNetworkConfig,
+        effect_builder: EffectBuilder<REv>,
+        registry: &Registry,
+    ) -> Result<(Self, Effects<Event>), Error> {
+        let config = Config::new(chainspec, node_config, small_network_config);
+        let metrics = Metrics::new(registry)?;
+
+        let effects =
+            operations::run_fast_sync_task(effect_builder, config.clone(), metrics.clone())
+                .event(Event::FastSyncResult);
+
+        let synchronizer = ChainSynchronizer {
+            config,
+            joining_outcome: None,
+            metrics,
+            _phantom: PhantomData,
+        };
+
+        Ok((synchronizer, effects))
+    }
+
+    pub(crate) fn metrics(&self) -> Metrics {
+        self.metrics.clone()
+    }
+
     pub(crate) fn joining_outcome(&self) -> Option<&JoiningOutcome> {
         self.joining_outcome.as_ref()
     }
 
     pub(crate) fn into_joining_outcome(self) -> Option<JoiningOutcome> {
         self.joining_outcome
-    }
-
-    fn fast_sync(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event> {
-        operations::run_fast_sync_task(effect_builder, self.config.clone(), self.metrics.clone())
-            .event(Event::FastSyncResult)
     }
 
     fn handle_fast_sync_result(
@@ -610,5 +573,55 @@ where
                 result,
             ),
         }
+    }
+}
+
+impl<REv> ChainSynchronizer<REv>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + From<ChainSynchronizerAnnouncement>
+        + Send,
+{
+    /// Constructs a new `ChainSynchronizer` suitable for use in the participating reactor to sync
+    /// to genesis.
+    pub(crate) fn new_for_sync_to_genesis(
+        chainspec: Arc<Chainspec>,
+        node_config: NodeConfig,
+        small_network_config: SmallNetworkConfig,
+        metrics: Metrics,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<(Self, Effects<Event>), Error> {
+        let synchronizer = ChainSynchronizer {
+            config: Config::new(chainspec, node_config, small_network_config),
+            joining_outcome: None,
+            metrics,
+            _phantom: PhantomData,
+        };
+
+        // If we're not configured to sync-to-genesis, return without doing anything but announcing
+        // that the sync process has finished.
+        if !synchronizer.config.sync_to_genesis() {
+            return Ok((
+                synchronizer,
+                effect_builder.announce_finished_chain_syncing().ignore(),
+            ));
+        }
+
+        let effects = operations::run_sync_to_genesis_task(
+            effect_builder,
+            synchronizer.config.clone(),
+            synchronizer.metrics.clone(),
+        )
+        .ignore();
+
+        Ok((synchronizer, effects))
     }
 }
