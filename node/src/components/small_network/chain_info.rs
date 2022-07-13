@@ -51,7 +51,7 @@ impl ChainInfo {
         public_addr: SocketAddr,
         consensus_keys: Option<&ConsensusKeyPair>,
         connection_id: ConnectionId,
-        is_joiner: bool,
+        is_syncing: bool,
     ) -> Message<P> {
         Message::Handshake {
             network_name: self.network_name.clone(),
@@ -59,7 +59,7 @@ impl ChainInfo {
             protocol_version: self.protocol_version,
             consensus_certificate: consensus_keys
                 .map(|key_pair| ConsensusCertificate::create(connection_id, key_pair)),
-            is_joiner,
+            is_syncing,
             chainspec_hash: Some(self.chainspec_hash),
         }
     }

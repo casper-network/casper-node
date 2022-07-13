@@ -41,9 +41,9 @@ use crate::{
     contract_runtime,
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement,
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ChainspecLoaderAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -178,6 +178,8 @@ pub(crate) enum JoinerEvent {
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
     #[from]
+    ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
+    #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
@@ -279,6 +281,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             JoinerEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
             JoinerEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
+            JoinerEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
         }
     }
 }
@@ -437,6 +440,9 @@ impl Display for JoinerEvent {
             JoinerEvent::FinalitySignaturesFetcherRequest(inner) => {
                 write!(f, "finality signatures fetch request: {}", inner)
             }
+            JoinerEvent::ChainSynchronizerAnnouncement(ann) => {
+                write!(f, "chain synchronizer announcement: {}", ann)
+            }
         }
     }
 }
@@ -528,7 +534,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec,
-            true,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
@@ -855,6 +860,12 @@ impl reactor::Reactor for Reactor {
                     event_stream_server::Event::FinalitySignature(fs),
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            JoinerEvent::ChainSynchronizerAnnouncement(
+                ChainSynchronizerAnnouncement::SyncFinished,
+            ) => {
+                warn!("unexpected sync finished announcement in the joiner");
+                Effects::new()
             }
             JoinerEvent::RestServer(event) => reactor::wrap_effects(
                 JoinerEvent::RestServer,

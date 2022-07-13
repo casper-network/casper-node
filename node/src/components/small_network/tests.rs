@@ -160,7 +160,7 @@ impl Payload for Message {
         0
     }
 
-    fn is_unsafe_for_joiners(&self) -> bool {
+    fn is_unsafe_for_syncing_peers(&self) -> bool {
         false
     }
 }
@@ -193,7 +193,6 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             ChainInfo::create_for_testing(),
-            false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =
