@@ -718,7 +718,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 /// Fetches the next block or block header from the network by height.
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
-    trusted_key_block_info: &KeyBlockInfo,
+    key_block_info: &KeyBlockInfo,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<Option<Box<I>>, Error>
 where
@@ -791,8 +791,16 @@ where
                     continue;
                 }
 
+                if key_block_info.era_id() != item.header().era_id() {
+                    error!(
+                        key_block_info_era_id = key_block_info.era_id().value(),
+                        item_header_era_id = item.header().era_id().value(),
+                        "mismatch between key block era id and item header era id"
+                    );
+                }
+
                 if let Err(error) = consensus::check_sufficient_finality_signatures(
-                    trusted_key_block_info.validator_weights(),
+                    key_block_info.validator_weights(),
                     ctx.config.finality_threshold_fraction(),
                     Some(item.finality_signatures()),
                 ) {
@@ -1100,16 +1108,7 @@ where
             .chain_sync_get_trusted_key_block_info_duration_seconds,
     );
 
-    // If the trusted block's version is newer than ours we return an error
-    if ctx.trusted_block_header().protocol_version() > ctx.config.protocol_version() {
-        return Err(Error::RetrievedBlockHeaderFromFutureVersion {
-            current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header().clone()),
-        });
-    }
-
     // Fetch each parent hash one by one until we have the switch block info.
-    // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
     let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
         // Check that we are not restarting right after an emergency restart, which is too early
@@ -1286,7 +1285,6 @@ where
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
         + From<FetcherRequest<BlockHeadersBatch>>
-        + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
@@ -1840,7 +1838,6 @@ where
         + From<ContractRuntimeRequest>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
-        + From<FetcherRequest<BlockHeadersBatch>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
@@ -1868,11 +1865,13 @@ where
             None => return Err(Error::NoHighestBlockHeader),
         };
 
-    if let Some(outcome) = should_emergency_upgrade(&ctx, &highest_block_header).await? {
+    if let Some(outcome) =
+        prepare_for_emergency_upgrade_if_needed(&ctx, &highest_block_header).await?
+    {
         return Ok(outcome);
     }
 
-    if let Some(outcome) = should_upgrade(&ctx, &highest_block_header).await? {
+    if let Some(outcome) = prepare_for_upgrade_if_needed(&ctx, &highest_block_header).await? {
         return Ok(outcome);
     }
 
@@ -1957,7 +1956,9 @@ fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(
 
 /// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an emergency
 /// upgrade before syncing further, or `Ok(None)` if not.
-async fn should_emergency_upgrade<REv>(
+///
+/// If this returns `Ok(Some...)`, we sync the trie store in preparation for running commit_upgrade.
+async fn prepare_for_emergency_upgrade_if_needed<REv>(
     ctx: &ChainSyncContext<'_, REv>,
     highest_block_header: &BlockHeader,
 ) -> Result<Option<FastSyncOutcome>, Error>
@@ -2003,7 +2004,9 @@ where
 
 /// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an upgrade before
 /// syncing further, or `Ok(None)` if not.
-async fn should_upgrade<REv>(
+///
+/// If this returns `Ok(Some...)`, we sync the trie store in preparation for running commit_upgrade.
+async fn prepare_for_upgrade_if_needed<REv>(
     ctx: &ChainSyncContext<'_, REv>,
     highest_block_header: &BlockHeader,
 ) -> Result<Option<FastSyncOutcome>, Error>
