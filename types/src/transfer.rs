@@ -235,6 +235,7 @@ impl ToBytes for Transfer {
 
 /// Error returned when decoding a `TransferAddr` from a formatted string.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     /// The prefix is invalid.
     InvalidPrefix,

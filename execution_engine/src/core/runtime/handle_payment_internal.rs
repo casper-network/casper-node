@@ -1,3 +1,4 @@
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, StoredValue,
     TransferredTo, URef, U512,
@@ -5,7 +6,6 @@ use casper_types::{
 
 use crate::{
     core::{execution, runtime::Runtime},
-    storage::global_state::StateReader,
     system::handle_payment::{
         mint_provider::MintProvider, runtime_provider::RuntimeProvider, HandlePayment,
     },

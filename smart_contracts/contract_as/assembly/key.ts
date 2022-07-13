@@ -21,6 +21,8 @@ export enum KeyVariant {
     HASH_ID = 1,
     /** The URef variant */
     UREF_ID = 2,
+    /** The Dictionary variant */
+    DICTIONARY_ID = 9,
 }
 
 /** A cryptographic public key. */
@@ -119,6 +121,7 @@ export class Key {
     hash: Uint8Array | null;
     uref: URef | null;
     account: AccountHash | null;
+    dictionaryAddr: Uint8Array | null;
 
     /** Creates a `Key` from a given [[URef]]. */
     static fromURef(uref: URef): Key {
@@ -142,6 +145,23 @@ export class Key {
         accountKey.variant = KeyVariant.ACCOUNT_ID;
         accountKey.account = account;
         return accountKey;
+    }
+
+    /** Creates a `Key` from a given dictionary address. */
+    static fromDictionaryAddr(addrBytes: Uint8Array): Key {
+        let key = new Key();
+        key.variant = KeyVariant.DICTIONARY_ID;
+        key.dictionaryAddr = addrBytes;
+        return key;
+    }
+
+    /** Creates a `Key.Dictionary` from a seedURef and item key */
+    static createDictionaryKey(seedURef: URef, dictionary_item_key: String): Key {
+        let dictionary_key_buffer = seedURef.getBytes();
+        let buffer = typedToArray(dictionary_key_buffer);
+        let finalBuffer = buffer.concat(typedToArray(encodeUTF8(dictionary_item_key)));
+        let dictionaryAddress = runtime.blake2b(finalBuffer);
+        return Key.fromDictionaryAddr(dictionaryAddress);
     }
 
     /**
@@ -201,6 +221,14 @@ export class Key {
             const keyRef = new Ref<Key>(accountKey);
             return new Result<Key>(keyRef, BytesreprError.Ok, currentPos);
         }
+        else if (tag == KeyVariant.DICTIONARY_ID) {
+            var dictionaryAddr = bytes.subarray(1, 32 + 1);
+            currentPos += 32;
+
+            let key = Key.fromDictionaryAddr(dictionaryAddr);
+            let ref = new Ref<Key>(key);
+            return new Result<Key>(ref, BytesreprError.Ok, currentPos);
+        }
         else {
             return new Result<Key>(null, BytesreprError.FormattingError, currentPos);
         }
@@ -227,6 +255,15 @@ export class Key {
             let bytes = new Array<u8>();
             bytes.push(<u8>this.variant);
             bytes = bytes.concat((<AccountHash>this.account).toBytes());
+            return bytes;
+        }
+        else if (this.variant == KeyVariant.DICTIONARY_ID) {
+            var dictionaryAddrBytes = <Uint8Array>this.dictionaryAddr;
+            let bytes = new Array<u8>(1 + dictionaryAddrBytes.length);
+            bytes[0] = <u8>this.variant;
+            for (let i = 0; i < dictionaryAddrBytes.length; i++) {
+                bytes[i + 1] = dictionaryAddrBytes[i];
+            }
             return bytes;
         }
         unreachable();

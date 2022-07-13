@@ -1,5 +1,6 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
+use casper_global_state::{shared::CorrelationId, storage::global_state::StateReader};
 use casper_types::{
     account::{Account, AccountHash},
     system::mint,
@@ -7,14 +8,10 @@ use casper_types::{
     U512,
 };
 
-use crate::{
-    core::{
-        engine_state::Error,
-        execution::Error as ExecError,
-        tracking_copy::{TrackingCopy, TrackingCopyExt},
-    },
-    shared::newtypes::CorrelationId,
-    storage::global_state::StateReader,
+use crate::core::{
+    engine_state::Error,
+    execution::Error as ExecError,
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or

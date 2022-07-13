@@ -1,3 +1,4 @@
+use casper_global_state::storage::global_state::StateReader;
 use casper_types::{
     system::{handle_payment, mint},
     ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
@@ -5,7 +6,6 @@ use casper_types::{
 
 use crate::{
     core::{execution, runtime::Runtime},
-    storage::global_state::StateReader,
     system::standard_payment::{
         account_provider::AccountProvider, handle_payment_provider::HandlePaymentProvider,
         mint_provider::MintProvider, StandardPayment,

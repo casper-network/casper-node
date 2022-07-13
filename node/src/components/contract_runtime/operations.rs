@@ -3,14 +3,14 @@ use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use itertools::Itertools;
 use tracing::{debug, trace, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
-        StepRequest, StepSuccess,
-    },
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::lmdb::LmdbGlobalState,
+use casper_execution_engine::core::engine_state::{
+    self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
+    ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
+    StepRequest, StepSuccess,
+};
+use casper_global_state::{
+    shared::{transform::Transform, AdditiveMap, CorrelationId},
+    storage::global_state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_hashing::Digest;
 use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
@@ -25,10 +25,7 @@ use crate::{
     },
     types::{Block, Deploy, DeployHeader, FinalizedBlock},
 };
-use casper_execution_engine::{
-    core::{engine_state::execution_result::ExecutionResults, execution},
-    storage::global_state::{CommitProvider, StateProvider},
-};
+use casper_execution_engine::core::{engine_state::execution_result::ExecutionResults, execution};
 
 use super::SpeculativeExecutionState;
 

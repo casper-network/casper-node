@@ -9,6 +9,16 @@ use std::{
 
 use tracing::error;
 
+use crate::{
+    core::{
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
+        execution::{AddressGenerator, Error},
+        runtime_context::dictionary::DictionaryValue,
+        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+    },
+    shared::execution_journal::ExecutionJournal,
+};
+use casper_global_state::{shared::CorrelationId, storage::global_state::StateReader};
 use casper_types::{
     account::{
         Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -21,17 +31,6 @@ use casper_types::{
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
     Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
     Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
-};
-
-use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
-        execution::{AddressGenerator, Error},
-        runtime_context::dictionary::DictionaryValue,
-        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
-    },
-    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
-    storage::global_state::StateReader,
 };
 
 pub(crate) mod dictionary;
@@ -493,10 +492,18 @@ where
         self.validate_readable(key)?;
         self.validate_key(key)?;
 
-        self.tracking_copy
+        let maybe_stored_value = self
+            .tracking_copy
             .borrow_mut()
             .read(self.correlation_id, key)
-            .map_err(Into::into)
+            .map_err(Into::into)?;
+
+        let stored_value = match maybe_stored_value {
+            Some(stored_value) => dictionary::handle_stored_value(*key, stored_value)?,
+            None => return Ok(None),
+        };
+
+        Ok(Some(stored_value))
     }
 
     /// Reads a value from a global state directly.
@@ -775,11 +782,7 @@ where
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
             Key::Unbond(_) => true,
-            Key::Dictionary(_) => {
-                // Dictionary is a special case that will not be readable by default, but the access
-                // bits are verified from within API call.
-                false
-            }
+            Key::Dictionary(_) => true,
             Key::SystemContractRegistry => true,
             Key::ChainspecRegistry => true,
         }
@@ -949,6 +952,7 @@ where
             Ok(AddResult::KeyNotFound(key)) => Err(Error::KeyNotFound(key)),
             Ok(AddResult::TypeMismatch(type_mismatch)) => Err(Error::TypeMismatch(type_mismatch)),
             Ok(AddResult::Serialization(error)) => Err(Error::BytesRepr(error)),
+            Ok(AddResult::Transform(error)) => Err(Error::Transform(error)),
         }
     }
 
@@ -1185,7 +1189,14 @@ where
         }
 
         let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
+        self.dictionary_read(dictionary_key)
+    }
 
+    /// Gets a dictionary value from a dictionary `Key`.
+    pub(crate) fn dictionary_read(
+        &mut self,
+        dictionary_key: Key,
+    ) -> Result<Option<CLValue>, Error> {
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
@@ -1193,11 +1204,8 @@ where
             .map_err(Into::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
-            let cl_value_indirect: CLValue =
-                stored_value.try_into().map_err(Error::TypeMismatch)?;
-            let dictionary_value: DictionaryValue =
-                cl_value_indirect.into_t().map_err(Error::from)?;
-            let cl_value = dictionary_value.into_cl_value();
+            let stored_value = dictionary::handle_stored_value(dictionary_key, stored_value)?;
+            let cl_value = CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?;
             Ok(Some(cl_value))
         } else {
             Ok(None)

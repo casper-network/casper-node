@@ -1,5 +1,5 @@
 //! A Rust library for writing smart contracts on the
-//! [Casper Platform](https://techspec.casperlabs.io).
+//! [Casper Platform](https://docs.casperlabs.io/dapp-dev-guide).
 //!
 //! # `no_std`
 //!

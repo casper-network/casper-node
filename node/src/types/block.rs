@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use std::iter;
 use std::{
     array::TryFromSliceError,
@@ -16,20 +16,20 @@ use derive_more::Into;
 use hex_fmt::HexList;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::Digest;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
 use tracing::{error, warn};
 
@@ -185,7 +185,7 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
 
 // This should be clearly specified because the `verifiable_chunked_hash_activation`
 // parameter used in various tests strongly rely on this value.
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
 
 /// Error returned from constructing a `Block`.
@@ -294,7 +294,7 @@ impl Display for BlockPayload {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl BlockPayload {
     #[allow(unused)] // TODO: remove when used in tests
     pub fn random(
@@ -487,7 +487,7 @@ impl FinalizedBlock {
     }
 
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let era = rng.gen_range(0..5);
         let height = era * 10 + rng.gen_range(0..10);
@@ -496,7 +496,7 @@ impl FinalizedBlock {
         FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch, None)
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`, but using the specified values.
     /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
     /// will be used.
@@ -637,7 +637,7 @@ impl BlockHash {
     }
 
     /// Creates a random block hash.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         BlockHash(hash)
@@ -701,7 +701,7 @@ impl BlockHashAndHeight {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {
             block_hash: BlockHash::random(rng),
@@ -1870,7 +1870,7 @@ impl Block {
     }
 
     /// Overrides the height of a block.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn set_height(
         &mut self,
         height: u64,
@@ -1882,7 +1882,7 @@ impl Block {
     }
 
     /// Overrides the era end of a block with a `None`, making it a non-switch block.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn disable_switch_block(&mut self, verifiable_chunked_hash_activation: EraId) -> &mut Self {
         let _ = self.header.era_end.take();
         self.hash = self.header.hash(verifiable_chunked_hash_activation);
@@ -1890,7 +1890,7 @@ impl Block {
     }
 
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
@@ -1910,7 +1910,7 @@ impl Block {
 
     /// Generates a random instance using a `TestRng` with the specified
     /// `verifiable_chunked_hash_activation`
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_with_verifiable_chunked_hash_activation(
         rng: &mut TestRng,
         verifiable_chunked_hash_activation: EraId,
@@ -1933,7 +1933,7 @@ impl Block {
     /// Generates random instance that is guaranteed to be using
     /// the legacy hashing scheme. Apart from the Block itself
     /// it also returns the EraId used as verifiable_chunked_hash_activation.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
         let verifiable_chunked_hash_activation = EraId::from(MAX_ERA_FOR_RANDOM_BLOCK + 1);
 
@@ -1949,7 +1949,7 @@ impl Block {
     /// Generates random instance that is guaranteed to be using
     /// the merkle tree hashing scheme. Apart from the Block itself
     /// it also returns the EraId used as verifiable_chunked_hash_activation.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
         let verifiable_chunked_hash_activation = EraId::from(0);
 
@@ -1963,7 +1963,7 @@ impl Block {
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,
@@ -2546,7 +2546,8 @@ impl FinalitySignature {
         crypto::verify(bytes, &self.signature, &self.public_key)
     }
 
-    #[cfg(test)]
+    /// Returns a random `FinalitySignature` for the provided `block_hash` and `era_id`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random_for_block(block_hash: BlockHash, era_id: u64) -> Self {
         let (sec_key, pub_key) = generate_ed25519_keypair();
         FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)

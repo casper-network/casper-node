@@ -10,6 +10,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
+use casper_global_state::{shared::CorrelationId, storage::global_state::StateProvider};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
@@ -41,8 +42,7 @@ use crate::{
         execution::AddressGenerator,
         tracking_copy::TrackingCopy,
     },
-    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
-    storage::global_state::StateProvider,
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;

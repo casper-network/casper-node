@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 use num_rational::Ratio;
 use thiserror::Error;
 
+use casper_global_state::{shared::CorrelationId, storage::global_state::StateProvider};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self},
@@ -11,13 +12,9 @@ use casper_types::{
     Contract, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
 };
 
-use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, ChainspecRegistry},
-        tracking_copy::TrackingCopy,
-    },
-    shared::newtypes::CorrelationId,
-    storage::global_state::StateProvider,
+use crate::core::{
+    engine_state::{execution_effect::ExecutionEffect, ChainspecRegistry},
+    tracking_copy::TrackingCopy,
 };
 
 /// Represents a successfully executed upgrade.

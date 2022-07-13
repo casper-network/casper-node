@@ -93,8 +93,7 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_5.chainspec.toml.in" \
-            config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_5.config.toml"
+            chainspec_path="$NCTL/overrides/upgrade_scenario_5.pre.chainspec.toml.in"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
     log "... Starting 5 non-validators"
@@ -132,8 +131,7 @@ function _step_03()
             verbose=false \
             node="$i" \
             era="$ACTIVATION_POINT" \
-            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_5.chainspec.toml.in" \
-            config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_5.config.toml"
+            chainspec_path="$NCTL/overrides/upgrade_scenario_5.post.chainspec.toml.in"
         echo ""
     done
 
@@ -271,8 +269,7 @@ function _step_09()
             verbose=false \
             node="$i" \
             era="$ACTIVATION_POINT" \
-            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_5.chainspec.toml.in" \
-            config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_5.config.toml"
+            chainspec_path="$NCTL/overrides/upgrade_scenario_5.post.chainspec.toml.in"
         echo ""
         # add hash to upgrades config
         PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"
