@@ -182,9 +182,9 @@ fn gen_snapshot_from_old(
 /// Generates a set of writes necessary to "fix" the bids, ie.:
 /// - set the bids of the new validators to their desired stakes,
 /// - remove the bids of the old validators that are no longer validators,
-/// - if `only_listed_validators` is true, remove all the bids that are larger than the smallest
-///   bid among the new validators (necessary, because such bidders would outbid the validators
-///   decided by the social consensus).
+/// - if `only_listed_validators` is true, remove all the bids that are larger than the smallest bid
+///   among the new validators (necessary, because such bidders would outbid the validators decided
+///   by the social consensus).
 pub fn add_and_remove_bids<T: StateReader>(
     state: &mut StateTracker<T>,
     validators_diff: &ValidatorsDiff,
