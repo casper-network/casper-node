@@ -49,7 +49,7 @@ impl<T: StateReader> StateTracker<T> {
         }
     }
 
-    /// Prints all the writes to be made to the global state.
+    /// Returns all the entries to be written to the global state
     pub fn get_entries(&self) -> BTreeMap<Key, StoredValue> {
         self.entries_to_write.clone()
     }
