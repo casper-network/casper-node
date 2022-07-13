@@ -137,7 +137,7 @@ fn gen_snapshot_only_listed(
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
     for account in accounts {
-        // don't add validatord with zero stake to the snapshot
+        // don't add validators with zero stake to the snapshot
         let stake = match account.stake {
             Some(stake) if stake != U512::zero() => stake,
             _ => continue,
