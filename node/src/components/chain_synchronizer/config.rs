@@ -33,6 +33,7 @@ pub(super) struct Config {
     max_retries_while_not_connected: u64,
     /// How many fetches in between attempting to redeem one bad node.
     pub(crate) redemption_interval: u32,
+    pub(crate) minimum_peer_count_threshold: usize,
 }
 
 impl Config {
@@ -54,6 +55,7 @@ impl Config {
             sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
             redemption_interval: node_config.sync_peer_redemption_interval,
+            minimum_peer_count_threshold: node_config.known_addresses.len(),
         }
     }
 

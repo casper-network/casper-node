@@ -738,8 +738,6 @@ where
             parent: Box::new(parent_header.clone()),
         })?;
 
-    let minimum_peer_count_threshold: usize = 10;
-
     for _ in 0..=1 {
         let peers = prepare_applicable_peers(ctx).await;
         let peer_count = peers.len();
@@ -755,7 +753,7 @@ where
                 return Ok(Some(item));
             }
             None => {
-                if peer_count >= minimum_peer_count_threshold {
+                if peer_count >= ctx.config.minimum_peer_count_threshold {
                     warn!(
                         %height,
                         attempts_to_get_fully_connected_peers =
@@ -767,7 +765,7 @@ where
                 info!(
                     %height,
                     %peer_count,
-                    %minimum_peer_count_threshold, "tried fetching with not enough peers, may try again"
+                    minimum_peer_count_threshold = %ctx.config.minimum_peer_count_threshold, "tried fetching with not enough peers, may try again"
                 );
             }
         }

@@ -39,6 +39,9 @@ pub struct NodeConfig {
     /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
     /// and global state) back to genesis.
     pub sync_to_genesis: bool,
+
+    /// Known address of a node on the network used for joining.
+    pub known_addresses: Vec<String>,
 }
 
 impl Default for NodeConfig {
@@ -51,6 +54,7 @@ impl Default for NodeConfig {
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
             sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,
             sync_to_genesis: false,
+            known_addresses: Default::default(),
         }
     }
 }
