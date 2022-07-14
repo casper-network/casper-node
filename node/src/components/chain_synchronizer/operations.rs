@@ -751,15 +751,8 @@ where
                     item.header(),
                     ctx.config.protocol_version(),
                 )?;
-                // TODO[RC]: The `if` below is actually another flavor of `check_block_version()`...
-                if item.header().protocol_version() < parent_header.protocol_version() {
-                    return Err(Error::LowerVersionThanParent {
-                        parent: Box::new(parent_header.clone()),
-                        child: Box::new(item.header().clone()),
-                    });
-                } else {
-                    return Ok(Some(item));
-                }
+                check_block_version_is_not_lower_than_parent(item.header(), parent_header)?;
+                return Ok(Some(item));
             }
             None => {
                 if peer_count >= minimum_peer_count_threshold {
@@ -774,7 +767,7 @@ where
                 info!(
                     %height,
                     %peer_count,
-                    %minimum_peer_count_threshold, "did not have enough peers"
+                    %minimum_peer_count_threshold, "tried fetching with not enough peers, may try again"
                 );
             }
         }
@@ -906,6 +899,22 @@ fn check_block_version_is_not_greater_than_current(
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version,
             block_header_with_future_version: Box::new(header.clone()),
+        });
+    }
+
+    Ok(())
+}
+
+/// Compares the block's version with the parent block version and returns an error if it is
+/// too old.
+fn check_block_version_is_not_lower_than_parent(
+    header: &BlockHeader,
+    parent_header: &BlockHeader,
+) -> Result<(), Error> {
+    if header.protocol_version() < parent_header.protocol_version() {
+        return Err(Error::LowerVersionThanParent {
+            parent: Box::new(parent_header.clone()),
+            child: Box::new(header.clone()),
         });
     }
 
