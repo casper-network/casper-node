@@ -1,10 +1,11 @@
-# Counter Contract Session Code
+# Counter Contract Installation
 
-This example code will call our [previously installed Counter Contract](https://github.com/casper-network/casper-node/tree/dev/smart_contracts/contracts_as/example/counter-installer) using AssemblyScript. Instructions for getting started on Casper using AssemblyScript can be found in our [Getting Started with AssemblyScript](https://docs.casperlabs.io/dapp-dev-guide/writing-contracts/assembly-script/) guide.
+This example code will install a simple counter using AssemblyScript. Instructions for getting started on Casper using AssemblyScript can be found in our [Getting Started with AssemblyScript](https://docs.casperlabs.io/dapp-dev-guide/writing-contracts/assembly-script/) guide.
 
-## Calling Contract Code
+## Session Code
 
-Previously, we installed a simple counter smart contract that contains an incrementing variable. We defined two entry points, `entryPointInc` and `entryPointGet`. We also defined the `call` function that initialized the contract. This constitutes the contract code that we will now call using session code.
+Installing a smart contract to global state on a Casper Network requires the use of session code. This example code uses AssemblyScript to send a Wasm-bearing [Deploy](https://docs.casperlabs.io/glossary/D/#deploy) containing the contract to be installed.
+
 
 ### Step 1. Configuring the Index.ts File
 
@@ -18,18 +19,15 @@ The first section of *assembly/index.ts* outlines the necessary dependencies to 
 
 ```typescript
 
-//@ts-nocheck
-// Importing necessary components from other packages.
+// Importing necessary aspects of external packages.
 import * as CL from "../../../../contract_as/assembly";
 import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
 import { fromBytesI32, fromBytesString, toBytesMap } from "../../../../contract_as/assembly/bytesrepr";
 import { Key } from "../../../../contract_as/assembly/key";
 import { CLValue, CLType, CLTypeTag } from "../../../../contract_as/assembly/clvalue";
 import { Pair } from "../../../../contract_as/assembly/pair";
-import { RuntimeArgs } from "../../../../contract_as/assembly/runtime_args";
 
-
-// Establishing constants for use within our session code.
+// Establishing constants for use within the installing contract.
 const COUNT_KEY = "count";
 const COUNTER_INC = "counter_inc";
 const COUNTER_GET = "counter_get";
@@ -38,61 +36,101 @@ const CONTRACT_VERSION_KEY = "version";
 
 ```
 
-### Step 2. Defining Functions for Interacting with the Smart Contract
+### Step 2. Defining the Contract Entry Points
 
-While our `call` function will execute the session code and interact with the installed counter contract, we will need to define the actions our `call` function will take.
-
-* `counterGet` retrieves the current value of the counter.
-
-* `counterInc` increments the counter value by 1.
+Each entry point that we later establish will require an associated function to perform the desired action. In the next section of *index.ts* we define these functions to perform the actions of incrementing the counter and viewing the current counter value.
 
 ```typescript
 
-function counterGet(contractHash: Uint8Array): i32 {
-  let bytes = CL.callContract(contractHash, COUNTER_GET, new RuntimeArgs());
-  return fromBytesI32(bytes).unwrap();
+// Creating a function that will be used by the incrementing entry point.
+export function counter_inc(): void {
+  let countKey = CL.getKey(COUNT_KEY);
+  if (!countKey) {
+    Error.fromErrorCode(ErrorCode.MissingKey).revert();
+    return;
+  }
+
+  if (!countKey.isURef()) {
+    Error.fromErrorCode(ErrorCode.UnexpectedKeyVariant).revert();
+    return;
+  }
+
+  const one = CLValue.fromI32(1);
+
+  countKey.add(one);
 }
 
-function counterInc(contractHash: Uint8Array): void {
-  CL.callContract(contractHash, COUNTER_INC, new RuntimeArgs());
+// Creating a function that will be used by the value retrieval entry point.
+export function counter_get(): void {
+  let countKey = CL.getKey(COUNT_KEY);
+
+  if (!countKey) {
+    Error.fromErrorCode(ErrorCode.MissingKey).revert();
+    return;
+  }
+
+  if (!countKey.isURef()) {
+    Error.fromErrorCode(ErrorCode.UnexpectedKeyVariant).revert();
+    return;
+  }
+  let countData = countKey.read();
+  if (!countData) {
+    Error.fromErrorCode(ErrorCode.ValueNotFound).revert();
+    return;
+  }
+  let value = fromBytesI32(<Uint8Array>countData).unwrap();
+  CL.ret(CLValue.fromI32(value));
 }
 
 ```
 
 ### Step 3. Defining the `Call` Function
 
-The `call` function serves to execute the session code, calling the counter contract. To do so, it uses the `COUNTER_KEY` constant, which should contain the `contractHash` of the counter contract.
+We will also define the `Call` function that will start the code execution and perform the contract installation. This function initializes the contract by setting the counter to 0 and creating `NamedKeys` to be passed to the contract. Specifically, it creates the keys `counter_package_name` and `counter_access_uref` which will persist within the contract's context.
 
-It then reads the current value of the counter, increments the value by 1 and then reads the updated value of the counter. Finally, it observes the difference between the first value observed (`currentCounterValue`) and the new value (`newCounterValue`). If the the difference is not equal to 1, it will cause an error.
+Further, it establishes the entry points `entryPointInc` and `entryPointGet` tied to their respective functions as defined above. Finally, it creates a key with the `ContractHash` to allow access to the installed contract code.
 
 ```typescript
 
 export function call(): void {
-  // Read the Counter smart contract's ContractHash.
-  let contractHashKey = CL.getKey(COUNTER_KEY);
-  if (!contractHashKey) {
-    Error.fromUserError(66).revert();
+  // Create entry points to get the counter value and to increment the counter by 1.
+  let counterEntryPoints = new CL.EntryPoints();
+
+  let entryPointInc = new CL.EntryPoint(COUNTER_INC, new Array(), new CLType(CLTypeTag.Unit), new CL.PublicAccess(), CL.EntryPointType.Contract);
+  counterEntryPoints.addEntryPoint(entryPointInc);
+  let entryPointGet = new CL.EntryPoint(COUNTER_GET, new Array(), new CLType(CLTypeTag.I32), new CL.PublicAccess(), CL.EntryPointType.Contract);
+  counterEntryPoints.addEntryPoint(entryPointGet);
+
+  // Initialize counter to 0.
+  let counterLocalKey = Key.create(CLValue.fromI32(0));
+  if (!counterLocalKey) {
+    Error.fromUserError(0).revert();
     return;
   }
-  let contractHash = contractHashKey.hash;
-  if (!contractHash) {
-    Error.fromUserError(66).revert();
+
+  // Create initial named keys of the contract.
+  let counterNamedKeys = new Array<Pair<String, Key>>();
+  counterNamedKeys.push(new Pair<String, Key>(COUNT_KEY, counterLocalKey));
+
+  const result = CL.newContract(
+    counterEntryPoints,
+    counterNamedKeys,
+    "counter_package_name",
+    "counter_access_uref",
+  );
+
+  // To create a locked contract instead, use new_locked_contract and throw away the contract version returned
+  // const result = CL.newLockedContract(counterEntryPoints, counterNamedKeys, "counter_package_name", "counter_access_uref");
+
+  // The current version of the contract will be reachable through named keys
+  const versionURef = Key.create(CLValue.fromI32(result.contractVersion));
+  if (!versionURef) {
     return;
   }
+  CL.putKey(CONTRACT_VERSION_KEY, versionURef);
 
-  // Call Counter to get the current value.
-  let currentCounterValue = counterGet(contractHash);
-
-  // Call Counter to increment the value.
-  counterInc(contractHash);
-
-  // Call Counter to get the new value.
-  let newCounterValue = counterGet(contractHash);
-
-  // Expect counter to increment by one.
-  if (newCounterValue - currentCounterValue != 1) {
-    Error.fromUserError(67).revert();
-  }
+  // Hash of the installed contract will be reachable through named keys
+  CL.putKey(COUNTER_KEY, Key.fromHash(result.contractHash));
 }
 
 ```
