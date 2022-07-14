@@ -760,7 +760,7 @@ where
                 return Ok(Some(item));
             }
             None => {
-                if peer_count >= ctx.config.minimum_peer_count_threshold {
+                if peer_count >= ctx.config.minimum_peer_count_threshold_for_fetch_retry {
                     warn!(
                         %height,
                         attempts_to_get_fully_connected_peers =
@@ -772,7 +772,7 @@ where
                 info!(
                     %height,
                     %peer_count,
-                    minimum_peer_count_threshold = %ctx.config.minimum_peer_count_threshold, "tried fetching with not enough peers, may try again"
+                    minimum_peer_count_threshold = %ctx.config.minimum_peer_count_threshold_for_fetch_retry, "tried fetching with not enough peers, may try again"
                 );
             }
         }

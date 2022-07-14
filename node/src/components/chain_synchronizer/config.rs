@@ -36,7 +36,7 @@ pub(super) struct Config {
     /// Some of the fetch operations are retried *once* when at the initial trial there were fewer
     /// peers than `minimum_peer_count_threshold` available. By default, this is the number of
     /// items on the `known_addresses` list in the node config.
-    pub(crate) minimum_peer_count_threshold: usize,
+    pub(crate) minimum_peer_count_threshold_for_fetch_retry: usize,
 }
 
 impl Config {
@@ -58,7 +58,9 @@ impl Config {
             sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
             redemption_interval: node_config.sync_peer_redemption_interval,
-            minimum_peer_count_threshold: node_config.known_addresses.len(),
+            minimum_peer_count_threshold_for_fetch_retry: small_network_config
+                .known_addresses
+                .len(),
         }
     }
 
