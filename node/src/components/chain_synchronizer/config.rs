@@ -33,9 +33,9 @@ pub(super) struct Config {
     max_retries_while_not_connected: u64,
     /// How many fetches in between attempting to redeem one bad node.
     pub(crate) redemption_interval: u32,
-    /// Some of the fetch operations are retried *once* when at the initial trial there were fewer
-    /// peers than `minimum_peer_count_threshold` available. By default, this is the number of
-    /// items on the `known_addresses` list in the node config.
+    /// Block and block header fetch operations are retried *once* when at the initial trial there
+    /// were fewer peers than `minimum_peer_count_threshold_for_fetch_retry` available. By default,
+    /// this is the number of items on the `known_addresses` list in the node config.
     pub(crate) minimum_peer_count_threshold_for_fetch_retry: usize,
 }
 
