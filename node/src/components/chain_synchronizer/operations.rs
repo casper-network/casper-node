@@ -740,7 +740,7 @@ where
         })?;
 
     for _ in 0..=1 {
-        let peers = prepare_applicable_peers(ctx).await;
+        let peers = prepare_peers_applicable_for_block_fetch(ctx).await;
         let peer_count = peers.len();
         let maybe_item = try_fetch_block_or_block_header_by_height(
             peers.clone(),
@@ -876,7 +876,9 @@ where
 }
 
 /// Prepares a list of peers applicable for the next fetch operation.
-async fn prepare_applicable_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
+async fn prepare_peers_applicable_for_block_fetch<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Vec<NodeId>
 where
     REv: From<NetworkInfoRequest>,
 {
