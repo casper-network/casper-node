@@ -86,7 +86,7 @@ export function counter_get(): void {
 
 ### Step 3. Defining the `Call` Function
 
-We will also define the `Call` function that will start the code execution and perform the actual code installation. This function initializes the contract by setting the counter to 0 and creates `NamedKeys` in the current context. Specifically, it creates the keys `counter_package_name` and `counter_access_uref`.
+We will also define the `Call` function that will start the code execution and perform the contract installation. This function initializes the contract by setting the counter to 0 and creating `NamedKeys` to be passed to the contract. Specifically, it creates the keys `counter_package_name` and `counter_access_uref` which will persist within the contract's context.
 
 Further, it establishes the entry points `entryPointInc` and `entryPointGet` tied to their respective functions as defined above. Finally, it creates a key with the `ContractHash` to allow access to the installed contract code.
 
