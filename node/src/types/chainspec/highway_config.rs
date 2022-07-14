@@ -16,8 +16,8 @@ use casper_types::{
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {
-    pub(crate) minimum_round_exponent: u8,
-    pub(crate) maximum_round_exponent: u8,
+    /// The upper limit for Highway round lengths.
+    pub(crate) maximum_round_length: TimeDiff,
     /// The factor by which rewards for a round are multiplied if the greatest summit has ≤50%
     /// quorum, i.e. no finality.
     #[data_size(skip)]
@@ -27,15 +27,6 @@ pub(crate) struct HighwayConfig {
 impl HighwayConfig {
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
     pub(super) fn is_valid(&self) -> bool {
-        if self.minimum_round_exponent > self.maximum_round_exponent {
-            error!(
-                min = %self.minimum_round_exponent,
-                max = %self.maximum_round_exponent,
-                "minimum round exponent is greater than the maximum round exponent",
-            );
-            return false;
-        }
-
         if self.reduced_reward_multiplier > Ratio::new(1, 1) {
             error!(
                 rrm = %self.reduced_reward_multiplier,
@@ -46,24 +37,17 @@ impl HighwayConfig {
 
         true
     }
-
-    /// Returns the length of the shortest allowed round.
-    pub fn min_round_length(&self) -> TimeDiff {
-        TimeDiff::from(1 << self.minimum_round_exponent)
-    }
 }
 
 #[cfg(test)]
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let minimum_round_exponent = rng.gen_range(0..16);
-        let maximum_round_exponent = rng.gen_range(16..22);
+        let maximum_round_length = TimeDiff::from_seconds(rng.gen_range(60..600));
         let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);
 
         HighwayConfig {
-            minimum_round_exponent,
-            maximum_round_exponent,
+            maximum_round_length,
             reduced_reward_multiplier,
         }
     }
@@ -72,27 +56,23 @@ impl HighwayConfig {
 impl ToBytes for HighwayConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.minimum_round_exponent.to_bytes()?);
-        buffer.extend(self.maximum_round_exponent.to_bytes()?);
+        buffer.extend(self.maximum_round_length.to_bytes()?);
         buffer.extend(self.reduced_reward_multiplier.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.minimum_round_exponent.serialized_length()
-            + self.maximum_round_exponent.serialized_length()
+        self.maximum_round_length.serialized_length()
             + self.reduced_reward_multiplier.serialized_length()
     }
 }
 
 impl FromBytes for HighwayConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (minimum_round_exponent, remainder) = u8::from_bytes(bytes)?;
-        let (maximum_round_exponent, remainder) = u8::from_bytes(remainder)?;
+        let (maximum_round_length, remainder) = TimeDiff::from_bytes(bytes)?;
         let (reduced_reward_multiplier, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let config = HighwayConfig {
-            minimum_round_exponent,
-            maximum_round_exponent,
+            maximum_round_length,
             reduced_reward_multiplier,
         };
         Ok((config, remainder))
@@ -117,22 +97,6 @@ mod tests {
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
-    }
-
-    #[test]
-    fn should_validate_round_exponents() {
-        let mut rng = crate::new_rng();
-        let mut highway_config = HighwayConfig::random(&mut rng);
-
-        // Should be valid for round exponents where min <= max.
-        highway_config.minimum_round_exponent = highway_config.maximum_round_exponent - 1;
-        assert!(highway_config.is_valid());
-        highway_config.minimum_round_exponent = highway_config.maximum_round_exponent;
-        assert!(highway_config.is_valid());
-
-        // Should be invalid for round exponents where min > max.
-        highway_config.minimum_round_exponent = highway_config.maximum_round_exponent + 1;
-        assert!(!highway_config.is_valid());
     }
 
     #[test]

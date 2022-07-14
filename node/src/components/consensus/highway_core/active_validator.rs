@@ -65,8 +65,8 @@ where
     vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
-    /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
-    next_round_exp: u8,
+    /// The next round length.
+    next_round_len: TimeDiff,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
     /// Panorama and context for a block we are about to propose when we get a consensus value.
@@ -86,7 +86,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ActiveValidator")
             .field("vidx", &self.vidx)
-            .field("next_round_exp", &self.next_round_exp)
+            .field("next_round_len", &self.next_round_len)
             .field("next_timer", &self.next_timer)
             .field("paused", &self.paused)
             .finish()
@@ -119,7 +119,7 @@ impl<C: Context> ActiveValidator<C> {
         let mut av = ActiveValidator {
             vidx,
             secret,
-            next_round_exp: state.params().init_round_exp(),
+            next_round_len: state.params().init_round_len(),
             next_timer: state.params().start_timestamp(),
             next_proposal: None,
             unit_file,
@@ -160,9 +160,9 @@ impl<C: Context> ActiveValidator<C> {
         self.own_last_unit.take()
     }
 
-    /// Sets the next round exponent to the new value.
-    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
-        self.next_round_exp = new_round_exp;
+    /// Sets the next round length to the new value.
+    pub(crate) fn set_round_len(&mut self, new_round_len: TimeDiff) {
+        self.next_round_len = new_round_len;
     }
 
     /// Sets the pause status: While paused we don't create any new units, just pings.
@@ -187,9 +187,8 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%timestamp, "skipping outdated timer event");
             return effects;
         }
-        let r_exp = self.round_exp(state, timestamp);
-        let r_id = state::round_id(timestamp, r_exp);
-        let r_len = state::round_len(r_exp);
+        let r_len = self.round_len(state, timestamp);
+        let r_id = state::round_id(timestamp, r_len);
         // Only create new units if enough validators are online.
         if !self.paused && self.enough_validators_online(state, timestamp) {
             if timestamp == r_id && state.leader(r_id) == self.vidx {
@@ -376,7 +375,7 @@ impl<C: Context> ActiveValidator<C> {
         if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
             return false;
         }
-        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
+        let r_id = state::round_id(timestamp, self.round_len(state, timestamp));
         if unit.timestamp != r_id {
             trace!(
                 %unit.timestamp, %r_id,
@@ -447,6 +446,8 @@ impl<C: Context> ActiveValidator<C> {
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
+        let round_exp = (self.round_len(state, timestamp) / state.params().min_round_length())
+            .trailing_zeros() as u8;
         let hwunit = WireUnit {
             panorama,
             creator: self.vidx,
@@ -454,7 +455,7 @@ impl<C: Context> ActiveValidator<C> {
             value,
             seq_number,
             timestamp,
-            round_exp: self.round_exp(state, timestamp),
+            round_exp,
             endorsed,
         }
         .into_hashed();
@@ -477,9 +478,8 @@ impl<C: Context> ActiveValidator<C> {
         if self.next_timer > timestamp {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
-        let r_exp = self.round_exp(state, timestamp);
-        let r_id = state::round_id(timestamp, r_exp);
-        let r_len = state::round_len(r_exp);
+        let r_len = self.round_len(state, timestamp);
+        let r_id = state::round_id(timestamp, r_len);
         self.next_timer = if timestamp < r_id + self.witness_offset(r_len) {
             r_id + self.witness_offset(r_len)
         } else {
@@ -487,8 +487,8 @@ impl<C: Context> ActiveValidator<C> {
             if state.leader(next_r_id) == self.vidx {
                 next_r_id
             } else {
-                let next_r_exp = self.round_exp(state, next_r_id);
-                next_r_id + self.witness_offset(state::round_len(next_r_exp))
+                let next_r_len = self.round_len(state, next_r_id);
+                next_r_id + self.witness_offset(next_r_len)
             }
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
@@ -528,17 +528,17 @@ impl<C: Context> ActiveValidator<C> {
         round_len * 2 / 3
     }
 
-    /// The round exponent of the round containing `timestamp`.
+    /// The round length of the round containing `timestamp`.
     ///
-    /// This returns `self.next_round_exp`, if that is a valid round exponent for a unit cast at
-    /// `timestamp`. Otherwise it returns the round exponent of our latest unit.
-    fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
-        self.latest_unit(state).map_or(self.next_round_exp, |unit| {
-            let max_re = self.next_round_exp.max(unit.round_exp);
-            if unit.timestamp < state::round_id(timestamp, max_re) {
-                self.next_round_exp
+    /// This returns `self.next_round_len`, if that is a valid round length for a unit cast at
+    /// `timestamp`. Otherwise it returns the round length of our latest unit.
+    fn round_len(&self, state: &State<C>, timestamp: Timestamp) -> TimeDiff {
+        self.latest_unit(state).map_or(self.next_round_len, |unit| {
+            let max_rl = self.next_round_len.max(unit.round_len);
+            if unit.timestamp < state::round_id(timestamp, max_rl) {
+                self.next_round_len
             } else {
-                unit.round_exp
+                unit.round_len
             }
         })
     }
@@ -614,7 +614,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     pub(crate) fn next_round_length(&self) -> TimeDiff {
-        state::round_len(self.next_round_exp)
+        self.next_round_len
     }
 }
 
@@ -707,11 +707,11 @@ mod tests {
             validators: Vec<ValidatorIndex>,
         ) -> Self {
             let mut timers = BTreeSet::new();
-            let current_round_id = state::round_id(start_time, state.params().init_round_exp());
+            let current_round_id = state::round_id(start_time, state.params().init_round_len());
             let earliest_round_start = if start_time == current_round_id {
                 start_time
             } else {
-                current_round_id + state::round_len(state.params().init_round_exp())
+                current_round_id + state.params().init_round_len()
             };
             let target_ftt = state.total_weight() / 3;
             let mut active_validators = Vec::with_capacity(validators.len());
@@ -744,8 +744,7 @@ mod tests {
                         vidx,
                     )
                 } else {
-                    let witness_offset =
-                        av.witness_offset(state::round_len(state.params().init_round_exp()));
+                    let witness_offset = av.witness_offset(state.params().init_round_len());
                     let witness_timestamp = earliest_round_start + witness_offset;
                     assert_eq!(
                         timestamp, witness_timestamp,

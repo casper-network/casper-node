@@ -420,7 +420,7 @@ async fn dont_upgrade_without_switch_block() {
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
-    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -513,7 +513,7 @@ async fn should_store_finalized_approvals() {
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
-    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -664,8 +664,8 @@ async fn empty_block_validation_regression() {
 
     // We make the first validator always accuse everyone else.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    chain.chainspec_mut().highway_config.minimum_round_exponent = 10; // 1 second
-    chain.chainspec_mut().highway_config.maximum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+    chain.chainspec_mut().highway_config.maximum_round_length = "1second".parse().unwrap();
     chain.chainspec_mut().core_config.minimum_era_height = 15;
     let mut net = chain
         .create_initialized_network(&mut rng)

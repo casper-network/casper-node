@@ -80,12 +80,10 @@ pub(crate) enum UnitError {
     InstanceId,
     #[error("The signature is invalid.")]
     Signature,
-    #[error("The round length exponent has somehow changed within a round.")]
-    RoundLengthExpChangedWithinRound,
-    #[error("The round length exponent is less than the minimum allowed by the chain-spec.")]
-    RoundLengthExpLessThanMinimum,
-    #[error("The round length exponent is greater than the maximum allowed by the chain-spec.")]
-    RoundLengthExpGreaterThanMaximum,
+    #[error("The round length has somehow changed within a round.")]
+    RoundLengthChangedWithinRound,
+    #[error("The round length is greater than the maximum allowed by the chainspec.")]
+    RoundLengthGreaterThanMaximum,
     #[error("This would be the third unit in that round. Only two are allowed.")]
     ThreeUnitsInRound,
     #[error(
@@ -629,6 +627,8 @@ impl<C: Context> State<C> {
         let maybe_block = self.maybe_block(hash);
         let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
+        let round_exp =
+            (unit.round_len() / self.params().min_round_length()).trailing_zeros() as u8;
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
             creator: unit.creator,
@@ -636,7 +636,7 @@ impl<C: Context> State<C> {
             value,
             seq_number: unit.seq_number,
             timestamp: unit.timestamp,
-            round_exp: unit.round_exp,
+            round_exp,
             endorsed,
         };
         Some(SignedWireUnit {
@@ -711,11 +711,12 @@ impl<C: Context> State<C> {
         if Some(&Fault::Banned) == self.faults.get(&creator) {
             return Err(UnitError::Banned);
         }
-        if wunit.round_exp < self.params.min_round_exp() {
-            return Err(UnitError::RoundLengthExpLessThanMinimum);
-        }
-        if wunit.round_exp > self.params.max_round_exp() {
-            return Err(UnitError::RoundLengthExpGreaterThanMaximum);
+        let rl_millis = self.params.min_round_length().millis();
+        #[allow(clippy::integer_arithmetic)] // We check for overflow before the left shift.
+        if wunit.round_exp as u32 > rl_millis.leading_zeros()
+            || rl_millis << wunit.round_exp > self.params.max_round_length().millis()
+        {
+            return Err(UnitError::RoundLengthGreaterThanMaximum);
         }
         if wunit.value.is_none() && !wunit.panorama.has_correct() {
             return Err(UnitError::MissingBlock);
@@ -745,15 +746,20 @@ impl<C: Context> State<C> {
         if wunit.seq_number != panorama.next_seq_num(self, creator) {
             return Err(UnitError::SequenceNumber);
         }
-        let r_id = round_id(timestamp, wunit.round_exp);
+        #[allow(clippy::integer_arithmetic)] // We checked for overflow in pre_validate_unit.
+        let round_len = TimeDiff::from(self.params.min_round_length().millis() << wunit.round_exp);
+        let r_id = round_id(timestamp, round_len);
         let maybe_prev_unit = wunit.previous().map(|vh| self.unit(vh));
         if let Some(prev_unit) = maybe_prev_unit {
-            if prev_unit.round_exp != wunit.round_exp {
-                // The round exponent must not change within a round: Even with respect to the
-                // greater of the two exponents, a round boundary must be between the units.
-                let max_re = prev_unit.round_exp.max(wunit.round_exp);
-                if prev_unit.timestamp >> max_re == timestamp >> max_re {
-                    return Err(UnitError::RoundLengthExpChangedWithinRound);
+            if prev_unit.round_len() != round_len {
+                // The round length must not change within a round: Even with respect to the
+                // greater of the two lengths, a round boundary must be between the units.
+                let max_rl = prev_unit.round_len().max(round_len);
+                #[allow(clippy::integer_arithmetic)] // max_rl is always greater than 0.
+                if prev_unit.timestamp.millis() / max_rl.millis()
+                    == timestamp.millis() / max_rl.millis()
+                {
+                    return Err(UnitError::RoundLengthChangedWithinRound);
                 }
             }
             // There can be at most two units per round: proposal/confirmation and witness.
@@ -817,7 +823,7 @@ impl<C: Context> State<C> {
     pub(super) fn is_correct_proposal(&self, unit: &Unit<C>) -> bool {
         !self.is_faulty(unit.creator)
             && self.leader(unit.timestamp) == unit.creator
-            && unit.timestamp == round_id(unit.timestamp, unit.round_exp)
+            && unit.timestamp == round_id(unit.timestamp, unit.round_len)
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -1119,20 +1125,18 @@ impl<C: Context> State<C> {
     }
 }
 
-/// Returns the round length, given the round exponent.
-pub(crate) fn round_len(round_exp: u8) -> TimeDiff {
-    TimeDiff::from(1_u64.checked_shl(round_exp.into()).unwrap_or(u64::MAX))
-}
-
-/// Returns the time at which the round with the given timestamp and round exponent began.
+/// Returns the time at which the round with the given timestamp and round length began.
 ///
-/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
+/// The boundaries of rounds with length `l` are multiples of that length, in
 /// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
-/// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(crate) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
-    // The greatest multiple less or equal to the timestamp is the timestamp with the last
-    // `round_exp` bits set to zero.
-    (timestamp >> round_exp) << round_exp
+/// of `l` that is less or equal to `timestamp`.
+pub(crate) fn round_id(timestamp: Timestamp, round_len: TimeDiff) -> Timestamp {
+    if round_len.millis() == 0 {
+        error!("called round_id with round_len 0.");
+        return timestamp;
+    }
+    #[allow(clippy::integer_arithmetic)] // Checked for division by 0 above.
+    Timestamp::from((timestamp.millis() / round_len.millis()) * round_len.millis())
 }
 
 /// Returns the base-2 logarithm of `x`, rounded down, i.e. the greatest `i` such that

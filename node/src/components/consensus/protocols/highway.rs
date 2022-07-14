@@ -33,7 +33,7 @@ use crate::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
                 Vertex, VertexError,
             },
-            state::{self, IndexObservation, IndexPanorama, Observation},
+            state::{IndexObservation, IndexPanorama, Observation},
             synchronizer::Synchronizer,
             validators::ValidatorIndex,
         },
@@ -76,7 +76,7 @@ where
     pending_values: HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, NodeId)>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
-    /// A tracker for whether we are keeping up with the current round exponent or not.
+    /// A tracker for whether we are keeping up with the current round length or not.
     round_success_meter: RoundSuccessMeter<C>,
     synchronizer: Synchronizer<C>,
     pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
@@ -107,35 +107,48 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             &validators,
         );
 
+        let minimum_round_length = chainspec
+            .core_config
+            .minimum_block_time
+            .max(TimeDiff::from(1));
+        let maximum_round_exponent = (highway_config.maximum_round_length / minimum_round_length)
+            .saturating_add(1)
+            .next_power_of_two()
+            .trailing_zeros()
+            .saturating_sub(1) as u8;
+        // Doesn't overflow since it's at most highway_config.maximum_round_length.
+        #[allow(clippy::integer_arithmetic)]
+        let maximum_round_length =
+            TimeDiff::from(minimum_round_length.millis() << maximum_round_exponent);
+
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
             .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time.max(now)))
             .unwrap_or_else(|| {
                 RoundSuccessMeter::new(
-                    highway_config.minimum_round_exponent,
-                    highway_config.minimum_round_exponent,
-                    highway_config.maximum_round_exponent,
+                    minimum_round_length,
+                    minimum_round_length,
+                    maximum_round_length,
                     era_start_time.max(now),
                     config.into(),
                 )
             });
-        // This will return the minimum round exponent if we just initialized the meter, i.e. if
+        // This will return the minimum round length if we just initialized the meter, i.e. if
         // there was no previous consensus instance or it had no round success meter.
-        let init_round_exp = round_success_meter.new_exponent();
+        let init_round_len = round_success_meter.new_length();
 
         info!(
-            %init_round_exp,
+            %init_round_len,
             "initializing Highway instance",
         );
 
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
-        // without getting faulty.
-        let min_round_len = state::round_len(highway_config.minimum_round_exponent);
+        // without getting faulty.;
         let min_rounds_per_era = chainspec
             .core_config
             .minimum_era_height
-            .max((TimeDiff::from(1) + chainspec.core_config.era_duration) / min_round_len);
+            .max((TimeDiff::from(1) + chainspec.core_config.era_duration) / minimum_round_length);
         let endorsement_evidence_limit = min_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
@@ -144,22 +157,14 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             seed,
             BLOCK_REWARD,
             (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
-            highway_config.minimum_round_exponent,
-            highway_config.maximum_round_exponent,
-            init_round_exp,
+            minimum_round_length,
+            maximum_round_length,
+            init_round_len,
             chainspec.core_config.minimum_era_height,
             era_start_time,
             era_start_time + chainspec.core_config.era_duration,
             endorsement_evidence_limit,
         );
-
-        if min_round_len < chainspec.core_config.minimum_block_time {
-            warn!(
-                %min_round_len,
-                min_block_time = %chainspec.core_config.minimum_block_time,
-                "Minimum round length is shorter than minimum block time.",
-            );
-        }
 
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
@@ -216,7 +221,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         match effect {
             AvEffect::NewVertex(vv) => {
                 self.log_unit_size(vv.inner(), "sending new unit");
-                self.calculate_round_exponent(&vv, now);
+                self.calculate_round_length(&vv, now);
                 self.process_new_vertex(vv)
             }
             AvEffect::ScheduleTimer(timestamp) => {
@@ -346,10 +351,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         outcomes
     }
 
-    fn calculate_round_exponent(&mut self, vv: &ValidVertex<C>, now: Timestamp) {
-        let new_round_exp = self
+    fn calculate_round_length(&mut self, vv: &ValidVertex<C>, now: Timestamp) {
+        let new_round_len = self
             .round_success_meter
-            .calculate_new_exponent(self.highway.state());
+            .calculate_new_length(self.highway.state());
         // If the vertex contains a proposal, register it in the success meter.
         // It's important to do this _after_ the calculation above - otherwise we might try to
         // register the proposal before the meter is aware that a new round has started, and it
@@ -363,7 +368,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                 error!(?vertex, "proposal without unit hash and timestamp");
             }
         }
-        self.highway.set_round_exp(new_round_exp);
+        self.highway.set_round_len(new_round_len);
     }
 
     fn add_valid_vertex(&mut self, vv: ValidVertex<C>, now: Timestamp) -> ProtocolOutcomes<C> {
@@ -392,11 +397,11 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
-        // Check whether we should change the round exponent.
+        // Check whether we should change the round length.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
-        self.calculate_round_exponent(&vv, now);
+        self.calculate_round_length(&vv, now);
         let av_effects = self.highway.add_valid_vertex(vv, now);
         // Once vertex is added to the state, we can remove it from the cache.
         self.pvv_cache.remove(&vertex_id);

@@ -21,18 +21,18 @@ fn purge_vertices() {
     let params = test_params(0);
     let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
 
-    // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
+    // We use round length 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
     //
     // time:  0x00 0x0A 0x1A 0x2A 0x3A
     //
     // Carol   c0 — c1 — c2
     //            \
     // Bob          ————————— b0 — b1
-    let c0 = add_unit!(state, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
-    let c1 = add_unit!(state, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
-    let c2 = add_unit!(state, CAROL, 0x1A, 4u8, None; N, N, c1).unwrap();
-    let b0 = add_unit!(state, BOB, 0x2A, 4u8, None; N, N, c0).unwrap();
-    let b1 = add_unit!(state, BOB, 0x3A, 4u8, None; N, b0, c0).unwrap();
+    let c0 = add_unit!(state, CAROL, 0x00, 0u8, 0xA; N, N, N).unwrap();
+    let c1 = add_unit!(state, CAROL, 0x0A, 0u8, None; N, N, c0).unwrap();
+    let c2 = add_unit!(state, CAROL, 0x1A, 0u8, None; N, N, c1).unwrap();
+    let b0 = add_unit!(state, BOB, 0x2A, 0u8, None; N, N, c0).unwrap();
+    let b1 = add_unit!(state, BOB, 0x3A, 0u8, None; N, b0, c0).unwrap();
 
     // A Highway instance that's just used to create PreValidatedVertex instances below.
     let util_highway =
@@ -126,7 +126,7 @@ fn do_not_download_synchronized_dependencies() {
     let util_highway =
         Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
 
-    // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
+    // We use round exponent 4u8, so a round is 0x40 ms. With seed 0, Carol is the first leader.
     //
     // time:  0x00 0x0A 0x1A 0x2A 0x3A
     //
@@ -134,10 +134,10 @@ fn do_not_download_synchronized_dependencies() {
     //                \
     // Bob             — b0
 
-    let c0 = add_unit!(state, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
-    let c1 = add_unit!(state, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
-    let c2 = add_unit!(state, CAROL, 0x1A, 4u8, None; N, N, c1).unwrap();
-    let b0 = add_unit!(state, BOB, 0x2A, 4u8, None; N, N, c1).unwrap();
+    let c0 = add_unit!(state, CAROL, 0x00, 0u8, 0xA; N, N, N).unwrap();
+    let c1 = add_unit!(state, CAROL, 0x0A, 0u8, None; N, N, c0).unwrap();
+    let c2 = add_unit!(state, CAROL, 0x1A, 0u8, None; N, N, c1).unwrap();
+    let b0 = add_unit!(state, BOB, 0x2A, 0u8, None; N, N, c1).unwrap();
 
     // Returns the WireUnit with the specified hash.
     let unit = |hash: u64| Vertex::Unit(state.wire_unit(&hash, TEST_INSTANCE_ID).unwrap());
