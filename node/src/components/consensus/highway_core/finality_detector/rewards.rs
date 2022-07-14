@@ -136,7 +136,8 @@ fn round_participation<'a, C: Context>(
             .find(|&(_, unit)| unit.round_id() <= r_id),
     };
     maybe_unit.map_or(RoundParticipation::No, |(vh, unit)| {
-        if unit.round_exp > r_id.trailing_zeros() {
+        #[allow(clippy::integer_arithmetic)]
+        if r_id.millis() % unit.round_len.millis() != 0 {
             // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
             RoundParticipation::Unassigned
         } else if unit.timestamp < r_id {
@@ -152,6 +153,8 @@ fn round_participation<'a, C: Context>(
 #[allow(clippy::integer_arithmetic)] // Overflows in tests would panic anyway.
 #[cfg(test)]
 mod tests {
+    use casper_types::TimeDiff;
+
     use super::*;
     use crate::components::consensus::highway_core::{
         highway_testing::{TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT},
@@ -164,17 +167,17 @@ mod tests {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
 
         // Round ID 0, length 32: Alice participates.
-        let p0 = add_unit!(state, ALICE, 0, 5u8, 0x1; N)?; // Proposal
-        let w0 = add_unit!(state, ALICE, 20, 5u8, None; p0)?; // Witness
+        let p0 = add_unit!(state, ALICE, 0, 1u8, 0x1; N)?; // Proposal
+        let w0 = add_unit!(state, ALICE, 20, 1u8, None; p0)?; // Witness
 
         // Round ID 32, length 32: Alice partially participates.
-        let w32 = add_unit!(state, ALICE, 52, 5u8, None; w0)?; // Witness
+        let w32 = add_unit!(state, ALICE, 52, 1u8, None; w0)?; // Witness
 
         // Round ID 64, length 32: Alice doesn't participate.
 
         // Round ID 96, length 16: Alice participates.
-        let p96 = add_unit!(state, ALICE, 96, 4u8, 0x2; w32)?;
-        let w96 = add_unit!(state, ALICE, 106, 4u8, None; p96)?;
+        let p96 = add_unit!(state, ALICE, 96, 0u8, 0x2; w32)?;
+        let w96 = add_unit!(state, ALICE, 106, 0u8, None; p96)?;
 
         let obs = Observation::Correct(w96);
         let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
@@ -204,9 +207,9 @@ mod tests {
             0,
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
-            3,
-            19,
-            3,
+            TimeDiff::from(1 << 3),
+            TimeDiff::from(1 << 19),
+            TimeDiff::from(1 << 3),
             u64::MAX,
             Timestamp::zero(),
             Timestamp::MAX,
@@ -220,12 +223,12 @@ mod tests {
         // Bob and Alice cite each other, creating a summit with quorum 9.
         // Carol only cites Bob, so she's only part of a quorum-6 summit.
         assert_eq!(BOB, state.leader(0.into()));
-        let bp0 = add_unit!(state, BOB, 0, 3u8, 0xB00; N, N, N)?;
-        let ac0 = add_unit!(state, ALICE, 1, 4u8, None; N, bp0, N)?;
-        let cc0 = add_unit!(state, CAROL, 1, 3u8, None; N, bp0, N)?;
-        let bw0 = add_unit!(state, BOB, 5, 3u8, None; ac0, bp0, cc0)?;
-        let cw0 = add_unit!(state, CAROL, 5, 3u8, None; N, bp0, cc0)?;
-        let aw0 = add_unit!(state, ALICE, 10, 4u8, None; ac0, bp0, N)?;
+        let bp0 = add_unit!(state, BOB, 0, 0u8, 0xB00; N, N, N)?;
+        let ac0 = add_unit!(state, ALICE, 1, 1u8, None; N, bp0, N)?;
+        let cc0 = add_unit!(state, CAROL, 1, 0u8, None; N, bp0, N)?;
+        let bw0 = add_unit!(state, BOB, 5, 0u8, None; ac0, bp0, cc0)?;
+        let cw0 = add_unit!(state, CAROL, 5, 0u8, None; N, bp0, cc0)?;
+        let aw0 = add_unit!(state, ALICE, 10, 1u8, None; ac0, bp0, N)?;
 
         let assigned = total_weight; // Everyone is assigned to round 0.
         let rewards0 = ValidatorMap::from(vec![
@@ -236,10 +239,10 @@ mod tests {
 
         // Round 8: Alice is not assigned (length 16). Bob and Carol make a summit.
         assert_eq!(BOB, state.leader(8.into()));
-        let bp8 = add_unit!(state, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
-        let cc8 = add_unit!(state, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
-        let bw8 = add_unit!(state, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
-        let cw8 = add_unit!(state, CAROL, 13, 3u8, None; aw0, bp8, cc8)?;
+        let bp8 = add_unit!(state, BOB, 8, 0u8, 0xB08; ac0, bw0, cw0)?;
+        let cc8 = add_unit!(state, CAROL, 9, 0u8, None; ac0, bp8, cw0)?;
+        let bw8 = add_unit!(state, BOB, 13, 0u8, None; aw0, bp8, cc8)?;
+        let cw8 = add_unit!(state, CAROL, 13, 0u8, None; aw0, bp8, cc8)?;
 
         let assigned = BOB_CAROL_W; // Alice has round length 16, so she's not in round 8.
         let rewards8 = ValidatorMap::from(vec![
@@ -251,12 +254,12 @@ mod tests {
         // Round 16: Carol slows down (length 16). Alice and Bob finalize with quorum 9.
         // Carol cites only Alice and herself, so she's only in the non-finalizing quorum-5 summit.
         assert_eq!(ALICE, state.leader(16.into()));
-        let ap16 = add_unit!(state, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
-        let bc16 = add_unit!(state, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
-        let cc16 = add_unit!(state, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
-        let bw16 = add_unit!(state, BOB, 19, 3u8, None; ap16, bc16, cw8)?;
-        let aw16 = add_unit!(state, ALICE, 26, 4u8, None; ap16, bc16, cc16)?;
-        let cw16 = add_unit!(state, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
+        let ap16 = add_unit!(state, ALICE, 16, 1u8, 0xA16; aw0, bw8, cw8)?;
+        let bc16 = add_unit!(state, BOB, 17, 0u8, None; ap16, bw8, cw8)?;
+        let cc16 = add_unit!(state, CAROL, 17, 1u8, None; ap16, bw8, cw8)?;
+        let bw16 = add_unit!(state, BOB, 19, 0u8, None; ap16, bc16, cw8)?;
+        let aw16 = add_unit!(state, ALICE, 26, 1u8, None; ap16, bc16, cc16)?;
+        let cw16 = add_unit!(state, CAROL, 26, 1u8, None; ap16, bw8, cc16)?;
 
         let assigned = total_weight; // Everyone is assigned.
         let reduced_reward = state.params().reduced_block_reward();
@@ -290,7 +293,7 @@ mod tests {
         assert_eq!(expected, compute_rewards(&state, &ap_last));
 
         // However, Carol also equivocated in round 16. And Bob saw her!
-        let _cw16e = add_unit!(state, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
+        let _cw16e = add_unit!(state, CAROL, 26, 1u8, None; ap16, bc16, cc16)?;
         let bp_last = add_unit!(state, ALICE, 0x0; aw16, bw16, F)?;
 
         let assigned = ALICE_BOB_W; // Carol is unassigned if she is seen as faulty.

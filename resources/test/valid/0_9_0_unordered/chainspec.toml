@@ -25,8 +25,7 @@ strict_argument_checking = false
 consensus_protocol = 'Zug'
 
 [highway]
-minimum_round_exponent = 14
-maximum_round_exponent = 19
+maximum_round_length = '525seconds'
 reduced_reward_multiplier = [1, 5]
 
 [deploys]
