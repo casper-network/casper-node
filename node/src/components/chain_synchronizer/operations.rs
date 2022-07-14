@@ -716,7 +716,8 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 }
 
 /// Fetches the next block or block header from the network by height.
-/// TODO[RC]: Extend the comment to cover the retry process.
+/// If the fetch operation fails and the number of peers available for fetch was less than the
+/// minimum threshold, we retry the operation once with the new set of peers.
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
@@ -741,8 +742,14 @@ where
     for _ in 0..=1 {
         let peers = prepare_applicable_peers(ctx).await;
         let peer_count = peers.len();
-        let maybe_item =
-            try_fetch_item(peers.clone(), ctx, height, parent_header, key_block_info).await?;
+        let maybe_item = try_fetch_block_or_block_header_by_height(
+            peers.clone(),
+            ctx,
+            height,
+            parent_header,
+            key_block_info,
+        )
+        .await?;
         match maybe_item {
             Some(item) => {
                 check_block_version_is_not_greater_than_current(
@@ -758,7 +765,7 @@ where
                         %height,
                         attempts_to_get_fully_connected_peers =
                             %ctx.config.max_retries_while_not_connected(),
-                        "unable to fetch item as no peers available"
+                        "unable to fetch item despite having enough peers"
                     );
                     break;
                 }
@@ -773,10 +780,9 @@ where
     Ok(None)
 }
 
-// Ok(None) -> no peers left
-// Some(item) -> fetched
-// Err() -> FetcherError
-async fn try_fetch_item<REv, I>(
+/// Fetches the next block or block header from the network by height.
+/// Returns `Ok(None)` if there are no more peers left.
+async fn try_fetch_block_or_block_header_by_height<REv, I>(
     mut peers: Vec<NodeId>,
     ctx: &ChainSyncContext<'_, REv>,
     height: u64,
@@ -869,6 +875,7 @@ where
     })
 }
 
+/// Prepares a list of peers applicable for the next fetch operation.
 async fn prepare_applicable_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
 where
     REv: From<NetworkInfoRequest>,
@@ -2524,7 +2531,7 @@ mod tests {
     }
 
     #[test]
-    fn test_check_block_version() {
+    fn test_check_block_version_is_not_greater_than_current() {
         let mut rng = TestRng::new();
         let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
         let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
@@ -2560,7 +2567,76 @@ mod tests {
     }
 
     #[test]
-    fn gets_correct_era_id_for_validators() {
+    fn test_check_block_version_is_not_lower_than_parent() {
+        let mut rng = TestRng::new();
+        let v1_1_0 = ProtocolVersion::from_parts(1, 1, 0);
+        let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
+        let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+        let header = Block::random_with_specifics(
+            &mut rng,
+            EraId::from(6),
+            101,
+            v1_2_0,
+            false,
+            verifiable_chunked_hash_activation,
+            None,
+        )
+        .take_header();
+
+        let parent_header_older = Block::random_with_specifics(
+            &mut rng,
+            EraId::from(6),
+            101,
+            v1_1_0,
+            false,
+            verifiable_chunked_hash_activation,
+            None,
+        )
+        .take_header();
+
+        // The new block's protocol version is the current one, 1.3.0.
+        assert!(
+            check_block_version_is_not_lower_than_parent(&header, &parent_header_older).is_ok()
+        );
+
+        let parent_header_equal = Block::random_with_specifics(
+            &mut rng,
+            EraId::from(6),
+            101,
+            v1_2_0,
+            false,
+            verifiable_chunked_hash_activation,
+            None,
+        )
+        .take_header();
+
+        // The new block's protocol version is the current one, 1.3.0.
+        assert!(
+            check_block_version_is_not_lower_than_parent(&header, &parent_header_equal).is_ok()
+        );
+
+        let parent_header_newer = Block::random_with_specifics(
+            &mut rng,
+            EraId::from(6),
+            101,
+            v1_3_0,
+            false,
+            verifiable_chunked_hash_activation,
+            None,
+        )
+        .take_header();
+
+        // The new block's protocol version is the current one, 1.3.0.
+        assert!(
+            check_block_version_is_not_lower_than_parent(&header, &parent_header_newer).is_err()
+        );
+    }
+
+    #[test]
+    fn gets_correct_era_id_for_validators_retrieval() {
         assert_eq!(
             EraId::from(0),
             get_era_id_for_validators_retrieval(&EraId::from(0), None)
