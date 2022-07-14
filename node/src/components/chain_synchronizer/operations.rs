@@ -716,6 +716,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 }
 
 /// Fetches the next block or block header from the network by height.
+/// TODO[RC]: Extend the comment to cover the retry process.
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
@@ -737,30 +738,66 @@ where
             parent: Box::new(parent_header.clone()),
         })?;
 
-    // Ensure we have at least one peer to which we're bidirectionally connected before trying to
-    // fetch the data.
-    let mut peers = vec![];
-    for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = get_filtered_fully_connected_peers(ctx).await;
-        if !peers.is_empty() {
-            break;
+    let minimum_peer_count_threshold: usize = 10;
+
+    for _ in 0..=1 {
+        let peers = prepare_applicable_peers(ctx).await;
+        let peer_count = peers.len();
+        let maybe_item =
+            try_fetch_item(peers.clone(), ctx, height, parent_header, key_block_info).await?;
+        match maybe_item {
+            Some(item) => {
+                check_block_version_is_not_greater_than_current(
+                    item.header(),
+                    ctx.config.protocol_version(),
+                )?;
+                // TODO[RC]: The `if` below is actually another flavor of `check_block_version()`...
+                if item.header().protocol_version() < parent_header.protocol_version() {
+                    return Err(Error::LowerVersionThanParent {
+                        parent: Box::new(parent_header.clone()),
+                        child: Box::new(item.header().clone()),
+                    });
+                } else {
+                    return Ok(Some(item));
+                }
+            }
+            None => {
+                if peer_count >= minimum_peer_count_threshold {
+                    warn!(
+                        %height,
+                        attempts_to_get_fully_connected_peers =
+                            %ctx.config.max_retries_while_not_connected(),
+                        "unable to fetch item as no peers available"
+                    );
+                    break;
+                }
+                info!(
+                    %height,
+                    %peer_count,
+                    %minimum_peer_count_threshold, "did not have enough peers"
+                );
+            }
         }
-
-        // We have no peers left, might as well redeem all the bad ones.
-        ctx.redeem_all();
-        tokio::time::sleep(ctx.config.retry_interval()).await;
     }
+    Ok(None)
+}
 
-    if peers.is_empty() {
-        warn!(
-            %height,
-            attempts_to_get_fully_connected_peers =
-                %ctx.config.max_retries_while_not_connected(),
-            "unable to fetch item as no peers available"
-        );
-    }
-
-    let item = loop {
+// Ok(None) -> no peers left
+// Some(item) -> fetched
+// Err() -> FetcherError
+async fn try_fetch_item<REv, I>(
+    mut peers: Vec<NodeId>,
+    ctx: &ChainSyncContext<'_, REv>,
+    height: u64,
+    parent_header: &BlockHeader,
+    key_block_info: &KeyBlockInfo,
+) -> Result<Option<Box<I>>, Error>
+where
+    I: BlockOrHeaderWithMetadata,
+    REv: From<FetcherRequest<I>> + From<BlocklistAnnouncement> + From<StorageRequest> + Send,
+    Error: From<FetcherError<I>>,
+{
+    Ok(loop {
         let peer = match peers.pop() {
             Some(peer) => peer,
             None => return Ok(None),
@@ -775,7 +812,7 @@ where
                         child: Box::new(item.header().clone()),
                     });
                 }
-                break item;
+                break Some(item);
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 if *item.header().parent_hash()
@@ -824,7 +861,7 @@ where
                 let sigs = item.finality_signatures().clone();
                 ctx.effect_builder.put_signatures_to_storage(sigs).await;
 
-                break item;
+                break Some(item);
             }
             Err(FetcherError::Absent { .. }) => {
                 warn!(height, tag = ?I::TAG, ?peer, "block by height absent from peer");
@@ -838,23 +875,30 @@ where
             }
             Err(error) => return Err(error.into()),
         }
-    };
-
-    if item.header().protocol_version() < parent_header.protocol_version() {
-        return Err(Error::LowerVersionThanParent {
-            parent: Box::new(parent_header.clone()),
-            child: Box::new(item.header().clone()),
-        });
-    }
-
-    check_block_version(item.header(), ctx.config.protocol_version())?;
-
-    Ok(Some(item))
+    })
 }
 
-/// Compares the block's version with the current and parent version and returns an error if it is
-/// too new or old.
-fn check_block_version(
+async fn prepare_applicable_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
+where
+    REv: From<NetworkInfoRequest>,
+{
+    let mut peers = vec![];
+    for _ in 0..ctx.config.max_retries_while_not_connected() {
+        peers = get_filtered_fully_connected_peers(ctx).await;
+        if !peers.is_empty() {
+            break;
+        }
+
+        // We have no peers left, might as well redeem all the bad ones.
+        ctx.redeem_all();
+        tokio::time::sleep(ctx.config.retry_interval()).await;
+    }
+    peers
+}
+
+/// Compares the block's version with the current version and returns an error if it is
+/// too new.
+fn check_block_version_is_not_greater_than_current(
     header: &BlockHeader,
     current_version: ProtocolVersion,
 ) -> Result<(), Error> {
@@ -2492,10 +2536,11 @@ mod tests {
         .take_header();
 
         // The new block's protocol version is the current one, 1.3.0.
-        check_block_version(&header, v1_3_0).expect("versions are valid");
+        check_block_version_is_not_greater_than_current(&header, v1_3_0)
+            .expect("versions are valid");
 
         // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
-        match check_block_version(&header, v1_2_0) {
+        match check_block_version_is_not_greater_than_current(&header, v1_2_0) {
             Err(Error::RetrievedBlockHeaderFromFutureVersion {
                 current_version,
                 block_header_with_future_version,
