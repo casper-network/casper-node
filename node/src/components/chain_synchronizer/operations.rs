@@ -714,6 +714,8 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 }
 
 /// Fetches the next block or block header from the network by height.
+/// If the fetch operation fails and the number of peers available for fetch was less than the
+/// minimum threshold, we retry the operation once with the new set of peers.
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
@@ -735,30 +737,73 @@ where
             parent: Box::new(parent_header.clone()),
         })?;
 
-    // Ensure we have at least one peer to which we're bidirectionally connected before trying to
-    // fetch the data.
-    let mut peers = vec![];
-    for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = get_filtered_fully_connected_peers(ctx).await;
-        if !peers.is_empty() {
-            break;
+    for _ in 0..=1 {
+        let peers = prepare_peers_applicable_for_block_fetch(ctx).await;
+        let peer_count = peers.len();
+        let maybe_item = try_fetch_block_or_block_header_by_height(
+            peers,
+            ctx,
+            height,
+            parent_header,
+            key_block_info,
+        )
+        .await?;
+        match maybe_item {
+            Some(item) => {
+                if item.header().protocol_version() < parent_header.protocol_version() {
+                    return Err(Error::LowerVersionThanParent {
+                        parent: Box::new(parent_header.clone()),
+                        child: Box::new(item.header().clone()),
+                    });
+                }
+
+                if item.header().protocol_version() > ctx.config.protocol_version() {
+                    return Err(Error::RetrievedBlockHeaderFromFutureVersion {
+                        current_version: ctx.config.protocol_version(),
+                        block_header_with_future_version: Box::new(item.header().clone()),
+                    });
+                }
+
+                return Ok(Some(item));
+            }
+            None => {
+                if peer_count >= ctx.config.minimum_peer_count_threshold_for_fetch_retry {
+                    warn!(
+                        %height,
+                        attempts_to_get_fully_connected_peers =
+                            %ctx.config.max_retries_while_not_connected(),
+                        "unable to fetch item despite having enough peers"
+                    );
+                    break;
+                }
+                info!(
+                    %height,
+                    %peer_count,
+                    minimum_peer_count_threshold =
+                        %ctx.config.minimum_peer_count_threshold_for_fetch_retry,
+                    "tried fetching with not enough peers, may try again"
+                );
+            }
         }
-
-        // We have no peers left, might as well redeem all the bad ones.
-        ctx.redeem_all();
-        tokio::time::sleep(ctx.config.retry_interval()).await;
     }
+    Ok(None)
+}
 
-    if peers.is_empty() {
-        warn!(
-            %height,
-            attempts_to_get_fully_connected_peers =
-                %ctx.config.max_retries_while_not_connected(),
-            "unable to fetch item as no peers available"
-        );
-    }
-
-    let item = loop {
+/// Fetches the next block or block header from the network by height.
+/// Returns `Ok(None)` if there are no more peers left.
+async fn try_fetch_block_or_block_header_by_height<REv, I>(
+    mut peers: Vec<NodeId>,
+    ctx: &ChainSyncContext<'_, REv>,
+    height: u64,
+    parent_header: &BlockHeader,
+    key_block_info: &KeyBlockInfo,
+) -> Result<Option<Box<I>>, Error>
+where
+    I: BlockOrHeaderWithMetadata,
+    REv: From<FetcherRequest<I>> + From<BlocklistAnnouncement> + From<StorageRequest> + Send,
+    Error: From<FetcherError<I>>,
+{
+    Ok(loop {
         let peer = match peers.pop() {
             Some(peer) => peer,
             None => return Ok(None),
@@ -773,7 +818,7 @@ where
                         child: Box::new(item.header().clone()),
                     });
                 }
-                break item;
+                break Some(item);
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 if *item.header().parent_hash()
@@ -822,7 +867,7 @@ where
                 let sigs = item.finality_signatures().clone();
                 ctx.effect_builder.put_signatures_to_storage(sigs).await;
 
-                break item;
+                break Some(item);
             }
             Err(FetcherError::Absent { .. }) => {
                 warn!(height, tag = ?I::TAG, ?peer, "block by height absent from peer");
@@ -836,23 +881,28 @@ where
             }
             Err(error) => return Err(error.into()),
         }
-    };
+    })
+}
 
-    if item.header().protocol_version() < parent_header.protocol_version() {
-        return Err(Error::LowerVersionThanParent {
-            parent: Box::new(parent_header.clone()),
-            child: Box::new(item.header().clone()),
-        });
+/// Prepares a list of peers applicable for the next fetch operation.
+async fn prepare_peers_applicable_for_block_fetch<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Vec<NodeId>
+where
+    REv: From<NetworkInfoRequest>,
+{
+    let mut peers = vec![];
+    for _ in 0..ctx.config.max_retries_while_not_connected() {
+        peers = get_filtered_fully_connected_peers(ctx).await;
+        if !peers.is_empty() {
+            break;
+        }
+
+        // We have no peers left, might as well redeem all the bad ones.
+        ctx.redeem_all();
+        tokio::time::sleep(ctx.config.retry_interval()).await;
     }
-
-    if item.header().protocol_version() > ctx.config.protocol_version() {
-        return Err(Error::RetrievedBlockHeaderFromFutureVersion {
-            current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(item.header().clone()),
-        });
-    }
-
-    Ok(Some(item))
+    peers
 }
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
@@ -2470,7 +2520,7 @@ mod tests {
     }
 
     #[test]
-    fn gets_correct_era_id_for_validators() {
+    fn gets_correct_era_id_for_validators_retrieval() {
         assert_eq!(
             EraId::from(0),
             get_era_id_for_validators_retrieval(&EraId::from(0), None)
