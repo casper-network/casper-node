@@ -39,6 +39,7 @@ once_cell = "1.5.2"
 
 [features]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
+fixture-generators = []
 
 [lib]
 bench = false
