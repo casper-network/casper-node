@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     mem,
     sync::{
-        atomic::{self, AtomicBool, AtomicI64, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
         Arc, RwLock,
     },
 };
@@ -750,20 +750,20 @@ where
         .await?;
         match maybe_item {
             Some(item) => {
-                let header = item.header();
-                let current_version = ctx.config.protocol_version();
-                if header.protocol_version() > current_version {
-                    return Err(Error::RetrievedBlockHeaderFromFutureVersion {
-                        current_version,
-                        block_header_with_future_version: Box::new(header.clone()),
-                    });
-                }
-                if header.protocol_version() < parent_header.protocol_version() {
+                if item.header().protocol_version() < parent_header.protocol_version() {
                     return Err(Error::LowerVersionThanParent {
                         parent: Box::new(parent_header.clone()),
-                        child: Box::new(header.clone()),
+                        child: Box::new(item.header().clone()),
                     });
                 }
+
+                if item.header().protocol_version() > ctx.config.protocol_version() {
+                    return Err(Error::RetrievedBlockHeaderFromFutureVersion {
+                        current_version: ctx.config.protocol_version(),
+                        block_header_with_future_version: Box::new(item.header().clone()),
+                    });
+                }
+
                 return Ok(Some(item));
             }
             None => {
@@ -1001,12 +1001,12 @@ where
         let child_jobs = fetch_and_store_trie(*job.inner(), ctx)
             .await
             .map_err(|err| {
-                abort.store(true, atomic::Ordering::Relaxed);
+                abort.store(true, Ordering::Relaxed);
                 warn!(?err, trie_key = %job.inner(), "failed to download trie");
                 err
             })?;
         trace!(?child_jobs, trie_key = %job.inner(), "downloaded trie node");
-        if abort.load(atomic::Ordering::Relaxed) {
+        if abort.load(Ordering::Relaxed) {
             return Ok(()); // Another task failed and sent an error.
         }
         for child_job in child_jobs {
@@ -1087,13 +1087,14 @@ where
 ///
 ///  1. Starting at the trusted block, fetches block headers by iterating forwards towards tip until
 ///     getting to one from the current era or failing to get a higher one from any peer.
-///  2. Starting at that most recent block, iterates backwards towards genesis, fetching
+///  2. Starting at that highest synced block, iterates backwards towards genesis, fetching
 ///     `deploy_max_ttl`'s worth of blocks (for deploy replay protection).
-///  3. Starting at the most recent block, again iterates backwards, fetching enough block headers
-///     to allow consensus to be initialized.
-///  4. Fetches the tries under the most recent block's state root hash (parallelized tasks).
+///  3. Starting at the same highest synced block, again iterates backwards, fetching enough block
+///     headers to allow consensus to be initialized.
+///  4. Fetches the tries under the same highest synced block's state root hash (parallelized
+///     tasks).
 ///
-/// Returns the most recent block header and the corresponding most recent key block info.
+/// Returns the highest synced block header and the corresponding highest synced key block info.
 async fn fast_sync<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(BlockHeader, KeyBlockInfo), Error>
@@ -1111,23 +1112,23 @@ where
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fast_sync_total_duration_seconds);
 
     let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-    let (most_recent_block_header, most_recent_key_block_info) =
-        fetch_block_headers_up_to_the_most_recent_one(&trusted_key_block_info, ctx).await?;
+    let (highest_synced_block_header, highest_synced_key_block_info) =
+        fetch_block_headers_up_to_current_era(&trusted_key_block_info, ctx).await?;
 
     fetch_blocks_for_deploy_replay_protection(
-        &most_recent_block_header,
-        &most_recent_key_block_info,
+        &highest_synced_block_header,
+        &highest_synced_key_block_info,
         ctx,
     )
     .await?;
 
-    fetch_block_headers_needed_for_era_supervisor_initialization(&most_recent_block_header, ctx)
+    fetch_block_headers_needed_for_era_supervisor_initialization(&highest_synced_block_header, ctx)
         .await?;
 
-    // Synchronize the trie store for the most recent block header.
-    sync_trie_store(&most_recent_block_header, ctx).await?;
+    // Synchronize the trie store for the highest synced block header.
+    sync_trie_store(&highest_synced_block_header, ctx).await?;
 
-    Ok((most_recent_block_header, most_recent_key_block_info))
+    Ok((highest_synced_block_header, highest_synced_key_block_info))
 }
 
 /// Gets the trusted key block info for a trusted block header.
@@ -1181,11 +1182,11 @@ where
     }
 }
 
-/// Get the most recent header which has the same version as ours.
+/// Get the highest header which has the same version as ours.
 ///
 /// We keep fetching by height until none of our peers have a block at that height and we are in
 /// the current era.
-async fn fetch_block_headers_up_to_the_most_recent_one<REv>(
+async fn fetch_block_headers_up_to_current_era<REv>(
     trusted_key_block_info: &KeyBlockInfo,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(BlockHeader, KeyBlockInfo), Error>
@@ -1198,60 +1199,63 @@ where
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_block_headers_duration_seconds);
 
-    let mut most_recent_block_header = ctx.trusted_block_header().clone();
-    let mut most_recent_key_block_info = trusted_key_block_info.clone();
+    let mut highest_synced_block_header = ctx.trusted_block_header().clone();
+    let mut highest_synced_key_block_info = trusted_key_block_info.clone();
     loop {
         // If we synced up to the current era, we can consider syncing done.
         if is_current_era(
-            &most_recent_block_header,
-            &most_recent_key_block_info,
+            &highest_synced_block_header,
+            &highest_synced_key_block_info,
             ctx.config,
         ) {
             info!(
-                era = most_recent_block_header.era_id().value(),
-                height = most_recent_block_header.height(),
-                timestamp = %most_recent_block_header.timestamp(),
+                era = highest_synced_block_header.era_id().value(),
+                height = highest_synced_block_header.height(),
+                timestamp = %highest_synced_block_header.timestamp(),
                 "fetched block headers up to the current era",
             );
             break;
         }
 
         let maybe_fetched_block = fetch_and_store_next::<_, BlockHeaderWithMetadata>(
-            &most_recent_block_header,
-            &most_recent_key_block_info,
+            &highest_synced_block_header,
+            &highest_synced_key_block_info,
             ctx,
         )
         .await?;
 
-        if let Some(more_recent_block_header_with_metadata) = maybe_fetched_block {
-            most_recent_block_header = more_recent_block_header_with_metadata.block_header;
+        if let Some(higher_block_header_with_metadata) = maybe_fetched_block {
+            highest_synced_block_header = higher_block_header_with_metadata.block_header;
 
             // If the new block is a switch block, update the validator weights, etc...
             if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-                &most_recent_block_header,
+                &highest_synced_block_header,
                 ctx.config.verifiable_chunked_hash_activation(),
             ) {
-                most_recent_key_block_info = key_block_info;
+                highest_synced_key_block_info = key_block_info;
             }
         } else {
-            // If we timed out, consider syncing done.
+            // If we timed out, consider syncing done.  The only way we should reach this code
+            // branch is if the network just underwent an emergency upgrade, where there was an
+            // outage long enough that the highest block of the network now causes `is_current_era`
+            // to return `false`.
             info!(
-                era = most_recent_block_header.era_id().value(),
-                height = most_recent_block_header.height(),
-                timestamp = %most_recent_block_header.timestamp(),
-                "failed to fetch a more recent block header",
+                era = highest_synced_block_header.era_id().value(),
+                height = highest_synced_block_header.height(),
+                timestamp = %highest_synced_block_header.timestamp(),
+                "failed to fetch a higher block header",
             );
             break;
         }
     }
-    Ok((most_recent_block_header, most_recent_key_block_info))
+    Ok((highest_synced_block_header, highest_synced_key_block_info))
 }
 
 /// Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
 /// replay detection.
 async fn fetch_blocks_for_deploy_replay_protection<REv>(
-    most_recent_block_header: &BlockHeader,
-    most_recent_key_block_info: &KeyBlockInfo,
+    highest_synced_block_header: &BlockHeader,
+    highest_synced_key_block_info: &KeyBlockInfo,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
 where
@@ -1259,8 +1263,8 @@ where
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_replay_protection_duration_seconds);
 
-    let mut current_header = most_recent_block_header.clone();
-    while most_recent_key_block_info
+    let mut current_header = highest_synced_block_header.clone();
+    while highest_synced_key_block_info
         .era_start
         .saturating_diff(current_header.timestamp())
         < ctx.config.deploy_max_ttl()
@@ -1276,7 +1280,7 @@ where
 /// The era supervisor requires enough switch blocks to be stored in the database to be able to
 /// initialize the most recent eras.
 async fn fetch_block_headers_needed_for_era_supervisor_initialization<REv>(
-    most_recent_block_header: &BlockHeader,
+    highest_synced_block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
 where
@@ -1286,10 +1290,10 @@ where
 
     let earliest_open_era = ctx
         .config
-        .earliest_open_era(most_recent_block_header.era_id());
+        .earliest_open_era(highest_synced_block_header.era_id());
     let earliest_era_needed_by_era_supervisor =
         ctx.config.earliest_switch_block_needed(earliest_open_era);
-    let mut current_walk_back_header = most_recent_block_header.clone();
+    let mut current_walk_back_header = highest_synced_block_header.clone();
     while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
         current_walk_back_header =
             *fetch_and_store_block_header(ctx, *current_walk_back_header.parent_hash()).await?;
@@ -1912,20 +1916,24 @@ where
         return Ok(outcome);
     }
 
-    let (most_recent_block_header, most_recent_key_block_info) = fast_sync(&ctx).await?;
+    let (highest_synced_block_header, highest_synced_key_block_info) = fast_sync(&ctx).await?;
 
     // Iterate forwards, fetching each full block and deploys but executing each block to generate
     // global state. Stop once we get to a block in the current era.
-    let most_recent_block_header =
-        execute_blocks(&most_recent_block_header, most_recent_key_block_info, &ctx).await?;
+    let highest_synced_block_header = fetch_and_execute_blocks(
+        &highest_synced_block_header,
+        highest_synced_key_block_info,
+        &ctx,
+    )
+    .await?;
 
     // If we just committed an emergency upgrade and are re-syncing right after this, potentially
-    // the call to `fast_sync` and `execute_blocks` could yield a `most_recent_block_header` which
-    // is older than the `highest_block_header` (which is the immediate switch block of the
+    // the call to `fast_sync` and `execute_blocks` could yield a `highest_synced_block_header`
+    // which is lower than the `highest_block_header` (which is the immediate switch block of the
     // upgrade).  Ensure we take the actual highest block to allow consensus to be initialised
     // properly.
-    if most_recent_block_header.height() > highest_block_header.height() {
-        highest_block_header = most_recent_block_header;
+    if highest_synced_block_header.height() > highest_block_header.height() {
+        highest_block_header = highest_synced_block_header;
     }
 
     ctx.effect_builder
@@ -2129,11 +2137,11 @@ where
         .await?)
 }
 
-/// Executes forwards from the block after `most_recent_block_header` until we can get no more
-/// recent block from any peer, or the block we executed is in the current era.
-async fn execute_blocks<REv>(
-    most_recent_block_header: &BlockHeader,
-    most_recent_key_block_info: KeyBlockInfo,
+/// Executes forwards from the block after `highest_synced_block_header` until we can get no higher
+/// block from any peer, or the block we executed is in the current era.
+async fn fetch_and_execute_blocks<REv>(
+    highest_synced_block_header: &BlockHeader,
+    highest_synced_key_block_info: KeyBlockInfo,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<BlockHeader, Error>
 where
@@ -2151,22 +2159,22 @@ where
 
     // Execute blocks to get to current.
     let mut execution_pre_state = ExecutionPreState::from_block_header(
-        most_recent_block_header,
+        highest_synced_block_header,
         ctx.config.verifiable_chunked_hash_activation(),
     );
     info!(
-        era_id = ?most_recent_block_header.era_id(),
-        height = most_recent_block_header.height(),
+        era_id = ?highest_synced_block_header.era_id(),
+        height = highest_synced_block_header.height(),
         now = %Timestamp::now(),
-        block_timestamp = %most_recent_block_header.timestamp(),
+        block_timestamp = %highest_synced_block_header.timestamp(),
         "fetching and executing blocks to synchronize to current",
     );
 
-    let mut most_recent_block_header = most_recent_block_header.clone();
-    let mut key_block_info = most_recent_key_block_info;
+    let mut highest_synced_block_header = highest_synced_block_header.clone();
+    let mut key_block_info = highest_synced_key_block_info;
     loop {
         let result = fetch_and_store_next::<_, BlockWithMetadata>(
-            &most_recent_block_header,
+            &highest_synced_block_header,
             &key_block_info,
             ctx,
         )
@@ -2174,13 +2182,13 @@ where
         let block = match result {
             None => {
                 let in_current_era =
-                    is_current_era(&most_recent_block_header, &key_block_info, ctx.config);
+                    is_current_era(&highest_synced_block_header, &key_block_info, ctx.config);
                 info!(
-                    era = most_recent_block_header.era_id().value(),
+                    era = highest_synced_block_header.era_id().value(),
                     in_current_era,
-                    height = most_recent_block_header.height(),
-                    timestamp = %most_recent_block_header.timestamp(),
-                    "couldn't download a more recent block; finishing syncing",
+                    height = highest_synced_block_header.height(),
+                    timestamp = %highest_synced_block_header.timestamp(),
+                    "couldn't download a higher block; finishing syncing",
                 );
                 break;
             }
@@ -2214,7 +2222,10 @@ where
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
             for peer in get_filtered_fully_connected_peers(ctx).await {
-                info!(block_hash=%block.hash(), "start - re-executing finalized block");
+                warn!(
+                    block_hash=%block.hash(),
+                    "retrying execution due to deploy approvals mismatch"
+                );
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
                     &mut transfers,
@@ -2224,22 +2235,21 @@ where
                     ctx,
                 )
                 .await?;
-                info!(block_hash=%block.hash(), "finish - re-executing finalized block");
+                debug!(block_hash=%block.hash(), "finish - re-executing finalized block");
                 blocks_match = block == *block_and_execution_effects.block();
                 if blocks_match {
                     break;
-                } else {
-                    warn!(
-                        %peer,
-                        "block executed with approvals from this peer doesn't match the received \
-                        block; blocking peer"
-                    );
-                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                 }
+                warn!(
+                    %peer,
+                    "block executed with approvals from this peer doesn't match the received \
+                    block; blocking peer"
+                );
+                ctx.effect_builder.announce_disconnect_from_peer(peer).await;
             }
         }
 
-        // matching now! store new approval sets for the deploys
+        // Matching now - store new approval sets for the deploys.
         for deploy in deploys.into_iter().chain(transfers.into_iter()) {
             ctx.effect_builder
                 .store_finalized_approvals(
@@ -2252,14 +2262,14 @@ where
             .mark_block_completed(block_and_execution_effects.block().height())
             .await;
 
-        most_recent_block_header = block.take_header();
+        highest_synced_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
-            &most_recent_block_header,
+            &highest_synced_block_header,
             ctx.config.verifiable_chunked_hash_activation(),
         );
 
         if let Some(new_key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            &most_recent_block_header,
+            &highest_synced_block_header,
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
             key_block_info = new_key_block_info;
@@ -2267,17 +2277,17 @@ where
 
         // If we managed to sync up to the current era, stop - we'll have to sync the consensus
         // protocol state, anyway.
-        if is_current_era(&most_recent_block_header, &key_block_info, ctx.config) {
+        if is_current_era(&highest_synced_block_header, &key_block_info, ctx.config) {
             info!(
-                era = most_recent_block_header.era_id().value(),
-                height = most_recent_block_header.height(),
-                timestamp = %most_recent_block_header.timestamp(),
+                era = highest_synced_block_header.era_id().value(),
+                height = highest_synced_block_header.height(),
+                timestamp = %highest_synced_block_header.timestamp(),
                 "synchronized up to the current era; finishing syncing",
             );
             break;
         }
     }
-    Ok(most_recent_block_header)
+    Ok(highest_synced_block_header)
 }
 
 async fn fetch_and_store_deploys<REv>(
@@ -2305,17 +2315,17 @@ where
     Ok(deploys)
 }
 
-/// Returns `true` if `most_recent_block` indicates that we're currently in an ongoing era.
+/// Returns `true` if `highest_synced_block` indicates that we're currently in an ongoing era.
 ///
-/// The ongoing era is either the one in which `most_recent_block` was created, or in the case where
-/// `most_recent_block` is a switch block, it is the era immediately following it.
+/// The ongoing era is either the one in which `highest_synced_block` was created, or in the case
+/// where `highest_synced_block` is a switch block, it is the era immediately following it.
 pub(super) fn is_current_era(
-    most_recent_block: &BlockHeader,
+    highest_synced_block: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
     config: &Config,
 ) -> bool {
     is_current_era_given_current_timestamp(
-        most_recent_block,
+        highest_synced_block,
         trusted_key_block_info,
         config,
         Timestamp::now(),
@@ -2323,7 +2333,7 @@ pub(super) fn is_current_era(
 }
 
 fn is_current_era_given_current_timestamp(
-    most_recent_block: &BlockHeader,
+    highest_synced_block: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
     config: &Config,
     current_timestamp: Timestamp,
@@ -2340,10 +2350,10 @@ fn is_current_era_given_current_timestamp(
     // Otherwise estimate the earliest possible end of this era based on how many blocks remain.
     let remaining_blocks_in_this_era = config
         .min_era_height()
-        .saturating_sub(most_recent_block.height() - *height);
-    let time_since_most_recent_block =
-        current_timestamp.saturating_diff(most_recent_block.timestamp());
-    time_since_most_recent_block < config.min_round_length() * remaining_blocks_in_this_era
+        .saturating_sub(highest_synced_block.height() - *height);
+    let time_since_highest_synced_block =
+        current_timestamp.saturating_diff(highest_synced_block.timestamp());
+    time_since_highest_synced_block < config.min_round_length() * remaining_blocks_in_this_era
 }
 
 #[cfg(test)]
