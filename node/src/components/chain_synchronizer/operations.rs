@@ -23,9 +23,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{
-    bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp, U512,
-};
+use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
@@ -743,7 +741,7 @@ where
         let peers = prepare_peers_applicable_for_block_fetch(ctx).await;
         let peer_count = peers.len();
         let maybe_item = try_fetch_block_or_block_header_by_height(
-            peers.clone(),
+            peers,
             ctx,
             height,
             parent_header,
@@ -752,11 +750,20 @@ where
         .await?;
         match maybe_item {
             Some(item) => {
-                check_block_version_is_not_greater_than_current(
-                    item.header(),
-                    ctx.config.protocol_version(),
-                )?;
-                check_block_version_is_not_lower_than_parent(item.header(), parent_header)?;
+                let header = item.header();
+                let current_version = ctx.config.protocol_version();
+                if header.protocol_version() > current_version {
+                    return Err(Error::RetrievedBlockHeaderFromFutureVersion {
+                        current_version,
+                        block_header_with_future_version: Box::new(header.clone()),
+                    });
+                }
+                if header.protocol_version() < parent_header.protocol_version() {
+                    return Err(Error::LowerVersionThanParent {
+                        parent: Box::new(parent_header.clone()),
+                        child: Box::new(header.clone()),
+                    });
+                }
                 return Ok(Some(item));
             }
             None => {
@@ -772,7 +779,9 @@ where
                 info!(
                     %height,
                     %peer_count,
-                    minimum_peer_count_threshold = %ctx.config.minimum_peer_count_threshold_for_fetch_retry, "tried fetching with not enough peers, may try again"
+                    minimum_peer_count_threshold =
+                        %ctx.config.minimum_peer_count_threshold_for_fetch_retry,
+                    "tried fetching with not enough peers, may try again"
                 );
             }
         }
@@ -894,38 +903,6 @@ where
         tokio::time::sleep(ctx.config.retry_interval()).await;
     }
     peers
-}
-
-/// Compares the block's version with the current version and returns an error if it is
-/// too new.
-fn check_block_version_is_not_greater_than_current(
-    header: &BlockHeader,
-    current_version: ProtocolVersion,
-) -> Result<(), Error> {
-    if header.protocol_version() > current_version {
-        return Err(Error::RetrievedBlockHeaderFromFutureVersion {
-            current_version,
-            block_header_with_future_version: Box::new(header.clone()),
-        });
-    }
-
-    Ok(())
-}
-
-/// Compares the block's version with the parent block version and returns an error if it is
-/// too old.
-fn check_block_version_is_not_lower_than_parent(
-    header: &BlockHeader,
-    parent_header: &BlockHeader,
-) -> Result<(), Error> {
-    if header.protocol_version() < parent_header.protocol_version() {
-        return Err(Error::LowerVersionThanParent {
-            parent: Box::new(parent_header.clone()),
-            child: Box::new(header.clone()),
-        });
-    }
-
-    Ok(())
 }
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
@@ -2375,7 +2352,7 @@ mod tests {
 
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey};
+    use casper_types::{testing::TestRng, EraId, PublicKey, SecretKey};
 
     use super::*;
     use crate::{
@@ -2530,111 +2507,6 @@ mod tests {
             &config,
             now
         ));
-    }
-
-    #[test]
-    fn test_check_block_version_is_not_greater_than_current() {
-        let mut rng = TestRng::new();
-        let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
-        let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
-
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-        let header = Block::random_with_specifics(
-            &mut rng,
-            EraId::from(6),
-            101,
-            v1_3_0,
-            false,
-            verifiable_chunked_hash_activation,
-            None,
-        )
-        .take_header();
-
-        // The new block's protocol version is the current one, 1.3.0.
-        check_block_version_is_not_greater_than_current(&header, v1_3_0)
-            .expect("versions are valid");
-
-        // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
-        match check_block_version_is_not_greater_than_current(&header, v1_2_0) {
-            Err(Error::RetrievedBlockHeaderFromFutureVersion {
-                current_version,
-                block_header_with_future_version,
-            }) => {
-                assert_eq!(v1_2_0, current_version);
-                assert_eq!(header, *block_header_with_future_version);
-            }
-            result => panic!("expected future block version error, got {:?}", result),
-        }
-    }
-
-    #[test]
-    fn test_check_block_version_is_not_lower_than_parent() {
-        let mut rng = TestRng::new();
-        let v1_1_0 = ProtocolVersion::from_parts(1, 1, 0);
-        let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
-        let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
-
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-        let header = Block::random_with_specifics(
-            &mut rng,
-            EraId::from(6),
-            101,
-            v1_2_0,
-            false,
-            verifiable_chunked_hash_activation,
-            None,
-        )
-        .take_header();
-
-        let parent_header_older = Block::random_with_specifics(
-            &mut rng,
-            EraId::from(6),
-            101,
-            v1_1_0,
-            false,
-            verifiable_chunked_hash_activation,
-            None,
-        )
-        .take_header();
-
-        // The new block's protocol version is the current one, 1.3.0.
-        assert!(
-            check_block_version_is_not_lower_than_parent(&header, &parent_header_older).is_ok()
-        );
-
-        let parent_header_equal = Block::random_with_specifics(
-            &mut rng,
-            EraId::from(6),
-            101,
-            v1_2_0,
-            false,
-            verifiable_chunked_hash_activation,
-            None,
-        )
-        .take_header();
-
-        // The new block's protocol version is the current one, 1.3.0.
-        assert!(
-            check_block_version_is_not_lower_than_parent(&header, &parent_header_equal).is_ok()
-        );
-
-        let parent_header_newer = Block::random_with_specifics(
-            &mut rng,
-            EraId::from(6),
-            101,
-            v1_3_0,
-            false,
-            verifiable_chunked_hash_activation,
-            None,
-        )
-        .take_header();
-
-        // The new block's protocol version is the current one, 1.3.0.
-        assert!(
-            check_block_version_is_not_lower_than_parent(&header, &parent_header_newer).is_err()
-        );
     }
 
     #[test]
