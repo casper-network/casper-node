@@ -479,7 +479,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Currently syncing all blocks from genesis towards the tip of the chain.\n\nThis is done via many parallel sync-block tasks, with each such ongoing task being represented by an entry in the wrapped `Vec`.  The set is sorted by lowest block height.",
+          "description": "Currently syncing all blocks from genesis towards the tip of the chain.\n\nThis is done via many parallel sync-block tasks, with each such ongoing task being represented by an entry in the wrapped `Vec`.  The set is sorted ascending by block height.",
           "type": "object",
           "required": [
             "syncing_forward_from_genesis"
