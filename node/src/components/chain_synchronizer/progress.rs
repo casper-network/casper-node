@@ -493,7 +493,7 @@ impl ProgressHolder {
 }
 
 /// This impl is specific to functionality used for `debug_assert`s.
-#[cfg(debug_assertions)]
+#[cfg_attr(not(debug_assertions), allow(unused))]
 impl ProgressHolder {
     pub(super) fn is_fast_sync(&self) -> bool {
         matches!(*self.inner.lock().unwrap(), Progress::FastSync(_))
