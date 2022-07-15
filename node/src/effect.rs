@@ -1765,8 +1765,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NodeStateRequest> + Send,
     {
-        self.make_request(NodeStateRequest, QueueKind::Regular)
-            .await
+        self.make_request(NodeStateRequest, QueueKind::Api).await
     }
 
     /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.

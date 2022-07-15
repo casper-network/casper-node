@@ -234,7 +234,7 @@ impl ProgressHolder {
     }
 
     fn get_inner_while_fast_syncing(&self, new_state: &str) -> MutexGuard<Progress> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().expect("lock poisoned");
         match *inner {
             Progress::SyncToGenesis(_) => {
                 error!(
@@ -260,14 +260,14 @@ impl ProgressHolder {
     }
 
     pub(super) fn set_fetching_headers_back_to_genesis(&self, lowest_block_height: u64) {
-        let inner = &mut *self.inner.lock().unwrap();
+        let inner = &mut *self.inner.lock().expect("lock poisoned");
         *inner = Progress::SyncToGenesis(SyncToGenesis::FetchingHeadersBackToGenesis {
             lowest_block_height,
         })
     }
 
     pub(super) fn start_syncing_block_for_sync_forward(&self, block_height: u64) {
-        let inner = &mut *self.inner.lock().unwrap();
+        let inner = &mut *self.inner.lock().expect("lock poisoned");
         if !matches!(
             inner,
             Progress::SyncToGenesis(SyncToGenesis::SyncingForwardFromGenesis(_))
@@ -309,7 +309,7 @@ impl ProgressHolder {
         block_height: u64,
         state_root_hash: Digest,
     ) {
-        let inner = &mut *self.inner.lock().unwrap();
+        let inner = &mut *self.inner.lock().expect("lock poisoned");
         let tasks =
             if let Progress::SyncToGenesis(SyncToGenesis::SyncingForwardFromGenesis(tasks)) = inner
             {
@@ -325,7 +325,13 @@ impl ProgressHolder {
 
         let existing_progress =
             match tasks.binary_search_by(|task| task.block_height.cmp(&block_height)) {
-                Ok(index) => tasks.get_mut(index).expect("just found index"),
+                Ok(index) => match tasks.get_mut(index) {
+                    Some(existing_progress) => existing_progress,
+                    None => {
+                        error!(?tasks, "binary search of tasks failed while fetching tries");
+                        return;
+                    }
+                },
                 Err(_) => {
                     error!(
                         %block_height,
@@ -353,7 +359,7 @@ impl ProgressHolder {
     }
 
     pub(super) fn start_fetching_block_signatures_for_sync_forward(&self, block_height: u64) {
-        let inner = &mut *self.inner.lock().unwrap();
+        let inner = &mut *self.inner.lock().expect("lock poisoned");
         let tasks =
             if let Progress::SyncToGenesis(SyncToGenesis::SyncingForwardFromGenesis(tasks)) = inner
             {
@@ -370,7 +376,16 @@ impl ProgressHolder {
 
         let existing_progress =
             match tasks.binary_search_by(|task| task.block_height.cmp(&block_height)) {
-                Ok(index) => tasks.get_mut(index).expect("just found index"),
+                Ok(index) => match tasks.get_mut(index) {
+                    Some(existing_progress) => existing_progress,
+                    None => {
+                        error!(
+                            ?tasks,
+                            "binary search of tasks failed while fetching block signatures"
+                        );
+                        return;
+                    }
+                },
                 Err(_) => {
                     error!(
                         %block_height,
@@ -393,7 +408,7 @@ impl ProgressHolder {
     }
 
     pub(super) fn finish_syncing_block_for_sync_forward(&self, block_height: u64) {
-        let inner = &mut *self.inner.lock().unwrap();
+        let inner = &mut *self.inner.lock().expect("lock poisoned");
         let tasks =
             if let Progress::SyncToGenesis(SyncToGenesis::SyncingForwardFromGenesis(tasks)) = inner
             {
@@ -435,14 +450,14 @@ impl ProgressHolder {
 /// This impl has functionality common to fast-sync and sync-to-genesis.
 impl ProgressHolder {
     pub(super) fn start(&self) {
-        match &mut *self.inner.lock().unwrap() {
+        match &mut *self.inner.lock().expect("lock poisoned") {
             Progress::FastSync(progress) => *progress = FastSync::Starting,
             Progress::SyncToGenesis(progress) => *progress = SyncToGenesis::Starting,
         }
     }
 
     pub(super) fn set_num_tries_to_fetch(&self, block_height: u64, num_tries: usize) {
-        match &mut *self.inner.lock().unwrap() {
+        match &mut *self.inner.lock().expect("lock poisoned") {
             Progress::FastSync(FastSync::FetchingTries {
                 num_tries_to_fetch, ..
             }) => *num_tries_to_fetch = num_tries,
@@ -481,14 +496,14 @@ impl ProgressHolder {
     }
 
     pub(super) fn finish(&self) {
-        match &mut *self.inner.lock().unwrap() {
+        match &mut *self.inner.lock().expect("lock poisoned") {
             Progress::FastSync(progress) => *progress = FastSync::Finished,
             Progress::SyncToGenesis(progress) => *progress = SyncToGenesis::Finished,
         }
     }
 
     pub(super) fn progress(&self) -> Progress {
-        self.inner.lock().unwrap().clone()
+        self.inner.lock().expect("lock poisoned").clone()
     }
 }
 
@@ -496,15 +511,21 @@ impl ProgressHolder {
 #[cfg_attr(not(debug_assertions), allow(unused))]
 impl ProgressHolder {
     pub(super) fn is_fast_sync(&self) -> bool {
-        matches!(*self.inner.lock().unwrap(), Progress::FastSync(_))
+        matches!(
+            *self.inner.lock().expect("lock poisoned"),
+            Progress::FastSync(_)
+        )
     }
 
     pub(super) fn is_sync_to_genesis(&self) -> bool {
-        matches!(*self.inner.lock().unwrap(), Progress::SyncToGenesis(_))
+        matches!(
+            *self.inner.lock().expect("lock poisoned"),
+            Progress::SyncToGenesis(_)
+        )
     }
 
     pub(super) fn is_fetching_tries(&self, block_height: u64) -> bool {
-        match &*self.inner.lock().unwrap() {
+        match &*self.inner.lock().expect("lock poisoned") {
             Progress::FastSync(FastSync::FetchingTries { .. }) => true,
             Progress::SyncToGenesis(SyncToGenesis::SyncingForwardFromGenesis(tasks)) => {
                 match tasks.binary_search_by(|task| task.block_height.cmp(&block_height)) {
@@ -520,7 +541,17 @@ impl ProgressHolder {
                     Err(_) => false,
                 }
             }
-            _ => false,
+            Progress::FastSync(FastSync::NotYetStarted)
+            | Progress::FastSync(FastSync::Starting)
+            | Progress::FastSync(FastSync::FetchingTrustedBlockHeader(_))
+            | Progress::FastSync(FastSync::FetchingBlockAndDeploysToExecute(_))
+            | Progress::FastSync(FastSync::ExecutingBlock(_))
+            | Progress::FastSync(FastSync::RetryingBlockExecution { .. })
+            | Progress::FastSync(FastSync::Finished)
+            | Progress::SyncToGenesis(SyncToGenesis::NotYetStarted)
+            | Progress::SyncToGenesis(SyncToGenesis::Starting)
+            | Progress::SyncToGenesis(SyncToGenesis::FetchingHeadersBackToGenesis { .. })
+            | Progress::SyncToGenesis(SyncToGenesis::Finished) => false,
         }
     }
 }
