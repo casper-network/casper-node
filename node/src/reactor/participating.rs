@@ -63,7 +63,7 @@ use crate::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -72,7 +72,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId, NodeState,
+        FinalizedApprovalsWithId,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -145,6 +145,8 @@ pub(crate) enum ParticipatingEvent {
     FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
 
     // Requests
+    #[from]
+    ChainSynchronizerRequest(#[serde(skip_serializing)] NodeStateRequest),
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
@@ -275,6 +277,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            ParticipatingEvent::ChainSynchronizerRequest(_) => "ChainSynchronizerRequest",
             ParticipatingEvent::BlockFetcher(_) => "BlockFetcher",
             ParticipatingEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             ParticipatingEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
@@ -427,6 +430,9 @@ impl Display for ParticipatingEvent {
                 write!(f, "finality signatures fetcher: {}", event)
             }
             ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
+            ParticipatingEvent::ChainSynchronizerRequest(req) => {
+                write!(f, "chain synchronizer request: {}", req)
+            }
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -755,14 +761,12 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             protocol_version,
             node_startup_instant,
-            NodeState::Participating,
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             protocol_version,
             node_startup_instant,
-            NodeState::Participating,
         )?;
 
         let fetcher_builder = FetcherBuilder::new(
@@ -1043,6 +1047,11 @@ impl reactor::Reactor for Reactor {
             ),
 
             // Requests:
+            ParticipatingEvent::ChainSynchronizerRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::ChainSynchronizer,
+                self.chain_synchronizer
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             ParticipatingEvent::NetworkRequest(req) => {
                 let event = ParticipatingEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)

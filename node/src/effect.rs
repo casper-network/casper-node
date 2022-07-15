@@ -150,7 +150,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
     utils::{SharedFlag, Source},
 };
@@ -165,7 +165,7 @@ use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
     ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    StateStoreRequest, StorageRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1759,6 +1759,13 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    pub(crate) async fn get_node_state(self) -> NodeState
+    where
+        REv: From<NodeStateRequest> + Send,
+    {
+        self.make_request(NodeStateRequest, QueueKind::Api).await
     }
 
     /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
