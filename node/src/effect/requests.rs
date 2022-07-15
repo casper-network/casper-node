@@ -53,7 +53,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, StatusFeed,
+        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -1220,11 +1220,21 @@ pub(crate) enum ChainspecLoaderRequest {
 }
 
 impl Display for ChainspecLoaderRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
             ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
+    }
+}
+
+/// ChainSynchronizer component request.
+#[derive(Debug, Serialize)]
+pub(crate) struct NodeStateRequest(pub(crate) Responder<NodeState>);
+
+impl Display for NodeStateRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "node state request")
     }
 }

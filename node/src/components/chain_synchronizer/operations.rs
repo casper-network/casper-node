@@ -29,7 +29,7 @@ use crate::{
     components::{
         chain_synchronizer::{
             error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
-            Config, Metrics,
+            Config, Metrics, ProgressHolder,
         },
         consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
@@ -102,6 +102,7 @@ where
     config: &'a Config,
     trusted_block_header: Option<Arc<BlockHeader>>,
     metrics: &'a Metrics,
+    progress: &'a ProgressHolder,
     /// A list of peers which should be asked for data in the near future.
     bad_peer_list: RwLock<VecDeque<NodeId>>,
     /// Number of times peer lists have been filtered.
@@ -124,7 +125,9 @@ where
         effect_builder: &'a EffectBuilder<REv>,
         config: &'a Config,
         metrics: &'a Metrics,
+        progress: &'a ProgressHolder,
     ) -> Result<Option<ChainSyncContext<'a, REv>>, Error> {
+        debug_assert!(progress.is_fast_sync());
         let locally_available_block_range_on_start = effect_builder
             .get_available_block_range_from_storage()
             .await;
@@ -134,6 +137,7 @@ where
             config,
             trusted_block_header: None,
             metrics,
+            progress,
             bad_peer_list: RwLock::new(VecDeque::new()),
             filter_count: AtomicI64::new(0),
             locally_available_block_range_on_start,
@@ -171,7 +175,9 @@ where
         effect_builder: &'a EffectBuilder<REv>,
         config: &'a Config,
         metrics: &'a Metrics,
+        progress: &'a ProgressHolder,
     ) -> Result<ChainSyncContext<'a, REv>, Error> {
+        debug_assert!(progress.is_sync_to_genesis());
         let locally_available_block_range_on_start = effect_builder
             .get_available_block_range_from_storage()
             .await;
@@ -182,6 +188,7 @@ where
             config,
             trusted_block_header: None,
             metrics,
+            progress,
             bad_peer_list: RwLock::new(VecDeque::new()),
             filter_count: AtomicI64::new(0),
             locally_available_block_range_on_start,
@@ -929,6 +936,7 @@ where
 /// A worker task that takes trie keys from a queue and downloads the trie.
 async fn sync_trie_store_worker<REv>(
     worker_id: usize,
+    block_height: u64,
     abort: Arc<AtomicBool>,
     queue: Arc<WorkQueue<Digest>>,
     ctx: &ChainSyncContext<'_, REv>,
@@ -962,6 +970,8 @@ where
         for child_job in child_jobs {
             queue.push_job(child_job);
         }
+        ctx.progress
+            .set_num_tries_to_fetch(block_height, queue.num_jobs());
         drop(job); // Make sure the job gets dropped only when the children are in the queue.
         drop(permit); // Drop permit to allow other workers to acquire it.
     }
@@ -977,16 +987,18 @@ where
     REv:
         From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest> + From<ContractRuntimeRequest>,
 {
+    let block_height = block_header.height();
+    debug_assert!(ctx.progress.is_fetching_tries(block_height));
     let state_root_hash = *block_header.state_root_hash();
     trace!(?state_root_hash, "syncing trie store");
 
     if ctx
         .locally_available_block_range_on_start
-        .contains(block_header.height())
+        .contains(block_height)
     {
         info!(
             locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
-            block_height = %block_header.height(),
+            block_height,
             "skipping trie store sync because it is already available locally"
         );
         return Ok(());
@@ -1019,8 +1031,12 @@ where
 
     let queue = Arc::new(WorkQueue::default());
     queue.push_job(state_root_hash);
+    ctx.progress.set_num_tries_to_fetch(block_height, 1);
+
     let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_trie_fetches())
-        .map(|worker_id| sync_trie_store_worker(worker_id, abort.clone(), queue.clone(), ctx))
+        .map(|worker_id| {
+            sync_trie_store_worker(worker_id, block_height, abort.clone(), queue.clone(), ctx)
+        })
         .collect();
     while let Some(result) = workers.next().await {
         result?; // Return the error if a download failed.
@@ -1076,6 +1092,10 @@ where
         .await?;
 
     // Synchronize the trie store for the highest synced block header.
+    ctx.progress.start_fetching_tries_for_fast_sync(
+        highest_synced_block_header.height(),
+        *highest_synced_block_header.state_root_hash(),
+    );
     sync_trie_store(&highest_synced_block_header, ctx).await?;
 
     Ok((highest_synced_block_header, highest_synced_key_block_info))
@@ -1268,6 +1288,7 @@ pub(super) async fn run_sync_to_genesis_task<REv>(
     effect_builder: EffectBuilder<REv>,
     config: Config,
     metrics: Metrics,
+    progress: ProgressHolder,
 ) -> Result<(), Error>
 where
     REv: From<StorageRequest>
@@ -1281,12 +1302,16 @@ where
         + From<MarkBlockCompletedRequest>
         + From<ChainSynchronizerAnnouncement>,
 {
-    let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
     info!("starting chain sync to genesis");
-    let ctx = ChainSyncContext::new_for_sync_to_genesis(&effect_builder, &config, &metrics).await?;
+    let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
+    progress.start();
+    let ctx =
+        ChainSyncContext::new_for_sync_to_genesis(&effect_builder, &config, &metrics, &progress)
+            .await?;
     fetch_headers_till_genesis(&ctx).await?;
     fetch_blocks_and_state_and_finality_signatures_since_genesis(&ctx).await?;
     effect_builder.announce_finished_chain_syncing().await;
+    ctx.progress.finish();
     info!("finished chain sync to genesis");
     Ok(())
 }
@@ -1309,6 +1334,8 @@ where
     let mut lowest_trusted_block_header = ctx.trusted_block_header().clone();
 
     loop {
+        ctx.progress
+            .set_fetching_headers_back_to_genesis(lowest_trusted_block_header.height());
         match fetch_block_headers_batch(&lowest_trusted_block_header, ctx).await {
             Ok(new_lowest) => {
                 if new_lowest.height() % 1_000 == 0 {
@@ -1450,43 +1477,48 @@ where
 {
     let trusted_block_height = ctx.trusted_block_header().height();
     loop {
-        let next_block_height = latest_height_requested.fetch_add(1, Ordering::SeqCst);
-        if next_block_height >= trusted_block_height {
-            info!(%worker_id, ?next_block_height, ?trusted_block_height, "fetch-block worker finished");
+        let block_height = latest_height_requested.fetch_add(1, Ordering::SeqCst);
+        if block_height >= trusted_block_height {
+            info!(%worker_id, ?block_height, ?trusted_block_height, "fetch-block worker finished");
             return Ok(());
         }
 
         let block_header = ctx
             .effect_builder
-            .get_block_header_at_height_from_storage(next_block_height, false)
+            .get_block_header_at_height_from_storage(block_height, false)
             .await
-            .ok_or(Error::NoSuchBlockHeight(next_block_height))?;
+            .ok_or(Error::NoSuchBlockHeight(block_height))?;
 
-        let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+        let block_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
 
-        if next_block_height % 1_000 == 0 {
+        if block_height % 1_000 == 0 {
             info!(
                 worker_id,
-                ?block_header_hash,
-                ?next_block_height,
+                ?block_hash,
+                ?block_height,
                 "syncing block and deploys"
             );
         }
-        match fetch_and_store_block_with_deploys_by_hash(block_header_hash, ctx).await {
+        ctx.progress
+            .start_syncing_block_for_sync_forward(block_height);
+        match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
             Ok(fetched_block) => {
-                trace!(?block_header_hash, "downloaded block and deploys");
+                debug_assert_eq!(block_header, *fetched_block.block.header());
+                trace!(?block_hash, "downloaded block and deploys");
                 // We want to download the trie only when we know we have the block.
-                if let Err(error) = sync_trie_store(fetched_block.block.header(), ctx).await {
+                ctx.progress.start_fetching_tries_for_sync_forward(
+                    block_height,
+                    *block_header.state_root_hash(),
+                );
+                if let Err(error) = sync_trie_store(&block_header, ctx).await {
                     error!(
                         ?error,
-                        ?block_header_hash,
+                        ?block_hash,
                         "failed to download trie with infinite retries"
                     );
                     return Err(error);
                 }
-                ctx.effect_builder
-                    .mark_block_completed(fetched_block.block.height())
-                    .await;
+                ctx.effect_builder.mark_block_completed(block_height).await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
@@ -1495,13 +1527,17 @@ where
                 // want to retry.
                 error!(
                     ?err,
-                    ?block_header_hash,
+                    ?block_hash,
                     "failed to download block with infinite retries"
                 );
             }
         }
 
+        ctx.progress
+            .start_fetching_block_signatures_for_sync_forward(block_height);
         fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
+        ctx.progress
+            .finish_syncing_block_for_sync_forward(block_height);
     }
 }
 
@@ -1822,6 +1858,7 @@ pub(super) async fn run_fast_sync_task<REv>(
     effect_builder: EffectBuilder<REv>,
     config: Config,
     metrics: Metrics,
+    progress: ProgressHolder,
 ) -> Result<FastSyncOutcome, Error>
 where
     REv: From<StorageRequest>
@@ -1841,11 +1878,15 @@ where
 {
     info!("fast syncing chain");
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
+    progress.start();
 
-    let ctx = match ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics).await? {
-        Some(ctx) => ctx,
-        None => return Ok(FastSyncOutcome::ShouldCommitGenesis),
-    };
+    let ctx =
+        match ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics, &progress)
+            .await?
+        {
+            Some(ctx) => ctx,
+            None => return Ok(FastSyncOutcome::ShouldCommitGenesis),
+        };
     verify_trusted_block_header(&ctx)?;
 
     // We should have at least one block header in storage now as a result of calling
@@ -1914,6 +1955,8 @@ where
     let _metric = ScopeTimer::new(
         &metrics.chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
     );
+    ctx.progress
+        .start_fetching_trusted_block_header(trusted_hash);
     let trusted_block_header = fetch_and_store_block_header(ctx, trusted_hash).await?;
     Ok(trusted_block_header)
 }
@@ -1986,6 +2029,10 @@ where
         && highest_block_header.protocol_version() < ctx.config.protocol_version()
     {
         info!("synchronizing trie store before committing emergency upgrade");
+        ctx.progress.start_fetching_tries_for_emergency_upgrade(
+            ctx.trusted_block_header().height(),
+            *ctx.trusted_block_header().state_root_hash(),
+        );
         sync_trie_store(ctx.trusted_block_header(), ctx).await?;
         info!("finished synchronizing before committing emergency upgrade");
         return Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
@@ -2052,6 +2099,10 @@ where
         info!("synchronizing trie store before committing upgrade");
     }
 
+    ctx.progress.start_fetching_tries_for_upgrade(
+        ctx.trusted_block_header().height(),
+        *ctx.trusted_block_header().state_root_hash(),
+    );
     sync_trie_store(ctx.trusted_block_header(), ctx).await?;
     info!("finished synchronizing before committing upgrade");
     Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
@@ -2123,6 +2174,9 @@ where
     let mut highest_synced_block_header = highest_synced_block_header.clone();
     let mut key_block_info = highest_synced_key_block_info;
     loop {
+        ctx.progress.start_fetching_block_and_deploys_to_execute(
+            highest_synced_block_header.height().saturating_add(1),
+        );
         let result = fetch_and_store_next::<_, BlockWithMetadata>(
             &highest_synced_block_header,
             &key_block_info,
@@ -2156,6 +2210,7 @@ where
             block_timestamp = %block.timestamp(),
             "executing block",
         );
+        ctx.progress.start_executing_block(block.height());
         let block_and_execution_effects = ctx
             .effect_builder
             .execute_finalized_block(
@@ -2169,6 +2224,7 @@ where
 
         let mut blocks_match = block == *block_and_execution_effects.block();
 
+        let mut attempts = 0;
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
             for peer in get_filtered_fully_connected_peers(ctx).await {
@@ -2176,6 +2232,8 @@ where
                     block_hash=%block.hash(),
                     "retrying execution due to deploy approvals mismatch"
                 );
+                attempts += 1;
+                ctx.progress.retry_executing_block(block.height(), attempts);
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
                     &mut transfers,

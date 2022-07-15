@@ -26,7 +26,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
 * Nodes will now also gossip deploys onwards while joining.
-* Add run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
+* Add `node_state` field to the `/status` endpoint and the `info_get_status` JSON-RPC, giving an indication of the node's operating mode (joining or participating) and the progress of any ongoing chain-sync task.
 * Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
 * Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
 * Add metrics `accumulated_outgoing_limiter_delay` and `accumulated_incoming_limiter_delay` to report how much time was spent throttling other peers.

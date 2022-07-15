@@ -43,11 +43,11 @@ use crate::{
         announcements::RpcServerAnnouncement,
         requests::{
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
-            NetworkInfoRequest, RpcRequest, StorageRequest,
+            NetworkInfoRequest, NodeStateRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{BlockHeader, Deploy, NodeState, StatusFeed},
+    types::{BlockHeader, Deploy, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -66,6 +66,7 @@ pub(crate) trait ReactorEventT:
     + From<MetricsRequest>
     + From<NetworkInfoRequest>
     + From<StorageRequest>
+    + From<NodeStateRequest>
     + Send
 {
 }
@@ -80,6 +81,7 @@ impl<REv> ReactorEventT for REv where
         + From<MetricsRequest>
         + From<NetworkInfoRequest>
         + From<StorageRequest>
+        + From<NodeStateRequest>
         + Send
         + 'static
 {
@@ -89,15 +91,9 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct InnerRpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
-    /// The current state of the node.
-    node_state: NodeState,
 }
 
 impl InnerRpcServer {
-    pub fn node_state(&self) -> NodeState {
-        self.node_state
-    }
-
     pub fn node_startup_instant(&self) -> Instant {
         self.node_startup_instant
     }
@@ -123,7 +119,6 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
-        node_state: NodeState,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -163,7 +158,6 @@ impl RpcServer {
 
         let inner_rpc = Some(InnerRpcServer {
             node_startup_instant,
-            node_state,
         });
 
         Ok(RpcServer {
@@ -404,13 +398,13 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
                 let node_uptime = rpc_server.node_startup_instant().elapsed();
-                let node_state = rpc_server.node_state();
                 async move {
-                    let (last_added_block, peers, chainspec_info, consensus_status) = join!(
+                    let (last_added_block, peers, chainspec_info, consensus_status, node_state) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
                         effect_builder.get_chainspec_info(),
-                        effect_builder.consensus_status()
+                        effect_builder.consensus_status(),
+                        effect_builder.get_node_state()
                     );
                     let status_feed = StatusFeed::new(
                         last_added_block,
