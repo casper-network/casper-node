@@ -1640,7 +1640,7 @@ impl BlockSignaturesCollector {
             .check_if_sufficient(&validator_weights, ctx.config.finality_threshold_fraction())
             .is_ok()
         {
-            info!(
+            debug!(
                 block_header_hash =
                     ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
                 height = block_header.height(),
