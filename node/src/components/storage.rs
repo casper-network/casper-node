@@ -211,8 +211,6 @@ pub struct Storage {
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
     #[data_size(skip)]
     finality_threshold_fraction: Ratio<u64>,
-    /// The most recent era in which the network was manually restarted.
-    last_emergency_restart: Option<EraId>,
     /// The era ID starting at which the new Merkle tree-based hashing scheme is applied.
     verifiable_chunked_hash_activation: EraId,
 }
@@ -309,7 +307,6 @@ impl Storage {
         protocol_version: ProtocolVersion,
         network_name: &str,
         finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
@@ -478,7 +475,6 @@ impl Storage {
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
-            last_emergency_restart,
             verifiable_chunked_hash_activation,
         };
 
@@ -1895,16 +1891,14 @@ impl Storage {
         txn: &mut Tx,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        if let Some(last_emergency_restart) = self.last_emergency_restart {
-            if block_header.era_id() <= last_emergency_restart {
-                warn!(
-                    ?block_header,
-                    ?last_emergency_restart,
-                    "finality signatures from before last emergency restart requested"
-                );
-                return Ok(None);
-            }
+        if block_header.is_first_after_emergency_restart() {
+            warn!(
+                ?block_header,
+                "finality signatures for a block right after an emergency restart requested"
+            );
+            return Ok(None);
         }
+
         let block_signatures = match self.get_finality_signatures(
             txn,
             &block_header.hash(self.verifiable_chunked_hash_activation),

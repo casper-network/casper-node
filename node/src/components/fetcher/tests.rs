@@ -86,10 +86,6 @@ reactor!(Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .last_emergency_restart,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
                 .verifiable_chunked_hash_activation,
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();

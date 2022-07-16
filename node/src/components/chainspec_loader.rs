@@ -133,12 +133,6 @@ impl Display for NextUpgrade {
     }
 }
 
-/// Basic information about the current run of the node software.
-#[derive(Clone, Debug)]
-pub(crate) struct CurrentRunInfo {
-    pub(crate) last_emergency_restart: Option<EraId>,
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainspecLoader {
     chainspec: Arc<Chainspec>,
@@ -348,12 +342,6 @@ impl ChainspecLoader {
         )
     }
 
-    fn get_current_run_info(&self) -> CurrentRunInfo {
-        CurrentRunInfo {
-            last_emergency_restart: self.chainspec.protocol_config.last_emergency_restart,
-        }
-    }
-
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
         REv: From<ChainspecLoaderAnnouncement> + Send,
@@ -421,9 +409,6 @@ where
             } => self.handle_initialize(effect_builder, maybe_highest_block),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
-            }
-            Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
-                responder.respond(self.get_current_run_info()).ignore()
             }
             Event::Request(ChainspecLoaderRequest::GetChainspecRawBytes(responder)) => responder
                 .respond(Arc::clone(&self.chainspec_raw_bytes))

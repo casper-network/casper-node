@@ -75,7 +75,6 @@ fn storage_fixture(
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
         Ratio::new(1, 3),
-        None,
         verifiable_chunked_hash_activation,
     )
     .expect("could not create storage component fixture")
@@ -100,7 +99,6 @@ fn storage_fixture_with_hard_reset(
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
         Ratio::new(1, 3),
-        None,
         verifiable_chunked_hash_activation,
     )
     .expect("could not create storage component fixture")
@@ -126,7 +124,6 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
         protocol_version,
         "test",
         Ratio::new(1, 3),
-        None,
         verifiable_chunked_hash_activation,
     )
     .expect("could not create storage component fixture")
@@ -1399,7 +1396,6 @@ fn should_create_subdir_named_after_network() {
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
         Ratio::new(1, 3),
-        None,
         EraId::from(0),
     )
     .unwrap();

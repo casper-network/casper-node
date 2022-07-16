@@ -997,6 +997,12 @@ impl BlockHeader {
         self.era_id().is_genesis() && self.height() == 0
     }
 
+    /// Returns true if the block is the first block after an emergency restart.
+    /// Such blocks are marked by having their accumulated seed set to be equal to the parent hash.
+    pub(crate) fn is_first_after_emergency_restart(&self) -> bool {
+        self.parent_hash.0 == self.accumulated_seed
+    }
+
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()

@@ -34,7 +34,6 @@ struct TomlProtocol {
     version: ProtocolVersion,
     hard_reset: bool,
     activation_point: ActivationPoint,
-    last_emergency_restart: Option<EraId>,
     verifiable_chunked_hash_activation: EraId,
 }
 
@@ -58,7 +57,6 @@ impl From<&Chainspec> for TomlChainspec {
             version: chainspec.protocol_config.version,
             hard_reset: chainspec.protocol_config.hard_reset,
             activation_point: chainspec.protocol_config.activation_point,
-            last_emergency_restart: chainspec.protocol_config.last_emergency_restart,
             verifiable_chunked_hash_activation: chainspec
                 .protocol_config
                 .verifiable_chunked_hash_activation,
@@ -118,7 +116,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         hard_reset: toml_chainspec.protocol.hard_reset,
         activation_point: toml_chainspec.protocol.activation_point,
         global_state_update,
-        last_emergency_restart: toml_chainspec.protocol.last_emergency_restart,
         verifiable_chunked_hash_activation: toml_chainspec
             .protocol
             .verifiable_chunked_hash_activation,

@@ -12,8 +12,6 @@ hard_reset = false
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
 activation_point = '${TIMESTAMP}'
-# Optional era ID in which the last emergency restart happened.
-#last_emergency_restart = 0
 # The era ID starting at which the new Merkle tree-based hashing scheme is applied.
 verifiable_chunked_hash_activation = 2
 

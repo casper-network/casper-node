@@ -37,7 +37,6 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -1212,8 +1211,6 @@ pub(crate) enum ConsensusRequest {
 pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
-    /// Request for information about the current run.
-    GetCurrentRunInfo(Responder<CurrentRunInfo>),
     /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
     /// they are present.
     GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
@@ -1223,7 +1220,6 @@ impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
-            ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
             ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
     }

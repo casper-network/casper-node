@@ -420,7 +420,6 @@ impl reactor::Reactor for Reactor {
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
             Ratio::new(1, 3),
-            None,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
         )
         .unwrap();

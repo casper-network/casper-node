@@ -31,16 +31,6 @@ pub(crate) enum Error {
         engine_state::Error,
     ),
 
-    #[error(
-        "cannot get trusted validators for such an early era. \
-         trusted header: {trusted_header:?}, \
-         last emergency restart era id: {maybe_last_emergency_restart_era_id:?}"
-    )]
-    TrustedHeaderEraTooEarly {
-        trusted_header: Box<BlockHeader>,
-        maybe_last_emergency_restart_era_id: Option<EraId>,
-    },
-
     #[error("cannot get switch block for era: {era_id}")]
     NoSwitchBlockForEra { era_id: EraId },
 
@@ -95,19 +85,6 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),
-
-    #[error(
-        "joining with trusted hash before emergency restart not supported - find a more recent \
-         hash from after the restart. \
-         last emergency restart era: {last_emergency_restart_era}, \
-         trusted hash: {trusted_hash:?}, \
-         trusted block header: {trusted_block_header:?}"
-    )]
-    TryingToJoinBeforeLastEmergencyRestartEra {
-        last_emergency_restart_era: EraId,
-        trusted_hash: BlockHash,
-        trusted_block_header: Box<BlockHeader>,
-    },
 
     #[error("hit genesis block trying to get trusted era validators")]
     HitGenesisBlockTryingToGetTrustedEraValidators { trusted_header: BlockHeader },
