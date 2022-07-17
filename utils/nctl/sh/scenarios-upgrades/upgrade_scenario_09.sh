@@ -165,7 +165,7 @@ function _step_05()
 function _step_06()
 {
     log_step_upgrades 6 "awaiting next era"
-    await_n_eras '1' 'true' '5.0' '2'
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180' node_id='2'
 }
 
 # Step 07: Stage node 6 with old trusted hash.

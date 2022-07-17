@@ -218,7 +218,7 @@ function _step_07()
 function _step_08()
 {
     log_step_upgrades 8 "awaiting 1 eras"
-    await_n_eras '1' 'true' '5.0' '2'
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180' node_id='2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.

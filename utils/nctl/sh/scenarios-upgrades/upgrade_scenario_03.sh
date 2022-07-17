@@ -130,11 +130,11 @@ function _step_04()
             validator="$NODE_ID"
 }
 
-# Step 05: Await 3 eras
+# Step 05: Await 4 eras
 function _step_05()
 {
-    log_step_upgrades 5 "Awaiting Auction_Delay = 3"
-    await_n_eras '4' 'true' '5.0'
+    log_step_upgrades 5 "Awaiting Auction_Delay = 3 + 1"
+    nctl-await-n-eras offset='4' sleep_interval='5.0' timeout='300'
 }
 
 # Step 06: Assert NODE_ID is a validator
@@ -289,7 +289,7 @@ function _step_09()
 function _step_10()
 {
     log_step_upgrades 10 "awaiting next era"
-    await_n_eras '1' 'true' '5.0'
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
 }
 
 # Step 11: Unbond previously bonded validator
@@ -321,11 +321,11 @@ function _step_12()
             validator="$NODE_ID"
 }
 
-# Step 13: Await 3 eras
+# Step 13: Await 4 eras
 function _step_13()
 {
-    log_step_upgrades 13 "Awaiting Auction_Delay = 3"
-    await_n_eras '4' 'true' '5.0'
+    log_step_upgrades 13 "Awaiting Auction_Delay = 3 + 1"
+    nctl-await-n-eras offset='4' sleep_interval='5.0' timeout='300'
 }
 
 # Step 14: Assert NODE_ID is NOT a validator
