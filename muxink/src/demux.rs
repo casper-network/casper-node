@@ -16,32 +16,56 @@ use futures::{stream::Fuse, Stream, StreamExt};
 /// A frame demultiplexer.
 ///
 /// A demultiplexer is not used directly, but used to spawn demultiplexing handles.
-///
-/// TODO What if someone sends data to a channel for which there is no handle?
-///      I can think of two reasonable responses:
-///         1. return an error to the handle which saw this message.
-///         2. drop all messages we receive which don't have a corresponding `DemultiplexerHandle`
-///            yet.
-///         3. allow messages to sit forever and block the rest of the handles, preferring whoever
-///            is sending us the messages to filter out ones which aren't for a channel we're
-///            listening on. this is already what happens if a `DemultiplexerHandle` for any
-///            channel which has messages in the stream doesn't ever take them out.
 pub struct Demultiplexer<S> {
+    /// The underlying `Stream`, `Fuse`d in order to make it safe to be called once its output
+    /// `Poll::Ready(None)`.
     stream: Fuse<S>,
+    /// Holds the frame and channel, if available, which has been read by a `DemultiplexerHandle`
+    /// corresponding to a different channel.
     next_frame: Option<(u8, Bytes)>,
+    /// A bit-field representing the channels which have had `DemultiplexerHandle`s constructed.
+    active_channels: [u8; 32],
 }
 
 impl<S: Stream> Demultiplexer<S> {
     /// Creates a new demultiplexer with the given underlying stream.
     pub fn new(stream: S) -> Demultiplexer<S> {
         Demultiplexer {
+            // We fuse the stream in case its unsafe to call it after yielding `Poll::Ready(None)`
             stream: stream.fuse(),
+            // Initially, we have no next frame
             next_frame: None,
+            // Initially, all channels are inactive
+            active_channels: [0b00000000; 32],
         }
     }
 }
 
+// Here, we write the logic for accessing and modifying the bit-field representing the active
+// channels.
 impl<S> Demultiplexer<S> {
+    fn activate_channel(&mut self, channel: u8) {
+        self.active_channels[(channel / 8) as usize] |=
+            2u8.checked_pow((channel % 8) as u32).unwrap();
+    }
+
+    fn deactivate_channel(&mut self, channel: u8) {
+        // TODO Single operation instead of two.
+        if self.channel_is_active(channel) {
+            self.active_channels[(channel / 8) as usize] ^=
+                2u8.checked_pow((channel % 8) as u32).unwrap();
+        }
+    }
+
+    fn channel_is_active(&self, channel: u8) -> bool {
+        (self.active_channels[(channel / 8) as usize]
+            & 2u8.checked_pow((channel % 8) as u32).unwrap())
+        .count_ones()
+            == 1
+    }
+}
+
+impl<S: Stream> Demultiplexer<S> {
     /// Creates a handle listening for frames on the given channel.
     ///
     /// Any item on this channel sent to the `Stream` underlying the `Demultiplexer` we used to
@@ -50,6 +74,17 @@ impl<S> Demultiplexer<S> {
     /// `Demultiplexer`, each message on that channel will only be received by one of the handles.
     /// Unless this is desired behavior, this should be avoided.
     pub fn create_handle(demux: Arc<Mutex<Self>>, channel: u8) -> DemultiplexerHandle<S> {
+        let mut guard = match demux.as_ref().try_lock() {
+            Err(_err) => panic!("TODO"),
+            Ok(guard) => guard,
+        };
+
+        if guard.channel_is_active(channel) {
+            panic!("TODO")
+        }
+
+        guard.activate_channel(channel);
+
         DemultiplexerHandle {
             channel,
             demux: demux.clone(),
@@ -64,7 +99,21 @@ pub struct DemultiplexerHandle<S> {
     /// Which channel this handle is listening on
     channel: u8,
     /// A reference to the underlying demultiplexer.
-    demux: Arc<Mutex<Demultiplexer<S>>>, // (probably?) make sure this is a stdmutex
+    demux: Arc<Mutex<Demultiplexer<S>>>,
+}
+
+impl<S> Drop for DemultiplexerHandle<S> {
+    fn drop(&mut self) {
+        let mut demux = match self.demux.as_ref().try_lock() {
+            Err(_err) => {
+                return;
+            } // TODO What do? Perhaps try_lock is wrong here, but still what about poisoning? Not doing anything seems like the
+            // only sane option
+            Ok(guard) => guard,
+        };
+
+        demux.deactivate_channel(self.channel);
+    }
 }
 
 impl<S> Stream for DemultiplexerHandle<S>
@@ -167,6 +216,26 @@ mod tests {
                 self.finished = true;
                 return Poll::Ready(None);
             }
+        }
+    }
+
+    #[test]
+    fn channel_activation() {
+        let items: Vec<Bytes> = vec![];
+        let stream = TestStream::new(items);
+        let mut demux = Demultiplexer::new(stream);
+
+        let examples: Vec<u8> = (0u8..255u8).collect();
+
+        for i in examples.iter().copied() {
+            assert!(!demux.channel_is_active(i));
+            demux.activate_channel(i);
+            assert!(demux.channel_is_active(i));
+        }
+
+        for i in examples.iter().copied() {
+            demux.deactivate_channel(i);
+            assert!(!demux.channel_is_active(i));
         }
     }
 
