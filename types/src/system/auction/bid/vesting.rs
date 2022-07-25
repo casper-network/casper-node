@@ -336,6 +336,12 @@ mod tests {
             vesting_schedule.locked_amount(timestamp),
             Some(U512::from(0))
         );
+
+        timestamp = RELEASE_TIMESTAMP + (WEEK_MILLIS as u64 * 14) + 1;
+        assert_eq!(
+            vesting_schedule.locked_amount(timestamp),
+            Some(U512::from(0))
+        );
     }
 
     fn vested_amounts_match_initial_stake(initial_stake: U512, release_timestamp: u64) -> bool {
@@ -362,6 +368,40 @@ mod tests {
             stake,
             DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS
         ))
+    }
+
+    #[test]
+    fn is_vesting_with_default_schedule() {
+        let initial_stake = U512::from(1000u64);
+        let release_timestamp = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+        let mut vesting_schedule = VestingSchedule::new(release_timestamp);
+
+        let is_vesting_before: Vec<bool> = (0..LOCKED_AMOUNTS_LENGTH + 1)
+            .map(|i| vesting_schedule.is_vesting(release_timestamp + (WEEK_MILLIS * i) as u64))
+            .collect();
+
+        assert_eq!(
+            is_vesting_before,
+            vec![
+                true, true, true, true, true, true, true, true, true, true, true, true, true,
+                false, // week after is always set to zero
+                false
+            ]
+        );
+        vesting_schedule.initialize(initial_stake);
+
+        let is_vesting_after: Vec<bool> = (0..LOCKED_AMOUNTS_LENGTH + 1)
+            .map(|i| vesting_schedule.is_vesting(release_timestamp + (WEEK_MILLIS * i) as u64))
+            .collect();
+
+        assert_eq!(
+            is_vesting_after,
+            vec![
+                true, true, true, true, true, true, true, true, true, true, true, true, true,
+                false, // week after is always set to zero
+                false,
+            ]
+        );
     }
 
     proptest! {
