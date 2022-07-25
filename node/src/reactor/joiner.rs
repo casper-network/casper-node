@@ -41,9 +41,9 @@ use crate::{
     contract_runtime,
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement,
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ChainspecLoaderAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -54,7 +54,7 @@ use crate::{
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
             FetcherRequest, MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, StorageRequest,
+            NetworkRequest, NodeStateRequest, RestRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -68,7 +68,7 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalizedApprovalsWithId, NodeState,
+        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalizedApprovalsWithId,
     },
     utils::WithDir,
     NodeRng,
@@ -97,6 +97,8 @@ pub(crate) enum JoinerEvent {
     ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
     #[from]
     ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
+    #[from]
+    ChainSynchronizerRequest(#[serde(skip_serializing)] NodeStateRequest),
     #[from]
     NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
     #[from]
@@ -178,6 +180,8 @@ pub(crate) enum JoinerEvent {
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
     #[from]
+    ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
+    #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
@@ -228,6 +232,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::MetricsRequest(_) => "MetricsRequest",
             JoinerEvent::ChainspecLoader(_) => "ChainspecLoader",
             JoinerEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            JoinerEvent::ChainSynchronizerRequest(_) => "ChainSynchronizerRequest",
             JoinerEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             JoinerEvent::BlockFetcher(_) => "BlockFetcher",
             JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
@@ -279,6 +284,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             JoinerEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
             JoinerEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
+            JoinerEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
         }
     }
 }
@@ -328,6 +334,9 @@ impl Display for JoinerEvent {
             JoinerEvent::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
             JoinerEvent::ChainspecLoaderRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
+            }
+            JoinerEvent::ChainSynchronizerRequest(req) => {
+                write!(f, "chain synchronizer request: {}", req)
             }
             JoinerEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             JoinerEvent::MarkBlockCompletedRequest(req) => {
@@ -437,6 +446,9 @@ impl Display for JoinerEvent {
             JoinerEvent::FinalitySignaturesFetcherRequest(inner) => {
                 write!(f, "finality signatures fetch request: {}", inner)
             }
+            JoinerEvent::ChainSynchronizerAnnouncement(ann) => {
+                write!(f, "chain synchronizer announcement: {}", ann)
+            }
         }
     }
 }
@@ -528,7 +540,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec,
-            true,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
@@ -541,13 +552,14 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (chain_synchronizer, sync_effects) = ChainSynchronizer::<JoinerEvent>::new(
-            Arc::clone(chainspec_loader.chainspec()),
-            config.node.clone(),
-            config.network.clone(),
-            effect_builder,
-            registry,
-        )?;
+        let (chain_synchronizer, sync_effects) =
+            ChainSynchronizer::<JoinerEvent>::new_for_fast_sync(
+                Arc::clone(chainspec_loader.chainspec()),
+                config.node.clone(),
+                config.network.clone(),
+                effect_builder,
+                registry,
+            )?;
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainSynchronizer,
             sync_effects,
@@ -558,17 +570,11 @@ impl reactor::Reactor for Reactor {
             .protocol_config
             .verifiable_chunked_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let node_state = if config.node.sync_to_genesis {
-            NodeState::SyncingToGenesis
-        } else {
-            NodeState::FastSyncing
-        };
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
             node_startup_instant,
-            node_state,
         )?;
 
         let event_stream_server = EventStreamServer::new(
@@ -856,6 +862,12 @@ impl reactor::Reactor for Reactor {
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            JoinerEvent::ChainSynchronizerAnnouncement(
+                ChainSynchronizerAnnouncement::SyncFinished,
+            ) => {
+                warn!("unexpected sync finished announcement in the joiner");
+                Effects::new()
+            }
             JoinerEvent::RestServer(event) => reactor::wrap_effects(
                 JoinerEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -878,6 +890,11 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 JoinerEvent::ChainspecLoader(req.into()),
+            ),
+            JoinerEvent::ChainSynchronizerRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::ChainSynchronizer(req.into()),
             ),
             JoinerEvent::NetworkInfoRequest(req) => {
                 let event = JoinerEvent::SmallNetwork(small_network::Event::from(req));
