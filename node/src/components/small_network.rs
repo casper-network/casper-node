@@ -47,7 +47,10 @@ use std::{
     io,
     net::{SocketAddr, TcpListener},
     result,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
     time::{Duration, Instant},
 };
 
@@ -97,7 +100,9 @@ use self::{
 use crate::{
     components::{consensus, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
+        },
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects,
     },
@@ -152,21 +157,28 @@ where
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
-    /// Tracks nodes that have announced themselves as joining nodes.
-    joining_nodes: HashSet<NodeId>,
+    /// Tracks nodes that have announced themselves as nodes that are syncing.
+    syncing_nodes: HashSet<NodeId>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
-    /// A clone of the receiver is passed to the message reader for all new incoming connections in
-    /// order that they can be gracefully terminated.
-    #[data_size(skip)]
-    shutdown_receiver: watch::Receiver<()>,
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
+
+    /// Channel signaling a shutdown of the incoming connections.
+    // Note: This channel is closed when we finished syncing, so the `SmallNetwork` can close all
+    // connections. When they are re-established, the proper value of the now updated `is_syncing`
+    // flag will be exchanged on handshake.
+    #[data_size(skip)]
+    close_incoming_sender: Option<watch::Sender<()>>,
+    /// Handle used by the `message_reader` task to receive a notification that incoming
+    /// connections should be closed.
+    #[data_size(skip)]
+    close_incoming_receiver: watch::Receiver<()>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -204,7 +216,6 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
-        is_joiner: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -303,12 +314,11 @@ where
             consensus_keys,
             handshake_timeout: cfg.handshake_timeout,
             payload_weights: cfg.estimator_weights.clone(),
-            reject_incompatible_versions: cfg.reject_incompatible_versions,
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands: demand_max,
-            is_joiner,
+            is_syncing: AtomicBool::new(true),
         });
 
         // Run the server task.
@@ -317,7 +327,8 @@ where
         info!(%local_addr, %public_addr, "starting server background task");
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let shutdown_receiver = server_shutdown_receiver.clone();
+        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+
         let server_join_handle = tokio::spawn(
             tasks::server(
                 context.clone(),
@@ -332,9 +343,10 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            joining_nodes: HashSet::new(),
+            syncing_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
-            shutdown_receiver,
+            close_incoming_sender: Some(close_incoming_sender),
+            close_incoming_receiver,
             server_join_handle: Some(server_join_handle),
             net_metrics,
             outgoing_limiter,
@@ -371,8 +383,16 @@ where
         Ok((component, effects))
     }
 
+    fn close_incoming_connections(&mut self) {
+        info!("disconnecting incoming connections");
+        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        self.close_incoming_sender = Some(close_incoming_sender);
+        self.close_incoming_receiver = close_incoming_receiver;
+    }
+
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Arc<Message<P>>) {
+        self.net_metrics.broadcast_requests.inc();
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone(), None);
         }
@@ -420,6 +440,13 @@ where
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
+            if msg.payload_is_unsafe_for_syncing_nodes() && self.syncing_nodes.contains(&dest) {
+                // We should never attempt to send an unsafe message to a peer that we know is still
+                // syncing. Since "unsafe" does usually not mean immediately catastrophic, we
+                // attempt to carry on, but warn loudly.
+                error!(kind=%msg.classify(), node_id=%dest, "sending unsafe message to syncing node");
+            }
+
             if let Err(msg) = connection.sender.send((msg, opt_responder)) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
@@ -432,7 +459,6 @@ where
         }
     }
 
-    #[allow(clippy::redundant_clone)]
     fn handle_incoming_connection(
         &mut self,
         incoming: Box<IncomingConnection<P>>,
@@ -510,13 +536,14 @@ where
                 {
                     self.connection_completed(peer_id);
 
-                    // We should not update the joining set when we receive an incoming connection,
+                    // We should NOT update the syncing set when we receive an incoming connection,
                     // because the `message_sender` which is handling the corresponding outgoing
-                    // connection will not receive the update of the remote joiner state.
+                    // connection will not receive the update of the syncing state of the remote
+                    // peer.
                     //
-                    // Such desync may cause the node to try to send requests that are not safe for
-                    // joiners, to the joining node, because the outgoing connection may outlive the
-                    // incoming connection, i.e. it may take some time to drop "our" outgoing
+                    // Such desync may cause the node to try to send "unsafe" requests to the
+                    // syncing node, because the outgoing connection may outlive the
+                    // incoming one, i.e. it may take some time to drop "our" outgoing
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
@@ -528,7 +555,7 @@ where
                         stream,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
-                        self.shutdown_receiver.clone(),
+                        self.close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
                     )
@@ -602,7 +629,9 @@ where
             | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
-            ConnectionError::WrongNetwork(_) => true,
+            ConnectionError::WrongNetwork(_)
+            | ConnectionError::WrongChainspecHash(_)
+            | ConnectionError::MissingChainspecHash => true,
         }
     }
 
@@ -657,7 +686,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
-                is_joiner,
+                is_syncing,
             } => {
                 info!("new outgoing connection established");
 
@@ -682,14 +711,8 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
-                    self.update_joining_set(peer_id, is_joiner);
+                    self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
-
-                let remote_joiner_id = if is_joiner {
-                    Some((peer_addr, peer_id))
-                } else {
-                    None
-                };
 
                 effects.extend(
                     tasks::message_sender(
@@ -698,7 +721,6 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
-                        remote_joiner_id,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
@@ -792,12 +814,14 @@ where
 
     /// Updates a set of known joining nodes.
     /// If we've just connected to a non-joining node that peer will be removed from the set.
-    fn update_joining_set(&mut self, peer_id: NodeId, is_joiner: bool) {
-        // Update set of joining peers.
-        if is_joiner {
-            self.joining_nodes.insert(peer_id);
+    fn update_syncing_nodes_set(&mut self, peer_id: NodeId, is_syncing: bool) {
+        // Update set of syncing peers.
+        if is_syncing {
+            debug!(%peer_id, "is syncing");
+            self.syncing_nodes.insert(peer_id);
         } else {
-            self.joining_nodes.remove(&peer_id);
+            debug!(%peer_id, "is no longer syncing");
+            self.syncing_nodes.remove(&peer_id);
         }
     }
 
@@ -840,6 +864,7 @@ where
         async move {
             // Close the shutdown socket, causing the server to exit.
             drop(self.shutdown_sender.take());
+            drop(self.close_incoming_sender.take());
 
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
@@ -928,7 +953,6 @@ where
                         auto_closing_responder,
                     } => {
                         // We're given a message to broadcast.
-                        self.net_metrics.broadcast_requests.inc();
                         self.broadcast_message(Arc::new(Message::Payload(*payload)));
                         auto_closing_responder.respond(()).ignore()
                     }
@@ -964,14 +988,14 @@ where
 
                     responder.respond(symmetric_peers).ignore()
                 }
-                NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder } => {
+                NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder } => {
                     let mut symmetric_validator_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
                         .filter_map(|(node_id, sym)| {
                             matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
                         })
-                        .filter(|node_id| !self.joining_nodes.contains(node_id))
+                        .filter(|node_id| !self.syncing_nodes.contains(node_id))
                         .collect();
 
                     symmetric_validator_peers.shuffle(rng);
@@ -1074,6 +1098,11 @@ where
                 );
 
                 effects
+            }
+            Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
+                self.context.is_syncing.store(false, Ordering::SeqCst);
+                self.close_incoming_connections();
+                Effects::new()
             }
         }
     }

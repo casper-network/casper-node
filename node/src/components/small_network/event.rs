@@ -15,7 +15,9 @@ use tracing::Span;
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
+        },
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -95,6 +97,10 @@ pub(crate) enum Event<P> {
     /// Contract runtime announcement.
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
+
+    /// Chain synchronizer announcement.
+    #[from]
+    ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement),
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -143,6 +149,9 @@ impl<P: Display> Display for Event<P> {
             }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
+            }
+            Event::ChainSynchronizerAnnouncement(ann) => {
+                write!(f, "handling chain synchronizer announcement: {}", ann)
             }
         }
     }
@@ -207,7 +216,7 @@ impl<P> Display for IncomingConnection<P> {
                 write!(
                     f,
                     "connection established from {}/{}; public: {}",
-                    peer_addr, peer_id, public_addr,
+                    peer_addr, peer_id, public_addr
                 )?;
 
                 if let Some(public_key) = peer_consensus_public_key {
@@ -252,8 +261,8 @@ pub(crate) enum OutgoingConnection<P> {
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
         sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
-        /// Flag indicating whether the peer we've connected to is a joining node.
-        is_joiner: bool,
+        /// Holds the information whether the remote node is syncing.
+        is_syncing: bool,
     },
 }
 
@@ -274,12 +283,12 @@ impl<P> Display for OutgoingConnection<P> {
                 peer_id,
                 peer_consensus_public_key,
                 sink: _,
-                is_joiner,
+                is_syncing,
             } => {
                 write!(
                     f,
-                    "connection established to {}/{}, joiner: {}",
-                    peer_addr, peer_id, is_joiner
+                    "connection established to {}/{}, is_syncing: {}",
+                    peer_addr, peer_id, is_syncing
                 )?;
 
                 if let Some(public_key) = peer_consensus_public_key {

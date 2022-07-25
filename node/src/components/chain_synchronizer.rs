@@ -3,6 +3,7 @@ mod error;
 mod event;
 mod metrics;
 mod operations;
+mod progress;
 
 use std::{collections::HashSet, convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
 
@@ -21,20 +22,21 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
+        },
         requests::{
             ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
-            MarkBlockCompletedRequest, NetworkInfoRequest,
+            MarkBlockCompletedRequest, NetworkInfoRequest, NodeStateRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    reactor::{joiner::JoinerEvent, participating::ParticipatingEvent},
     storage::StorageRequest,
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockPayload, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
-        FinalizedBlock, NodeConfig,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
+        FinalizedApprovalsWithId, FinalizedBlock, NodeConfig, NodeState,
     },
     NodeRng, SmallNetworkConfig,
 };
@@ -44,6 +46,8 @@ pub(crate) use event::Event;
 pub(crate) use metrics::Metrics;
 use operations::FastSyncOutcome;
 pub(crate) use operations::KeyBlockInfo;
+pub(crate) use progress::Progress;
+use progress::ProgressHolder;
 
 #[derive(DataSize, Debug)]
 pub(crate) enum JoiningOutcome {
@@ -68,70 +72,17 @@ pub(crate) struct ChainSynchronizer<REv> {
     config: Config,
     /// This will be populated once the synchronizer has completed all work, indicating the joiner
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
-    /// config.
+    /// config. The participating reactor may still use the chain synchronizer component to run a
+    /// sync to genesis in the background.
     joining_outcome: Option<JoiningOutcome>,
     /// Metrics for the chain synchronization process.
     metrics: Metrics,
+    /// Records the ongoing progress of chain synchronization.
+    progress: ProgressHolder,
+    /// The current state of operation of the node.
+    node_state: NodeState,
     /// Association with the reactor event used in subtasks.
     _phantom: PhantomData<REv>,
-}
-
-impl ChainSynchronizer<JoinerEvent> {
-    /// Constructs a new `ChainSynchronizer` suitable for use in the joiner reactor to perform the
-    /// initial fast sync.
-    pub(crate) fn new(
-        chainspec: Arc<Chainspec>,
-        node_config: NodeConfig,
-        small_network_config: SmallNetworkConfig,
-        effect_builder: EffectBuilder<JoinerEvent>,
-        registry: &Registry,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let synchronizer = ChainSynchronizer {
-            config: Config::new(chainspec, node_config, small_network_config),
-            joining_outcome: None,
-            metrics: Metrics::new(registry)?,
-            _phantom: PhantomData,
-        };
-        let effects = synchronizer.fast_sync(effect_builder);
-        Ok((synchronizer, effects))
-    }
-
-    pub(crate) fn metrics(&self) -> Metrics {
-        self.metrics.clone()
-    }
-}
-
-impl ChainSynchronizer<ParticipatingEvent> {
-    /// Constructs a new `ChainSynchronizer` suitable for use in the participating reactor to sync
-    /// to genesis.
-    pub(crate) fn new(
-        chainspec: Arc<Chainspec>,
-        node_config: NodeConfig,
-        small_network_config: SmallNetworkConfig,
-        metrics: Metrics,
-        effect_builder: EffectBuilder<ParticipatingEvent>,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let synchronizer = ChainSynchronizer {
-            config: Config::new(chainspec, node_config, small_network_config),
-            joining_outcome: None,
-            metrics,
-            _phantom: PhantomData,
-        };
-
-        // If we're not configured to sync-to-genesis, return without doing anything.
-        if !synchronizer.config.sync_to_genesis() {
-            return Ok((synchronizer, Effects::new()));
-        }
-
-        let effects = operations::run_sync_to_genesis_task(
-            effect_builder,
-            synchronizer.config.clone(),
-            synchronizer.metrics.clone(),
-        )
-        .ignore();
-
-        Ok((synchronizer, effects))
-    }
 }
 
 impl<REv> ChainSynchronizer<REv>
@@ -142,7 +93,6 @@ where
         + From<ChainspecLoaderRequest>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
-        + From<FetcherRequest<BlockHeadersBatch>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
@@ -154,6 +104,44 @@ where
         + From<MarkBlockCompletedRequest>
         + Send,
 {
+    /// Constructs a new `ChainSynchronizer` suitable for use in the joiner reactor to perform the
+    /// initial fast sync.
+    pub(crate) fn new_for_fast_sync(
+        chainspec: Arc<Chainspec>,
+        node_config: NodeConfig,
+        small_network_config: SmallNetworkConfig,
+        effect_builder: EffectBuilder<REv>,
+        registry: &Registry,
+    ) -> Result<(Self, Effects<Event>), Error> {
+        let config = Config::new(chainspec, node_config, small_network_config);
+        let metrics = Metrics::new(registry)?;
+        let progress = ProgressHolder::new_fast_sync();
+        let node_state = NodeState::Joining(progress.progress());
+
+        let effects = operations::run_fast_sync_task(
+            effect_builder,
+            config.clone(),
+            metrics.clone(),
+            progress.clone(),
+        )
+        .event(Event::FastSyncResult);
+
+        let synchronizer = ChainSynchronizer {
+            config,
+            joining_outcome: None,
+            metrics,
+            progress,
+            node_state,
+            _phantom: PhantomData,
+        };
+
+        Ok((synchronizer, effects))
+    }
+
+    pub(crate) fn metrics(&self) -> Metrics {
+        self.metrics.clone()
+    }
+
     pub(crate) fn joining_outcome(&self) -> Option<&JoiningOutcome> {
         self.joining_outcome.as_ref()
     }
@@ -162,16 +150,12 @@ where
         self.joining_outcome
     }
 
-    fn fast_sync(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event> {
-        operations::run_fast_sync_task(effect_builder, self.config.clone(), self.metrics.clone())
-            .event(Event::FastSyncResult)
-    }
-
     fn handle_fast_sync_result(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         result: Result<FastSyncOutcome, Error>,
     ) -> Effects<Event> {
+        self.progress.finish();
         match result {
             Ok(FastSyncOutcome::ShouldCommitGenesis) => self.commit_genesis(effect_builder),
             Ok(FastSyncOutcome::ShouldCommitUpgrade {
@@ -472,6 +456,7 @@ where
                 effect_builder,
                 self.config.clone(),
                 self.metrics.clone(),
+                self.progress.clone(),
             )
             .event(|result| Event::FastSyncAfterEmergencyUpgradeResult {
                 immediate_switch_block_and_exec_effects,
@@ -499,6 +484,7 @@ where
         validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
         result: Result<FastSyncOutcome, Error>,
     ) -> Effects<Event> {
+        self.progress.finish();
         match result {
             Ok(FastSyncOutcome::ShouldCommitGenesis) => {
                 let msg = "fast sync after emergency upgrade should not require commit genesis";
@@ -534,6 +520,95 @@ where
                 fatal!(effect_builder, "{}", error).ignore()
             }
         }
+    }
+}
+
+impl<REv> ChainSynchronizer<REv>
+where
+    REv: From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<FetcherRequest<BlockSignatures>>
+        + From<FetcherRequest<BlockHeadersBatch>>
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>
+        + From<MarkBlockCompletedRequest>
+        + From<ChainSynchronizerAnnouncement>
+        + Send,
+{
+    /// Constructs a new `ChainSynchronizer` suitable for use in the participating reactor to sync
+    /// to genesis.
+    pub(crate) fn new_for_sync_to_genesis(
+        chainspec: Arc<Chainspec>,
+        node_config: NodeConfig,
+        small_network_config: SmallNetworkConfig,
+        metrics: Metrics,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<(Self, Effects<Event>), Error> {
+        let config = Config::new(chainspec, node_config, small_network_config);
+        let progress = ProgressHolder::new_sync_to_genesis();
+
+        if config.sync_to_genesis() {
+            let node_state = NodeState::ParticipatingAndSyncingToGenesis {
+                sync_progress: progress.progress(),
+            };
+
+            let synchronizer = ChainSynchronizer {
+                config,
+                joining_outcome: None,
+                metrics,
+                progress: progress.clone(),
+                node_state,
+                _phantom: PhantomData,
+            };
+
+            let effects = operations::run_sync_to_genesis_task(
+                effect_builder,
+                synchronizer.config.clone(),
+                synchronizer.metrics.clone(),
+                progress,
+            )
+            .ignore();
+
+            return Ok((synchronizer, effects));
+        }
+
+        // If we're not configured to sync-to-genesis, return without doing anything but announcing
+        // that the sync process has finished.
+        progress.finish();
+        let synchronizer = ChainSynchronizer {
+            config,
+            joining_outcome: None,
+            metrics,
+            progress,
+            node_state: NodeState::Participating,
+            _phantom: PhantomData,
+        };
+
+        Ok((
+            synchronizer,
+            effect_builder.announce_finished_chain_syncing().ignore(),
+        ))
+    }
+}
+
+impl<REv> ChainSynchronizer<REv> {
+    fn handle_get_node_state_request(&mut self, request: NodeStateRequest) -> Effects<Event> {
+        self.node_state = match self.node_state {
+            NodeState::Joining(_) => NodeState::Joining(self.progress.progress()),
+            NodeState::ParticipatingAndSyncingToGenesis { .. } => {
+                let sync_progress = self.progress.progress();
+                if sync_progress.is_finished() {
+                    NodeState::Participating
+                } else {
+                    NodeState::ParticipatingAndSyncingToGenesis { sync_progress }
+                }
+            }
+            NodeState::Participating => NodeState::Participating,
+        };
+
+        request.0.respond(self.node_state.clone()).ignore()
     }
 }
 
@@ -602,6 +677,7 @@ where
                 validators_to_sign_immediate_switch_block,
                 result,
             ),
+            Event::GetNodeState(request) => self.handle_get_node_state_request(request),
         }
     }
 }
