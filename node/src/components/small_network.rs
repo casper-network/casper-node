@@ -305,7 +305,7 @@ where
         };
 
         let chain_info = chain_info_source.into();
-        let protocol_version = chain_info.protocol_version();
+        let protocol_version = chain_info.protocol_version;
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
