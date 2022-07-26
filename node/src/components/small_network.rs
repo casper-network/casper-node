@@ -303,13 +303,16 @@ where
         } else {
             cfg.max_in_flight_demands as usize
         };
+
+        let chain_info = chain_info_source.into();
+        let protocol_version = chain_info.protocol_version();
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
             our_cert: small_network_identity.tls_certificate,
             secret_key: small_network_identity.secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
-            chain_info: chain_info_source.into(),
+            chain_info,
             public_addr,
             consensus_keys,
             handshake_timeout: cfg.handshake_timeout,
@@ -324,7 +327,7 @@ where
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
-        info!(%local_addr, %public_addr, "starting server background task");
+        info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
