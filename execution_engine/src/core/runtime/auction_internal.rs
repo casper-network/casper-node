@@ -136,6 +136,10 @@ where
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         crypto::blake2b(data)
     }
+
+    fn vesting_schedule_period_millis(&self) -> u64 {
+        self.config.vesting_schedule_period_millis()
+    }
 }
 
 impl<'a, R> MintProvider for Runtime<'a, R>

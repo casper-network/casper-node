@@ -39,6 +39,8 @@ validator_slots = 5
 auction_delay = 3
 # The period after genesis during which a genesis validator's bid is locked.
 locked_funds_period = '90days'
+# The period in which genesis validator's bid is released over time after it's unlocked.
+vesting_schedule_period = '13 weeks'
 # Default number of eras that need to pass to be able to withdraw unbonded funds.
 unbonding_delay = 14
 # Round seigniorage rate represented as a fraction of the total supply.

@@ -118,8 +118,22 @@ impl Bid {
     /// Returns true if a timestamp falls below the initial lockup period + 91 days release
     /// schedule, otherwise false.
     pub fn is_locked(&self, timestamp_millis: u64) -> bool {
-        match self.vesting_schedule {
-            Some(vesting_schedule) => vesting_schedule.is_vesting(timestamp_millis),
+        self.is_locked_with_vesting_schedule(timestamp_millis, VESTING_SCHEDULE_LENGTH_MILLIS)
+    }
+
+    /// Checks if a bid is still locked under a vesting schedule.
+    ///
+    /// Returns true if a timestamp falls below the initial lockup period + 91 days release
+    /// schedule, otherwise false.
+    pub fn is_locked_with_vesting_schedule(
+        &self,
+        timestamp_millis: u64,
+        vesting_schedule_period_millis: u64,
+    ) -> bool {
+        match &self.vesting_schedule {
+            Some(vesting_schedule) => {
+                vesting_schedule.is_vesting(timestamp_millis, vesting_schedule_period_millis)
+            }
             None => false,
         }
     }
@@ -129,7 +143,7 @@ impl Bid {
         &self.staked_amount
     }
 
-    /// Gets the staked amount of the provided bid
+    /// Gets the staked amount of the provided bidshould_release_vfta_holder_stake
     pub fn staked_amount_mut(&mut self) -> &mut U512 {
         &mut self.staked_amount
     }
@@ -221,10 +235,23 @@ impl Bid {
 
     /// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
     /// or equal to the bid's initial release timestamp and the bid is owned by a genesis
-    /// validator.
+    /// validator. This method initializes with default 14 week vesting schedule.
     ///
     /// Returns `true` if the provided bid's vesting schedule was initialized.
     pub fn process(&mut self, timestamp_millis: u64) -> bool {
+        self.process_with_vesting_schedule(timestamp_millis, VESTING_SCHEDULE_LENGTH_MILLIS)
+    }
+
+    /// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
+    /// or equal to the bid's initial release timestamp and the bid is owned by a genesis
+    /// validator.
+    ///
+    /// Returns `true` if the provided bid's vesting schedule was initialized.
+    pub fn process_with_vesting_schedule(
+        &mut self,
+        timestamp_millis: u64,
+        vesting_schedule_period_millis: u64,
+    ) -> bool {
         // Put timestamp-sensitive processing logic in here
         let staked_amount = self.staked_amount;
         let vesting_schedule = match self.vesting_schedule_mut() {
@@ -237,7 +264,9 @@ impl Bid {
 
         let mut initialized = false;
 
-        if vesting_schedule.initialize(staked_amount) {
+        if vesting_schedule
+            .initialize_with_weekly_schedule(staked_amount, vesting_schedule_period_millis)
+        {
             initialized = true;
         }
 
@@ -245,7 +274,10 @@ impl Bid {
             let staked_amount = *delegator.staked_amount();
             if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
                 if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
-                    && vesting_schedule.initialize(staked_amount)
+                    && vesting_schedule.initialize_with_weekly_schedule(
+                        staked_amount,
+                        vesting_schedule_period_millis,
+                    )
                 {
                     initialized = true;
                 }
