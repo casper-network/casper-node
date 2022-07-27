@@ -44,9 +44,7 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        let bytes = input
-            .to_bytes()
-            .map_err(|e| TranscoderError::BytesreprError(e))?;
+        let bytes = input.to_bytes().map_err(TranscoderError::BytesreprError)?;
 
         Ok(bytes.into())
     }
@@ -77,11 +75,11 @@ where
     type Output = T;
 
     fn transcode(&mut self, input: R) -> Result<Self::Output, Self::Error> {
-        let (data, rem) = FromBytes::from_bytes(input.as_ref())
-            .map_err(|e| TranscoderError::BytesreprError(e))?;
+        let (data, rem) =
+            FromBytes::from_bytes(input.as_ref()).map_err(TranscoderError::BytesreprError)?;
 
         if !rem.is_empty() {
-            return Err(TranscoderError::BufferNotExhausted { left: rem.len() }.into());
+            return Err(TranscoderError::BufferNotExhausted { left: rem.len() });
         }
 
         Ok(data)
@@ -108,9 +106,7 @@ where
                 | bytesrepr::Error::LeftOverBytes
                 | bytesrepr::Error::NotRepresentable
                 | bytesrepr::Error::ExceededRecursionDepth
-                | bytesrepr::Error::OutOfMemory => {
-                    Failed(TranscoderError::BytesreprError(err).into())
-                }
+                | bytesrepr::Error::OutOfMemory => Failed(TranscoderError::BytesreprError(err)),
             },
         }
     }
