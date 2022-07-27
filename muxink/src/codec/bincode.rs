@@ -115,3 +115,47 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DecodeResult;
+    use crate::codec::{
+        bincode::{BincodeDecoder, BincodeEncoder},
+        BytesMut, FrameDecoder, Transcoder,
+    };
+
+    #[test]
+    fn roundtrip() {
+        let data = "abc";
+
+        let mut encoder = BincodeEncoder::new();
+        let value: String = String::from(data);
+        let encoded = encoder.transcode(value).expect("should encode");
+
+        let mut decoder = BincodeDecoder::<String>::new();
+        let decoded = decoder.transcode(encoded).expect("should decode");
+
+        assert_eq!(data, decoded);
+    }
+
+    #[test]
+    fn decodes_frame() {
+        let data = b"\x01\x02rem";
+
+        let mut bytes: BytesMut = BytesMut::new();
+        bytes.extend(data);
+
+        let mut decoder = BincodeDecoder::<u8>::new();
+
+        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == 1));
+        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == 2));
+    }
+
+    #[test]
+    fn error_when_decoding_incorrect_data() {
+        let data = "abc";
+
+        let mut decoder = BincodeDecoder::<String>::new();
+        let _ = decoder.transcode(data).expect_err("should not decode");
+    }
+}

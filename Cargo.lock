@@ -2746,6 +2746,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bytes",
+ "casper-types 1.5.0",
  "futures",
  "serde",
  "thiserror",

@@ -24,6 +24,8 @@
 
 #[cfg(feature = "bincode")]
 pub mod bincode;
+#[cfg(feature = "bytesrepr")]
+pub mod bytesrepr;
 pub mod length_delimited;
 
 use std::{
