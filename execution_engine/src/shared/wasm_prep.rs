@@ -1,7 +1,7 @@
 //! Preprocessing of Wasm modules.
 use std::fmt::{self, Display, Formatter};
 
-use parity_wasm::elements::{self, MemorySection, Module, Section};
+use parity_wasm::elements::{self, MemorySection, Module, Section, TableSection, TableType};
 use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
@@ -23,6 +23,8 @@ pub enum PreprocessingError {
     MissingMemorySection,
     /// The module is missing.
     MissingModule,
+    /// Wasm validation did not pass.
+    InvalidWasm(String),
 }
 
 impl From<elements::Error> for PreprocessingError {
@@ -38,7 +40,9 @@ impl Display for PreprocessingError {
             PreprocessingError::OperationForbiddenByGasRules => write!(f, "Encountered operation forbidden by gas rules. Consult instruction -> metering config map"),
             PreprocessingError::StackLimiter => write!(f, "Stack limiter error"),
             PreprocessingError::MissingMemorySection => write!(f, "Memory section should exist"),
-            PreprocessingError::MissingModule => write!(f, "Missing module")
+            PreprocessingError::MissingModule => write!(f, "Missing module"),
+            PreprocessingError::InvalidWasm(msg) => write!(f, "Invalid wasm: {msg}."),
+
         }
     }
 }
@@ -55,6 +59,51 @@ fn memory_section(module: &Module) -> Option<&MemorySection> {
         }
     }
     None
+}
+
+fn table_section(module: &mut Module) -> Option<&mut TableSection> {
+    for section in module.sections_mut() {
+        if let Section::Table(sect) = section {
+            return Some(sect);
+        }
+    }
+    None
+}
+
+/// Ensures (table) section has at most one table entry, and initial, and maximum values are
+/// normalized.
+///
+/// If a maximum value is not specified it will be defaulted to 65k to prevent OOM.
+fn validate_table_section(mut module: Module) -> Result<Module, &'static str> {
+    const TABLE_MAX: u32 = 65536;
+
+    if let Some(sect) = table_section(&mut module) {
+        for (i, table_entry) in sect.entries_mut().iter_mut().enumerate() {
+            if i > 1 {
+                return Err("the number of tables must be at most one");
+            }
+
+            let initial = table_entry.limits().initial();
+            if initial > TABLE_MAX {
+                return Err("initial table size exceeds allowed bounds");
+            }
+
+            match table_entry.limits().maximum() {
+                Some(max) if max > TABLE_MAX => {
+                    return Err("maximum table size outside allowed bounds")
+                }
+                Some(_) => {
+                    // maximum within the limit
+                }
+                None => {
+                    // rewrite wasm and provide a maximum limit for a table section
+                    *table_entry = TableType::new(initial, Some(TABLE_MAX))
+                }
+            }
+        }
+    }
+
+    Ok(module)
 }
 
 /// Preprocesses Wasm bytes and returns a module.
@@ -79,6 +128,9 @@ pub fn preprocess(
         // and panics otherwise.
         return Err(PreprocessingError::MissingMemorySection);
     }
+
+    let module = validate_table_section(module)
+        .map_err(|error| PreprocessingError::InvalidWasm(error.to_owned()))?;
 
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(
