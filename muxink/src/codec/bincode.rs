@@ -140,15 +140,15 @@ mod tests {
 
     #[test]
     fn decodes_frame() {
-        let data = b"\x01\x02rem";
+        let data = b"\x03\0\0\0\0\0\0\0abc\x04\0\0\0\0\0\0\0defg";
 
         let mut bytes: BytesMut = BytesMut::new();
         bytes.extend(data);
 
-        let mut decoder = BincodeDecoder::<u8>::new();
+        let mut decoder = BincodeDecoder::<String>::new();
 
-        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == 1));
-        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == 2));
+        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == "abc"));
+        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == "defg"));
     }
 
     #[test]
@@ -157,5 +157,20 @@ mod tests {
 
         let mut decoder = BincodeDecoder::<String>::new();
         let _ = decoder.transcode(data).expect_err("should not decode");
+    }
+
+    #[test]
+    fn error_when_data_incomplete() {
+        let data = b"\x03\0\0\0\0\0\0\0ab";
+
+        let mut bytes: BytesMut = BytesMut::new();
+        bytes.extend(data);
+
+        let mut decoder = BincodeDecoder::<String>::new();
+
+        assert!(matches!(
+            decoder.decode_frame(&mut bytes),
+            DecodeResult::Incomplete
+        ));
     }
 }
