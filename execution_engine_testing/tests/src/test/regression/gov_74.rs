@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use std::fmt::Write;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -35,12 +36,12 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 fn make_n_arg_call_bytes(arity: usize, arg_type: &str) -> Vec<u8> {
     let mut call_args = String::new();
     for i in 0..arity {
-        call_args.push_str(&format!("({}.const {}) ", arg_type, i));
+        write!(call_args, "({}.const {}) ", arg_type, i).unwrap();
     }
 
     let mut func_params = String::new();
     for i in 0..arity {
-        func_params.push_str(&format!("(param $arg{} {}) ", i, arg_type));
+        write!(func_params, "(param $arg{} {}) ", i, arg_type).unwrap();
     }
 
     // This wasm module contains a function with a specified amount of arguments in it.

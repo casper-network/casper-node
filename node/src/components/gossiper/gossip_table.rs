@@ -456,7 +456,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     fn insert_to_finished(&mut self, data_id: &T) {
         let timeout = Instant::now() + self.finished_entry_duration;
         let _ = self.finished.insert(*data_id);
-        let _ = self.timeouts.push(timeout, *data_id);
+        self.timeouts.push(timeout, *data_id);
     }
 
     /// Retains only those finished entries which still haven't timed out.
