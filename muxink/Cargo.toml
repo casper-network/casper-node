@@ -18,5 +18,5 @@ casper-types = { path = "../types", optional = true }
 tokio-stream = "0.1.8"
 
 [features]
-bincode = [ "dep:serde", "dep:bincode" ]
-bytesrepr = [ "dep:casper-types" ] 
+muxink_bincode_codec = [ "serde", "bincode" ]
+muxink_bytesrepr_codec = [ "casper-types" ] 
