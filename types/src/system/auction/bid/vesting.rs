@@ -266,8 +266,6 @@ mod tests {
         U512,
     };
 
-    use super::DAYS_IN_WEEK;
-
     /// Default lock-in period of 90 days
     const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
     const RELEASE_TIMESTAMP: u64 = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -275,7 +273,7 @@ mod tests {
 
     const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * 24 * 60 * 60 * 1000;
     const LOCKED_AMOUNTS_LENGTH: usize =
-        (DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS as usize / DAYS_IN_WEEK) + 1;
+        (DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS as usize / WEEK_MILLIS) + 1;
 
     #[test]
     fn test_locked_amount_check_should_not_panic() {
