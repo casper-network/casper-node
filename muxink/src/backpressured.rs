@@ -80,7 +80,9 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
 
 impl<Item, A, S> Sink<Item> for BackpressuredSink<S, A, Item>
 where
-    // TODO: `Unpin` trait bounds can be removed by using `map_unchecked` if necessary.
+    // TODO: `Unpin` trait bounds can be
+    // removed by using `map_unchecked` if
+    // necessary.
     S: Sink<Item> + Unpin,
     Self: Unpin,
     A: Stream<Item = u64> + Unpin,

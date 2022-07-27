@@ -1,8 +1,8 @@
 //! Splits frames into fragments.
 //!
 //! The wire format for fragments is `NCCC...` where `CCC...` is the data fragment and `N` is the
-//! continuation byte, which is `0x00` if more fragments are following, `0xFF` if this is the frame's
-//! last fragment.
+//! continuation byte, which is `0x00` if more fragments are following, `0xFF` if this is the
+//! frame's last fragment.
 
 use std::{
     num::NonZeroUsize,
@@ -249,8 +249,8 @@ where
 ///
 /// # Notes
 ///
-/// Internally, data is copied into fragments by using `Buf::copy_to_bytes`. It is advisable to use a
-/// `B` that has an efficient implementation for this that avoids copies, like `Bytes` itself.
+/// Internally, data is copied into fragments by using `Buf::copy_to_bytes`. It is advisable to use
+/// a `B` that has an efficient implementation for this that avoids copies, like `Bytes` itself.
 pub fn fragment_frame<B: Buf>(
     mut frame: B,
     fragment_size: NonZeroUsize,

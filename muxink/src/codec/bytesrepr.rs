@@ -1,5 +1,4 @@
 //! Bytesrepr encoding/decoding
-//!
 use std::{fmt::Debug, marker::PhantomData};
 
 use bytes::{Buf, Bytes, BytesMut};
