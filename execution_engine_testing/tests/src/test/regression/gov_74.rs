@@ -1,5 +1,6 @@
-use once_cell::sync::Lazy;
 use std::fmt::Write;
+
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,

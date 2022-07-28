@@ -1,5 +1,10 @@
 use std::fmt::Write;
 
+use parity_wasm::{
+    builder,
+    elements::{Instruction, Instructions},
+};
+
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
@@ -9,10 +14,6 @@ use casper_execution_engine::{
     shared::wasm_prep::{PreprocessingError, DEFAULT_MAX_TABLE_SIZE},
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
-use parity_wasm::{
-    builder,
-    elements::{Instruction, Instructions},
-};
 
 fn make_oom_payload(initial: u32, maximum: Option<u32>) -> Vec<u8> {
     let mut bounds = initial.to_string();
