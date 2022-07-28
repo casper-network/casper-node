@@ -483,3 +483,12 @@ function assert_eviction() {
         sleep 1
     done
 }
+
+function assert_new_bonded_validator() {
+    local NODE_ID=${1}
+    local HEX=$(get_node_public_key_hex "$NODE_ID")
+    if ! $(nctl-view-chain-auction-info | grep -q "$HEX"); then
+      echo "Could not find key in bids"
+      exit 1
+    fi
+}

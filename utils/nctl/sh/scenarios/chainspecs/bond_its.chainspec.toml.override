@@ -1,5 +1,6 @@
 [core]
 round_seigniorage_rate = [0, 1]
+validator_slots = 6
 
 [highway]
 maximum_round_exponent = 14
