@@ -119,7 +119,15 @@ where
                 bincode::ErrorKind::Io(io_err) if io_err.kind() == io::ErrorKind::UnexpectedEof => {
                     DecodeResult::Incomplete
                 }
-                _ => DecodeResult::Failed(err),
+                bincode::ErrorKind::SizeLimit
+                | bincode::ErrorKind::SequenceMustHaveLength
+                | bincode::ErrorKind::Custom(_)
+                | bincode::ErrorKind::InvalidCharEncoding
+                | bincode::ErrorKind::InvalidTagEncoding(_)
+                | bincode::ErrorKind::DeserializeAnyNotSupported
+                | bincode::ErrorKind::Io(_)
+                | bincode::ErrorKind::InvalidUtf8Encoding(_)
+                | bincode::ErrorKind::InvalidBoolEncoding(_) => DecodeResult::Failed(err),
             },
         }
     }
