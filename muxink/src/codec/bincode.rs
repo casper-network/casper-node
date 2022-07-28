@@ -11,6 +11,7 @@ use std::{
     marker::PhantomData,
 };
 
+use bincode::{DefaultOptions, Options};
 use bytes::{Buf, Bytes, BytesMut};
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -45,7 +46,10 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        bincode::serialize(&input).map(Bytes::from)
+        DefaultOptions::new()
+            .reject_trailing_bytes()
+            .serialize(&input)
+            .map(Bytes::from)
     }
 }
 
@@ -78,7 +82,9 @@ where
     type Output = T;
 
     fn transcode(&mut self, input: R) -> Result<Self::Output, Self::Error> {
-        bincode::deserialize(input.as_ref())
+        DefaultOptions::new()
+            .reject_trailing_bytes()
+            .deserialize(input.as_ref())
     }
 }
 
@@ -160,14 +166,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "'transcode()' should fail here as the buffer is not exhausted"]
     fn error_when_buffer_not_exhausted() {
         let data = b"\x03\0\0\0\0\0\0\0abc\x04\0\0\0\0\0\0\0defg";
 
         let mut decoder = BincodeDecoder::<String>::new();
-        let actual_error = decoder.transcode(data).unwrap_err();
+        let actual_error = *decoder.transcode(data).unwrap_err();
 
-        dbg!(&actual_error);
+        assert!(
+            matches!(actual_error, bincode::ErrorKind::Custom(msg) if msg == "Slice had bytes remaining after deserialization")
+        );
     }
 
     #[test]
