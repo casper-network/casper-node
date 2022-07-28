@@ -79,7 +79,7 @@ fn table_section(module: &mut Module) -> Option<&mut TableSection> {
 fn validate_table_section(mut module: Module) -> Result<Module, &'static str> {
     if let Some(sect) = table_section(&mut module) {
         for (i, table_entry) in sect.entries_mut().iter_mut().enumerate() {
-            if i > 1 {
+            if i >= 1 {
                 return Err("the number of tables must be at most one");
             }
 
