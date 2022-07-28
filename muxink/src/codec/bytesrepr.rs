@@ -9,9 +9,7 @@ use super::{DecodeResult, FrameDecoder, Transcoder};
 use crate::codec::DecodeResult::Failed;
 
 #[derive(Debug, Error)]
-pub enum TranscoderError {
-    #[error("buffer not exhausted")]
-    BufferNotExhausted { left: usize },
+pub enum Error {
     #[error("bytesrepr error")]
     BytesreprError(bytesrepr::Error),
 }
@@ -38,14 +36,12 @@ impl<T> Transcoder<T> for BytesreprEncoder<T>
 where
     T: ToBytes,
 {
-    type Error = TranscoderError;
+    type Error = Error;
 
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        let bytes = input.to_bytes().map_err(TranscoderError::BytesreprError)?;
-
-        Ok(bytes.into())
+        Ok(input.to_bytes().map_err(Error::BytesreprError)?.into())
     }
 }
 
@@ -67,21 +63,14 @@ impl<T> BytesreprDecoder<T> {
 impl<R, T> Transcoder<R> for BytesreprDecoder<T>
 where
     T: FromBytes + Send + Sync + 'static,
-    R: AsRef<[u8]> + Debug,
+    R: AsRef<[u8]>,
 {
-    type Error = TranscoderError;
+    type Error = Error;
 
     type Output = T;
 
     fn transcode(&mut self, input: R) -> Result<Self::Output, Self::Error> {
-        let (data, rem) =
-            FromBytes::from_bytes(input.as_ref()).map_err(TranscoderError::BytesreprError)?;
-
-        if !rem.is_empty() {
-            return Err(TranscoderError::BufferNotExhausted { left: rem.len() });
-        }
-
-        Ok(data)
+        Ok(bytesrepr::deserialize_from_slice(input).map_err(Error::BytesreprError)?)
     }
 }
 
@@ -89,7 +78,7 @@ impl<T> FrameDecoder for BytesreprDecoder<T>
 where
     T: FromBytes + Send + Sync + 'static,
 {
-    type Error = TranscoderError;
+    type Error = Error;
     type Output = T;
 
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Self::Output, Self::Error> {
@@ -105,7 +94,7 @@ where
                 | bytesrepr::Error::LeftOverBytes
                 | bytesrepr::Error::NotRepresentable
                 | bytesrepr::Error::ExceededRecursionDepth
-                | bytesrepr::Error::OutOfMemory => Failed(TranscoderError::BytesreprError(err)),
+                | bytesrepr::Error::OutOfMemory => Failed(Error::BytesreprError(err)),
             },
         }
     }
@@ -113,12 +102,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::DecodeResult;
+    use super::{DecodeResult, Error};
     use crate::codec::{
-        bytesrepr::{
-            BytesreprDecoder, BytesreprEncoder,
-            TranscoderError::{self},
-        },
+        bytesrepr::{BytesreprDecoder, BytesreprEncoder},
         BytesMut, FrameDecoder, Transcoder,
     };
     use casper_types::bytesrepr;
@@ -167,7 +153,7 @@ mod tests {
 
         assert!(matches!(
             actual_error,
-            TranscoderError::BufferNotExhausted { left: 8 }
+            Error::BytesreprError(bytesrepr::Error::LeftOverBytes)
         ));
     }
 
@@ -180,7 +166,7 @@ mod tests {
 
         assert!(matches!(
             actual_error,
-            TranscoderError::BytesreprError(bytesrepr::Error::EarlyEndOfStream)
+            Error::BytesreprError(bytesrepr::Error::EarlyEndOfStream)
         ));
     }
 }
