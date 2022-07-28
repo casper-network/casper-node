@@ -8,6 +8,8 @@ use thiserror::Error;
 use super::wasm_config::WasmConfig;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
+/// We only allow maximum of 4k function pointers in a table section.
+pub const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
 
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
@@ -73,10 +75,8 @@ fn table_section(module: &mut Module) -> Option<&mut TableSection> {
 /// Ensures (table) section has at most one table entry, and initial, and maximum values are
 /// normalized.
 ///
-/// If a maximum value is not specified it will be defaulted to 65k to prevent OOM.
+/// If a maximum value is not specified it will be defaulted to 4k to prevent OOM.
 fn validate_table_section(mut module: Module) -> Result<Module, &'static str> {
-    const TABLE_MAX: u32 = 65536;
-
     if let Some(sect) = table_section(&mut module) {
         for (i, table_entry) in sect.entries_mut().iter_mut().enumerate() {
             if i > 1 {
@@ -84,12 +84,12 @@ fn validate_table_section(mut module: Module) -> Result<Module, &'static str> {
             }
 
             let initial = table_entry.limits().initial();
-            if initial > TABLE_MAX {
+            if initial > DEFAULT_MAX_TABLE_SIZE {
                 return Err("initial table size exceeds allowed bounds");
             }
 
             match table_entry.limits().maximum() {
-                Some(max) if max > TABLE_MAX => {
+                Some(max) if max > DEFAULT_MAX_TABLE_SIZE => {
                     return Err("maximum table size outside allowed bounds")
                 }
                 Some(_) => {
@@ -97,7 +97,7 @@ fn validate_table_section(mut module: Module) -> Result<Module, &'static str> {
                 }
                 None => {
                     // rewrite wasm and provide a maximum limit for a table section
-                    *table_entry = TableType::new(initial, Some(TABLE_MAX))
+                    *table_entry = TableType::new(initial, Some(DEFAULT_MAX_TABLE_SIZE))
                 }
             }
         }

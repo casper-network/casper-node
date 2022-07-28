@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{engine_state, execution},
-    shared::wasm_prep::PreprocessingError,
+    shared::wasm_prep::{PreprocessingError, DEFAULT_MAX_TABLE_SIZE},
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
 use parity_wasm::{
@@ -34,11 +34,11 @@ fn make_oom_payload(initial: u32, maximum: Option<u32>) -> Vec<u8> {
 }
 
 const OOM_INIT: (u32, Option<u32>) = (2805655325, None);
-const FAILURE_ONE_ABOVE_LIMIT: (u32, Option<u32>) = (65537, None);
-const FAILURE_MAX_ABOVE_LIMIT: (u32, Option<u32>) = (65536, Some(u32::MAX));
+const FAILURE_ONE_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE + 1, None);
+const FAILURE_MAX_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(u32::MAX));
 const FAILURE_INIT_ABOVE_LIMIT: (u32, Option<u32>) = (u32::MAX, Some(u32::MAX));
-const ALLOWED_NO_MAX: (u32, Option<u32>) = (65536, None);
-const ALLOWED_LIMITS: (u32, Option<u32>) = (65536, Some(65536));
+const ALLOWED_NO_MAX: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, None);
+const ALLOWED_LIMITS: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT_MAX_TABLE_SIZE));
 
 #[ignore]
 #[test]
@@ -98,7 +98,7 @@ fn should_pass_table_validation() {
 #[test]
 fn should_pass_elem_section() {
     // more functions than elements - wasmi doesn't allocate
-    let elem_does_not_fit_err = test_element_section(0, None, 65536);
+    let elem_does_not_fit_err = test_element_section(0, None, DEFAULT_MAX_TABLE_SIZE);
     assert!(
         matches!(
             elem_does_not_fit_err,
@@ -111,7 +111,11 @@ fn should_pass_elem_section() {
 
     // wasmi assumes table size and function pointers are equal
     assert!(matches!(
-        test_element_section(65536, Some(65536), 65536),
+        test_element_section(
+            DEFAULT_MAX_TABLE_SIZE,
+            Some(DEFAULT_MAX_TABLE_SIZE),
+            DEFAULT_MAX_TABLE_SIZE
+        ),
         None
     ));
 }
