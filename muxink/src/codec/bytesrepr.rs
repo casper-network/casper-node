@@ -151,6 +151,14 @@ mod tests {
     }
 
     #[test]
+    fn error_when_decoding_incorrect_data() {
+        let data = "abc";
+
+        let mut decoder = BytesreprDecoder::<String>::new();
+        let _ = decoder.transcode(data).expect_err("should not decode");
+    }
+
+    #[test]
     fn error_when_buffer_not_exhausted() {
         let data = b"\x03\0\0\0abc\x04\0\0\0defg";
 

@@ -160,6 +160,17 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "'transcode()' should fail here as the buffer is not exhausted"]
+    fn error_when_buffer_not_exhausted() {
+        let data = b"\x03\0\0\0\0\0\0\0abc\x04\0\0\0\0\0\0\0defg";
+
+        let mut decoder = BincodeDecoder::<String>::new();
+        let actual_error = decoder.transcode(data).unwrap_err();
+
+        dbg!(&actual_error);
+    }
+
+    #[test]
     fn error_when_data_incomplete() {
         let data = b"\x03\0\0\0\0\0\0\0ab";
 
