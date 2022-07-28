@@ -99,7 +99,10 @@ where
         let (outcome, consumed) = {
             let slice: &[u8] = buffer.as_ref();
             let mut cursor = Cursor::new(slice);
-            let outcome = bincode::deserialize_from(&mut cursor);
+            let outcome = DefaultOptions::new()
+                .with_fixint_encoding()
+                .allow_trailing_bytes()
+                .deserialize_from(&mut cursor);
             (outcome, cursor.position() as usize)
         };
 
