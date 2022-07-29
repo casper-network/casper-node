@@ -97,7 +97,7 @@ where
             let slice: &[u8] = buffer.as_ref();
             let mut cursor = Cursor::new(slice);
             let outcome = DefaultOptions::new()
-                .with_fixint_encoding()
+                .with_varint_encoding()
                 .allow_trailing_bytes()
                 .deserialize_from(&mut cursor);
             (outcome, cursor.position() as usize)
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn decodes_frame() {
-        let data = b"\x03\0\0\0\0\0\0\0abc\x04\0\0\0\0\0\0\0defg";
+        let data = b"\x03abc\x04defg";
 
         let mut bytes: BytesMut = BytesMut::new();
         bytes.extend(data);
@@ -169,6 +169,20 @@ mod tests {
 
         assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == "abc"));
         assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == "defg"));
+    }
+
+    #[test]
+    fn decodes_frame_of_raw_integers() {
+        // 40000u16 followed by 7u16
+        let data = b"\xfb\x40\x9c\x07";
+
+        let mut bytes: BytesMut = BytesMut::new();
+        bytes.extend(data);
+
+        let mut decoder = BincodeDecoder::<u16>::new();
+
+        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == 40000));
+        assert!(matches!(decoder.decode_frame(&mut bytes), DecodeResult::Item(i) if i == 7));
     }
 
     #[test]
@@ -181,7 +195,7 @@ mod tests {
 
     #[test]
     fn error_when_buffer_not_exhausted() {
-        let data = b"\x03\0\0\0\0\0\0\0abc\x04\0\0\0\0\0\0\0defg";
+        let data = b"\x03abc\x04defg";
 
         let mut decoder = BincodeDecoder::<String>::new();
         let actual_error = *decoder.transcode(data).unwrap_err();
@@ -193,7 +207,7 @@ mod tests {
 
     #[test]
     fn error_when_data_incomplete() {
-        let data = b"\x03\0\0\0\0\0\0\0ab";
+        let data = b"\x03ab";
 
         let mut bytes: BytesMut = BytesMut::new();
         bytes.extend(data);
