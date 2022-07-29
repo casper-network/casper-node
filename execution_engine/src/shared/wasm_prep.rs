@@ -12,6 +12,8 @@ const DEFAULT_GAS_MODULE_NAME: &str = "env";
 pub const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
 /// Maximum number of elements that can appear as immediate value to the br_table instruction.
 pub const DEFAULT_BR_TABLE_MAX_SIZE: u32 = 256;
+/// Maximum number of global a module is allowed to declare.
+pub const DEFAULT_MAX_GLOBALS: u32 = 256;
 
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
@@ -41,6 +43,14 @@ pub enum WasmValidationError {
         /// Maximum allowed br_table length.
         max: u32,
         /// Actual size of the largest br_table in the code.
+        actual: usize,
+    },
+    /// Declares number of globals exceeds allowed size.
+    #[error("declared number of globals exceeds allowed size")]
+    TooManyGlobals {
+        /// Maximum allowed globals.
+        max: u32,
+        /// Actual number of globals declares in the Wasm.
         actual: usize,
     },
 }
@@ -138,6 +148,25 @@ fn ensure_table_size_limit(mut module: Module) -> Result<Module, WasmValidationE
     Ok(module)
 }
 
+/// Ensures that module doesn't declare too many globals.
+///
+/// Globals are not limited through the `stack_height` as locals are. Neither does
+/// the linear memory limit `memory_pages` applies to them.
+///
+/// There is potential to
+fn ensure_global_variable_limit(module: &Module) -> Result<(), WasmValidationError> {
+    if let Some(global_section) = module.global_section() {
+        let actual = global_section.entries().len();
+        if actual > DEFAULT_MAX_GLOBALS as usize {
+            return Err(WasmValidationError::TooManyGlobals {
+                max: DEFAULT_MAX_GLOBALS,
+                actual,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Ensure that any `br_table` instruction adheres to its immediate value limit.
 fn ensure_br_table_size_limit(module: &Module) -> Result<(), WasmValidationError> {
     let code_section = if let Some(type_section) = module.code_section() {
@@ -187,6 +216,7 @@ pub fn preprocess(
 
     let module = ensure_table_size_limit(module)?;
     ensure_br_table_size_limit(&module)?;
+    ensure_global_variable_limit(&module)?;
 
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(
