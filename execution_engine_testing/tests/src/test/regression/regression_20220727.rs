@@ -10,13 +10,30 @@ use casper_engine_test_support::{
     DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{engine_state, execution},
+    core::{
+        engine_state::{self, Error},
+        execution,
+    },
     shared::wasm_prep::{
         PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
-        DEFAULT_MAX_TABLE_SIZE,
+        DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
     },
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
+
+use crate::wasm_utils;
+
+const OOM_INIT: (u32, Option<u32>) = (2805655325, None);
+const FAILURE_ONE_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE + 1, None);
+const FAILURE_MAX_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(u32::MAX));
+const FAILURE_INIT_ABOVE_LIMIT: (u32, Option<u32>) = (u32::MAX, Some(u32::MAX));
+const ALLOWED_NO_MAX: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, None);
+const ALLOWED_LIMITS: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT_MAX_TABLE_SIZE));
+// Anything larger than that fails wasmi interpreter with a runtime stack overflow.
+const FAILING_BR_TABLE_SIZE: usize = 16382;
+const ALLOWED_BR_TABLE_SIZE: usize = 256;
+const FAILING_GLOBALS_SIZE: usize = 16384;
+const FAILING_PARAMS_COUNT: usize = 16384;
 
 fn make_oom_payload(initial: u32, maximum: Option<u32>) -> Vec<u8> {
     let mut bounds = initial.to_string();
@@ -36,17 +53,6 @@ fn make_oom_payload(initial: u32, maximum: Option<u32>) -> Vec<u8> {
     );
     wabt::wat2wasm(wat).expect("should parse wat")
 }
-
-const OOM_INIT: (u32, Option<u32>) = (2805655325, None);
-const FAILURE_ONE_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE + 1, None);
-const FAILURE_MAX_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(u32::MAX));
-const FAILURE_INIT_ABOVE_LIMIT: (u32, Option<u32>) = (u32::MAX, Some(u32::MAX));
-const ALLOWED_NO_MAX: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, None);
-const ALLOWED_LIMITS: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT_MAX_TABLE_SIZE));
-// Anything larger than that fails wasmi interpreter with a runtime stack overflow.
-const FAILING_BR_TABLE_SIZE: usize = 16382;
-const ALLOWED_BR_TABLE_SIZE: usize = 256;
-const FAILING_GLOBALS_SIZE: usize = 16384;
 
 #[ignore]
 #[test]
@@ -479,6 +485,84 @@ fn should_not_allow_too_many_globals() {
                 WasmValidationError::TooManyGlobals { max, actual }
             ))
             if (max, actual) == (DEFAULT_MAX_GLOBALS, FAILING_GLOBALS_SIZE)
+        ),
+        "{:?}",
+        error,
+    );
+}
+
+#[ignore]
+#[test]
+fn should_verify_max_param_count() {
+    let module_bytes_max_params =
+        wasm_utils::make_n_arg_call_bytes(DEFAULT_MAX_PARAMETER_COUNT as usize, "i32")
+            .expect("should create wasm bytes");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes_max_params,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+
+    // Here we pass the preprocess stage, but we wail at stack height limiter as we do have very
+    // restrictive default stack height.
+    assert!(
+        matches!(&error, Error::Exec(execution::Error::Interpreter(s)) if s.contains("Unreachable")),
+        "{:?}",
+        error
+    );
+
+    let module_bytes_100_params =
+        wasm_utils::make_n_arg_call_bytes(100, "i32").expect("should create wasm bytes");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes_100_params,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_too_many_params() {
+    let module_bytes = wasm_utils::make_n_arg_call_bytes(FAILING_PARAMS_COUNT, "i32")
+        .expect("should create wasm bytes");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should fail");
+
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
+                WasmValidationError::TooManyParameters { max, actual }
+            ))
+            if (max, actual) == (DEFAULT_MAX_PARAMETER_COUNT, FAILING_PARAMS_COUNT)
         ),
         "{:?}",
         error,
