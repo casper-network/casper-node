@@ -171,6 +171,7 @@ where
     }
 }
 
+#[rustfmt::skip]
 #[cfg(test)]
 pub(crate) mod tests {
 
@@ -222,10 +223,8 @@ pub(crate) mod tests {
 
     // #[test]
     // fn from_bytestream_to_multiple_frames() {
-    //     let input =
-    // &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x10\x00\xffSINGLE_FRAGMENT\x02\x00\x00C\
-    // x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];     let expected:
-    // &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_FRAGMENT", b"CRUMBS"];
+    //     let input = &b"\x06\x00\x00ABCDE\x06\x00\x00FGHIJ\x03\x00\xffKL\x10\x00\xffSINGLE_FRAGMENT\x02\x00\x00C\x02\x00\x00R\x02\x00\x00U\x02\x00\x00M\x02\x00\x00B\x02\x00\xffS"[..];
+    //     let expected: &[&[u8]] = &[b"ABCDEFGHIJKL", b"SINGLE_FRAGMENT", b"CRUMBS"];
 
     //     let defragmentizer = make_defragmentizer(FrameReader::new(
     //         LengthDelimited,
