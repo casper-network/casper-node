@@ -12,8 +12,10 @@ pub mod testing;
 use std::num::NonZeroUsize;
 
 use bytes::Buf;
-use codec::length_delimited::{LengthDelimited, LengthPrefixedFrame};
-use codec::{Transcoder, TranscodingSink, TranscodingStream};
+use codec::{
+    length_delimited::{LengthDelimited, LengthPrefixedFrame},
+    Transcoder, TranscodingSink, TranscodingStream,
+};
 use fragmented::{Defragmentizer, Fragmentizer, SingleFragment};
 use futures::Sink;
 
@@ -169,6 +171,7 @@ where
     }
 }
 
+#[rustfmt::skip]
 #[cfg(test)]
 pub(crate) mod tests {
 

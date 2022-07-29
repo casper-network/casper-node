@@ -12,9 +12,11 @@ serde = { version = "1.0.138", optional = true }
 thiserror = "1.0.31"
 tokio = { version = "1.18.1", features = [ "full" ] }
 tokio-util = "0.7.2"
+casper-types = { path = "../types", optional = true }
 
 [dev-dependencies]
 tokio-stream = "0.1.8"
 
 [features]
-bincode = [ "dep:serde", "dep:bincode" ]
+muxink_bincode_codec = [ "serde", "bincode" ]
+muxink_bytesrepr_codec = [ "casper-types" ] 
