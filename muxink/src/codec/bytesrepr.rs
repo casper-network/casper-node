@@ -41,7 +41,7 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        Ok(input.to_bytes().map_err(Error::BytesreprError)?.into())
+        Ok(input.into_bytes().map_err(Error::BytesreprError)?.into())
     }
 }
 
