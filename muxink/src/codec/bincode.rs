@@ -46,8 +46,7 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        DefaultOptions::new()
-            .reject_trailing_bytes()
+        bincode_transcode_options()
             .serialize(&input)
             .map(Bytes::from)
     }
@@ -82,9 +81,7 @@ where
     type Output = T;
 
     fn transcode(&mut self, input: R) -> Result<Self::Output, Self::Error> {
-        DefaultOptions::new()
-            .reject_trailing_bytes()
-            .deserialize(input.as_ref())
+        bincode_transcode_options().deserialize(input.as_ref())
     }
 }
 
@@ -131,6 +128,12 @@ where
             },
         }
     }
+}
+
+fn bincode_transcode_options() -> impl bincode::config::Options {
+    DefaultOptions::new()
+        .reject_trailing_bytes()
+        .with_varint_encoding()
 }
 
 #[cfg(test)]
