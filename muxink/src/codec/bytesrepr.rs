@@ -12,10 +12,8 @@ use super::{DecodeResult, FrameDecoder, Transcoder};
 use crate::codec::DecodeResult::Failed;
 
 #[derive(Debug, Error)]
-pub enum Error {
-    #[error("bytesrepr error")]
-    BytesreprError(bytesrepr::Error),
-}
+#[error("bytesrepr error")]
+pub struct Error(bytesrepr::Error);
 
 /// Bytesrepr encoder.
 #[derive(Debug, Default)]
@@ -44,7 +42,7 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        Ok(input.into_bytes().map_err(Error::BytesreprError)?.into())
+        Ok(input.into_bytes().map_err(|err| Error(err))?.into())
     }
 }
 
@@ -73,7 +71,7 @@ where
     type Output = T;
 
     fn transcode(&mut self, input: R) -> Result<Self::Output, Self::Error> {
-        Ok(bytesrepr::deserialize_from_slice(input).map_err(Error::BytesreprError)?)
+        Ok(bytesrepr::deserialize_from_slice(input).map_err(|eee| Error(eee))?)
     }
 }
 
@@ -97,7 +95,7 @@ where
                 | bytesrepr::Error::LeftOverBytes
                 | bytesrepr::Error::NotRepresentable
                 | bytesrepr::Error::ExceededRecursionDepth
-                | bytesrepr::Error::OutOfMemory => Failed(Error::BytesreprError(err)),
+                | bytesrepr::Error::OutOfMemory => Failed(Error(err)),
             },
         }
     }
@@ -156,7 +154,7 @@ mod tests {
 
         assert!(matches!(
             actual_error,
-            Error::BytesreprError(bytesrepr::Error::LeftOverBytes)
+            Error(bytesrepr::Error::LeftOverBytes)
         ));
     }
 
@@ -169,7 +167,7 @@ mod tests {
 
         assert!(matches!(
             actual_error,
-            Error::BytesreprError(bytesrepr::Error::EarlyEndOfStream)
+            Error(bytesrepr::Error::EarlyEndOfStream)
         ));
     }
 }
