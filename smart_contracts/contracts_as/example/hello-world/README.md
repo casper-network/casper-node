@@ -5,7 +5,7 @@ This assembly script accepts a message string and stores it in the calling accou
 **Usage**: This assembly script expects a runtime argument named `message` of type string.
 
 **Tests**: There are two tests available to test the Hello World assembly script. The `should_store_hello_world` test verifies the happy path, where a string *hello world* is saved under the `special_value` NamedKey. The `should_error_on_missing_runtime_arg` test verifies that an error is displayed when the runtime argument is missing. 
-The tests start by initializing the casper crates and creating a genesis account. Then the contract Wasm is loaded and the deploy_item object is created. The deploy_item object is passed to the execute_request. Finally, the execution engine is invoked to process the execute_request. 
+The tests start by initializing the Casper crates and creating a genesis account. Then the contract Wasm is loaded and the deploy_item object is created. The deploy_item object is passed to the execute_request. Finally, the execution engine is invoked to process the execute_request. 
 
 ## Build and Test the Assembly Script
 
@@ -142,13 +142,13 @@ After the deploy is successful, you can view the new NamedKey `special_value` in
 
 :::note
 
-Make a note of the NamedKey uref hash in the faucet account details.
+Make a note of the NamedKey URef hash in the faucet account details.
 
 :::
 
 ### View the value stored in the NamedKey
 
-You can view the value stored in the NamedKey by using the uref hash assigned to the NamedKey. To do this, we will first find the state root hash of the network using the following command:
+You can view the value stored in the NamedKey by using the URef hash assigned to the NamedKey. To do this, we will first find the state root hash of the network using the following command:
 
 ```bash
 casper-client get-state-root-hash --node-address http://localhost:11101
@@ -170,7 +170,7 @@ casper-client get-state-root-hash --node-address http://localhost:11101
 
 </details>
 
-Then use the uref hash and the state root hash to view the value stored in the NamedKey.
+Then use the URef hash and the state root hash to view the value stored in the NamedKey.
 
 ```bash
 casper-client query-state \
