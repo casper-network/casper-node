@@ -1,8 +1,11 @@
 //! Bytesrepr encoding/decoding
-use std::{fmt::Debug, marker::PhantomData};
+//!
+//! Both encoding and decoding are supported by this module. Note that `BytesreprDecoder`
+//! implements both [`Transcoder`] and [`FrameDecoder`].
 
 use bytes::{Buf, Bytes, BytesMut};
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use std::{fmt::Debug, marker::PhantomData};
 use thiserror::Error;
 
 use super::{DecodeResult, FrameDecoder, Transcoder};

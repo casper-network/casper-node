@@ -1,6 +1,6 @@
 //! Bincode encoding/decoding
 //!
-//! Both encoding and decoding are supported by this module. Note that `BincodeDecoder` supports
+//! Both encoding and decoding are supported by this module. Note that `BincodeDecoder`
 //! implements both [`Transcoder`] and [`FrameDecoder`]. The former operates on frames and is safe
 //! to use, the latter attempts to parse incoming buffers until successful. For this reason,
 //! variably sized or large types should be avoided, as decoding will otherwise open up an
