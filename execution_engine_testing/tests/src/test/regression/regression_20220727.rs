@@ -568,3 +568,40 @@ fn should_not_allow_too_many_params() {
         error,
     );
 }
+
+#[ignore]
+#[test]
+fn should_not_allow_to_import_gas_function() {
+    let module_bytes = wat::parse_str(
+        r#"(module
+            (func $gas (import "env" "gas") (param i32))
+            (memory $0 1)
+        )"#,
+    )
+    .unwrap();
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should fail");
+
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
+                WasmValidationError::MissingHostFunction
+            ))
+        ),
+        "{:?}",
+        error,
+    );
+}

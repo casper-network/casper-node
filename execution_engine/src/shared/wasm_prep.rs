@@ -63,6 +63,9 @@ pub enum WasmValidationError {
         /// Actual number of parameters a function has in the Wasm.
         actual: usize,
     },
+    /// Module tries to import a function that the host does not provide.
+    #[error("module imports a non-existent function")]
+    MissingHostFunction,
 }
 
 /// An error emitted by the Wasm preprocessor.
@@ -228,6 +231,37 @@ fn ensure_parameter_limit(module: &Module) -> Result<(), WasmValidationError> {
 
     Ok(())
 }
+
+/// List of invalid wasm imports considered non-existing.
+const WASM_INVALID_IMPORTS: &[(&str, &str)] = &[
+    // Gas counter is currently considered an implementation detail.
+    //
+    // If a wasm module tries to import it will be rejected.
+    (DEFAULT_GAS_MODULE_NAME, "gas"),
+];
+
+/// Ensures that Wasm module has valid imports.
+fn ensure_valid_imports(module: &Module) -> Result<(), WasmValidationError> {
+    let import_entries = module
+        .import_section()
+        .map(|is| is.entries())
+        .unwrap_or(&[]);
+
+    for import in import_entries {
+        if WASM_INVALID_IMPORTS
+            .iter()
+            .any(|(module, func_name)| (import.module(), import.field()) == (*module, *func_name))
+        {
+            // Currently we're checking the imports against the list of invalid imports such as
+            // special "gas" function, but this should be extended to also check if the provided
+            // imports are on the list of host functions.
+            return Err(WasmValidationError::MissingHostFunction);
+        }
+    }
+
+    Ok(())
+}
+
 /// Preprocesses Wasm bytes and returns a module.
 ///
 /// This process consists of a few steps:
@@ -255,6 +289,7 @@ pub fn preprocess(
     ensure_br_table_size_limit(&module)?;
     ensure_global_variable_limit(&module)?;
     ensure_parameter_limit(&module)?;
+    ensure_valid_imports(&module)?;
 
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(
