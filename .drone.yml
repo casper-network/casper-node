@@ -246,6 +246,7 @@ steps:
   - "./ci/nctl_upgrade_stage.sh"
   when:
     branch:
+    - dev
     - "release-*"
 
 - name: nctl-bucket-upload
@@ -264,6 +265,7 @@ steps:
     path: /tmp/nctl_upgrade_stage
   when:
     branch:
+    - dev
     - "release-*"
 
 - name: notify

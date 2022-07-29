@@ -56,6 +56,7 @@ pub use self::macro_code::{U128, U256, U512};
 
 /// Error type for parsing [`U128`], [`U256`], [`U512`] from a string.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum UIntParseError {
     /// Contains the parsing error from the `uint` crate, which only supports base-10 parsing.
     FromDecStr(uint::FromDecStrErr),

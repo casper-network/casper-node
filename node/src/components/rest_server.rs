@@ -38,12 +38,12 @@ use crate::{
     effect::{
         requests::{
             ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            RestRequest, StorageRequest,
+            NodeStateRequest, RestRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::{NodeState, StatusFeed},
+    types::StatusFeed,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -59,6 +59,7 @@ pub(crate) trait ReactorEventT:
     + From<ChainspecLoaderRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
+    + From<NodeStateRequest>
     + Send
 {
 }
@@ -71,6 +72,7 @@ impl<REv> ReactorEventT for REv where
         + From<ChainspecLoaderRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
+        + From<NodeStateRequest>
         + Send
         + 'static
 {
@@ -86,8 +88,6 @@ pub(crate) struct InnerRestServer {
     server_join_handle: Option<JoinHandle<()>>,
     /// The instant at which the node has started.
     node_startup_instant: Instant,
-    /// The current state of operation.
-    node_state: NodeState,
 }
 
 #[derive(DataSize, Debug)]
@@ -102,7 +102,6 @@ impl RestServer {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
-        node_state: NodeState,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -127,7 +126,6 @@ impl RestServer {
                 shutdown_sender,
                 server_join_handle,
                 node_startup_instant,
-                node_state,
             }),
         })
     }
@@ -156,14 +154,21 @@ where
         match event {
             Event::RestRequest(RestRequest::Status { responder }) => {
                 let node_uptime = rest_server.node_startup_instant.elapsed();
-                let node_state = rest_server.node_state;
                 async move {
-                    let (last_added_block, peers, chainspec_info, consensus_status) = join!(
+                    let (
+                        last_added_block,
+                        peers,
+                        chainspec_info,
+                        consensus_status,
+                        node_state,
+                    ) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
                         effect_builder.get_chainspec_info(),
-                        effect_builder.consensus_status()
+                        effect_builder.consensus_status(),
+                        effect_builder.get_node_state()
                     );
+
                     let status_feed = StatusFeed::new(
                         last_added_block,
                         peers,

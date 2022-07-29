@@ -143,13 +143,14 @@ use crate::{
         small_network::FromIncoming,
     },
     contract_runtime::SpeculativeExecutionState,
+    effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
     utils::{SharedFlag, Source},
 };
@@ -164,7 +165,7 @@ use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
     ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    StateStoreRequest, StorageRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -765,13 +766,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network non-joiner peers in random order.
-    pub async fn get_fully_connected_non_joiner_peers(self) -> Vec<NodeId>
+    /// Gets the current network non-syncing peers in random order.
+    pub async fn get_fully_connected_non_syncing_peers(self) -> Vec<NodeId>
     where
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder },
             QueueKind::Regular,
         )
         .await
@@ -1662,6 +1663,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce that the sync process has finished.
+    pub(crate) async fn announce_finished_chain_syncing(self)
+    where
+        REv: From<ChainSynchronizerAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ChainSynchronizerAnnouncement::SyncFinished,
+                QueueKind::Network,
+            )
+            .await
+    }
+
     /// The linear chain has stored a newly-created block.
     pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
@@ -1745,6 +1759,13 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    pub(crate) async fn get_node_state(self) -> NodeState
+    where
+        REv: From<NodeStateRequest> + Send,
+    {
+        self.make_request(NodeStateRequest, QueueKind::Api).await
     }
 
     /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.

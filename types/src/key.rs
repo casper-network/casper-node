@@ -140,6 +140,7 @@ pub enum Key {
 
 /// Errors produced when converting a `String` into a `Key`.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     /// Account parse error.
     Account(account::FromStrError),
@@ -510,6 +511,14 @@ impl Key {
         let mut addr = HashAddr::default();
         hasher.finalize_variable(|hash| addr.clone_from_slice(hash));
         Key::Dictionary(addr)
+    }
+
+    /// Returns true if the key is of type [`Key::Dictionary`].
+    pub fn is_dictionary_key(&self) -> bool {
+        if let Key::Dictionary(_) = self {
+            return true;
+        }
+        false
     }
 }
 
