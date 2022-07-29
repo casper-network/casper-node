@@ -12,7 +12,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{engine_state, execution},
     shared::wasm_prep::{
-        PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_TABLE_SIZE,
+        PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
+        DEFAULT_MAX_TABLE_SIZE,
     },
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
@@ -45,6 +46,7 @@ const ALLOWED_LIMITS: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT
 // Anything larger than that fails wasmi interpreter with a runtime stack overflow.
 const FAILING_BR_TABLE_SIZE: usize = 16382;
 const ALLOWED_BR_TABLE_SIZE: usize = 256;
+const FAILING_GLOBALS_SIZE: usize = 16384;
 
 #[ignore]
 #[test]
@@ -384,6 +386,99 @@ fn should_not_allow_large_br_table() {
                 WasmValidationError::BrTableSizeExceeded { max, actual }
             ))
             if (max, actual) == (DEFAULT_BR_TABLE_MAX_SIZE, FAILING_BR_TABLE_SIZE)
+        ),
+        "{:?}",
+        error,
+    );
+}
+
+fn make_arbitrary_global(size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // (module
+    //   (memory $0 1)
+    //   (global $global0 i32 (i32.const 1))
+    //   (global $global1 i32 (i32.const 2))
+    //   (global $global2 i32 (i32.const 3))
+    //   (func (export "call")
+    //     global.get $global0
+    //     global.get $global1
+    //     global.get $global2
+    //     i32.add
+    //     i32.add
+    //     drop
+    //   )
+    // )
+    let mut src = String::new();
+    writeln!(src, "(module")?;
+    writeln!(src, "  (memory $0 1)")?;
+
+    for i in 0..size {
+        writeln!(
+            src,
+            "  (global $global{i} i32 (i32.const {value}))",
+            value = i + 1
+        )?;
+    }
+
+    writeln!(src, r#"  (func (export "call")"#)?;
+    for i in 0..size {
+        writeln!(src, "    global.get $global{i}")?;
+    }
+    for _i in 0..size - 1 {
+        writeln!(src, "    i32.add")?; // global{n-1} + global{n} etc
+    }
+    writeln!(src, "    drop")?; // drop the result
+    writeln!(src, "  )")?;
+    writeln!(src, ")")?;
+    // println!("{src}");
+    let module_bytes = wat::parse_str(&src)?;
+    Ok(module_bytes)
+}
+
+#[ignore]
+#[test]
+fn should_allow_multiple_globals() {
+    let module_bytes = make_arbitrary_global(100).expect("should make arbitrary global");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_too_many_globals() {
+    let module_bytes =
+        make_arbitrary_global(FAILING_GLOBALS_SIZE).expect("should make arbitrary global");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should fail");
+
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
+                WasmValidationError::TooManyGlobals { max, actual }
+            ))
+            if (max, actual) == (DEFAULT_MAX_GLOBALS, FAILING_GLOBALS_SIZE)
         ),
         "{:?}",
         error,
