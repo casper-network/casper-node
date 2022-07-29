@@ -1,7 +1,7 @@
 //! Preprocessing of Wasm modules.
 use std::fmt::{self, Display, Formatter};
 
-use parity_wasm::elements::{self, MemorySection, Module, Section, TableType};
+use parity_wasm::elements::{self, Instruction, MemorySection, Module, Section, TableType};
 use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
@@ -10,6 +10,8 @@ use super::wasm_config::WasmConfig;
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
 /// We only allow maximum of 4k function pointers in a table section.
 pub const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
+/// Maximum number of elements that can appear as immediate value to the br_table instruction.
+pub const DEFAULT_BR_TABLE_MAX_SIZE: u32 = 256;
 
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
@@ -33,6 +35,14 @@ pub enum WasmValidationError {
     /// Number of the tables in a Wasm must be at most one.
     #[error("the number of tables must be at most one")]
     MoreThanOneTable,
+    /// Length of a br_table exceeded the maximum allowed size.
+    #[error("maximum br_table size exceeds allowed bounds (expected {max} but found {actual})")]
+    BrTableSizeExceeded {
+        /// Maximum allowed br_table length.
+        max: u32,
+        /// Actual size of the largest br_table in the code.
+        actual: usize,
+    },
 }
 
 /// An error emitted by the Wasm preprocessor.
@@ -127,6 +137,30 @@ fn ensure_table_size_limit(mut module: Module) -> Result<Module, WasmValidationE
     Ok(module)
 }
 
+/// Ensure that any `br_table` instruction adheres to its immediate value limit.
+fn ensure_br_table_size_limit(module: &Module) -> Result<(), WasmValidationError> {
+    let code_section = if let Some(type_section) = module.code_section() {
+        type_section
+    } else {
+        return Ok(());
+    };
+    for instr in code_section
+        .bodies()
+        .iter()
+        .flat_map(|body| body.code().elements())
+    {
+        if let Instruction::BrTable(br_table_data) = instr {
+            if br_table_data.table.len() > DEFAULT_BR_TABLE_MAX_SIZE as usize {
+                return Err(WasmValidationError::BrTableSizeExceeded {
+                    max: DEFAULT_BR_TABLE_MAX_SIZE,
+                    actual: br_table_data.table.len(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Preprocesses Wasm bytes and returns a module.
 ///
 /// This process consists of a few steps:
@@ -151,6 +185,7 @@ pub fn preprocess(
     }
 
     let module = ensure_table_size_limit(module)?;
+    ensure_br_table_size_limit(&module)?;
 
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(

@@ -11,7 +11,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{engine_state, execution},
-    shared::wasm_prep::{PreprocessingError, WasmValidationError, DEFAULT_MAX_TABLE_SIZE},
+    shared::wasm_prep::{
+        PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_TABLE_SIZE,
+    },
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
 
@@ -40,6 +42,9 @@ const FAILURE_MAX_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Som
 const FAILURE_INIT_ABOVE_LIMIT: (u32, Option<u32>) = (u32::MAX, Some(u32::MAX));
 const ALLOWED_NO_MAX: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, None);
 const ALLOWED_LIMITS: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT_MAX_TABLE_SIZE));
+// Anything larger than that fails wasmi interpreter with a runtime stack overflow.
+const FAILING_BR_TABLE_SIZE: usize = 16382;
+const ALLOWED_BR_TABLE_SIZE: usize = 256;
 
 #[ignore]
 #[test]
@@ -261,5 +266,126 @@ fn should_not_allow_more_than_one_table() {
         ),
         "{:?}",
         error
+    );
+}
+
+/// Generates arbitrary length br_table opcode trying to exploit memory allocation in the wasm
+/// parsing code.
+fn make_arbitrary_br_table(size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // (module
+    // (type (;0;) (func (param i32) (result i32)))
+    // (type (;1;) (func))
+    // (func (;0;) (type 0) (param i32) (result i32)
+    //   block  ;; label = @1
+    //     block  ;; label = @2
+    //       block  ;; label = @3
+    //         block  ;; label = @4
+    //           local.get 0
+    //           br_table 2 (;@2;) 1 (;@3;) 0 (;@4;) 3 (;@1;)
+    //         end
+    //         i32.const 100
+    //         return
+    //       end
+    //       i32.const 101
+    //       return
+    //     end
+    //     i32.const 102
+    //     return
+    //   end
+    //   i32.const 103
+    //   return)
+    // (func (;1;) (type 1)
+    //   i32.const 0
+    //   call 0
+    //   drop)
+    // (memory (;0;) 0)
+    // (export "call" (func 1)))
+
+    let mut src = String::new();
+    writeln!(src, "(module")?;
+    writeln!(src, "(memory (;0;) 0)")?;
+    writeln!(src, r#"(export "call" (func $call))"#)?;
+    writeln!(src, r#"(func $switch_like (param $p i32) (result i32)"#)?;
+
+    let mut bottom = ";;\n(get_local $p)\n".to_string();
+    bottom += "(br_table\n";
+
+    for (br_table_offset, n) in (0..=size - 1).rev().enumerate() {
+        writeln!(bottom, "  {n} ;; param == {br_table_offset} => (br {n})")?; // p == 0 => (br n)
+    }
+    writeln!(bottom, "{size})) ;; else => (br {size})")?;
+
+    bottom += ";;";
+
+    for n in 0..=size {
+        let mut wrap = String::new();
+        writeln!(wrap, "(block")?;
+        writeln!(wrap, "{bottom}")?;
+        writeln!(wrap, "(i32.const {val})", val = 100 + n)?;
+        writeln!(wrap, "(return))")?;
+        bottom = wrap;
+    }
+
+    writeln!(src, "{bottom}")?;
+
+    writeln!(
+        src,
+        r#"(func $call (drop (call $switch_like (i32.const 0))))"#
+    )?;
+
+    writeln!(src, ")")?;
+
+    let module_bytes = wat::parse_str(&src)?;
+    Ok(module_bytes)
+}
+
+#[ignore]
+#[test]
+fn should_allow_large_br_table() {
+    // Anything larger than that fails wasmi interpreter with a runtime stack overflow.
+    let module_bytes = make_arbitrary_br_table(ALLOWED_BR_TABLE_SIZE).expect("ok?");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_large_br_table() {
+    let module_bytes = make_arbitrary_br_table(FAILING_BR_TABLE_SIZE).expect("ok?");
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should fail");
+
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
+                WasmValidationError::BrTableSizeExceeded { max, actual }
+            ))
+            if (max, actual) == (DEFAULT_BR_TABLE_MAX_SIZE, FAILING_BR_TABLE_SIZE)
+        ),
+        "{:?}",
+        error,
     );
 }
