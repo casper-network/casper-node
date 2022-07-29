@@ -1,7 +1,7 @@
 //! Preprocessing of Wasm modules.
 use std::fmt::{self, Display, Formatter};
 
-use parity_wasm::elements::{self, Instruction, MemorySection, Module, Section, TableType};
+use parity_wasm::elements::{self, Instruction, MemorySection, Module, Section, TableType, Type};
 use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
@@ -14,6 +14,8 @@ pub const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
 pub const DEFAULT_BR_TABLE_MAX_SIZE: u32 = 256;
 /// Maximum number of global a module is allowed to declare.
 pub const DEFAULT_MAX_GLOBALS: u32 = 256;
+/// Maximum number of parameters a function can have.
+pub const DEFAULT_MAX_PARAMETER_COUNT: u32 = 256;
 
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
@@ -51,6 +53,14 @@ pub enum WasmValidationError {
         /// Maximum allowed globals.
         max: u32,
         /// Actual number of globals declares in the Wasm.
+        actual: usize,
+    },
+    /// Module declares a function type with too many parameters.
+    #[error("use of a function type with too many parameters (expected {max} but function declares {actual})")]
+    TooManyParameters {
+        /// Maximum allowed parameters.
+        max: u32,
+        /// Actual number of parameters a function has in the Wasm.
         actual: usize,
     },
 }
@@ -191,6 +201,33 @@ fn ensure_br_table_size_limit(module: &Module) -> Result<(), WasmValidationError
     Ok(())
 }
 
+/// Ensure maximum numbers of parameters a function can have.
+///
+/// Those need to be limited to prevent a potentially exploitable interaction with
+/// the stack height instrumentation: The costs of executing the stack height
+/// instrumentation for an indirectly called function scales linearly with the amount
+/// of parameters of this function. Because the stack height instrumentation itself is
+/// is not weight metered its costs must be static (via this limit) and included in
+/// the costs of the instructions that cause them (call, call_indirect).
+fn ensure_parameter_limit(module: &Module) -> Result<(), WasmValidationError> {
+    let type_section = if let Some(type_section) = module.type_section() {
+        type_section
+    } else {
+        return Ok(());
+    };
+
+    for Type::Function(func) in type_section.types() {
+        let actual = func.params().len();
+        if actual > DEFAULT_MAX_PARAMETER_COUNT as usize {
+            return Err(WasmValidationError::TooManyParameters {
+                max: DEFAULT_MAX_PARAMETER_COUNT,
+                actual,
+            });
+        }
+    }
+
+    Ok(())
+}
 /// Preprocesses Wasm bytes and returns a module.
 ///
 /// This process consists of a few steps:
@@ -217,6 +254,7 @@ pub fn preprocess(
     let module = ensure_table_size_limit(module)?;
     ensure_br_table_size_limit(&module)?;
     ensure_global_variable_limit(&module)?;
+    ensure_parameter_limit(&module)?;
 
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(
