@@ -17,10 +17,10 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use super::{DecodeResult, FrameDecoder, Transcoder};
 
-/// A bincode encoder.
+/// Bincode encoder.
 ///
 /// Every value is encoded with the default settings of `bincode`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BincodeEncoder<T> {
     /// Item type processed by this encoder.
     ///
@@ -57,7 +57,7 @@ where
 /// Like [`BincodeEncoder`], uses default settings for decoding. Can be used on bytestreams (via
 /// [`FrameDecoder`]) as well as frames (through [`Transcoder`]). See module documentation for
 /// caveats.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BincodeDecoder<T> {
     item_type: PhantomData<T>,
 }

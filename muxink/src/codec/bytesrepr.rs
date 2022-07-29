@@ -14,8 +14,8 @@ pub enum Error {
     BytesreprError(bytesrepr::Error),
 }
 
-/// A bytesrepr encoder.
-#[derive(Default)]
+/// Bytesrepr encoder.
+#[derive(Debug, Default)]
 pub struct BytesreprEncoder<T> {
     /// Item type processed by this encoder.
     ///
@@ -46,7 +46,7 @@ where
 }
 
 /// Bytesrepr decoder.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BytesreprDecoder<T> {
     item_type: PhantomData<T>,
 }
