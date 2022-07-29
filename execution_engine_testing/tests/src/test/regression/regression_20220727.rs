@@ -11,7 +11,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{engine_state, execution},
-    shared::wasm_prep::{PreprocessingError, DEFAULT_MAX_TABLE_SIZE},
+    shared::wasm_prep::{PreprocessingError, WasmValidationError, DEFAULT_MAX_TABLE_SIZE},
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
 
@@ -252,13 +252,12 @@ fn should_not_allow_more_than_one_table() {
 
     let error = builder.get_error().unwrap();
 
-    // Thankfully we don't fail at preprocess stage and wasmi actually rejects instances with more
-    // than 1 table.
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Interpreter(ref msg))
-            if msg == "too many tables in index space: 2"
+            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
+                WasmValidationError::MoreThanOneTable
+            ))
         ),
         "{:?}",
         error
