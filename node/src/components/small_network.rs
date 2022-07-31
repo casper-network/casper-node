@@ -30,6 +30,7 @@ mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod handshake;
 mod limiter;
 mod message;
 mod message_pack_format;
