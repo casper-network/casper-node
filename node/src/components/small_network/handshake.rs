@@ -2,15 +2,18 @@
 //!
 //! The handshake differs from the rest of the networking code since it is (almost) unmodified since
 //! version 1.0, to allow nodes to make informed decisions about blocking other nodes.
+//!
+//! This module contains an implementation for a minimal framing format based on 32-bit fixed size
+//! big endian length prefixes.
 
 use std::{error::Error as StdError, net::SocketAddr, time::Duration};
 
 use casper_types::PublicKey;
-use futures::Future;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future};
 
 use super::{
     counting_format::ConnectionId,
-    error::{ConnectionError, IoError},
+    error::{ConnectionError, RawFrameIoError},
     message_pack_format::MessagePackFormat,
     tasks::NetworkContext,
     Payload, Transport,
@@ -28,33 +31,60 @@ pub(super) struct HandshakeOutcome {
     pub(super) is_peer_syncing: bool,
 }
 
-/// Performs an IO-operation that can time out.
-pub(super) async fn io_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
+/// Reads a 32 byte big endian integer prefix, followed by an actual raw message.
+async fn read_length_prefixed_frame<R>(
+    max_length: u32,
+    stream: &mut R,
+    data: &[u8],
+) -> Result<Vec<u8>, RawFrameIoError>
 where
-    F: Future<Output = Result<T, E>>,
-    E: StdError + 'static,
+    R: AsyncRead + Unpin,
 {
-    tokio::time::timeout(duration, future)
+    let mut length_prefix_raw: [u8; 4] = [0; 4];
+    stream
+        .read_exact(&mut length_prefix_raw)
         .await
-        .map_err(|_elapsed| IoError::Timeout)?
-        .map_err(IoError::Error)
+        .map_err(RawFrameIoError::Io)?;
+
+    let length = u32::from_ne_bytes(length_prefix_raw);
+
+    if length > max_length {
+        return Err(RawFrameIoError::MaximumLengthExceeded(length as usize));
+    }
+
+    let mut raw = Vec::new(); // not preallocating, to make DOS attacks harder.
+
+    // We can now read the raw frame and return.
+    stream
+        .take(length as u64)
+        .read_to_end(&mut raw)
+        .await
+        .map_err(RawFrameIoError::Io)?;
+
+    Ok(raw)
 }
 
-/// Performs an IO-operation that can time out or result in a closed connection.
-pub(super) async fn io_opt_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
+/// Writes data to an async writer, prefixing it with the 32 bytes big endian message length.
+///
+/// Output will be flushed after sending.
+async fn write_length_prefixed_frame<W>(stream: &mut W, data: &[u8]) -> Result<(), RawFrameIoError>
 where
-    F: Future<Output = Option<Result<T, E>>>,
-    E: StdError + 'static,
+    W: AsyncWrite + Unpin,
 {
-    let item = tokio::time::timeout(duration, future)
-        .await
-        .map_err(|_elapsed| IoError::Timeout)?;
-
-    match item {
-        Some(Ok(value)) => Ok(value),
-        Some(Err(err)) => Err(IoError::Error(err)),
-        None => Err(IoError::UnexpectedEof),
+    if data.len() > u32::MAX as usize {
+        return Err(RawFrameIoError::MaximumLengthExceeded(data.len()));
     }
+
+    async move {
+        stream.write_all(&(data.len() as u32).to_ne_bytes()).await?;
+        stream.write_all(&data).await?;
+        stream.flush().await?;
+        Ok(())
+    }
+    .await
+    .map_err(RawFrameIoError::Io)?;
+
+    Ok(())
 }
 
 /// Negotiates a handshake between two peers.
@@ -178,4 +208,37 @@ where
     // }
 
     todo!()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn frame_reader_reads_without_consuming_extra_bytes() {
+        todo!("implement test");
+    }
+
+    #[test]
+    fn frame_reader_does_not_allow_exceeding_maximum_size() {
+        todo!("implement test");
+    }
+
+    #[test]
+    fn frame_reader_handles_0_sized_read() {
+        todo!("implement test");
+    }
+
+    #[test]
+    fn frame_reader_handles_early_eof() {
+        todo!("implement test");
+    }
+
+    #[test]
+    fn frame_writer_writes_frames_correctly() {
+        todo!("implement test");
+    }
+
+    #[test]
+    fn frame_writer_handles_0_size() {
+        todo!("implement test");
+    }
 }

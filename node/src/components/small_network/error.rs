@@ -1,4 +1,4 @@
-use std::{error, io, net::SocketAddr, result, sync::Arc};
+use std::{io, net::SocketAddr, result, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
@@ -147,18 +147,10 @@ pub enum ConnectionError {
     PeerCertificateInvalid(#[source] ValidationError),
     /// Failed to send handshake.
     #[error("handshake send failed")]
-    HandshakeSend(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
+    HandshakeSend(#[source] RawFrameIoError),
     /// Failed to receive handshake.
     #[error("handshake receive failed")]
-    HandshakeRecv(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
+    HandshakeRecv(#[source] RawFrameIoError),
     /// Peer reported a network name that does not match ours.
     #[error("peer is on different network: {0}")]
     WrongNetwork(String),
@@ -212,19 +204,22 @@ pub enum ConnectionError {
     FailedToReuniteHandshakeSinkAndStream,
 }
 
-/// IO operation that can time out or close.
-#[derive(Debug, Error)]
-pub enum IoError<E>
-where
-    E: error::Error + 'static,
-{
-    /// IO operation timed out.
-    #[error("io timeout")]
-    Timeout,
-    /// Non-timeout IO error.
-    #[error(transparent)]
-    Error(#[from] E),
+/// IO error sending a raw frame.
+///
+/// Raw frame IO is used only during the handshake, but comes with its own error conditions.
+#[derive(Debug, Error, Serialize)]
+pub enum RawFrameIoError {
+    /// Could not send or receive the raw frame.
+    #[error("io error")]
+    Io(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// Unexpected close/end-of-file.
-    #[error("closed unexpectedly")]
+    #[error("closed unexpectedly while reading raw frame")]
     UnexpectedEof,
+    /// Length limit violation.
+    #[error("advertised length of {0} exceeds configured maximum raw frame size")]
+    MaximumLengthExceeded(usize),
 }
