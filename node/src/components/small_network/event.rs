@@ -2,17 +2,18 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::SocketAddr,
-    sync::Arc,
 };
 
 use casper_types::PublicKey;
 use derive_more::From;
-use futures::stream::{SplitSink, SplitStream};
+use futures::stream::SplitStream;
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
+use super::{
+    error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId, OutgoingSink,
+};
 use crate::{
     effect::{
         announcements::{
@@ -28,7 +29,11 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 90);
 
 /// A small network event.
 #[derive(Debug, From, Serialize)]
-pub(crate) enum Event<P> {
+pub(crate) enum Event<P>
+where
+    // Note: See notes on the `OutgoingConnection`'s `P: Serialize` trait bound for details.
+    P: Serialize,
+{
     /// The TLS handshake completed on the incoming connection.
     IncomingConnection {
         incoming: Box<IncomingConnection<P>>,
@@ -115,7 +120,10 @@ impl From<NetworkInfoRequest> for Event<ProtocolMessage> {
     }
 }
 
-impl<P: Display> Display for Event<P> {
+impl<P> Display for Event<P>
+where
+    P: Display + Serialize,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::IncomingConnection { incoming, span: _ } => {
@@ -231,7 +239,12 @@ impl<P> Display for IncomingConnection<P> {
 
 /// Outcome of an outgoing connection attempt.
 #[derive(Debug, Serialize)]
-pub(crate) enum OutgoingConnection<P> {
+pub(crate) enum OutgoingConnection<P>
+where
+    // Note: The `P: Serialize` trait bound should not be required, but the derive macro seems to
+    //       not handle the type parameter properly when `skip_serializing` is used
+    P: Serialize,
+{
     /// The outgoing connection failed early on, before a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Address that was dialed.
@@ -259,14 +272,17 @@ pub(crate) enum OutgoingConnection<P> {
         /// The public key the peer is validating with, if any.
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
-        #[serde(skip_serializing)]
-        sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
+        #[serde(skip)]
+        sink: OutgoingSink<P>,
         /// Holds the information whether the remote node is syncing.
         is_syncing: bool,
     },
 }
 
-impl<P> Display for OutgoingConnection<P> {
+impl<P> Display for OutgoingConnection<P>
+where
+    P: Serialize,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             OutgoingConnection::FailedEarly { peer_addr, error } => {

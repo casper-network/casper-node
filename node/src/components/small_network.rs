@@ -56,6 +56,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use muxink::{codec::bincode::BincodeEncoder, io::FrameWriter};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
@@ -71,7 +72,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::{codec::LengthDelimitedCodec, compat::Compat};
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use casper_types::{EraId, PublicKey};
@@ -204,7 +205,7 @@ where
 
 impl<REv, P> SmallNetwork<REv, P>
 where
-    P: Payload + 'static,
+    P: Payload,
     REv: ReactorEvent
         + From<Event<P>>
         + FromIncoming<P>
@@ -1213,6 +1214,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 
 /// Transport type alias for base encrypted connections.
 type Transport = SslStream<TcpStream>;
+
+/// The outgoing message sink of an outgoing connection.
+type OutgoingSink<P> =
+    FrameWriter<Message<P>, BincodeEncoder<Message<P>>, Compat<SslStream<TcpStream>>>;
 
 /// A framed transport for `Message`s.
 pub(crate) type FullTransport<P> = tokio_serde::Framed<

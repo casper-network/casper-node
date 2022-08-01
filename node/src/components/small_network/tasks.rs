@@ -11,9 +11,10 @@ use std::{
 use bincode::Options;
 use futures::{
     future::{self, Either},
-    stream::{SplitSink, SplitStream},
+    stream::SplitStream,
     SinkExt, StreamExt,
 };
+use muxink::{codec::bincode::BincodeEncoder, io::FrameWriter};
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
@@ -48,6 +49,7 @@ use super::{
 };
 
 use crate::{
+    components::small_network::OutgoingSink,
     effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
@@ -150,14 +152,12 @@ where
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
             }
 
-            // Setup full framed transport, then close down receiving end of the transport.
-            let full_transport = full_transport::<P>(
-                context.net_metrics.clone(),
-                connection_id,
-                transport,
-                Role::Dialer,
-            );
-            let (sink, _stream) = full_transport.split();
+            // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
+            // tokio built-in version instead). The compat layer fixes that.
+            let compat_stream =
+                tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
+
+            let sink: OutgoingSink<P> = FrameWriter::new(BincodeEncoder::new(), compat_stream);
 
             OutgoingConnection::Established {
                 peer_addr,
@@ -544,7 +544,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<MessageQueueItem<P>>,
-    mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
+    mut sink: OutgoingSink<P>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where
@@ -565,7 +565,8 @@ pub(super) async fn message_sender<P>(
         };
         limiter.request_allowance(estimated_wire_size).await;
 
-        let mut outcome = sink.send(message).await;
+        let todo_remove_copy = message.as_ref().clone();
+        let mut outcome = sink.send(todo_remove_copy).await;
 
         // Notify via responder that the message has been buffered by the kernel.
         if let Some(auto_closing_responder) = opt_responder {

@@ -556,6 +556,7 @@ dependencies = [
  "linked-hash-map",
  "lmdb",
  "log",
+ "muxink",
  "num",
  "num-derive",
  "num-rational 0.4.1",
@@ -4698,6 +4699,7 @@ checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "log",
  "pin-project-lite",
