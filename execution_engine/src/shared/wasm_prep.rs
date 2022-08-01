@@ -123,7 +123,7 @@ fn memory_section(module: &Module) -> Option<&MemorySection> {
 /// normalized.
 ///
 /// If a maximum value is not specified it will be defaulted to 4k to prevent OOM.
-fn ensure_table_size_limit(mut module: Module) -> Result<Module, WasmValidationError> {
+fn ensure_table_size_limit(mut module: Module, limit: u32) -> Result<Module, WasmValidationError> {
     if let Some(sect) = module.table_section_mut() {
         // Table section is optional and there can be at most one.
         if sect.entries().len() > 1 {
@@ -132,26 +132,25 @@ fn ensure_table_size_limit(mut module: Module) -> Result<Module, WasmValidationE
 
         if let Some(table_entry) = sect.entries_mut().iter_mut().next() {
             let initial = table_entry.limits().initial();
-            if initial > DEFAULT_MAX_TABLE_SIZE {
+            if initial > limit {
                 return Err(WasmValidationError::InitialTableSizeExceeded {
-                    max: DEFAULT_MAX_TABLE_SIZE,
+                    max: limit,
                     actual: initial,
                 });
             }
 
             match table_entry.limits().maximum() {
-                Some(max) if max > DEFAULT_MAX_TABLE_SIZE => {
-                    return Err(WasmValidationError::MaxTableSizeExceeded {
-                        max: DEFAULT_MAX_TABLE_SIZE,
-                        actual: max,
-                    })
-                }
-                Some(_) => {
-                    // maximum within the limit
+                Some(max) => {
+                    if max > limit {
+                        return Err(WasmValidationError::MaxTableSizeExceeded {
+                            max: limit,
+                            actual: max,
+                        });
+                    }
                 }
                 None => {
                     // rewrite wasm and provide a maximum limit for a table section
-                    *table_entry = TableType::new(initial, Some(DEFAULT_MAX_TABLE_SIZE))
+                    *table_entry = TableType::new(initial, Some(limit))
                 }
             }
         }
@@ -166,21 +165,18 @@ fn ensure_table_size_limit(mut module: Module) -> Result<Module, WasmValidationE
 /// the linear memory limit `memory_pages` applies to them.
 ///
 /// There is potential to
-fn ensure_global_variable_limit(module: &Module) -> Result<(), WasmValidationError> {
+fn ensure_global_variable_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
     if let Some(global_section) = module.global_section() {
         let actual = global_section.entries().len();
-        if actual > DEFAULT_MAX_GLOBALS as usize {
-            return Err(WasmValidationError::TooManyGlobals {
-                max: DEFAULT_MAX_GLOBALS,
-                actual,
-            });
+        if actual > limit as usize {
+            return Err(WasmValidationError::TooManyGlobals { max: limit, actual });
         }
     }
     Ok(())
 }
 
 /// Ensure that any `br_table` instruction adheres to its immediate value limit.
-fn ensure_br_table_size_limit(module: &Module) -> Result<(), WasmValidationError> {
+fn ensure_br_table_size_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
     let code_section = if let Some(type_section) = module.code_section() {
         type_section
     } else {
@@ -192,9 +188,9 @@ fn ensure_br_table_size_limit(module: &Module) -> Result<(), WasmValidationError
         .flat_map(|body| body.code().elements())
     {
         if let Instruction::BrTable(br_table_data) = instr {
-            if br_table_data.table.len() > DEFAULT_BR_TABLE_MAX_SIZE as usize {
+            if br_table_data.table.len() > limit as usize {
                 return Err(WasmValidationError::BrTableSizeExceeded {
-                    max: DEFAULT_BR_TABLE_MAX_SIZE,
+                    max: limit,
                     actual: br_table_data.table.len(),
                 });
             }
@@ -211,7 +207,7 @@ fn ensure_br_table_size_limit(module: &Module) -> Result<(), WasmValidationError
 /// of parameters of this function. Because the stack height instrumentation itself is
 /// is not weight metered its costs must be static (via this limit) and included in
 /// the costs of the instructions that cause them (call, call_indirect).
-fn ensure_parameter_limit(module: &Module) -> Result<(), WasmValidationError> {
+fn ensure_parameter_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
     let type_section = if let Some(type_section) = module.type_section() {
         type_section
     } else {
@@ -220,11 +216,8 @@ fn ensure_parameter_limit(module: &Module) -> Result<(), WasmValidationError> {
 
     for Type::Function(func) in type_section.types() {
         let actual = func.params().len();
-        if actual > DEFAULT_MAX_PARAMETER_COUNT as usize {
-            return Err(WasmValidationError::TooManyParameters {
-                max: DEFAULT_MAX_PARAMETER_COUNT,
-                actual,
-            });
+        if actual > limit as usize {
+            return Err(WasmValidationError::TooManyParameters { max: limit, actual });
         }
     }
 
@@ -284,10 +277,10 @@ pub fn preprocess(
         return Err(PreprocessingError::MissingMemorySection);
     }
 
-    let module = ensure_table_size_limit(module)?;
-    ensure_br_table_size_limit(&module)?;
-    ensure_global_variable_limit(&module)?;
-    ensure_parameter_limit(&module)?;
+    let module = ensure_table_size_limit(module, DEFAULT_MAX_TABLE_SIZE)?;
+    ensure_br_table_size_limit(&module, DEFAULT_BR_TABLE_MAX_SIZE)?;
+    ensure_global_variable_limit(&module, DEFAULT_MAX_GLOBALS)?;
+    ensure_parameter_limit(&module, DEFAULT_MAX_PARAMETER_COUNT)?;
     ensure_valid_imports(&module)?;
 
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
