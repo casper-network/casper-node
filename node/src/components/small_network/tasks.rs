@@ -6,7 +6,10 @@ use std::{
     io,
     net::SocketAddr,
     pin::Pin,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
     time::Duration,
 };
 
@@ -62,6 +65,18 @@ use crate::{
 /// Contains a reference counted message and an optional responder to call once the message has been
 /// successfully handed over to the kernel for sending.
 pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
+
+/// The outcome of the handshake process.
+struct HandshakeOutcome {
+    /// A framed transport for peer.
+    framed_transport: FramedTransport,
+    /// Public address advertised by the peer.
+    public_addr: SocketAddr,
+    /// The public key the peer is validating with, if any.
+    peer_consensus_public_key: Option<PublicKey>,
+    /// Holds the information whether the remote node is syncing.
+    is_peer_syncing: bool,
+}
 
 /// Low-level TLS connection function.
 ///
@@ -134,11 +149,16 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key, is_joiner)) => {
+    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+            is_peer_syncing: is_syncing,
+        }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -152,7 +172,7 @@ where
             let full_transport = full_transport::<P>(
                 context.net_metrics.clone(),
                 connection_id,
-                framed,
+                framed_transport,
                 Role::Dialer,
             );
             let (sink, _stream) = full_transport.split();
@@ -162,7 +182,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
-                is_joiner,
+                is_syncing,
             }
         }
         Err(error) => OutgoingConnection::Failed {
@@ -198,8 +218,6 @@ where
     pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
     pub(super) payload_weights: EstimatorWeights,
-    /// Whether or not to reject incompatible versions during handshake.
-    pub(super) reject_incompatible_versions: bool,
     /// The protocol version at which (or under) tarpitting is enabled.
     pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
@@ -208,8 +226,8 @@ where
     pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     pub(super) max_in_flight_demands: usize,
-    /// Flag indicating whether this node is a joining node.
-    pub(super) is_joiner: bool,
+    /// Flag indicating whether this node is syncing.
+    pub(super) is_syncing: AtomicBool,
 }
 
 /// Handles an incoming connection.
@@ -246,11 +264,16 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key, is_peer_joiner)) => {
+    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+        Ok(HandshakeOutcome {
+            framed_transport,
+            public_addr,
+            peer_consensus_public_key,
+            is_peer_syncing: _,
+        }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -259,7 +282,7 @@ where
             let full_transport = full_transport::<P>(
                 context.net_metrics.clone(),
                 connection_id,
-                framed,
+                framed_transport,
                 Role::Listener,
             );
 
@@ -271,7 +294,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
-                is_joiner: is_peer_joiner,
             }
         }
         Err(error) => IncomingConnection::Failed {
@@ -349,7 +371,7 @@ async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>, bool), ConnectionError>
+) -> Result<HandshakeOutcome, ConnectionError>
 where
     P: Payload,
 {
@@ -360,7 +382,7 @@ where
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
-        context.is_joiner,
+        context.is_syncing.load(Ordering::SeqCst),
     );
 
     let serialized_handshake_message = Pin::new(&mut encoder)
@@ -398,7 +420,8 @@ where
         public_addr,
         protocol_version,
         consensus_certificate,
-        is_joiner: is_peer_joiner,
+        is_syncing,
+        chainspec_hash,
     } = remote_message
     {
         debug!(%protocol_version, "handshake received");
@@ -414,9 +437,7 @@ where
         //
         // Since we are not using SemVer for versioning, we cannot make any assumptions about
         // compatibility, so we allow only exact version matches.
-        if context.reject_incompatible_versions
-            && protocol_version != context.chain_info.protocol_version
-        {
+        if protocol_version != context.chain_info.protocol_version {
             if let Some(threshold) = context.tarpit_version_threshold {
                 if protocol_version <= threshold {
                     let mut rng = crate::new_rng();
@@ -435,6 +456,14 @@ where
             return Err(ConnectionError::IncompatibleVersion(protocol_version));
         }
 
+        // We check the chainspec hash to ensure peer is using the same chainspec as us.
+        // The remote message should always have a chainspec hash at this point since
+        // we checked the protocol version previously.
+        let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
+        if peer_chainspec_hash != context.chain_info.chainspec_hash {
+            return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
+        }
+
         let peer_consensus_public_key = consensus_certificate
             .map(|cert| {
                 cert.validate(connection_id)
@@ -442,16 +471,16 @@ where
             })
             .transpose()?;
 
-        let framed = sink
+        let framed_transport = sink
             .reunite(stream)
             .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
 
-        Ok((
-            framed,
+        Ok(HandshakeOutcome {
+            framed_transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_joiner,
-        ))
+            is_peer_syncing: is_syncing,
+        })
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -538,7 +567,7 @@ pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
     mut stream: SplitStream<FullTransport<P>>,
     limiter: Box<dyn LimiterHandle>,
-    mut shutdown_receiver: watch::Receiver<()>,
+    mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,
     span: Span,
 ) -> io::Result<()>
@@ -656,7 +685,7 @@ where
         Ok(())
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    let shutdown_messages = async move { while close_incoming_receiver.changed().await.is_ok() {} };
 
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // while loop to terminate.
@@ -676,21 +705,11 @@ pub(super) async fn message_sender<P>(
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
-    remote_joiner_id: Option<(SocketAddr, NodeId)>,
 ) where
     P: Payload,
 {
     while let Some((message, opt_responder)) = queue.recv().await {
         counter.dec();
-
-        if let Some((ref addr, ref node_id)) = remote_joiner_id {
-            if message.payload_is_unsafe_for_joiners() {
-                // We should never attempt to send an unsafe message to a peer that we know is a
-                // joiner. Since "unsafe" does usually not mean immediately catastrophic, we attempt
-                // to carry on, but warn loudly.
-                warn!(kind=%message.classify(), %addr, %node_id, "sending unsafe message to joiner");
-            }
-        }
 
         let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
             Ok(size) => size as u32,

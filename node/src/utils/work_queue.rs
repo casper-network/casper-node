@@ -169,6 +169,11 @@ impl<T> WorkQueue<T> {
         self.notify.notify_waiters();
     }
 
+    /// Returns the number of jobs in the queue.
+    pub fn num_jobs(&self) -> usize {
+        self.inner.lock().expect("lock poisoned").jobs.len()
+    }
+
     /// Creates a streaming consumer of the work queue.
     #[inline]
     pub fn to_stream(self: Arc<Self>) -> impl Stream<Item = JobHandle<T>> {

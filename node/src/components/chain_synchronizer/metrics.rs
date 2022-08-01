@@ -25,22 +25,24 @@ pub(crate) struct Metrics {
     /// Time in seconds to get the trusted key block.
     #[data_size(skip)]
     pub(super) chain_sync_get_trusted_key_block_info_duration_seconds: IntGauge,
-    /// Time in seconds to fetch to genesis during sync to genesis.
+    /// Time in seconds to fetch block headers from highest available block back to genesis during
+    /// sync to genesis.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_to_genesis_duration_seconds: IntGauge,
-    /// Time in seconds to fetch forward during sync to genesis.
+    /// Time in seconds to fetch blocks, deploys and tries from genesis forward to initial highest
+    /// available block during sync to genesis.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_forward_duration_seconds: IntGauge,
-    /// Total time in seconds of performing the fast sync.
+    /// Total time in seconds of performing the chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_fast_sync_total_duration_seconds: IntGauge,
-    /// Time in seconds of fetching block headers during fast sync.
+    /// Time in seconds of fetching block headers during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_block_headers_duration_seconds: IntGauge,
-    /// Time in seconds of fetching block headers for replay protection during fast sync.
+    /// Time in seconds of fetching block headers for replay protection during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_replay_protection_duration_seconds: IntGauge,
-    /// Time in seconds of fetching block headers for era supervisor initialization during fast
+    /// Time in seconds of fetching block headers for era supervisor initialization during chain
     /// sync.
     #[data_size(skip)]
     pub(super) chain_sync_era_supervisor_init_duration_seconds: IntGauge,
