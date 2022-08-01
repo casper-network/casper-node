@@ -403,14 +403,12 @@ pub struct EstimatorWeights {
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
-    use std::{net::SocketAddr, pin::Pin};
+    use std::net::SocketAddr;
 
-    use bytes::BytesMut;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
-    use tokio_serde::{Deserializer, Serializer};
 
-    use crate::{components::small_network::message_pack_format::MessagePackFormat, protocol};
+    use crate::{components::small_network::handshake, protocol};
 
     use super::*;
 
@@ -494,22 +492,12 @@ mod tests {
 
     /// Serialize a message using the standard serialization method for handshakes.
     fn serialize_message<M: Serialize>(msg: &M) -> Vec<u8> {
-        let mut serializer = MessagePackFormat;
-
-        Pin::new(&mut serializer)
-            .serialize(&msg)
-            .expect("handshake serialization failed")
-            .into_iter()
-            .collect()
+        handshake::serialize(msg).expect("handshake serialization failed")
     }
 
     /// Deserialize a message using the standard deserialization method for handshakes.
     fn deserialize_message<M: DeserializeOwned>(serialized: &[u8]) -> M {
-        let mut deserializer = MessagePackFormat;
-
-        Pin::new(&mut deserializer)
-            .deserialize(&BytesMut::from(serialized))
-            .expect("message deserialization failed")
+        handshake::deserialize(serialized).expect("message deserialization failed")
     }
 
     /// Given a message `from` of type `F`, serializes it, then deserializes it as `T`.

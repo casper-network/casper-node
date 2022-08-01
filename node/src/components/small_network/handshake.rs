@@ -90,7 +90,7 @@ where
 }
 
 /// Serializes an item with the encoding settings specified for handshakes.
-pub(super) fn serialize<T>(item: &T) -> Result<Vec<u8>, rmp_serde::encode::Error>
+pub(crate) fn serialize<T>(item: &T) -> Result<Vec<u8>, rmp_serde::encode::Error>
 where
     T: Serialize,
 {
@@ -98,7 +98,7 @@ where
 }
 
 /// Deserialize an item with the encoding settings specified for handshakes.
-fn deserialize<T>(raw: &[u8]) -> Result<T, rmp_serde::decode::Error>
+pub(crate) fn deserialize<T>(raw: &[u8]) -> Result<T, rmp_serde::decode::Error>
 where
     T: DeserializeOwned,
 {
