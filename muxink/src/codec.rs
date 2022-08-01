@@ -103,7 +103,7 @@ pub enum TranscodingIoError<TransErr, IoErr> {
     Io(IoErr),
 }
 
-/// A sink adapter for transcoding incoming values into an underlying sink.
+/// A sink adapter for transcoding outgoing values before passing them into an underlying sink.
 #[derive(Debug)]
 pub struct TranscodingSink<T, Input, S> {
     /// Transcoder used to transcode data before passing it to the sink.
@@ -178,6 +178,7 @@ where
     }
 }
 
+/// A stream adapter for transcoding incoming values from an underlying stream.
 #[derive(Debug)]
 pub struct TranscodingStream<T, S> {
     /// Transcoder used to transcode data before returning from the stream.
