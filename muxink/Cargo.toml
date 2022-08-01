@@ -10,7 +10,7 @@ bytes = "1.1.0"
 futures = "0.3.21"
 serde = { version = "1.0.138", optional = true }
 thiserror = "1.0.31"
-tokio = { version = "1.18.1", features = [ "full" ] }
+tokio = { version = "1", features = [ "full" ] }
 tokio-util = "0.7.2"
 casper-types = { path = "../types", optional = true }
 
@@ -19,4 +19,4 @@ tokio-stream = "0.1.8"
 
 [features]
 muxink_bincode_codec = [ "serde", "bincode" ]
-muxink_bytesrepr_codec = [ "casper-types" ] 
+muxink_bytesrepr_codec = [ "casper-types" ]
