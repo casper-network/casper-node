@@ -14,7 +14,11 @@ use futures::{
     stream::SplitStream,
     SinkExt, StreamExt,
 };
-use muxink::{codec::bincode::BincodeEncoder, io::FrameWriter};
+use muxink::{
+    codec::{bincode::BincodeEncoder, length_delimited::LengthDelimited},
+    io::FrameWriter,
+    SinkMuxExt,
+};
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
@@ -157,7 +161,8 @@ where
             let compat_stream =
                 tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
 
-            let sink: OutgoingSink<P> = FrameWriter::new(BincodeEncoder::new(), compat_stream);
+            let sink: OutgoingSink<P> = FrameWriter::new(LengthDelimited, compat_stream)
+                .with_transcoder(BincodeEncoder::new());
 
             OutgoingConnection::Established {
                 peer_addr,

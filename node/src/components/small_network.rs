@@ -54,9 +54,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use muxink::{codec::bincode::BincodeEncoder, io::FrameWriter};
+use muxink::{
+    codec::{bincode::BincodeEncoder, length_delimited::LengthDelimited, TranscodingSink},
+    io::FrameWriter,
+};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
@@ -1216,8 +1220,11 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// The outgoing message sink of an outgoing connection.
-type OutgoingSink<P> =
-    FrameWriter<Arc<Message<P>>, BincodeEncoder<Arc<Message<P>>>, Compat<SslStream<TcpStream>>>;
+type OutgoingSink<P> = TranscodingSink<
+    BincodeEncoder<Arc<Message<P>>>,
+    Arc<Message<P>>,
+    FrameWriter<Bytes, LengthDelimited, Compat<SslStream<TcpStream>>>,
+>;
 
 /// A framed transport for `Message`s.
 pub(crate) type FullTransport<P> = tokio_serde::Framed<
