@@ -103,6 +103,29 @@ pub enum TranscodingIoError<TransErr, IoErr> {
     Io(IoErr),
 }
 
+#[derive(Debug)]
+pub struct ResultTranscoder<Trans, E2> {
+    transcoder: Trans,
+    err_type: PhantomData<E2>,
+}
+
+impl<Input, E1, Trans, Output, E2> Transcoder<Result<Input, E1>> for ResultTranscoder<Trans, E2>
+where
+    Trans: Transcoder<Input, Output = Output, Error = E2>,
+    E2: From<E1> + std::error::Error + Debug + Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+{
+    type Error = E2;
+    type Output = Output;
+
+    fn transcode(&mut self, input: Result<Input, E1>) -> Result<Self::Output, Self::Error> {
+        match input {
+            Ok(t1) => self.transcoder.transcode(t1),
+            Err(err) => Err(err.into()),
+        }
+    }
+}
+
 /// A sink adapter for transcoding outgoing values before passing them into an underlying sink.
 #[derive(Debug)]
 pub struct TranscodingSink<T, Input, S> {
