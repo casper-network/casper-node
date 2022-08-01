@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -26,7 +28,6 @@ use casper_types::{
     },
     ApiError, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
-use once_cell::sync::Lazy;
 
 use crate::lmdb_fixture;
 

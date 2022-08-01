@@ -1230,19 +1230,6 @@ where
     }
 }
 
-impl<T> ToBytes for &T
-where
-    T: ToBytes,
-{
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        (*self).to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        (*self).serialized_length()
-    }
-}
-
 /// Serializes a slice of bytes with a length prefix.
 ///
 /// This function is serializing a slice of bytes with an addition of a 4 byte length prefix.

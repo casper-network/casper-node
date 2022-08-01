@@ -62,7 +62,7 @@ impl VestingSchedule {
     /// Initializes vesting schedule with a configured amount of weekly releases.
     ///
     /// Returns `false` if already initialized.
-    pub fn initialize_with_weekly_schedule(
+    pub fn initialize_with_schedule(
         &mut self,
         staked_amount: U512,
         vesting_schedule_period_millis: u64,
@@ -100,7 +100,7 @@ impl VestingSchedule {
     ///
     /// Returns `false` if already initialized.
     pub fn initialize(&mut self, staked_amount: U512) -> bool {
-        self.initialize_with_weekly_schedule(staked_amount, VESTING_SCHEDULE_LENGTH_MILLIS)
+        self.initialize_with_schedule(staked_amount, VESTING_SCHEDULE_LENGTH_MILLIS)
     }
 
     pub fn initial_release_timestamp_millis(&self) -> u64 {
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn test_locked_with_zero_length_schedule_should_not_panic() {
         let mut vesting_schedule = VestingSchedule::new(RELEASE_TIMESTAMP);
-        vesting_schedule.initialize_with_weekly_schedule(U512::from(STAKE), 0);
+        vesting_schedule.initialize_with_schedule(U512::from(STAKE), 0);
 
         assert_eq!(vesting_schedule.locked_amount(0), None);
         assert_eq!(vesting_schedule.locked_amount(RELEASE_TIMESTAMP - 1), None);
@@ -420,7 +420,7 @@ mod tests {
         vesting_schedule_length: u64,
     ) -> bool {
         let mut vesting_schedule = VestingSchedule::new(release_timestamp);
-        vesting_schedule.initialize_with_weekly_schedule(initial_stake, vesting_schedule_length);
+        vesting_schedule.initialize_with_schedule(initial_stake, vesting_schedule_length);
 
         let mut total_vested_amounts = U512::zero();
 
