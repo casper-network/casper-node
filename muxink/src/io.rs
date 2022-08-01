@@ -131,7 +131,6 @@ where
     pub fn finish_sending(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>>
     where
         Self: Sink<F> + Unpin,
-        F: Buf,
         W: AsyncWrite + Unpin,
     {
         loop {
@@ -173,7 +172,6 @@ where
     Self: Unpin,
     E: Transcoder<F>,
     <E as Transcoder<F>>::Output: Buf,
-    F: Buf,
     W: AsyncWrite + Unpin,
 {
     type Error = io::Error;
