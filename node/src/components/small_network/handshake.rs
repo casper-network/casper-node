@@ -6,17 +6,20 @@
 //! This module contains an implementation for a minimal framing format based on 32-bit fixed size
 //! big endian length prefixes.
 
-use std::{error::Error as StdError, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::atomic::Ordering, time::Duration};
 
 use casper_types::PublicKey;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future};
+use rand::Rng;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use serde::{de::DeserializeOwned, Serialize};
+use tracing::{debug, info};
 
 use super::{
     counting_format::ConnectionId,
     error::{ConnectionError, RawFrameIoError},
-    message_pack_format::MessagePackFormat,
     tasks::NetworkContext,
-    Payload, Transport,
+    Message, Payload, Transport,
 };
 
 /// The outcome of the handshake process.
@@ -35,7 +38,6 @@ pub(super) struct HandshakeOutcome {
 async fn read_length_prefixed_frame<R>(
     max_length: u32,
     stream: &mut R,
-    data: &[u8],
 ) -> Result<Vec<u8>, RawFrameIoError>
 where
     R: AsyncRead + Unpin,
@@ -87,6 +89,22 @@ where
     Ok(())
 }
 
+/// Serializes an item with the encoding settings specified for handshakes.
+pub(super) fn serialize<T>(item: &T) -> Result<Vec<u8>, rmp_serde::encode::Error>
+where
+    T: Serialize,
+{
+    rmp_serde::to_vec(item)
+}
+
+/// Deserialize an item with the encoding settings specified for handshakes.
+fn deserialize<T>(raw: &[u8]) -> Result<T, rmp_serde::decode::Error>
+where
+    T: DeserializeOwned,
+{
+    rmp_serde::from_slice(raw)
+}
+
 /// Negotiates a handshake between two peers.
 pub(super) async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
@@ -96,118 +114,111 @@ pub(super) async fn negotiate_handshake<P, REv>(
 where
     P: Payload,
 {
-    let mut encoder = MessagePackFormat;
+    // Manually encode a handshake.
+    let handshake_message = context.chain_info.create_handshake::<P>(
+        context.public_addr,
+        context.consensus_keys.as_ref(),
+        connection_id,
+        context.is_syncing.load(Ordering::SeqCst),
+    );
 
-    // // Manually encode a handshake.
-    // let handshake_message = context.chain_info.create_handshake::<P>(
-    //     context.public_addr,
-    //     context.consensus_keys.as_ref(),
-    //     connection_id,
-    //     context.is_syncing.load(Ordering::SeqCst),
-    // );
+    let serialized_handshake_message =
+        serialize(&handshake_message).map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
 
-    // let serialized_handshake_message = Pin::new(&mut encoder)
-    //     .serialize(&Arc::new(handshake_message))
-    //     .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
+    // To ensure we are not dead-locking, we split the transport here and send the handshake in a
+    // background task before awaiting one ourselves. This ensures we can make progress regardless
+    // of the size of the outgoing handshake.
+    let (mut read_half, mut write_half) = tokio::io::split(transport);
 
-    // // To ensure we are not dead-locking, we split the framed transport here and send the handshake
-    // // in a background task before awaiting one ourselves. This ensures we can make progress
-    // // regardless of the size of the outgoing handshake.
-    // let (mut sink, mut stream) = framed.split();
+    let handshake_send = tokio::spawn(async move {
+        write_length_prefixed_frame(&mut write_half, &serialized_handshake_message).await?;
+        Ok::<_, RawFrameIoError>(write_half)
+    });
 
-    // let handshake_send = tokio::spawn(io_timeout(context.handshake_timeout.into(), async move {
-    //     sink.send(serialized_handshake_message).await?;
-    //     Ok(sink)
-    // }));
+    // The remote's message should be a handshake, but can technically be any message. We receive,
+    // deserialize and check it.
+    let remote_message_raw =
+        read_length_prefixed_frame(context.chain_info.maximum_net_message_size, &mut read_half)
+            .await
+            .map_err(ConnectionError::HandshakeRecv)?;
 
-    // // The remote's message should be a handshake, but can technically be any message. We receive,
-    // // deserialize and check it.
-    // let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), stream.next())
-    //     .await
-    //     .map_err(ConnectionError::HandshakeRecv)?;
+    // Ensure the handshake was sent correctly.
+    let write_half = handshake_send
+        .await
+        .map_err(ConnectionError::HandshakeSenderCrashed)?
+        .map_err(ConnectionError::HandshakeSend)?;
 
-    // // Ensure the handshake was sent correctly.
-    // let sink = handshake_send
-    //     .await
-    //     .map_err(ConnectionError::HandshakeSenderCrashed)?
-    //     .map_err(ConnectionError::HandshakeSend)?;
+    let remote_message: Message<P> =
+        deserialize(&remote_message_raw).map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
 
-    // let remote_message: Message<P> = Pin::new(&mut encoder)
-    //     .deserialize(&remote_message_raw)
-    //     .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
+    if let Message::Handshake {
+        network_name,
+        public_addr,
+        protocol_version,
+        consensus_certificate,
+        is_syncing,
+        chainspec_hash,
+    } = remote_message
+    {
+        debug!(%protocol_version, "handshake received");
 
-    // if let Message::Handshake {
-    //     network_name,
-    //     public_addr,
-    //     protocol_version,
-    //     consensus_certificate,
-    //     is_syncing,
-    //     chainspec_hash,
-    // } = remote_message
-    // {
-    //     debug!(%protocol_version, "handshake received");
+        // The handshake was valid, we can check the network name.
+        if network_name != context.chain_info.network_name {
+            return Err(ConnectionError::WrongNetwork(network_name));
+        }
 
-    //     // The handshake was valid, we can check the network name.
-    //     if network_name != context.chain_info.network_name {
-    //         return Err(ConnectionError::WrongNetwork(network_name));
-    //     }
+        // If there is a version mismatch, we treat it as a connection error. We do not ban peers
+        // for this error, but instead rely on exponential backoff, as bans would result in issues
+        // during upgrades where nodes may have a legitimate reason for differing versions.
+        //
+        // Since we are not using SemVer for versioning, we cannot make any assumptions about
+        // compatibility, so we allow only exact version matches.
+        if protocol_version != context.chain_info.protocol_version {
+            if let Some(threshold) = context.tarpit_version_threshold {
+                if protocol_version <= threshold {
+                    let mut rng = crate::new_rng();
 
-    //     // If there is a version mismatch, we treat it as a connection error. We do not ban peers
-    //     // for this error, but instead rely on exponential backoff, as bans would result in issues
-    //     // during upgrades where nodes may have a legitimate reason for differing versions.
-    //     //
-    //     // Since we are not using SemVer for versioning, we cannot make any assumptions about
-    //     // compatibility, so we allow only exact version matches.
-    //     if protocol_version != context.chain_info.protocol_version {
-    //         if let Some(threshold) = context.tarpit_version_threshold {
-    //             if protocol_version <= threshold {
-    //                 let mut rng = crate::new_rng();
+                    if rng.gen_bool(context.tarpit_chance as f64) {
+                        // If tarpitting is enabled, we hold open the connection for a specific
+                        // amount of time, to reduce load on other nodes and keep them from
+                        // reconnecting.
+                        info!(duration=?context.tarpit_duration, "randomly tarpitting node");
+                        tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
+                    } else {
+                        debug!(p = context.tarpit_chance, "randomly not tarpitting node");
+                    }
+                }
+            }
+            return Err(ConnectionError::IncompatibleVersion(protocol_version));
+        }
 
-    //                 if rng.gen_bool(context.tarpit_chance as f64) {
-    //                     // If tarpitting is enabled, we hold open the connection for a specific
-    //                     // amount of time, to reduce load on other nodes and keep them from
-    //                     // reconnecting.
-    //                     info!(duration=?context.tarpit_duration, "randomly tarpitting node");
-    //                     tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
-    //                 } else {
-    //                     debug!(p = context.tarpit_chance, "randomly not tarpitting node");
-    //                 }
-    //             }
-    //         }
-    //         return Err(ConnectionError::IncompatibleVersion(protocol_version));
-    //     }
+        // We check the chainspec hash to ensure peer is using the same chainspec as us.
+        // The remote message should always have a chainspec hash at this point since
+        // we checked the protocol version previously.
+        let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
+        if peer_chainspec_hash != context.chain_info.chainspec_hash {
+            return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
+        }
 
-    //     // We check the chainspec hash to ensure peer is using the same chainspec as us.
-    //     // The remote message should always have a chainspec hash at this point since
-    //     // we checked the protocol version previously.
-    //     let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
-    //     if peer_chainspec_hash != context.chain_info.chainspec_hash {
-    //         return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
-    //     }
+        let peer_consensus_public_key = consensus_certificate
+            .map(|cert| {
+                cert.validate(connection_id)
+                    .map_err(ConnectionError::InvalidConsensusCertificate)
+            })
+            .transpose()?;
 
-    //     let peer_consensus_public_key = consensus_certificate
-    //         .map(|cert| {
-    //             cert.validate(connection_id)
-    //                 .map_err(ConnectionError::InvalidConsensusCertificate)
-    //         })
-    //         .transpose()?;
+        let transport = read_half.unsplit(write_half);
 
-    //     let framed_transport = sink
-    //         .reunite(stream)
-    //         .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
-
-    //     Ok(HandshakeOutcome {
-    //         framed_transport,
-    //         public_addr,
-    //         peer_consensus_public_key,
-    //         is_peer_syncing: is_syncing,
-    //     })
-    // } else {
-    //     // Received a non-handshake, this is an error.
-    //     Err(ConnectionError::DidNotSendHandshake)
-    // }
-
-    todo!()
+        Ok(HandshakeOutcome {
+            transport,
+            public_addr,
+            peer_consensus_public_key,
+            is_peer_syncing: is_syncing,
+        })
+    } else {
+        // Received a non-handshake, this is an error.
+        Err(ConnectionError::DidNotSendHandshake)
+    }
 }
 
 #[cfg(test)]
