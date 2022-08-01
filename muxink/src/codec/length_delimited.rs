@@ -18,6 +18,7 @@ use crate::ImmediateFrame;
 const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 
 /// Two-byte length delimited frame encoder and frame decoder.
+#[derive(Debug)]
 pub struct LengthDelimited;
 
 impl FrameDecoder for LengthDelimited {

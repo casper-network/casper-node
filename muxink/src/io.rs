@@ -27,6 +27,7 @@ use crate::{
 ///
 /// The [`Stream`] implementation on [`FrameDecoder`] is cancellation safe, as it buffers data
 /// inside the reader, not the `next` future.
+#[derive(Debug)]
 pub struct FrameReader<D, R> {
     /// Decoder used to decode frames.
     decoder: D,
@@ -46,6 +47,7 @@ pub struct FrameReader<D, R> {
 ///
 /// The [`Sink`] methods on [`FrameWriter`] are cancellation safe. Only a single item is buffered
 /// inside the writer itself.
+#[derive(Debug)]
 pub struct FrameWriter<F, E: Transcoder<F>, W> {
     /// The encoder used to encode outgoing frames.
     encoder: E,
