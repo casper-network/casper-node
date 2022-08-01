@@ -565,8 +565,7 @@ pub(super) async fn message_sender<P>(
         };
         limiter.request_allowance(estimated_wire_size).await;
 
-        let todo_remove_copy = message.as_ref().clone();
-        let mut outcome = sink.send(todo_remove_copy).await;
+        let mut outcome = sink.send(message).await;
 
         // Notify via responder that the message has been buffered by the kernel.
         if let Some(auto_closing_responder) = opt_responder {

@@ -1217,7 +1217,7 @@ type Transport = SslStream<TcpStream>;
 
 /// The outgoing message sink of an outgoing connection.
 type OutgoingSink<P> =
-    FrameWriter<Message<P>, BincodeEncoder<Message<P>>, Compat<SslStream<TcpStream>>>;
+    FrameWriter<Arc<Message<P>>, BincodeEncoder<Arc<Message<P>>>, Compat<SslStream<TcpStream>>>;
 
 /// A framed transport for `Message`s.
 pub(crate) type FullTransport<P> = tokio_serde::Framed<
