@@ -33,6 +33,12 @@ pub use common::ErrorData;
 use docs::DocExample;
 pub use error_code::ErrorCode;
 
+/// This setting causes the server to ignore extra fields in JSON-RPC requests other than the
+/// standard 'id', 'jsonrpc', 'method', and 'params' fields.
+///
+/// It will be changed to `false` for casper-node v2.0.0.
+const ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST: bool = true;
+
 /// A JSON-RPC requiring the "params" field to be present.
 #[async_trait]
 pub(super) trait RpcWithParams {
@@ -256,7 +262,12 @@ pub(super) async fn run(
     server_name: &'static str,
 ) {
     let make_svc = hyper::service::make_service_fn(move |_| {
-        let service_routes = casper_json_rpc::route(api_path, max_body_bytes, handlers.clone());
+        let service_routes = casper_json_rpc::route(
+            api_path,
+            max_body_bytes,
+            handlers.clone(),
+            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+        );
 
         // Supports content negotiation for gzip responses. This is an interim fix until
         // https://github.com/seanmonstar/warp/pull/513 moves forward.
@@ -333,7 +344,7 @@ mod tests {
             GetDeploy::register_as_test_handler(&mut handlers);
             let handlers = handlers.build();
 
-            filters::main_filter(handlers)
+            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
                 .recover(filters::handle_rejection)
                 .boxed()
         }
@@ -400,7 +411,7 @@ mod tests {
             GetPeers::register_as_test_handler(&mut handlers);
             let handlers = handlers.build();
 
-            filters::main_filter(handlers)
+            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
                 .recover(filters::handle_rejection)
                 .boxed()
         }
@@ -454,7 +465,7 @@ mod tests {
             GetBlock::register_as_test_handler(&mut handlers);
             let handlers = handlers.build();
 
-            filters::main_filter(handlers)
+            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
                 .recover(filters::handle_rejection)
                 .boxed()
         }

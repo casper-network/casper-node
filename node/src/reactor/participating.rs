@@ -48,10 +48,10 @@ use crate::{
     contract_runtime,
     effect::{
         announcements::{
-            BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
-            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            RpcServerAnnouncement,
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
+            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, RpcServerAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -63,7 +63,7 @@ use crate::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -72,7 +72,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId, NodeState,
+        FinalizedApprovalsWithId,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -146,6 +146,8 @@ pub(crate) enum ParticipatingEvent {
 
     // Requests
     #[from]
+    ChainSynchronizerRequest(#[serde(skip_serializing)] NodeStateRequest),
+    #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
@@ -214,6 +216,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
     #[from]
+    ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
+    #[from]
     BlocklistAnnouncement(BlocklistAnnouncement),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
@@ -276,6 +280,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            ParticipatingEvent::ChainSynchronizerRequest(_) => "ChainSynchronizerRequest",
             ParticipatingEvent::BlockFetcher(_) => "BlockFetcher",
             ParticipatingEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             ParticipatingEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
@@ -337,6 +342,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
         }
     }
 }
@@ -428,6 +434,9 @@ impl Display for ParticipatingEvent {
                 write!(f, "finality signatures fetcher: {}", event)
             }
             ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
+            ParticipatingEvent::ChainSynchronizerRequest(req) => {
+                write!(f, "chain synchronizer request: {}", req)
+            }
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -513,6 +522,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
+            }
+            ParticipatingEvent::ChainSynchronizerAnnouncement(ann) => {
+                write!(f, "chain synchronizer announcement: {}", ann)
             }
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
@@ -754,14 +766,12 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             protocol_version,
             node_startup_instant,
-            NodeState::Participating,
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             protocol_version,
             node_startup_instant,
-            NodeState::Participating,
         )?;
 
         let fetcher_builder = FetcherBuilder::new(
@@ -798,7 +808,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec.as_ref(),
-            false,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -843,7 +852,7 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let (chain_synchronizer, chain_synchronizer_effects) =
-            ChainSynchronizer::<ParticipatingEvent>::new(
+            ChainSynchronizer::<ParticipatingEvent>::new_for_sync_to_genesis(
                 chainspec.clone(),
                 config.node.clone(),
                 config.network.clone(),
@@ -1042,6 +1051,11 @@ impl reactor::Reactor for Reactor {
             ),
 
             // Requests:
+            ParticipatingEvent::ChainSynchronizerRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::ChainSynchronizer,
+                self.chain_synchronizer
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             ParticipatingEvent::NetworkRequest(req) => {
                 let event = ParticipatingEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
@@ -1365,6 +1379,17 @@ impl reactor::Reactor for Reactor {
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            ParticipatingEvent::ChainSynchronizerAnnouncement(
+                ChainSynchronizerAnnouncement::SyncFinished,
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::SmallNetwork(
+                    small_network::Event::ChainSynchronizerAnnouncement(
+                        ChainSynchronizerAnnouncement::SyncFinished,
+                    ),
+                ),
+            ),
             ParticipatingEvent::ChainspecLoaderAnnouncement(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {

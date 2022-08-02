@@ -484,9 +484,14 @@ impl Storage {
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
             Some(raw) => {
-                let (sequences, _) = DisjointSequences::from_vec(raw)
+                let (mut sequences, _) = DisjointSequences::from_vec(raw)
                     .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
-                // We can restore the previous state.
+
+                // Truncate the sequences in case we removed blocks via a hard reset.
+                if let Some(&highest_block_height) = component.block_height_index.keys().last() {
+                    sequences.truncate(highest_block_height);
+                }
+
                 component.completed_blocks = sequences;
             }
             None => {

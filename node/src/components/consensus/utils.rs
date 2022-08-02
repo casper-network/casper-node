@@ -342,7 +342,7 @@ mod tests {
         //   and `finality_threshold_fraction` = 1/3 (~=  6.666)
         //   and the `quorum fraction` = 2/3         (~= 13.333)
         //
-        // we need signaturess of weight:
+        // we need signatures of weight:
         //   - 13 or less for `InsufficientWeightForFinality`
         //   - 14 for Ok
         //   - 15 or more for `TooManySignatures`
@@ -417,7 +417,7 @@ mod tests {
         //   and `finality_threshold_fraction` = 1/3 (~= 6.666)
         //   and the `quorum fraction` = 1/3         (~= 6.666)
         //
-        // we need signaturess of weight:
+        // we need signatures of weight:
         //   - 6 or less for `InsufficientWeightForFinality`
         //   - 7 for Ok
         //   - 8 or more for `TooManySignatures`
