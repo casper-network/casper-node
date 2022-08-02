@@ -21,42 +21,42 @@ pub const DEFAULT_MAX_PARAMETER_COUNT: u32 = 256;
 #[derive(Debug, Clone, Error)]
 pub enum WasmValidationError {
     /// Initial table size outside allowed bounds.
-    #[error("initial table size exceeds allowed bounds")]
+    #[error("initial table size of {actual} exceeds allowed limit of {max}")]
     InitialTableSizeExceeded {
         /// Allowed maximum table size.
         max: u32,
-        /// Actual maximum table size in the Wasm.
+        /// Actual initial table size specified in the Wasm.
         actual: u32,
     },
     /// Maximum table size outside allowed bounds.
-    #[error("maximum table size outside allowed bounds")]
+    #[error("maximum table size of {actual} exceeds allowed limit of {max}")]
     MaxTableSizeExceeded {
-        /// Allowed maximum initial table size.
+        /// Allowed maximum table size.
         max: u32,
-        /// Actual initial table szie in the Wasm.
+        /// Actual max table size specified in the Wasm.
         actual: u32,
     },
     /// Number of the tables in a Wasm must be at most one.
     #[error("the number of tables must be at most one")]
     MoreThanOneTable,
     /// Length of a br_table exceeded the maximum allowed size.
-    #[error("maximum br_table size exceeds allowed bounds (expected {max} but found {actual})")]
+    #[error("maximum br_table size of {actual} exceeds allowed limit of {max}")]
     BrTableSizeExceeded {
         /// Maximum allowed br_table length.
         max: u32,
-        /// Actual size of the largest br_table in the code.
+        /// Actual size of a br_table in the code.
         actual: usize,
     },
-    /// Declares number of globals exceeds allowed size.
-    #[error("declared number of globals exceeds allowed size")]
+    /// Declared number of globals exceeds allowed limit.
+    #[error("declared number of globals ({actual}) exceeds allowed limit of {max}")]
     TooManyGlobals {
         /// Maximum allowed globals.
         max: u32,
-        /// Actual number of globals declares in the Wasm.
+        /// Actual number of globals declared in the Wasm.
         actual: usize,
     },
     /// Module declares a function type with too many parameters.
-    #[error("use of a function type with too many parameters (expected {max} but function declares {actual})")]
+    #[error("use of a function type with too many parameters (limit of {max} but function declares {actual})")]
     TooManyParameters {
         /// Maximum allowed parameters.
         max: u32,
@@ -101,7 +101,6 @@ impl Display for PreprocessingError {
             PreprocessingError::MissingMemorySection => write!(f, "Memory section should exist"),
             PreprocessingError::MissingModule => write!(f, "Missing module"),
             PreprocessingError::InvalidWasm(msg) => write!(f, "Invalid wasm: {msg}."),
-
         }
     }
 }
@@ -131,7 +130,7 @@ fn ensure_table_size_limit(mut module: Module, limit: u32) -> Result<Module, Was
             return Err(WasmValidationError::MoreThanOneTable);
         }
 
-        if let Some(table_entry) = sect.entries_mut().iter_mut().next() {
+        if let Some(table_entry) = sect.entries_mut().first_mut() {
             let initial = table_entry.limits().initial();
             if initial > limit {
                 return Err(WasmValidationError::InitialTableSizeExceeded {
@@ -164,8 +163,6 @@ fn ensure_table_size_limit(mut module: Module, limit: u32) -> Result<Module, Was
 ///
 /// Globals are not limited through the `stack_height` as locals are. Neither does
 /// the linear memory limit `memory_pages` applies to them.
-///
-/// There is potential to
 fn ensure_global_variable_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
     if let Some(global_section) = module.global_section() {
         let actual = global_section.entries().len();
