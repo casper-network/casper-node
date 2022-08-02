@@ -3142,8 +3142,6 @@
                 "items": {
                   "$ref": "#/components/schemas/U512"
                 },
-                "maxItems": 14,
-                "minItems": 14,
                 "type": [
                   "array",
                   "null"

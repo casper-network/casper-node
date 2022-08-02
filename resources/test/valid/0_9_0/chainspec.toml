@@ -14,6 +14,7 @@ minimum_era_height = 9
 validator_slots = 5
 auction_delay = 3
 locked_funds_period = '90days'
+vesting_schedule_period = '13 weeks'
 round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14
 max_associated_keys = 100

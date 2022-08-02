@@ -118,8 +118,22 @@ impl Bid {
     /// Returns true if a timestamp falls below the initial lockup period + 91 days release
     /// schedule, otherwise false.
     pub fn is_locked(&self, timestamp_millis: u64) -> bool {
-        match self.vesting_schedule {
-            Some(vesting_schedule) => vesting_schedule.is_vesting(timestamp_millis),
+        self.is_locked_with_vesting_schedule(timestamp_millis, VESTING_SCHEDULE_LENGTH_MILLIS)
+    }
+
+    /// Checks if a bid is still locked under a vesting schedule.
+    ///
+    /// Returns true if a timestamp falls below the initial lockup period + 91 days release
+    /// schedule, otherwise false.
+    pub fn is_locked_with_vesting_schedule(
+        &self,
+        timestamp_millis: u64,
+        vesting_schedule_period_millis: u64,
+    ) -> bool {
+        match &self.vesting_schedule {
+            Some(vesting_schedule) => {
+                vesting_schedule.is_vesting(timestamp_millis, vesting_schedule_period_millis)
+            }
             None => false,
         }
     }
@@ -221,10 +235,23 @@ impl Bid {
 
     /// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
     /// or equal to the bid's initial release timestamp and the bid is owned by a genesis
-    /// validator.
+    /// validator. This method initializes with default 14 week vesting schedule.
     ///
     /// Returns `true` if the provided bid's vesting schedule was initialized.
     pub fn process(&mut self, timestamp_millis: u64) -> bool {
+        self.process_with_vesting_schedule(timestamp_millis, VESTING_SCHEDULE_LENGTH_MILLIS)
+    }
+
+    /// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
+    /// or equal to the bid's initial release timestamp and the bid is owned by a genesis
+    /// validator.
+    ///
+    /// Returns `true` if the provided bid's vesting schedule was initialized.
+    pub fn process_with_vesting_schedule(
+        &mut self,
+        timestamp_millis: u64,
+        vesting_schedule_period_millis: u64,
+    ) -> bool {
         // Put timestamp-sensitive processing logic in here
         let staked_amount = self.staked_amount;
         let vesting_schedule = match self.vesting_schedule_mut() {
@@ -237,7 +264,8 @@ impl Bid {
 
         let mut initialized = false;
 
-        if vesting_schedule.initialize(staked_amount) {
+        if vesting_schedule.initialize_with_schedule(staked_amount, vesting_schedule_period_millis)
+        {
             initialized = true;
         }
 
@@ -245,7 +273,8 @@ impl Bid {
             let staked_amount = *delegator.staked_amount();
             if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
                 if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
-                    && vesting_schedule.initialize(staked_amount)
+                    && vesting_schedule
+                        .initialize_with_schedule(staked_amount, vesting_schedule_period_millis)
                 {
                     initialized = true;
                 }
@@ -354,6 +383,9 @@ mod tests {
         AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
+    const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+    const TEST_VESTING_SCHEDULE_LENGTH_MILLIS: u64 = 7 * WEEK_MILLIS;
+
     #[test]
     fn serialization_roundtrip() {
         let founding_validator = Bid {
@@ -371,9 +403,37 @@ mod tests {
     }
 
     #[test]
-    fn should_initialize_delegators_different_timestamps() {
-        const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+    fn should_immediately_initialize_unlock_amounts() {
+        const TIMESTAMP_MILLIS: u64 = 0;
 
+        let validator_pk: PublicKey = (&SecretKey::ed25519_from_bytes([42; 32]).unwrap()).into();
+
+        let validator_release_timestamp = TIMESTAMP_MILLIS;
+        let vesting_schedule_period_millis = TIMESTAMP_MILLIS;
+        let validator_bonding_purse = URef::new([42; 32], AccessRights::ADD);
+        let validator_staked_amount = U512::from(1000);
+        let validator_delegation_rate = 0;
+
+        let mut bid = Bid::locked(
+            validator_pk,
+            validator_bonding_purse,
+            validator_staked_amount,
+            validator_delegation_rate,
+            validator_release_timestamp,
+        );
+
+        assert!(bid.process_with_vesting_schedule(
+            validator_release_timestamp,
+            vesting_schedule_period_millis,
+        ));
+        assert!(!bid.is_locked_with_vesting_schedule(
+            validator_release_timestamp,
+            vesting_schedule_period_millis
+        ));
+    }
+
+    #[test]
+    fn should_initialize_delegators_different_timestamps() {
         const TIMESTAMP_MILLIS: u64 = WEEK_MILLIS as u64;
 
         let validator_pk: PublicKey = (&SecretKey::ed25519_from_bytes([42; 32]).unwrap()).into();
@@ -418,7 +478,10 @@ mod tests {
             validator_release_timestamp,
         );
 
-        assert!(!bid.process(validator_release_timestamp - 1));
+        assert!(!bid.process_with_vesting_schedule(
+            validator_release_timestamp - 1,
+            TEST_VESTING_SCHEDULE_LENGTH_MILLIS
+        ));
 
         {
             let delegators = bid.delegators_mut();
@@ -427,7 +490,10 @@ mod tests {
             delegators.insert(delegator_2_pk.clone(), delegator_2);
         }
 
-        assert!(bid.process(delegator_1_release_timestamp));
+        assert!(bid.process_with_vesting_schedule(
+            delegator_1_release_timestamp,
+            TEST_VESTING_SCHEDULE_LENGTH_MILLIS
+        ));
 
         let delegator_1_updated_1 = bid.delegators().get(&delegator_1_pk).cloned().unwrap();
         assert!(delegator_1_updated_1
@@ -443,7 +509,10 @@ mod tests {
             .locked_amounts()
             .is_none());
 
-        assert!(bid.process(delegator_2_release_timestamp));
+        assert!(bid.process_with_vesting_schedule(
+            delegator_2_release_timestamp,
+            TEST_VESTING_SCHEDULE_LENGTH_MILLIS
+        ));
 
         let delegator_1_updated_2 = bid.delegators().get(&delegator_1_pk).cloned().unwrap();
         assert!(delegator_1_updated_2
@@ -465,7 +534,10 @@ mod tests {
         assert_ne!(delegator_2_updated_1, delegator_2_updated_2);
 
         // Validator initialized, and all delegators initialized
-        assert!(!bid.process(delegator_2_release_timestamp + 1));
+        assert!(!bid.process_with_vesting_schedule(
+            delegator_2_release_timestamp + 1,
+            TEST_VESTING_SCHEDULE_LENGTH_MILLIS
+        ));
     }
 }
 

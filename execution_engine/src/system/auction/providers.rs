@@ -26,6 +26,9 @@ pub trait RuntimeProvider {
 
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
+
+    /// Returns vesting schedule period.
+    fn vesting_schedule_period_millis(&self) -> u64;
 }
 
 /// Provides functionality of a contract storage.

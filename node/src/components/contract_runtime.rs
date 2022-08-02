@@ -621,6 +621,7 @@ impl ContractRuntime {
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
         strict_argument_checking: bool,
+        vesting_schedule_period_millis: u64,
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, ConfigError> {
@@ -652,6 +653,7 @@ impl ContractRuntime {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            vesting_schedule_period_millis,
             wasm_config,
             system_config,
         );

@@ -234,6 +234,11 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .strict_argument_checking,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .vesting_schedule_period
+                .millis(),
             registry,
             chainspec_loader
                 .chainspec()
