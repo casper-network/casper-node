@@ -26,7 +26,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
 * Nodes will now also gossip deploys onwards while joining.
-* Add run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
+* Add `node_state` field to the `/status` endpoint and the `info_get_status` JSON-RPC, giving an indication of the node's operating mode (joining or participating) and the progress of any ongoing chain-sync task.
 * Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
 * Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
 * Add metrics `accumulated_outgoing_limiter_delay` and `accumulated_incoming_limiter_delay` to report how much time was spent throttling other peers.
@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `enable_server` option to all HTTP server configuration sections (`rpc_server`, `rest_server`, `event_stream_server`) which allow users to enable/disable each server independently (enabled by default).
 * Add `enable_server`, `address`, `qps_limit` and `max_body_bytes` to new `speculative_exec_server` section to `config.toml` to configure speculative execution JSON-RPC server (disabled by default).
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
+* The network handshake now contains the hash of the chainspec used and will be successful only if they match.
 * Add a `[consensus.zug]` section to `config.toml` for the Zug protocol.
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 
@@ -65,6 +66,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
+* `null` should no longer be used as a value for `params` in JSON-RPC requests.  Prefer an empty Array or Object.
 
 ### Removed
 * Legacy synchronization from genesis in favor of fast sync has been removed.
@@ -74,11 +76,12 @@ All notable changes to this project will be documented in this file.  The format
 * Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
 * Remove asymmetric key functionality (move to `casper-types` crate behind feature "std").
 * Remove time types (move to `casper-types` with some functionality behind feature "std").
+* Remove `reject_incompatible_versions` option from `config.toml`, meaning now all versions different than the current one are rejected through the `chainspec_hash` check in the network handshake.
 
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
-* JSON-RPC server is now compliant with the standard. Specifically, correct error values are now returned in responses, and `null` is no longer accepted as a value for `params` in requests.
+* JSON-RPC server is now mostly compliant with the standard. Specifically, correct error values are now returned in responses in many failure cases.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).

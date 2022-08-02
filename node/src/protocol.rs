@@ -143,13 +143,13 @@ impl Payload for Message {
         }
     }
 
-    fn is_unsafe_for_joiners(&self) -> bool {
+    fn is_unsafe_for_syncing_peers(&self) -> bool {
         match self {
             Message::Consensus(_) => false,
             Message::ConsensusRequest(_) => false,
             Message::DeployGossiper(_) => false,
             Message::AddressGossiper(_) => false,
-            // Trie requests can deadlock between joiners.
+            // Trie requests can deadlock between syncing nodes.
             Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
             Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
