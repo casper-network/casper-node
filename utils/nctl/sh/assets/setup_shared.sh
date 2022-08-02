@@ -248,7 +248,6 @@ function setup_asset_chainspec()
             "cfg['protocol']['activation_point']='$ACTIVATION_POINT';"
             "cfg['protocol']['version']='$PROTOCOL_VERSION';"
             "cfg['network']['name']='$(get_chain_name)';"
-            "cfg['core']['validator_slots']=$COUNT_NODES;"
             "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
         )
     else
@@ -258,7 +257,6 @@ function setup_asset_chainspec()
             "cfg['protocol']['activation_point']=$ACTIVATION_POINT;"
             "cfg['protocol']['version']='$PROTOCOL_VERSION';"
             "cfg['network']['name']='$(get_chain_name)';"
-            "cfg['core']['validator_slots']=$COUNT_NODES;"
             "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
         )
     fi
