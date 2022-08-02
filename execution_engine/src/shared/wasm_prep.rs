@@ -8,6 +8,9 @@ use thiserror::Error;
 use super::wasm_config::WasmConfig;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
+/// Name of the internal gas function injected by [`pwasm_utils::inject_gas_counter`].
+const INTERNAL_GAS_FUNCTION_NAME: &str = "gas";
+
 /// We only allow maximum of 4k function pointers in a table section.
 pub const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
 /// Maximum number of elements that can appear as immediate value to the br_table instruction.
@@ -19,7 +22,8 @@ pub const DEFAULT_MAX_PARAMETER_COUNT: u32 = 256;
 
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
-pub enum WasmValidationError {
+#[non_exhaustive]
+enum WasmValidationError {
     /// Initial table size outside allowed bounds.
     #[error("initial table size of {actual} exceeds allowed limit of {max}")]
     InitialTableSizeExceeded {
@@ -81,13 +85,17 @@ pub enum PreprocessingError {
     MissingMemorySection,
     /// The module is missing.
     MissingModule,
-    /// Wasm validation did not pass.
-    InvalidWasm(#[from] WasmValidationError),
 }
 
 impl From<elements::Error> for PreprocessingError {
     fn from(error: elements::Error) -> Self {
         PreprocessingError::Deserialize(error.to_string())
+    }
+}
+
+impl From<WasmValidationError> for PreprocessingError {
+    fn from(wasm_validation_error: WasmValidationError) -> Self {
+        Self::Deserialize(wasm_validation_error.to_string())
     }
 }
 
@@ -99,7 +107,6 @@ impl Display for PreprocessingError {
             PreprocessingError::StackLimiter => write!(f, "Stack limiter error"),
             PreprocessingError::MissingMemorySection => write!(f, "Memory section should exist"),
             PreprocessingError::MissingModule => write!(f, "Missing module"),
-            PreprocessingError::InvalidWasm(msg) => write!(f, "Invalid wasm: {msg}."),
         }
     }
 }
@@ -221,14 +228,6 @@ fn ensure_parameter_limit(module: &Module, limit: u32) -> Result<(), WasmValidat
     Ok(())
 }
 
-/// List of invalid wasm imports considered non-existing.
-const WASM_INVALID_IMPORTS: &[(&str, &str)] = &[
-    // Gas counter is currently considered an implementation detail.
-    //
-    // If a wasm module tries to import it will be rejected.
-    (DEFAULT_GAS_MODULE_NAME, "gas"),
-];
-
 /// Ensures that Wasm module has valid imports.
 fn ensure_valid_imports(module: &Module) -> Result<(), WasmValidationError> {
     let import_entries = module
@@ -236,14 +235,14 @@ fn ensure_valid_imports(module: &Module) -> Result<(), WasmValidationError> {
         .map(|is| is.entries())
         .unwrap_or(&[]);
 
+    // Gas counter is currently considered an implementation detail.
+    //
+    // If a wasm module tries to import it will be rejected.
+
     for import in import_entries {
-        if WASM_INVALID_IMPORTS
-            .iter()
-            .any(|(module, func_name)| (import.module(), import.field()) == (*module, *func_name))
+        if import.module() == DEFAULT_GAS_MODULE_NAME
+            && import.field() == INTERNAL_GAS_FUNCTION_NAME
         {
-            // Currently we're checking the imports against the list of invalid imports such as
-            // special "gas" function, but this should be extended to also check if the provided
-            // imports are on the list of host functions.
             return Err(WasmValidationError::MissingHostFunction);
         }
     }
