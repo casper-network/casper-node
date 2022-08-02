@@ -15,7 +15,7 @@ use casper_execution_engine::{
         execution,
     },
     shared::wasm_prep::{
-        PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
+        PreprocessingError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
         DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
     },
 };
@@ -26,14 +26,14 @@ use crate::wasm_utils;
 const OOM_INIT: (u32, Option<u32>) = (2805655325, None);
 const FAILURE_ONE_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE + 1, None);
 const FAILURE_MAX_ABOVE_LIMIT: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(u32::MAX));
-const FAILURE_INIT_ABOVE_LIMIT: (u32, Option<u32>) = (u32::MAX, Some(u32::MAX));
+const FAILURE_INIT_ABOVE_LIMIT: (u32, Option<u32>) =
+    (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT_MAX_TABLE_SIZE + 1));
 const ALLOWED_NO_MAX: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, None);
 const ALLOWED_LIMITS: (u32, Option<u32>) = (DEFAULT_MAX_TABLE_SIZE, Some(DEFAULT_MAX_TABLE_SIZE));
 // Anything larger than that fails wasmi interpreter with a runtime stack overflow.
-const FAILING_BR_TABLE_SIZE: usize = 16382;
-const ALLOWED_BR_TABLE_SIZE: usize = 256;
-const FAILING_GLOBALS_SIZE: usize = 16384;
-const FAILING_PARAMS_COUNT: usize = 16384;
+const FAILING_BR_TABLE_SIZE: usize = DEFAULT_BR_TABLE_MAX_SIZE as usize + 1;
+const FAILING_GLOBALS_SIZE: usize = DEFAULT_MAX_PARAMETER_COUNT as usize + 1;
+const FAILING_PARAMS_COUNT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize + 1;
 
 fn make_oom_payload(initial: u32, maximum: Option<u32>) -> Vec<u8> {
     let mut bounds = initial.to_string();
@@ -82,7 +82,7 @@ fn should_not_oom() {
 
         assert!(matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(ref _msg))
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref _msg))
         ))
     }
 }
@@ -268,9 +268,8 @@ fn should_not_allow_more_than_one_table() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
-                WasmValidationError::MoreThanOneTable
-            ))
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
+            if msg == "the number of tables must be at most one"
         ),
         "{:?}",
         error
@@ -351,7 +350,8 @@ fn make_arbitrary_br_table(size: usize) -> Result<Vec<u8>, Box<dyn std::error::E
 #[test]
 fn should_allow_large_br_table() {
     // Anything larger than that fails wasmi interpreter with a runtime stack overflow.
-    let module_bytes = make_arbitrary_br_table(ALLOWED_BR_TABLE_SIZE).expect("ok?");
+    let module_bytes = make_arbitrary_br_table(DEFAULT_BR_TABLE_MAX_SIZE as usize)
+        .expect("should create module bytes");
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -369,7 +369,8 @@ fn should_allow_large_br_table() {
 #[ignore]
 #[test]
 fn should_not_allow_large_br_table() {
-    let module_bytes = make_arbitrary_br_table(FAILING_BR_TABLE_SIZE).expect("ok?");
+    let module_bytes =
+        make_arbitrary_br_table(FAILING_BR_TABLE_SIZE).expect("should create module bytes");
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -388,10 +389,10 @@ fn should_not_allow_large_br_table() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
-                WasmValidationError::BrTableSizeExceeded { max, actual }
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(
+                ref msg
             ))
-            if (max, actual) == (DEFAULT_BR_TABLE_MAX_SIZE, FAILING_BR_TABLE_SIZE)
+            if msg == &format!("maximum br_table size of {FAILING_BR_TABLE_SIZE} exceeds allowed limit of {DEFAULT_BR_TABLE_MAX_SIZE}")
         ),
         "{:?}",
         error,
@@ -426,16 +427,13 @@ fn make_arbitrary_global(size: usize) -> Result<Vec<u8>, Box<dyn std::error::Err
     }
 
     writeln!(src, r#"  (func (export "call")"#)?;
-    for i in 0..size {
-        writeln!(src, "    global.get $global{i}")?;
-    }
-    for _i in 0..size - 1 {
-        writeln!(src, "    i32.add")?; // global{n-1} + global{n} etc
-    }
+    debug_assert!(size >= 2);
+    writeln!(src, "    global.get $global{last}", last = size - 2)?;
+    writeln!(src, "    global.get $global{last}", last = size - 1)?;
+    writeln!(src, "    i32.add")?;
     writeln!(src, "    drop")?; // drop the result
     writeln!(src, "  )")?;
     writeln!(src, ")")?;
-    // println!("{src}");
     let module_bytes = wat::parse_str(&src)?;
     Ok(module_bytes)
 }
@@ -443,7 +441,8 @@ fn make_arbitrary_global(size: usize) -> Result<Vec<u8>, Box<dyn std::error::Err
 #[ignore]
 #[test]
 fn should_allow_multiple_globals() {
-    let module_bytes = make_arbitrary_global(100).expect("should make arbitrary global");
+    let module_bytes =
+        make_arbitrary_global(DEFAULT_MAX_GLOBALS as usize).expect("should make arbitrary global");
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -481,10 +480,8 @@ fn should_not_allow_too_many_globals() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
-                WasmValidationError::TooManyGlobals { max, actual }
-            ))
-            if (max, actual) == (DEFAULT_MAX_GLOBALS, FAILING_GLOBALS_SIZE)
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
+            if msg == &format!("declared number of globals ({FAILING_GLOBALS_SIZE}) exceeds allowed limit of {DEFAULT_MAX_GLOBALS}")
         ),
         "{:?}",
         error,
@@ -559,10 +556,8 @@ fn should_not_allow_too_many_params() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
-                WasmValidationError::TooManyParameters { max, actual }
-            ))
-            if (max, actual) == (DEFAULT_MAX_PARAMETER_COUNT, FAILING_PARAMS_COUNT)
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
+            if msg == &format!("use of a function type with too many parameters (limit of {DEFAULT_MAX_PARAMETER_COUNT} but function declares {FAILING_PARAMS_COUNT})")
         ),
         "{:?}",
         error,
@@ -597,9 +592,8 @@ fn should_not_allow_to_import_gas_function() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::InvalidWasm(
-                WasmValidationError::MissingHostFunction
-            ))
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
+            if msg == "module imports a non-existent function"
         ),
         "{:?}",
         error,
