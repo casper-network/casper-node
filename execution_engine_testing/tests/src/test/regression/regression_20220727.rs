@@ -512,7 +512,7 @@ fn should_verify_max_param_count() {
 
     let error = builder.get_error().expect("should have error");
 
-    // Here we pass the preprocess stage, but we wail at stack height limiter as we do have very
+    // Here we pass the preprocess stage, but we fail at stack height limiter as we do have very
     // restrictive default stack height.
     assert!(
         matches!(&error, Error::Exec(execution::Error::Interpreter(s)) if s.contains("Unreachable")),
