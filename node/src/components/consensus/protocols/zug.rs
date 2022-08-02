@@ -49,9 +49,9 @@
 //! it is eventually seen by all validators, even if they are not fully connected. This is
 //! achieved via a pull-based randomized gossip mechanism:
 //!
-//! A `SyncRequest` message containing information about a random part of the local protocol state is
-//! periodically sent to a random peer. The peer compares that to its local state, and responds with
-//! all signed messages that it has and the other is missing.
+//! A `SyncRequest` message containing information about a random part of the local protocol state
+//! is periodically sent to a random peer. The peer compares that to its local state, and responds
+//! with all signed messages that it has and the other is missing.
 
 pub(crate) mod config;
 mod fault;

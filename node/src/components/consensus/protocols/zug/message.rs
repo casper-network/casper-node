@@ -190,7 +190,8 @@ impl<C: Context> SyncRequest<C> {
     }
 }
 
-/// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is missing.
+/// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is
+/// missing.
 #[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
