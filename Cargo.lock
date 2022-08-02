@@ -2112,6 +2112,8 @@ dependencies = [
  "clap 2.34.0",
  "lmdb",
  "rand 0.8.5",
+ "serde",
+ "toml",
 ]
 
 [[package]]
