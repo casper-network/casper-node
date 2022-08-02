@@ -323,7 +323,7 @@ fn put_execution_results(
     block_hash: BlockHash,
     execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
-    let response = harness.send_request(storage, move |responder| {
+    harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
             block_hash: Box::new(block_hash),
             execution_results,
@@ -332,7 +332,6 @@ fn put_execution_results(
         .into()
     });
     assert!(harness.is_idle());
-    response
 }
 
 /// Saves state from the storage component.
