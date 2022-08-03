@@ -1,6 +1,6 @@
 {
   "name": "casper-contract",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "description": "Library for developing Casper smart contracts.",
   "homepage": "https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html",
   "repository": {

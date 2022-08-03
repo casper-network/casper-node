@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 2.0.1
+
+### Security
+* Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
+
+
+
 ## 2.0.0
 
 ### Changed
