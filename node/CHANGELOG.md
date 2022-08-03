@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
+* Merkle root hashes for execution results and deploy approvals are written to global state after each block execution.
 * Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
 * Add `sync_to_genesis` to `[node]` config section, which if set to `true` will cause the node to retrieve all blocks, deploys and global state back to genesis while running in participating mode.
