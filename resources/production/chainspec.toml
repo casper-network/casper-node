@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.4.6'
+version = '1.4.7'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
