@@ -227,9 +227,6 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = rng.gen_range(0..=10);
-
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
@@ -239,7 +236,6 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 
@@ -256,7 +252,6 @@ impl reactor::Reactor for Reactor {
             DEFAULT_STRICT_ARGUMENT_CHECKING,
             DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             registry,
-            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 

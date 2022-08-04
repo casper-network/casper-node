@@ -1,34 +1,28 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    convert::TryFrom,
+    collections::{BTreeMap, HashMap},
     fs::{self, File},
-    iter, thread,
+    iter,
 };
 
-use lmdb::{Cursor, Transaction};
+use lmdb::Transaction;
 use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_hashing::Digest;
 use casper_types::{
     system::auction::UnbondingPurse, testing::TestRng, AccessRights, EraId, ExecutionResult,
     ProtocolVersion, PublicKey, SecretKey, URef, U512,
 };
 
 use super::{
-    construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
     Storage,
 };
 use crate::{
-    components::{
-        consensus::EraReport,
-        storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
-    },
+    components::{consensus::EraReport, storage::lmdb_ext::WriteTransactionExt},
     effect::{requests::StorageRequest, Multiple},
     storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
@@ -39,8 +33,6 @@ use crate::{
     },
     utils::WithDir,
 };
-
-type BlockGenerators = Vec<fn(&mut TestRng) -> (Block, EraId)>;
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
@@ -64,10 +56,7 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
 /// # Panics
 ///
 /// Panics if setting up the storage fixture fails.
-fn storage_fixture(
-    harness: &ComponentHarness<UnitTestEvent>,
-    verifiable_chunked_hash_activation: EraId,
-) -> Storage {
+fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
@@ -76,7 +65,6 @@ fn storage_fixture(
         "test",
         Ratio::new(1, 3),
         None,
-        verifiable_chunked_hash_activation,
     )
     .expect("could not create storage component fixture")
 }
@@ -91,7 +79,6 @@ fn storage_fixture(
 fn storage_fixture_with_hard_reset(
     harness: &ComponentHarness<UnitTestEvent>,
     reset_era_id: EraId,
-    verifiable_chunked_hash_activation: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
@@ -101,33 +88,6 @@ fn storage_fixture_with_hard_reset(
         "test",
         Ratio::new(1, 3),
         None,
-        verifiable_chunked_hash_activation,
-    )
-    .expect("could not create storage component fixture")
-}
-
-/// Storage component test fixture.
-///
-/// Creates a storage component in a temporary directory, but with a hard reset to a specified era.
-///
-/// # Panics
-///
-/// Panics if setting up the storage fixture fails.
-fn storage_fixture_with_hard_reset_and_protocol_version(
-    harness: &ComponentHarness<UnitTestEvent>,
-    reset_era_id: EraId,
-    protocol_version: ProtocolVersion,
-    verifiable_chunked_hash_activation: EraId,
-) -> Storage {
-    let cfg = new_config(harness);
-    Storage::new(
-        &WithDir::new(harness.tmp.path(), cfg),
-        Some(reset_era_id),
-        protocol_version,
-        "test",
-        Ratio::new(1, 3),
-        None,
-        verifiable_chunked_hash_activation,
     )
     .expect("could not create storage component fixture")
 }
@@ -360,11 +320,7 @@ fn put_execution_results(
 #[test]
 fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let response = get_block(&mut harness, &mut storage, block_hash);
@@ -377,7 +333,6 @@ fn get_block_of_non_existing_block_returns_none() {
 fn switch_block_for_block_header(
     block_header: &BlockHeader,
     validator_weights: BTreeMap<PublicKey, U512>,
-    verifiable_chunked_hash_activation: EraId,
 ) -> Block {
     let finalized_block = FinalizedBlock::new(
         BlockPayload::new(vec![], vec![], vec![], false),
@@ -407,345 +362,291 @@ fn switch_block_for_block_header(
         finalized_block,
         Some(validator_weights),
         block_header.protocol_version(),
-        verifiable_chunked_hash_activation,
     )
     .expect("Could not create block")
 }
 
 #[test]
 fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
-    const MAX_ERA: u64 = 6;
+    let mut harness = ComponentHarness::default();
 
-    // Test both legacy and merkle based hashing schemes.
-    let verifiable_chunked_hash_activations = vec![EraId::from(0), EraId::from(MAX_ERA + 1)];
+    let mut storage = storage_fixture(&harness);
 
-    for verifiable_chunked_hash_activation in verifiable_chunked_hash_activations {
-        thread::spawn(move || {
-            let mut harness = ComponentHarness::default();
+    // Create a random block, store and load it.
+    //
+    // We need the block to be of an era > 0.
+    let block = {
+        let era_id = EraId::from(harness.rng.gen_range(1..6));
 
-            let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        // Height must be at least 1, otherwise it'll be rejected in
+        // `switch_block_for_block_header()`
+        let height = harness.rng.gen_range(1..10);
 
-            // Create a random block, store and load it.
-            //
-            // We need the block to be of an era > 0.
-            let block = {
-                let era_id = EraId::from(harness.rng.gen_range(1..MAX_ERA));
+        let is_switch = harness.rng.gen_bool(0.1);
+        Block::random_with_specifics(
+            &mut harness.rng,
+            era_id,
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+            None,
+        )
+    };
 
-                // Height must be at least 1, otherwise it'll be rejected in
-                // `switch_block_for_block_header()`
-                let height = harness.rng.gen_range(1..10);
+    let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
 
-                let is_switch = harness.rng.gen_bool(0.1);
-                Block::random_with_specifics(
-                    &mut harness.rng,
-                    era_id,
-                    height,
-                    ProtocolVersion::V1_0_0,
-                    is_switch,
-                    verifiable_chunked_hash_activation,
-                    None,
-                )
-            };
+    // Secret and Public Keys
+    let alice_secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+    let alice_public_key = PublicKey::from(&alice_secret_key);
+    let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
+    let bob_public_key = PublicKey::from(&bob_secret_key);
+    {
+        let FinalitySignature {
+            public_key,
+            signature,
+            ..
+        } = FinalitySignature::new(
+            block.header().hash(),
+            block.header().era_id(),
+            &alice_secret_key,
+            alice_public_key.clone(),
+        );
+        block_signatures.insert_proof(public_key, signature);
+    }
 
-            let mut block_signatures = BlockSignatures::new(
-                block.header().hash(verifiable_chunked_hash_activation),
-                block.header().era_id(),
-            );
+    {
+        let FinalitySignature {
+            public_key,
+            signature,
+            ..
+        } = FinalitySignature::new(
+            block.header().hash(),
+            block.header().era_id(),
+            &bob_secret_key,
+            bob_public_key.clone(),
+        );
+        block_signatures.insert_proof(public_key, signature);
+    }
 
-            // Secret and Public Keys
-            let alice_secret_key =
-                SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
-            let alice_public_key = PublicKey::from(&alice_secret_key);
-            let bob_secret_key =
-                SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
-            let bob_public_key = PublicKey::from(&bob_secret_key);
-            {
-                let FinalitySignature {
-                    public_key,
-                    signature,
-                    ..
-                } = FinalitySignature::new(
-                    block.header().hash(verifiable_chunked_hash_activation),
-                    block.header().era_id(),
-                    &alice_secret_key,
-                    alice_public_key.clone(),
-                );
-                block_signatures.insert_proof(public_key, signature);
-            }
+    let was_new = put_block(&mut harness, &mut storage, Box::new(block.clone()));
+    assert!(was_new, "putting block should have returned `true`");
 
-            {
-                let FinalitySignature {
-                    public_key,
-                    signature,
-                    ..
-                } = FinalitySignature::new(
-                    block.header().hash(verifiable_chunked_hash_activation),
-                    block.header().era_id(),
-                    &bob_secret_key,
-                    bob_public_key.clone(),
-                );
-                block_signatures.insert_proof(public_key, signature);
-            }
+    let mut txn = storage
+        .env
+        .begin_rw_txn()
+        .expect("Could not start transaction");
+    let was_new = txn
+        .put_value(
+            storage.block_metadata_db,
+            &block.hash(),
+            &block_signatures,
+            true,
+        )
+        .expect("should put value into LMDB");
+    assert!(
+        was_new,
+        "putting block signatures should have returned `true`"
+    );
+    txn.commit().expect("Could not commit transaction");
 
-            let was_new = put_block(&mut harness, &mut storage, Box::new(block.clone()));
-            assert!(was_new, "putting block should have returned `true`");
+    {
+        let block_header = storage
+            .read_block_header_by_hash(block.hash())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_header,
+            block.header().clone(),
+            "Should have retrieved expected block header"
+        );
+    }
 
-            let mut txn = storage
-                .env
-                .begin_rw_txn()
-                .expect("Could not start transaction");
-            let was_new = txn
-                .put_value(
-                    storage.block_metadata_db,
-                    &block.hash(),
-                    &block_signatures,
-                    true,
-                )
-                .expect("should put value into LMDB");
-            assert!(
-                was_new,
-                "putting block signatures should have returned `true`"
-            );
-            txn.commit().expect("Could not commit transaction");
-
-            {
-                let block_header = storage
-                    .read_block_header_by_hash(block.hash())
-                    .expect("should not throw exception")
-                    .expect("should not be None");
-                assert_eq!(
-                    block_header,
-                    block.header().clone(),
-                    "Should have retrieved expected block header"
-                );
-            }
-
-            let genesis_validator_weights: BTreeMap<PublicKey, U512> =
-                vec![(alice_public_key, 123.into()), (bob_public_key, 123.into())]
-                    .into_iter()
-                    .collect();
-            let switch_block = switch_block_for_block_header(
-                block.header(),
-                genesis_validator_weights,
-                verifiable_chunked_hash_activation,
-            );
-            let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
-            assert!(was_new, "putting switch block should have returned `true`");
-            {
-                let block_header_with_metadata = storage
-                    .read_block_header_and_sufficient_finality_signatures_by_height(
-                        block.header().height(),
-                    )
-                    .expect("should not throw exception")
-                    .expect("should not be None");
-                assert_eq!(
-                    block_header_with_metadata.block_header,
-                    block.header().clone(),
-                    "Should have retrieved expected block header"
-                );
-                assert_eq!(
-                    block_header_with_metadata.block_signatures, block_signatures,
-                    "Should have retrieved expected block signatures"
-                );
-                let block_with_metadata = storage
-                    .read_block_and_sufficient_finality_signatures_by_height(
-                        block.header().height(),
-                    )
-                    .expect("should not throw exception")
-                    .expect("should not be None");
-                assert_eq!(
-                    block_with_metadata.block.header(),
-                    block.header(),
-                    "Should have retrieved expected block header"
-                );
-                assert_eq!(
-                    block_with_metadata.finality_signatures, block_signatures,
-                    "Should have retrieved expected block signatures"
-                );
-            }
-        });
+    let genesis_validator_weights: BTreeMap<PublicKey, U512> =
+        vec![(alice_public_key, 123.into()), (bob_public_key, 123.into())]
+            .into_iter()
+            .collect();
+    let switch_block = switch_block_for_block_header(block.header(), genesis_validator_weights);
+    let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
+    assert!(was_new, "putting switch block should have returned `true`");
+    {
+        let block_header_with_metadata = storage
+            .read_block_header_and_sufficient_finality_signatures_by_height(block.header().height())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_header_with_metadata.block_header,
+            block.header().clone(),
+            "Should have retrieved expected block header"
+        );
+        assert_eq!(
+            block_header_with_metadata.block_signatures, block_signatures,
+            "Should have retrieved expected block signatures"
+        );
+        let block_with_metadata = storage
+            .read_block_and_sufficient_finality_signatures_by_height(block.header().height())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_with_metadata.block.header(),
+            block.header(),
+            "Should have retrieved expected block header"
+        );
+        assert_eq!(
+            block_with_metadata.finality_signatures, block_signatures,
+            "Should have retrieved expected block signatures"
+        );
     }
 }
 
 #[test]
 fn can_retrieve_block_by_height() {
-    struct BlockData {
-        era_id: EraId,
-        verifiable_chunked_hash_activation: EraId,
-    }
+    let mut harness = ComponentHarness::default();
 
-    let block_specs = vec![
-        // Generates v1 blocks
-        BlockData {
-            era_id: EraId::from(1),
-            verifiable_chunked_hash_activation: EraId::from(5),
-        },
-        // Generates v2 blocks
-        BlockData {
-            era_id: EraId::from(1),
-            verifiable_chunked_hash_activation: EraId::from(0),
-        },
-    ];
+    // Create a random blocks, load and store them.
+    let block_33 = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        33,
+        ProtocolVersion::from_parts(1, 5, 0),
+        true,
+        None,
+    ));
+    let block_14 = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        14,
+        ProtocolVersion::from_parts(1, 5, 0),
+        false,
+        None,
+    ));
+    let block_99 = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(2),
+        99,
+        ProtocolVersion::from_parts(1, 5, 0),
+        true,
+        None,
+    ));
 
-    for block_spec in block_specs {
-        thread::spawn(move || {
-            let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
 
-            // Create a random blocks, load and store them.
-            let block_33 = Box::new(Block::random_with_specifics(
-                &mut harness.rng,
-                block_spec.era_id,
-                33,
-                ProtocolVersion::from_parts(1, 5, 0),
-                true,
-                block_spec.verifiable_chunked_hash_activation,
-                None,
-            ));
-            let block_14 = Box::new(Block::random_with_specifics(
-                &mut harness.rng,
-                block_spec.era_id,
-                14,
-                ProtocolVersion::from_parts(1, 5, 0),
-                false,
-                block_spec.verifiable_chunked_hash_activation,
-                None,
-            ));
-            let block_99 = Box::new(Block::random_with_specifics(
-                &mut harness.rng,
-                block_spec.era_id.successor(),
-                99,
-                ProtocolVersion::from_parts(1, 5, 0),
-                true,
-                block_spec.verifiable_chunked_hash_activation,
-                None,
-            ));
+    // Both block at ID and highest block should return `None` initially.
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_highest_block(&mut harness, &mut storage).is_none());
+    assert!(get_highest_block_header(&mut harness, &mut storage).is_none());
+    assert!(get_block_at_height(&mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut storage, 14).is_none());
+    assert!(get_block_at_height(&mut storage, 33).is_none());
+    assert!(get_block_header_at_height(&mut storage, 33).is_none());
+    assert!(get_block_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
-            let mut storage =
-                storage_fixture(&harness, block_spec.verifiable_chunked_hash_activation);
+    // Inserting 33 changes this.
+    let was_new = put_block(&mut harness, &mut storage, block_33.clone());
+    assert!(was_new);
 
-            // Both block at ID and highest block should return `None` initially.
-            assert!(get_block_at_height(&mut storage, 0).is_none());
-            assert!(get_block_header_at_height(&mut storage, 0).is_none());
-            assert!(get_highest_block(&mut harness, &mut storage).is_none());
-            assert!(get_highest_block_header(&mut harness, &mut storage).is_none());
-            assert!(get_block_at_height(&mut storage, 14).is_none());
-            assert!(get_block_header_at_height(&mut storage, 14).is_none());
-            assert!(get_block_at_height(&mut storage, 33).is_none());
-            assert!(get_block_header_at_height(&mut storage, 33).is_none());
-            assert!(get_block_at_height(&mut storage, 99).is_none());
-            assert!(get_block_header_at_height(&mut storage, 99).is_none());
+    assert_eq!(
+        get_highest_block(&mut harness, &mut storage).as_ref(),
+        Some(&*block_33)
+    );
+    assert_eq!(
+        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        Some(block_33.header())
+    );
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut storage, 14).is_none());
+    assert_eq!(
+        get_block_at_height(&mut storage, 33).as_ref(),
+        Some(&*block_33)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 33).as_ref(),
+        Some(block_33.header())
+    );
+    assert!(get_block_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
-            // Inserting 33 changes this.
-            let was_new = put_block(&mut harness, &mut storage, block_33.clone());
-            assert!(was_new);
+    // Inserting block with height 14, no change in highest.
+    let was_new = put_block(&mut harness, &mut storage, block_14.clone());
+    assert!(was_new);
 
-            assert_eq!(
-                get_highest_block(&mut harness, &mut storage).as_ref(),
-                Some(&*block_33)
-            );
-            assert_eq!(
-                get_highest_block_header(&mut harness, &mut storage).as_ref(),
-                Some(block_33.header())
-            );
-            assert!(get_block_at_height(&mut storage, 0).is_none());
-            assert!(get_block_header_at_height(&mut storage, 0).is_none());
-            assert!(get_block_at_height(&mut storage, 14).is_none());
-            assert!(get_block_header_at_height(&mut storage, 14).is_none());
-            assert_eq!(
-                get_block_at_height(&mut storage, 33).as_ref(),
-                Some(&*block_33)
-            );
-            assert_eq!(
-                get_block_header_at_height(&mut storage, 33).as_ref(),
-                Some(block_33.header())
-            );
-            assert!(get_block_at_height(&mut storage, 99).is_none());
-            assert!(get_block_header_at_height(&mut storage, 99).is_none());
+    assert_eq!(
+        get_highest_block(&mut harness, &mut storage).as_ref(),
+        Some(&*block_33)
+    );
+    assert_eq!(
+        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        Some(block_33.header())
+    );
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert_eq!(
+        get_block_at_height(&mut storage, 14).as_ref(),
+        Some(&*block_14)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 14).as_ref(),
+        Some(block_14.header())
+    );
+    assert_eq!(
+        get_block_at_height(&mut storage, 33).as_ref(),
+        Some(&*block_33)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 33).as_ref(),
+        Some(block_33.header())
+    );
+    assert!(get_block_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
-            // Inserting block with height 14, no change in highest.
-            let was_new = put_block(&mut harness, &mut storage, block_14.clone());
-            assert!(was_new);
+    // Inserting block with height 99, changes highest.
+    let was_new = put_block(&mut harness, &mut storage, block_99.clone());
+    assert!(was_new);
 
-            assert_eq!(
-                get_highest_block(&mut harness, &mut storage).as_ref(),
-                Some(&*block_33)
-            );
-            assert_eq!(
-                get_highest_block_header(&mut harness, &mut storage).as_ref(),
-                Some(block_33.header())
-            );
-            assert!(get_block_at_height(&mut storage, 0).is_none());
-            assert!(get_block_header_at_height(&mut storage, 0).is_none());
-            assert_eq!(
-                get_block_at_height(&mut storage, 14).as_ref(),
-                Some(&*block_14)
-            );
-            assert_eq!(
-                get_block_header_at_height(&mut storage, 14).as_ref(),
-                Some(block_14.header())
-            );
-            assert_eq!(
-                get_block_at_height(&mut storage, 33).as_ref(),
-                Some(&*block_33)
-            );
-            assert_eq!(
-                get_block_header_at_height(&mut storage, 33).as_ref(),
-                Some(block_33.header())
-            );
-            assert!(get_block_at_height(&mut storage, 99).is_none());
-            assert!(get_block_header_at_height(&mut storage, 99).is_none());
-
-            // Inserting block with height 99, changes highest.
-            let was_new = put_block(&mut harness, &mut storage, block_99.clone());
-            assert!(was_new);
-
-            assert_eq!(
-                get_highest_block(&mut harness, &mut storage).as_ref(),
-                Some(&*block_99)
-            );
-            assert_eq!(
-                get_highest_block_header(&mut harness, &mut storage).as_ref(),
-                Some(block_99.header())
-            );
-            assert!(get_block_at_height(&mut storage, 0).is_none());
-            assert!(get_block_header_at_height(&mut storage, 0).is_none());
-            assert_eq!(
-                get_block_at_height(&mut storage, 14).as_ref(),
-                Some(&*block_14)
-            );
-            assert_eq!(
-                get_block_header_at_height(&mut storage, 14).as_ref(),
-                Some(block_14.header())
-            );
-            assert_eq!(
-                get_block_at_height(&mut storage, 33).as_ref(),
-                Some(&*block_33)
-            );
-            assert_eq!(
-                get_block_header_at_height(&mut storage, 33).as_ref(),
-                Some(block_33.header())
-            );
-            assert_eq!(
-                get_block_at_height(&mut storage, 99).as_ref(),
-                Some(&*block_99)
-            );
-            assert_eq!(
-                get_block_header_at_height(&mut storage, 99).as_ref(),
-                Some(block_99.header())
-            );
-        });
-    }
+    assert_eq!(
+        get_highest_block(&mut harness, &mut storage).as_ref(),
+        Some(&*block_99)
+    );
+    assert_eq!(
+        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        Some(block_99.header())
+    );
+    assert!(get_block_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert_eq!(
+        get_block_at_height(&mut storage, 14).as_ref(),
+        Some(&*block_14)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 14).as_ref(),
+        Some(block_14.header())
+    );
+    assert_eq!(
+        get_block_at_height(&mut storage, 33).as_ref(),
+        Some(&*block_33)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 33).as_ref(),
+        Some(block_33.header())
+    );
+    assert_eq!(
+        get_block_at_height(&mut storage, 99).as_ref(),
+        Some(&*block_99)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 99).as_ref(),
+        Some(block_99.header())
+    );
 }
 
 #[test]
 #[should_panic(expected = "duplicate entries")]
 fn different_block_at_height_is_fatal() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
     let block_44_a = Box::new(Block::random_with_specifics(
@@ -754,7 +655,6 @@ fn different_block_at_height_is_fatal() {
         44,
         ProtocolVersion::V1_0_0,
         false,
-        verifiable_chunked_hash_activation,
         None,
     ));
     let block_44_b = Box::new(Block::random_with_specifics(
@@ -763,7 +663,6 @@ fn different_block_at_height_is_fatal() {
         44,
         ProtocolVersion::V1_0_0,
         false,
-        verifiable_chunked_hash_activation,
         None,
     ));
 
@@ -780,11 +679,7 @@ fn different_block_at_height_is_fatal() {
 #[test]
 fn get_vec_of_non_existing_deploy_returns_nones() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let deploy_id = DeployHash::random(&mut harness.rng);
     let response = get_naive_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
@@ -798,11 +693,7 @@ fn get_vec_of_non_existing_deploy_returns_nones() {
 #[test]
 fn can_retrieve_store_and_load_deploys() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     // Create a random deploy, store and load it.
     let deploy = Box::new(Deploy::random(&mut harness.rng));
@@ -893,11 +784,7 @@ fn can_retrieve_store_and_load_deploys() {
 #[test]
 fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let total = 1000;
     let batch_size = 25;
@@ -923,11 +810,7 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 #[test]
 fn store_execution_results_for_two_blocks() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let deploy = Deploy::random(&mut harness.rng);
 
@@ -986,11 +869,7 @@ fn store_execution_results_for_two_blocks() {
 #[test]
 fn store_random_execution_results() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     // We store results for two different blocks. Each block will have five deploys executed in it,
     // with two of these deploys being shared by both blocks, while the remaining three are unique
@@ -1101,11 +980,7 @@ fn store_random_execution_results() {
 #[test]
 fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let deploy_hash = DeployHash::random(&mut harness.rng);
@@ -1125,11 +1000,7 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
 #[test]
 fn store_identical_execution_results() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let deploy_hash = DeployHash::random(&mut harness.rng);
@@ -1153,11 +1024,7 @@ struct StateData {
 #[test]
 fn test_legacy_interface() {
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let deploy = Box::new(Deploy::random(&mut harness.rng));
     let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
@@ -1174,84 +1041,61 @@ fn test_legacy_interface() {
         .is_none())
 }
 
-/// Creates a random block with a specific block height.
-fn random_block_at_height(
-    rng: &mut TestRng,
-    height: u64,
-    block_generator: fn(&mut TestRng) -> (Block, EraId),
-) -> (Box<Block>, EraId) {
-    let (mut block, verifiable_chunked_hash_activation) = (block_generator)(rng);
-    block.set_height(height, verifiable_chunked_hash_activation);
-    (Box::new(block), verifiable_chunked_hash_activation)
-}
-
 #[test]
 fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
-    let block_generators: BlockGenerators = vec![Block::random_v1, Block::random_v2];
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
 
-    for block_generator in block_generators {
-        thread::spawn(move || {
-            let mut harness = ComponentHarness::default();
+    let mut block = Block::random(&mut harness.rng);
+    let block_height = block.height();
 
-            let (mut block, verifiable_chunked_hash_activation) =
-                random_block_at_height(&mut harness.rng, 42, block_generator);
+    // Create some sample data.
+    let deploy = Deploy::random(&mut harness.rng);
+    let execution_result: ExecutionResult = harness.rng.gen();
+    put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+    put_block(
+        &mut harness,
+        &mut storage,
+        Box::new(block.disable_switch_block().clone()),
+    );
+    let mut execution_results = HashMap::new();
+    execution_results.insert(*deploy.id(), execution_result.clone());
+    put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
+    assert_eq!(
+        get_block_at_height(&mut storage, block_height).expect("block not indexed properly"),
+        block
+    );
 
-            let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    // After storing everything, destroy the harness and component, then rebuild using the
+    // same directory as backing.
+    let (on_disk, rng) = harness.into_parts();
+    let mut harness = ComponentHarness::builder()
+        .on_disk(on_disk)
+        .rng(rng)
+        .build();
+    let mut storage = storage_fixture(&harness);
 
-            // Create some sample data.
-            let deploy = Deploy::random(&mut harness.rng);
-            let execution_result: ExecutionResult = harness.rng.gen();
-            put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
-            put_block(
-                &mut harness,
-                &mut storage,
-                Box::new(
-                    block
-                        .disable_switch_block(verifiable_chunked_hash_activation)
-                        .clone(),
-                ),
-            );
-            let mut execution_results = HashMap::new();
-            execution_results.insert(*deploy.id(), execution_result.clone());
-            put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
-            assert_eq!(
-                get_block_at_height(&mut storage, 42).expect("block not indexed properly"),
-                *block
-            );
+    let actual_block = get_block(&mut harness, &mut storage, *block.hash())
+        .expect("missing block we stored earlier");
+    assert_eq!(actual_block, block);
+    let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
+    assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
-            // After storing everything, destroy the harness and component, then rebuild using the
-            // same directory as backing.
-            let (on_disk, rng) = harness.into_parts();
-            let mut harness = ComponentHarness::builder()
-                .on_disk(on_disk)
-                .rng(rng)
-                .build();
-            let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let (_, deploy_metadata_ext) =
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+            .expect("missing deploy we stored earlier");
 
-            let actual_block = get_block(&mut harness, &mut storage, *block.hash())
-                .expect("missing block we stored earlier");
-            assert_eq!(actual_block, *block);
-            let actual_deploys =
-                get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
-            assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
+    let execution_results = match deploy_metadata_ext {
+        DeployMetadataExt::Metadata(metadata) => metadata.execution_results,
+        _ => panic!("Unexpected missing metadata."),
+    };
+    assert_eq!(execution_results.len(), 1);
+    assert_eq!(execution_results[block.hash()], execution_result);
 
-            let (_, deploy_metadata_ext) =
-                get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
-                    .expect("missing deploy we stored earlier");
-
-            let execution_results = match deploy_metadata_ext {
-                DeployMetadataExt::Metadata(metadata) => metadata.execution_results,
-                _ => panic!("Unexpected missing metadata."),
-            };
-            assert_eq!(execution_results.len(), 1);
-            assert_eq!(execution_results[block.hash()], execution_result);
-
-            assert_eq!(
-                get_block_at_height(&mut storage, 42).expect("block index was not restored"),
-                *block
-            );
-        });
-    }
+    assert_eq!(
+        get_block_at_height(&mut storage, block_height).expect("block index was not restored"),
+        block
+    );
 }
 
 #[test]
@@ -1259,11 +1103,7 @@ fn should_hard_reset() {
     let blocks_count = 8_usize;
     let blocks_per_era = 3;
     let mut harness = ComponentHarness::default();
-
-    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-    let verifiable_chunked_hash_activation = EraId::from(harness.rng.gen_range(0..=10));
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let random_deploys: Vec<_> = iter::repeat_with(|| Deploy::random(&mut harness.rng))
         .take(blocks_count)
@@ -1279,7 +1119,6 @@ fn should_hard_reset() {
                 height as u64,
                 ProtocolVersion::V1_0_0,
                 is_switch,
-                verifiable_chunked_hash_activation,
                 iter::once(random_deploys.get(height).expect("should_have_deploy")),
             )
         })
@@ -1333,11 +1172,7 @@ fn should_hard_reset() {
     let mut check = |reset_era: usize| {
         // Initialize a new storage with a hard reset to the given era, deleting blocks from that
         // era onwards.
-        let mut storage = storage_fixture_with_hard_reset(
-            &harness,
-            EraId::from(reset_era as u64),
-            verifiable_chunked_hash_activation,
-        );
+        let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(reset_era as u64));
 
         // Check highest block is the last from the previous era, or `None` if resetting to era 0.
         let highest_block = get_highest_block(&mut harness, &mut storage);
@@ -1400,7 +1235,6 @@ fn should_create_subdir_named_after_network() {
         network_name,
         Ratio::new(1, 3),
         None,
-        EraId::from(0),
     )
     .unwrap();
 
@@ -1498,145 +1332,6 @@ fn should_actually_move_specified_files() {
     assert!(dest_path3.exists());
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct DatabaseEntriesSnapshot {
-    block_body_keys: HashSet<Digest>,
-    deploy_hashes_keys: HashSet<Digest>,
-    transfer_hashes_keys: HashSet<Digest>,
-    proposer_keys: HashSet<Digest>,
-}
-
-impl DatabaseEntriesSnapshot {
-    fn from_storage(storage: &Storage) -> DatabaseEntriesSnapshot {
-        let txn = storage.env.begin_ro_txn().unwrap();
-
-        let mut cursor = txn.open_ro_cursor(storage.block_body_v2_db).unwrap();
-        let block_body_keys = cursor
-            .iter()
-            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
-            .collect();
-        drop(cursor); // borrow checker complains without this
-
-        let mut cursor = txn.open_ro_cursor(storage.deploy_hashes_db).unwrap();
-        let deploy_hashes_keys = cursor
-            .iter()
-            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
-            .collect();
-        drop(cursor); // borrow checker complains without this
-
-        let mut cursor = txn.open_ro_cursor(storage.transfer_hashes_db).unwrap();
-        let transfer_hashes_keys = cursor
-            .iter()
-            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
-            .collect();
-        drop(cursor); // borrow checker complains without this
-
-        let mut cursor = txn.open_ro_cursor(storage.proposer_db).unwrap();
-        let proposer_keys = cursor
-            .iter()
-            .map(|(raw_key, _)| Digest::try_from(raw_key).unwrap())
-            .collect();
-        drop(cursor); // borrow checker complains without this
-
-        txn.commit().unwrap();
-
-        DatabaseEntriesSnapshot {
-            block_body_keys,
-            deploy_hashes_keys,
-            transfer_hashes_keys,
-            proposer_keys,
-        }
-    }
-}
-
-#[test]
-fn should_garbage_collect() {
-    let blocks_count = 9_usize;
-    let blocks_per_era = 3;
-
-    // Ensure blocks are created with the Merkle hashing scheme
-    let verifiable_chunked_hash_activation = EraId::from(0);
-
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-
-    // Create and store 9 blocks, 0-2 in era 0, 3-5 in era 1, and 6-8 in era 2.
-    let blocks: Vec<Block> = (0..blocks_count)
-        .map(|height| {
-            let is_switch = height % blocks_per_era == blocks_per_era - 1;
-
-            Block::random_with_specifics(
-                &mut harness.rng,
-                EraId::from((height / blocks_per_era) as u64),
-                height as u64,
-                ProtocolVersion::from_parts(1, 4, 0),
-                is_switch,
-                verifiable_chunked_hash_activation,
-                None,
-            )
-        })
-        .collect();
-
-    let mut snapshots = vec![];
-
-    for block in &blocks {
-        assert!(put_block(
-            &mut harness,
-            &mut storage,
-            Box::new(block.clone())
-        ));
-        // store the storage state after a switch block for later comparison
-        if block.header().is_switch_block() {
-            snapshots.push(DatabaseEntriesSnapshot::from_storage(&storage));
-        }
-    }
-
-    let check = |reset_era: usize| {
-        // Initialize a new storage with a hard reset to the given era, deleting blocks from that
-        // era onwards.
-        let storage = storage_fixture_with_hard_reset_and_protocol_version(
-            &harness,
-            EraId::from(reset_era as u64),
-            ProtocolVersion::from_parts(1, 5, 0), /* this is needed because blocks with later
-                                                   * versions aren't removed on hard resets */
-            verifiable_chunked_hash_activation,
-        );
-
-        // Hard reset should remove headers, but not block bodies
-        let snapshot = DatabaseEntriesSnapshot::from_storage(&storage);
-        assert_eq!(snapshot, snapshots[reset_era]);
-
-        // Run garbage collection
-        let txn = storage.env.begin_ro_txn().unwrap();
-
-        let block_header_map =
-            construct_block_body_to_block_header_reverse_lookup(&txn, &storage.block_header_db)
-                .unwrap();
-        txn.commit().unwrap();
-
-        let mut txn = storage.env.begin_rw_txn().unwrap();
-        garbage_collect_block_body_v2_db(
-            &mut txn,
-            &storage.block_body_v2_db,
-            &storage.deploy_hashes_db,
-            &storage.transfer_hashes_db,
-            &storage.proposer_db,
-            &block_header_map,
-            verifiable_chunked_hash_activation,
-        )
-        .unwrap();
-        txn.commit().unwrap();
-
-        // Garbage collection after removal of blocks from reset_era should revert the state of
-        // block bodies to what it was after reset_era - 1.
-        let snapshot = DatabaseEntriesSnapshot::from_storage(&storage);
-        assert_eq!(snapshot, snapshots[reset_era - 1]);
-    };
-
-    check(2);
-    check(1);
-}
-
 #[test]
 fn can_put_and_get_block() {
     let mut harness = ComponentHarness::default();
@@ -1644,11 +1339,11 @@ fn can_put_and_get_block() {
     // This test is not restricted by the block availability index.
     let only_from_available_block_range = false;
 
-    // Create a random block using the legacy hashing scheme, store and load it.
-    let (block, verifiable_chunked_hash_activation) = Block::random_v1(&mut harness.rng);
+    // Create a random block, store and load it.
+    let block = Block::random(&mut harness.rng);
     let block = Box::new(block);
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     let was_new = put_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
@@ -1677,105 +1372,9 @@ fn can_put_and_get_block() {
 }
 
 #[test]
-fn can_put_and_get_blocks_v2() {
-    let num_blocks = 10;
-    let mut harness = ComponentHarness::default();
-
-    let era_id = harness.rng.gen_range(0..10).into();
-
-    // Ensure the Merkle hashing algorithm is used.
-    let verifiable_chunked_hash_activation = era_id;
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    let protocol_version = ProtocolVersion::from_parts(1, 5, 0);
-
-    let height = harness.rng.gen_range(0..100);
-
-    let mut blocks = vec![];
-
-    for i in 0..num_blocks {
-        let block = Block::random_with_specifics(
-            &mut harness.rng,
-            era_id,
-            height + i,
-            protocol_version,
-            i == num_blocks - 1,
-            verifiable_chunked_hash_activation,
-            None,
-        );
-
-        blocks.push(block.clone());
-
-        assert!(put_block(
-            &mut harness,
-            &mut storage,
-            Box::new(block.clone())
-        ));
-
-        let mut txn = storage.env.begin_ro_txn().unwrap();
-        let block_body_merkle = block.body().merklize();
-
-        for (node_hash, value_hash, proof_of_rest) in
-            block_body_merkle.clone().take_hashes_and_proofs()
-        {
-            assert_eq!(
-                txn.get_value_bytesrepr::<_, (Digest, Digest)>(
-                    storage.block_body_v2_db,
-                    &node_hash
-                )
-                .unwrap()
-                .unwrap(),
-                (value_hash, proof_of_rest)
-            );
-        }
-
-        assert_eq!(
-            txn.get_value_bytesrepr::<_, Vec<DeployHash>>(
-                storage.deploy_hashes_db,
-                block_body_merkle.deploy_hashes.value_hash()
-            )
-            .unwrap()
-            .unwrap(),
-            block.body().deploy_hashes().clone()
-        );
-
-        assert_eq!(
-            txn.get_value_bytesrepr::<_, Vec<DeployHash>>(
-                storage.transfer_hashes_db,
-                block_body_merkle.transfer_hashes.value_hash()
-            )
-            .unwrap()
-            .unwrap(),
-            block.body().transfer_hashes().clone()
-        );
-
-        assert_eq!(
-            txn.get_value_bytesrepr::<_, PublicKey>(
-                storage.proposer_db,
-                block_body_merkle.proposer.value_hash()
-            )
-            .unwrap()
-            .unwrap(),
-            *block.body().proposer()
-        );
-
-        txn.commit().unwrap();
-    }
-
-    for (i, expected_block) in blocks.into_iter().enumerate() {
-        assert_eq!(
-            get_block_at_height(&mut storage, height + i as u64),
-            Some(expected_block)
-        );
-    }
-}
-
-#[test]
 fn should_restrict_returned_blocks() {
     let mut harness = ComponentHarness::default();
-    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
-
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let mut storage = storage_fixture(&harness);
 
     // Create the following disjoint sequences: 1-2 4-5
     [1, 2, 4, 5].iter().for_each(|height| {
@@ -1785,7 +1384,6 @@ fn should_restrict_returned_blocks() {
             *height,
             ProtocolVersion::from_parts(1, 5, 0),
             false,
-            verifiable_chunked_hash_activation,
             None,
         );
         storage.write_block(&block).unwrap();
@@ -1844,9 +1442,9 @@ fn should_restrict_returned_blocks() {
 #[test]
 fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness, EraId::from(u64::MAX));
+    let mut storage = storage_fixture(&harness);
 
-    let (block, _) = Block::random_v1(&mut harness.rng);
+    let block = Block::random(&mut harness.rng);
     let expected_header = block.header().clone();
     let height = block.height();
 

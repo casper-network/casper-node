@@ -24,8 +24,7 @@ pub use available_block_range::AvailableBlockRange;
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockAndDeploys, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
-    FinalizedBlock, HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart,
-    MerkleLinkedListNode,
+    FinalizedBlock,
 };
 pub(crate) use block::{
     BlockHashAndHeight, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,

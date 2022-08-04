@@ -86,21 +86,13 @@ reactor!(Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .last_emergency_restart,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation,
+                .last_emergency_restart
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(
             "deploy",
             cfg.fetcher_config,
-            registry,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation);
+            registry);
     }
 
     events: {
