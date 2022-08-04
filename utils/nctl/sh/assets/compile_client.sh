@@ -30,7 +30,8 @@ make build-contract-rs/nctl-dictionary
 popd || exit
 
 # Build client utility.
-pushd "$NCTL_CASPER_CLIENT_HOME" || exit
+pushd "$NCTL_CASPER_CLIENT_HOME" || \
+    { echo "Could not find the casper-client-rs repo - have you cloned it into your working directory?"; exit; }
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
     cargo build

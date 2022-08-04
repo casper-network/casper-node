@@ -54,6 +54,8 @@ pub struct CoreConfig {
     pub(crate) auction_delay: u64,
     /// The period after genesis during which a genesis validator's bid is locked.
     pub(crate) locked_funds_period: String,
+    /// The period in which genesis validator's bid is released over time
+    pub(crate) vesting_schedule_period: String,
     /// The delay in number of eras for paying out the the unbonding amount.
     pub(crate) unbonding_delay: u64,
     /// Round seigniorage rate represented as a fractional number.
@@ -106,7 +108,7 @@ impl ChainspecConfig {
         let chainspec_config: ChainspecConfig =
             toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
         let locked_funds_period_millis =
-            humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
+            humantime::parse_duration(&chainspec_config.core_config.locked_funds_period)
                 .map_err(|_| Error::FailedToCreateGenesisRequest)?
                 .as_millis() as u64;
         let exec_config = ExecConfig::new(
@@ -146,7 +148,7 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
 
     fn try_from(chainspec_config: ChainspecConfig) -> Result<Self, Self::Error> {
         let locked_funds_period_millis =
-            humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
+            humantime::parse_duration(&chainspec_config.core_config.locked_funds_period)
                 .map_err(|_| Error::FailedToCreateExecConfig)?
                 .as_millis() as u64;
         Ok(ExecConfig::new(

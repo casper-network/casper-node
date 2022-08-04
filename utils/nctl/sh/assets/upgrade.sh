@@ -165,7 +165,6 @@ function _generate_global_state_update_balances() {
     local SRC_ACC=${4}
     local TARGET_ACC=${5}
     local AMOUNT=${6}
-    local PROPOSER=${7}
 
     local PATH_TO_NET=$(get_path_to_net)
 
@@ -180,7 +179,7 @@ function _generate_global_state_update_balances() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash.
     local PARAMS
-    PARAMS="balances -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT} -p ${PROPOSER}"
+    PARAMS="balances -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT}"
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
