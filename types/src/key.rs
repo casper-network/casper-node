@@ -706,7 +706,7 @@ impl ToBytes for Key {
             }
             Key::ChainspecRegistry => result.append(&mut CHAINSPEC_REGISTRY_KEY_BYTES.to_bytes()?),
             Key::ExecutionResultsRootHash { block_height } => {
-                result.append(&mut (block_height.to_le_bytes().iter().copied().collect()))
+                result.append(&mut block_height.to_le_bytes().to_vec())
             }
         }
         Ok(result)
@@ -988,7 +988,7 @@ mod serde_helpers {
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
                 Key::ExecutionResultsRootHash { block_height } => {
-                    BinarySerHelper::ExecutionResultsRootHash(&block_height)
+                    BinarySerHelper::ExecutionResultsRootHash(block_height)
                 }
             }
         }
