@@ -141,7 +141,6 @@ pub fn create_storage(
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
         Ratio::new(1, 3),
-        None,
         verifiable_chunked_hash_activation,
     )?)
 }
