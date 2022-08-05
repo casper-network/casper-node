@@ -46,7 +46,7 @@ const DICTIONARY_PREFIX: &str = "dictionary-";
 const UNBOND_PREFIX: &str = "unbond-";
 const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
-const BLOCK_EFFECTS_ROOT_HASH_PREFIX: &str = "execution-results-root-hash-";
+const BLOCK_EFFECTS_ROOT_HASH_PREFIX: &str = "block-effects-root-hash-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
