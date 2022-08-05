@@ -157,6 +157,16 @@ where
             },
         };
 
+        if trusted_block_header.protocol_version() != config.protocol_version()
+            && !config.is_last_block_before_activation(&trusted_block_header)
+        {
+            return Err(Error::TrustedHeaderTooEarly {
+                trusted_header: Box::new(trusted_block_header),
+                protocol_version: config.protocol_version(),
+                activation_point: config.chainspec().protocol_config.activation_point.era_id(),
+            });
+        }
+
         ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
 
         Ok(Some(ctx))

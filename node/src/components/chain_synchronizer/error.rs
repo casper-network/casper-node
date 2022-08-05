@@ -31,6 +31,19 @@ pub(crate) enum Error {
         engine_state::Error,
     ),
 
+    #[error(
+        "trusted header is from before the last upgrade and isn't the last header before \
+         activation. \
+         trusted header: {trusted_header:?}, \
+         protocol_version: {protocol_version:?}, \
+         activation_point: {activation_point:?}"
+    )]
+    TrustedHeaderTooEarly {
+        trusted_header: Box<BlockHeader>,
+        protocol_version: ProtocolVersion,
+        activation_point: EraId,
+    },
+
     #[error("cannot get switch block for era: {era_id}")]
     NoSwitchBlockForEra { era_id: EraId },
 
