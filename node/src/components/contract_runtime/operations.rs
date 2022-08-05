@@ -106,7 +106,7 @@ pub fn execute_finalized_block(
     let block_height = finalized_block.height();
 
     let execution_results_root_hash_effect = iter::once((
-        Key::ExecutionResultsRootHash { block_height },
+        Key::BlockEffectsRootHash { block_height },
         Transform::Write(
             CLValue::from_t(execution_results_root_hash)
                 .map_err(BlockCreationError::CLValue)?
@@ -170,7 +170,6 @@ pub fn execute_finalized_block(
     engine_state.flush_environment()?;
 
     // Update the metric.
-    let block_height = finalized_block.height();
     if let Some(metrics) = metrics.as_ref() {
         metrics.chain_height.set(block_height as i64);
     }

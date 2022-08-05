@@ -330,7 +330,7 @@ where
                 error!("should not remove the chainspec registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
-            Key::ExecutionResultsRootHash { block_height: _ } => {
+            Key::BlockEffectsRootHash { block_height: _ } => {
                 error!("should not remove the execution results root hash key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
@@ -790,7 +790,7 @@ where
             Key::Dictionary(_) => true,
             Key::SystemContractRegistry => true,
             Key::ChainspecRegistry => true,
-            Key::ExecutionResultsRootHash { block_height: _ } => true,
+            Key::BlockEffectsRootHash { block_height: _ } => true,
         }
     }
 
@@ -813,7 +813,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::ChainspecRegistry => false,
-            Key::ExecutionResultsRootHash { block_height: _ } => false,
+            Key::BlockEffectsRootHash { block_height: _ } => false,
         }
     }
 
@@ -836,7 +836,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::ChainspecRegistry => false,
-            Key::ExecutionResultsRootHash { block_height: _ } => false,
+            Key::BlockEffectsRootHash { block_height: _ } => false,
         }
     }
 
