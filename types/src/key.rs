@@ -235,7 +235,7 @@ impl Display for FromStrError {
             FromStrError::BlockEffectsRootHash(error) => {
                 write!(
                     f,
-                    "execution-results-root-hash-key from string error: {}",
+                    "block-effects-root-hash-key from string error: {}",
                     error
                 )
             }
@@ -1359,7 +1359,7 @@ mod tests {
         assert!(Key::from_formatted_str(BLOCK_EFFECTS_ROOT_HASH_PREFIX)
             .unwrap_err()
             .to_string()
-            .starts_with("execution-results-root-hash-key from string error: "));
+            .starts_with("block-effects-root-hash-key from string error: "));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
@@ -1408,7 +1408,7 @@ mod tests {
             ),
             format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
             format!(
-                r#"{{"BlockEffectsRootHash":"execution-results-root-hash-{}"}}"#,
+                r#"{{"BlockEffectsRootHash":"block-effects-root-hash-{}"}}"#,
                 BLOCK_HEIGHT
             ),
         ];
