@@ -1891,14 +1891,6 @@ impl Storage {
         txn: &mut Tx,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        if block_header.is_first_after_emergency_restart() {
-            warn!(
-                ?block_header,
-                "finality signatures for a block right after an emergency restart requested"
-            );
-            return Ok(None);
-        }
-
         let block_signatures = match self.get_finality_signatures(
             txn,
             &block_header.hash(self.verifiable_chunked_hash_activation),

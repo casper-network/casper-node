@@ -1978,15 +1978,10 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
-        // If there was an emergency restart at `era_id`, the switch block at this era will be the
-        // immediate switch block created after the emergency restart. Check for such a case, as we
-        // can't return the correct validator set then.
-        let maybe_block_header = self
-            .get_switch_block_header_at_era_id_from_storage(era_id)
-            .await;
-        if maybe_block_header.map_or(false, |header| header.is_first_after_emergency_restart()) {
-            return None;
-        }
+        // TODO (#3233): If there was an upgrade changing the validator set at `era_id`, the switch
+        // block at this era will be the immediate switch block created after the upgrade. We should
+        // check for such a case and return the validators from the switch block itself then.
+
         // Era 0 contains no blocks other than the genesis immediate switch block which can be used
         // to get the validators for era 0.  For any other era `n`, we need the switch block from
         // era `n-1` to get the validators for `n`.

@@ -1866,17 +1866,7 @@ async fn finalize_finality_signature_fetch<REv>(
 /// Returns the EraId whose switch block should be used to obtain validator weights.
 fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
     // TODO: This function needs to handle upgrades with changes to the validator set.
-    if *era_id != EraId::from(0) {
-        // For eras > 0 we need to use the validator set from the previous era.
-        // TODO: check that it wasn't an upgrade that changed the validator set, in which case we
-        // should be using the validators from the same era.
-        *era_id - 1
-    } else {
-        // If we're in Era 0 there's no previous era, but since validators never change during
-        // that era we can safely use the Era 0's switch block.
-        // TODO: also return the same era if the validators set has been changed during an upgrade.
-        *era_id
-    }
+    era_id.saturating_sub(1)
 }
 
 /// Runs the initial chain synchronization task ("fast sync").
