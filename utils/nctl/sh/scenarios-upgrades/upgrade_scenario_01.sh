@@ -61,9 +61,7 @@ function _step_01()
 
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
-    source "$NCTL/sh/assets/setup_from_stage.sh" \
-        stage="$STAGE_ID" \
-        chainspec_path="$NCTL/overrides/upgrade_scenario_1.pre.chainspec.toml.in"
+    source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -107,8 +105,7 @@ function _step_05()
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" \
         stage="$STAGE_ID" \
-        verbose=false \
-        chainspec_path="$NCTL/overrides/upgrade_scenario_1.post.chainspec.toml.in"
+        verbose=false
 
     log "... awaiting 2 eras + 1 block"
     nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'

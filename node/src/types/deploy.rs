@@ -36,8 +36,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff,
-    Timestamp, U512,
+    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp,
+    U512,
 };
 
 use super::{BlockHash, BlockHashAndHeight, Item, Tag};
@@ -684,10 +684,7 @@ impl Item for FinalizedApprovalsWithId {
     const TAG: Tag = Tag::FinalizedApprovals;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self) -> Result<(), Self::ValidationError> {
         for approval in &self.approvals.0 {
             crypto::verify(&self.id, approval.signature(), approval.signer()).map_err(|err| {
                 FinalizedApprovalsVerificationError {
@@ -699,7 +696,7 @@ impl Item for FinalizedApprovalsWithId {
         Ok(())
     }
 
-    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+    fn id(&self) -> Self::Id {
         self.id
     }
 }
@@ -1611,15 +1608,12 @@ impl Item for Deploy {
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!
         validate_deploy(self)
     }
 
-    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+    fn id(&self) -> Self::Id {
         *self.id()
     }
 }

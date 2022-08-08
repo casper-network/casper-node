@@ -83,12 +83,6 @@ impl Config {
         self.chainspec.protocol_config.last_emergency_restart
     }
 
-    pub(super) fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.chainspec
-            .protocol_config
-            .verifiable_chunked_hash_activation
-    }
-
     pub(super) fn era_duration(&self) -> TimeDiff {
         self.chainspec.core_config.era_duration
     }

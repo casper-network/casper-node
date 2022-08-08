@@ -327,8 +327,7 @@ where
                 let initial_pre_state = ExecutionPreState::new(
                     switch_block_header_before_upgrade.height() + 1,
                     post_state_hash,
-                    switch_block_header_before_upgrade
-                        .hash(self.config.verifiable_chunked_hash_activation()),
+                    switch_block_header_before_upgrade.hash(),
                     switch_block_header_before_upgrade.accumulated_seed(),
                 );
                 let finalized_block = FinalizedBlock::new(

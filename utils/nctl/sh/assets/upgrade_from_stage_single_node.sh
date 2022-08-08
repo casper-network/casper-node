@@ -109,7 +109,7 @@ function _setup_asset_chainspec()
     local COUNT_NODES
 
     # Shouldnt matter, maybe, idk ?, blame Tom if this causes an issue :)
-    COUNT_NODES='100' 
+    COUNT_NODES='100'
 
     # Set file.
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
@@ -299,7 +299,7 @@ function _get_protocol_version_of_next_upgrade()
     local PATH_TO_NX_BIN
     local SEMVAR_CURRENT
     local SEMVAR_NEXT
-    
+
     PATH_TO_NX_BIN="$(get_path_to_net)/nodes/node-$NODE_ID/bin"
 
     # Set semvar of current version.
@@ -337,8 +337,6 @@ function _main()
     local CONFIG_PATH=${6}
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
-
-    #Set `verifiable_chunked_hash_activation` equal to upgrade activation point
 
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     PROTOCOL_VERSION=$(_get_protocol_version_of_next_upgrade "$PATH_TO_STAGE" "$NODE_ID")

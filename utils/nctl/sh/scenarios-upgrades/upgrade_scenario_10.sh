@@ -89,8 +89,7 @@ function _step_04()
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" \
         stage="$STAGE_ID" \
-        verbose=false \
-        chainspec_path="$NCTL/overrides/upgrade_scenario_10.post.chainspec.toml.in"
+        verbose=false
 
     log "... awaiting 2 eras + 1 block"
     nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
