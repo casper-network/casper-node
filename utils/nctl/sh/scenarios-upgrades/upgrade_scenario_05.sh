@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/Usr/bin/env bash
 # ----------------------------------------------------------------
 # Synopsis.
 # ----------------------------------------------------------------
@@ -235,7 +235,7 @@ function _step_07()
 function _step_08()
 {
     log_step_upgrades 8 "awaiting 10 eras"
-    await_n_eras '10' 'true' '5.0' '2'
+    nctl-await-n-eras offset='10' sleep_interval='5.0' timeout='600' node_id='2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.

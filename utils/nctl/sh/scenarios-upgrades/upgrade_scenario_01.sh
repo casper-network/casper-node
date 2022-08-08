@@ -92,7 +92,7 @@ function _step_04()
 {
     log_step_upgrades 4 "awaiting next era"
 
-    await_n_eras 1 'true' '2.0'
+    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='180'
 }
 
 # Step 05: Upgrade network from stage.
@@ -184,7 +184,7 @@ function _step_07()
     done
 
     log "... awaiting auction bid acceptance (3 eras + 1 block)"
-    await_n_eras 3 'true'
+    nctl-await-n-eras offset='3' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 
     log "... starting nodes"
@@ -210,7 +210,7 @@ function _step_07()
         fi
     done
 
-    await_n_eras 1 'true'
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 }
 
