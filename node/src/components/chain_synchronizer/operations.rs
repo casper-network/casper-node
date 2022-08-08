@@ -32,7 +32,7 @@ use crate::{
             Config, Metrics, ProgressHolder,
         },
         consensus::{self, error::FinalitySignatureError},
-        contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
+        contract_runtime::{BlockAndExecutionEffects, EraValidatorsRequest, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{
@@ -1643,7 +1643,7 @@ impl BlockSignaturesCollector {
         ctx: &ChainSyncContext<'_, REv>,
     ) -> Result<HandleSignaturesResult, Error>
     where
-        REv: From<StorageRequest> + From<BlocklistAnnouncement>,
+        REv: From<StorageRequest> + From<BlocklistAnnouncement> + From<ContractRuntimeRequest>,
     {
         if signatures.proofs.is_empty() {
             return Ok(HandleSignaturesResult::ContinueFetching);
@@ -1691,7 +1691,7 @@ async fn era_validator_weights_for_block<'a, REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error>
 where
-    REv: From<StorageRequest>,
+    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
 {
     let era_for_validators_retrieval = get_era_id_for_validators_retrieval(&block_header.era_id());
     let switch_block_of_previous_era = ctx
@@ -1701,6 +1701,51 @@ where
         .ok_or(Error::NoSwitchBlockForEra {
             era_id: era_for_validators_retrieval,
         })?;
+    if block_header.protocol_version() != switch_block_of_previous_era.protocol_version() {
+        if let Some(next_validator_weights) = block_header.next_era_validator_weights() {
+            let request = EraValidatorsRequest::new(
+                *switch_block_of_previous_era.state_root_hash(),
+                switch_block_of_previous_era.protocol_version(),
+            );
+            let validator_map = ctx
+                .effect_builder
+                .get_era_validators_from_contract_runtime(request)
+                .await
+                .map_err(Error::GetEraValidators)?;
+            let next_era_id = block_header.next_block_era_id();
+            if let Some(next_validator_weights_according_to_previous_block) =
+                validator_map.get(&next_era_id)
+            {
+                if next_validator_weights_according_to_previous_block != next_validator_weights {
+                    // The validator weights that had been assigned to next_era_id before the
+                    // upgrade don't match the ones in block_header. So the validators were changed
+                    // as part of this upgrade. That usually means that the ones before the upgrade
+                    // cannot be trusted anymore, and we expect the new validators to sign this
+                    // block. To really know this block is correct we _must_ have a trusted hash of
+                    // the block itself or one of its descendants.
+                    if ctx.trusted_block_header().height() < block_header.height() {
+                        return Err(Error::TryingToJoinBeforeLastValidatorChangeUpgrade {
+                            upgrade_block_header: Box::new(block_header.clone()),
+                            trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
+                        });
+                    }
+                    info!(
+                        ?switch_block_of_previous_era,
+                        ?next_validator_weights_according_to_previous_block,
+                        first_block_after_the_upgrade = ?block_header,
+                        next_validator_weights_after_the_upgrade = ?next_validator_weights,
+                        "validator map changed in upgrade"
+                    );
+                    return Ok((block_header.era_id(), next_validator_weights.clone()));
+                }
+            } else {
+                return Err(Error::MissingValidatorMapEntry {
+                    block_header: Box::new(switch_block_of_previous_era),
+                    missing_era_id: block_header.next_block_era_id(),
+                });
+            }
+        }
+    }
     let validator_weights = switch_block_of_previous_era
         .next_era_validator_weights()
         .ok_or(Error::MissingNextEraValidators {
@@ -1747,7 +1792,8 @@ where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
         + From<FetcherRequest<BlockSignatures>>
-        + From<BlocklistAnnouncement>,
+        + From<BlocklistAnnouncement>
+        + From<ContractRuntimeRequest>,
 {
     let start = Timestamp::now();
     let peer_list = get_filtered_fully_connected_peers(ctx).await;

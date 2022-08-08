@@ -110,6 +110,25 @@ pub(crate) enum Error {
         GetEraValidatorsError,
     ),
 
+    /// Expected entry in validator map not found.
+    #[error("stored block has no validator map entry for {missing_era_id}: {block_header:?}")]
+    MissingValidatorMapEntry {
+        block_header: Box<BlockHeader>,
+        missing_era_id: EraId,
+    },
+
+    /// Trusted block is earlier than a validator change upgrade.
+    #[error(
+        "joining with trusted hash before an upgrade that changed the validators - find a more \
+         recent hash from after the upgrade. \
+         first block after the upgrade: {upgrade_block_header:?}, \
+         trusted block header: {trusted_block_header:?}"
+    )]
+    TryingToJoinBeforeLastValidatorChangeUpgrade {
+        upgrade_block_header: Box<BlockHeader>,
+        trusted_block_header: Box<BlockHeader>,
+    },
+
     #[error("stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
     UnexpectedParentHash {
         parent: Box<BlockHeader>,
