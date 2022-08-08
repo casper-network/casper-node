@@ -16,3 +16,19 @@ lmdb = "0.8"
 rand = "0.8"
 serde = "1"
 toml = "0.5"
+
+[package.metadata.deb]
+revision = "0"
+depends = "$auto"
+assets = [
+    # binary
+    ["../../target/release/global-state-update-gen", "/usr/bin/", "755"],
+]
+
+[package.metadata.deb.variants.bionic]
+name = "casper-client"
+revision = "0+bionic"
+
+[package.metadata.deb.variants.focal]
+name = "casper-client"
+revision = "0+focal"
