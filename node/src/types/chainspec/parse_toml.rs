@@ -11,7 +11,7 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-use casper_types::{bytesrepr::Bytes, file_utils, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::Bytes, file_utils, ProtocolVersion};
 
 use super::{
     accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
@@ -34,7 +34,6 @@ struct TomlProtocol {
     version: ProtocolVersion,
     hard_reset: bool,
     activation_point: ActivationPoint,
-    last_emergency_restart: Option<EraId>,
 }
 
 /// A chainspec configuration as laid out in the TOML-encoded configuration file.
@@ -57,7 +56,6 @@ impl From<&Chainspec> for TomlChainspec {
             version: chainspec.protocol_config.version,
             hard_reset: chainspec.protocol_config.hard_reset,
             activation_point: chainspec.protocol_config.activation_point,
-            last_emergency_restart: chainspec.protocol_config.last_emergency_restart,
         };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
@@ -114,7 +112,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         hard_reset: toml_chainspec.protocol.hard_reset,
         activation_point: toml_chainspec.protocol.activation_point,
         global_state_update,
-        last_emergency_restart: toml_chainspec.protocol.last_emergency_restart,
     };
 
     let chainspec = Chainspec {

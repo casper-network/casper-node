@@ -83,10 +83,6 @@ reactor!(Reactor {
                 .chainspec()
                 .highway_config
                 .finality_threshold_fraction,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .last_emergency_restart
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(

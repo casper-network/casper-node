@@ -64,7 +64,6 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
         Ratio::new(1, 3),
-        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -87,7 +86,6 @@ fn storage_fixture_with_hard_reset(
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
         Ratio::new(1, 3),
-        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -1234,7 +1232,6 @@ fn should_create_subdir_named_after_network() {
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
         Ratio::new(1, 3),
-        None,
     )
     .unwrap();
 

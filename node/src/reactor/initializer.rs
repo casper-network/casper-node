@@ -205,10 +205,6 @@ impl Reactor {
                 .chainspec()
                 .highway_config
                 .finality_threshold_fraction,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .last_emergency_restart,
         )?;
 
         let contract_runtime = ContractRuntime::new(

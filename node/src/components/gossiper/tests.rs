@@ -235,7 +235,6 @@ impl reactor::Reactor for Reactor {
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
             Ratio::new(1, 3),
-            None,
         )
         .unwrap();
 
