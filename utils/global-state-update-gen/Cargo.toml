@@ -26,9 +26,9 @@ assets = [
 ]
 
 [package.metadata.deb.variants.bionic]
-name = "casper-client"
+name = "global-state-update-gen"
 revision = "0+bionic"
 
 [package.metadata.deb.variants.focal]
-name = "casper-client"
+name = "global-state-update-gen"
 revision = "0+focal"
