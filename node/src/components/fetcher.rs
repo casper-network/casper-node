@@ -467,14 +467,20 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockWithMetadata>,
     ) -> Effects<Event<BlockWithMetadata>> {
-        effect_builder
-            .get_block_and_sufficient_finality_signatures_by_height_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
+        async move {
+            let block_with_metadata = effect_builder
+                .get_block_with_metadata_from_storage_by_height(id, false)
+                .await?;
+            // TODO: Check if sufficient, otherwise return None. Take validator change updates into
+            // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
+            Some(block_with_metadata)
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
     }
 }
 
@@ -502,14 +508,27 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockHeaderWithMetadata>,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
-        effect_builder
-            .get_block_header_and_sufficient_finality_signatures_by_height_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
+        async move {
+            // TODO: Only header needed.
+            let BlockWithMetadata {
+                block,
+                finality_signatures,
+            } = effect_builder
+                .get_block_with_metadata_from_storage_by_height(id, false)
+                .await?;
+            // TODO: Check if sufficient, otherwise return None. Take validator change updates into
+            // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
+            Some(BlockHeaderWithMetadata {
+                block_header: block.take_header(),
+                block_signatures: finality_signatures,
             })
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
     }
 }
 
@@ -537,14 +556,24 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         peer: NodeId,
         responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>> {
-        effect_builder
-            .get_sufficient_signatures_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
+        async move {
+            // TODO: Only header needed.
+            let BlockWithMetadata {
+                block,
+                finality_signatures,
+            } = effect_builder
+                .get_block_with_metadata_from_storage(id, false)
+                .await?;
+            // TODO: Check if sufficient, otherwise return None. Take validator change updates into
+            // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
+            Some(finality_signatures)
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
     }
 }
 

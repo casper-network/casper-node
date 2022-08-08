@@ -339,22 +339,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<bool>,
     },
-    /// Retrieve block header with sufficient finality signatures by height.
-    GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-        /// Height of block to get header of.
-        block_height: u64,
-        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
-        /// local storage.
-        responder: Responder<Option<BlockHeaderWithMetadata>>,
-    },
-    /// Retrieves a block header with sufficient finality signatures by height.
-    GetBlockAndSufficientFinalitySignaturesByHeight {
-        /// Height of block to get header of.
-        block_height: u64,
-        /// Responder to call with the result.  Returns `None` if the block header doesn't exist or
-        /// does not have sufficient finality signatures by height.
-        responder: Responder<Option<BlockWithMetadata>>,
-    },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
         /// Hash of block to get transfers of.
@@ -435,15 +419,6 @@ pub(crate) enum StorageRequest {
     },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
-        /// The hash for the request.
-        block_hash: BlockHash,
-        /// Responder to call with the result.
-        responder: Responder<Option<BlockSignatures>>,
-    },
-    /// Gets finality signatures for a block with a given block hash; returns `None` if they
-    /// are less than the fault tolerance threshold or if the block is from before the most recent
-    /// emergency upgrade.
-    GetSufficientBlockSignatures {
         /// The hash for the request.
         block_hash: BlockHash,
         /// Responder to call with the result.
@@ -569,41 +544,14 @@ impl Display for StorageRequest {
                     block_hash
                 )
             }
-            StorageRequest::GetSufficientBlockSignatures { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get sufficient finality signatures for block hash {}",
-                    block_hash
-                )
-            }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
             StorageRequest::GetFinalizedBlocks { ttl, .. } => {
                 write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
             }
-            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get block and metadata for block by height: {}",
-                    block_height
-                )
-            }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)
-            }
-            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get block and sufficient finality signatures by height: {}",
-                    block_height
-                )
             }
             StorageRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range",)

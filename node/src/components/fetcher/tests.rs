@@ -79,10 +79,6 @@ reactor!(Reactor {
             chainspec_loader.hard_reset_to_start_of_era(),
             chainspec_loader.chainspec().protocol_config.version,
             &chainspec_loader.chainspec().network_config.name,
-            chainspec_loader
-                .chainspec()
-                .highway_config
-                .finality_threshold_fraction,
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(

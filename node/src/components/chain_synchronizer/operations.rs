@@ -1693,7 +1693,8 @@ async fn era_validator_weights_for_block<'a, REv>(
 where
     REv: From<StorageRequest> + From<ContractRuntimeRequest>,
 {
-    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(&block_header.era_id());
+    // TODO: Deduplicate this logic; it will also be used in the fetcher.
+    let era_for_validators_retrieval = block_header.era_id().saturating_sub(1);
     let switch_block_of_previous_era = ctx
         .effect_builder
         .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
@@ -1901,12 +1902,6 @@ async fn finalize_finality_signature_fetch<REv>(
             .await;
         trace!(?block_hash, "stored FinalitySignatures");
     }
-}
-
-/// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
-    // TODO: This function needs to handle upgrades with changes to the validator set.
-    era_id.saturating_sub(1)
 }
 
 /// Runs the initial chain synchronization task ("fast sync").
@@ -2499,29 +2494,6 @@ mod tests {
             &config,
             now
         ));
-    }
-
-    #[test]
-    fn gets_correct_era_id_for_validators_retrieval() {
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0))
-        );
-
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1))
-        );
-
-        assert_eq!(
-            EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2))
-        );
-
-        assert_eq!(
-            EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000))
-        );
     }
 
     #[test]

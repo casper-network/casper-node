@@ -55,7 +55,6 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
-use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -72,7 +71,7 @@ use casper_types::{
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
 use crate::{
-    components::{consensus, fetcher::FetchedOrNotFound, Component},
+    components::{fetcher::FetchedOrNotFound, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{MarkBlockCompletedRequest, NetworkRequest, StateStoreRequest},
@@ -185,9 +184,6 @@ pub struct Storage {
     ///
     /// Keyed by serialized item ID, contains the serialized item.
     serialized_item_pool: ObjectPool<Box<[u8]>>,
-    /// The fraction of validators, by weight, that have to sign a block to prove its finality.
-    #[data_size(skip)]
-    finality_threshold_fraction: Ratio<u64>,
 }
 
 /// A storage component event.
@@ -281,7 +277,6 @@ impl Storage {
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
-        finality_threshold_fraction: Ratio<u64>,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -424,7 +419,6 @@ impl Storage {
             completed_blocks: Default::default(),
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
-            finality_threshold_fraction,
         };
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
@@ -607,8 +601,9 @@ impl Storage {
             NetRequest::BlockAndMetadataByHeight(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockWithMetadata>(serialized_id)?;
                 let opt_item = self
-                    .read_block_and_sufficient_finality_signatures_by_height(item_id)
+                    .read_block_and_metadata_by_height(item_id)
                     .map_err(FatalStorageError::from)?;
+                // TODO: At least one signature?
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -635,8 +630,9 @@ impl Storage {
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockHeaderWithMetadata>(serialized_id)?;
                 let opt_item = self
-                    .read_block_header_and_sufficient_finality_signatures_by_height(item_id)
+                    .read_block_header_and_metadata_by_height(item_id)
                     .map_err(FatalStorageError::from)?;
+                // TODO: At least one signature?
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -910,14 +906,6 @@ impl Storage {
                     }))
                     .ignore()
             }
-            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                responder,
-            } => responder
-                .respond(
-                    self.read_block_and_sufficient_finality_signatures_by_height(block_height)?,
-                )
-                .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
                 only_from_available_block_range,
@@ -1011,16 +999,6 @@ impl Storage {
                     .respond(self.get_finality_signatures(&mut txn, &block_hash)?)
                     .ignore()
             }
-            StorageRequest::GetSufficientBlockSignatures {
-                block_hash,
-                responder,
-            } => {
-                let result = self.get_sufficient_finality_signatures_by_hash(
-                    &mut self.env.begin_ro_txn()?,
-                    &block_hash,
-                )?;
-                responder.respond(result).ignore()
-            }
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
@@ -1034,17 +1012,6 @@ impl Storage {
                     &mut txn,
                     block_height,
                     only_from_available_block_range,
-                )?;
-                responder.respond(result).ignore()
-            }
-            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                let result = self.get_block_header_and_sufficient_finality_signatures_by_height(
-                    &mut txn,
-                    block_height,
                 )?;
                 responder.respond(result).ignore()
             }
@@ -1230,33 +1197,65 @@ impl Storage {
         self.get_switch_block_header_by_era_id(&mut txn, switch_block_era_id)
     }
 
-    /// Retrieves a block header by height.
-    /// Returns `None` if they are less than the fault tolerance threshold.
-    pub(crate) fn read_block_header_and_sufficient_finality_signatures_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_header_and_finality_signatures =
-            self.get_block_header_and_sufficient_finality_signatures_by_height(&mut txn, height)?;
-        Ok(maybe_block_header_and_finality_signatures)
-    }
-
-    /// Retrieves a block by height.
-    /// Returns `None` if they are less than the fault tolerance threshold.
-    fn read_block_and_sufficient_finality_signatures_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_and_finality_signatures =
-            self.get_block_and_sufficient_finality_signatures_by_height(&mut txn, height)?;
-        Ok(maybe_block_and_finality_signatures)
-    }
-
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
+    }
+
+    /// Retrieves a block by height, together with all stored finality signatures.
+    pub fn read_block_and_metadata_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let block = if let Some(block) = self.get_block_by_height(&mut txn, height)? {
+            block
+        } else {
+            return Ok(None);
+        };
+        let finality_signatures = if let Some(finality_signatures) =
+            self.get_finality_signatures(&mut txn, block.hash())?
+        {
+            finality_signatures
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(BlockWithMetadata {
+            block,
+            finality_signatures,
+        }))
+    }
+
+    /// Retrieves a block header by height, together with all stored finality signatures.
+    pub fn read_block_header_and_metadata_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let block_header =
+            if let Some(block_header) = self.get_block_header_by_height(&mut txn, height)? {
+                block_header
+            } else {
+                return Ok(None);
+            };
+        let block_signatures = if let Some(block_signatures) = self.get_finality_signatures(
+            &mut txn,
+            &block_header.hash(),
+        )? {
+            block_signatures
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }))
     }
 
     /// Retrieves single block and all of its deploys.
@@ -1290,6 +1289,21 @@ impl Storage {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(txn, block_hash).transpose())
+            .transpose()
+    }
+
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_by_height<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        self.block_height_index
+            .get(&height)
+            .and_then(|block_hash| {
+                self.get_single_block_header_restricted(txn, block_hash, false)
+                    .transpose()
+            })
             .transpose()
     }
 
@@ -1629,32 +1643,6 @@ impl Storage {
         self.get_finality_signatures(&mut txn, block_hash)
     }
 
-    /// Retrieves single block header by height by looking it up in the index and returning it;
-    /// returns `None` if they are less than the fault tolerance threshold.
-    fn get_block_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        height: u64,
-    ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
-        let BlockHeaderWithMetadata {
-            block_header,
-            block_signatures,
-        } = match self.get_block_header_and_sufficient_finality_signatures_by_height(txn, height)? {
-            None => return Ok(None),
-            Some(block_header_with_metadata) => block_header_with_metadata,
-        };
-        let maybe_block_body = get_body_for_block_header(txn, &block_header, self.block_body_db);
-        if let Some(block_body) = maybe_block_body? {
-            Ok(Some(BlockWithMetadata {
-                block: Block::new_from_header_and_body(block_header, block_body)?,
-                finality_signatures: block_signatures,
-            }))
-        } else {
-            debug!(?block_header, "Missing block body for header");
-            Ok(None)
-        }
-    }
-
     /// Directly returns a deploy from internal store.
     pub fn read_deploy_by_hash(
         &self,
@@ -1705,93 +1693,6 @@ impl Storage {
             txn.commit()?;
         }
         Ok(())
-    }
-
-    /// Retrieves single block header by height by looking it up in the index and returning it;
-    /// returns `None` if they are less than the fault tolerance threshold.
-    fn get_block_header_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        height: u64,
-    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
-        let block_hash = match self.block_height_index.get(&height) {
-            None => return Ok(None),
-            Some(block_hash) => block_hash,
-        };
-        let block_header = match self.get_single_block_header(txn, block_hash)? {
-            None => return Ok(None),
-            Some(block_header) => block_header,
-        };
-        let block_signatures = match self.get_sufficient_finality_signatures(txn, &block_header)? {
-            None => return Ok(None),
-            Some(signatures) => signatures,
-        };
-        Ok(Some(BlockHeaderWithMetadata {
-            block_header,
-            block_signatures,
-        }))
-    }
-
-    /// Retrieves finality signatures for a block with a given header; returns `None` if they
-    /// are less than the fault tolerance threshold.
-    fn get_sufficient_finality_signatures<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_header: &BlockHeader,
-    ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        let block_signatures = match self.get_finality_signatures(txn, &block_header.hash())? {
-            None => return Ok(None),
-            Some(block_signatures) => block_signatures,
-        };
-        // If `block_header` is from era 0, we can use the switch block from era 0 to ascertain the
-        // validators for that era.
-        let switch_block_hash = match self
-            .switch_block_era_id_index
-            .get(&(block_header.era_id().saturating_sub(1)))
-        {
-            None => return Ok(None),
-            Some(switch_block_hash) => switch_block_hash,
-        };
-        let switch_block_header = match self.get_single_block_header(txn, switch_block_hash)? {
-            None => return Ok(None),
-            Some(switch_block_header) => switch_block_header,
-        };
-
-        let validator_weights = match switch_block_header.next_era_validator_weights() {
-            None => {
-                return Err(FatalStorageError::InvalidSwitchBlock(Box::new(
-                    switch_block_header,
-                )))
-            }
-            Some(validator_weights) => validator_weights,
-        };
-
-        let block_signatures = consensus::get_minimal_set_of_signatures(
-            validator_weights,
-            self.finality_threshold_fraction,
-            block_signatures,
-        );
-
-        // `block_signatures` is already an `Option`, which is `None` if there weren't enough
-        // signatures to bring the total weight over the threshold.
-        Ok(block_signatures)
-    }
-
-    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
-    /// are less than the fault tolerance threshold.
-    fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        // Needed to know what era the block was in, so that we can check what the validators were
-        // and figure out if the signatures are sufficient.
-        let block_header = match self.get_single_block_header(txn, block_hash)? {
-            Some(header) => header,
-            None => return Ok(None),
-        };
-
-        self.get_sufficient_finality_signatures(txn, &block_header)
     }
 
     /// Retrieves a deploy from the deploy store.
