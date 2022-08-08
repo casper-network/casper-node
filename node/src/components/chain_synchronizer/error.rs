@@ -35,12 +35,12 @@ pub(crate) enum Error {
         "trusted header is from before the last upgrade and isn't the last header before \
          activation. \
          trusted header: {trusted_header:?}, \
-         protocol_version: {protocol_version:?}, \
-         activation_point: {activation_point:?}"
+         current protocol version: {current_protocol_version:?}, \
+         current version activation point: {activation_point:?}"
     )]
     TrustedHeaderTooEarly {
         trusted_header: Box<BlockHeader>,
-        protocol_version: ProtocolVersion,
+        current_protocol_version: ProtocolVersion,
         activation_point: EraId,
     },
 

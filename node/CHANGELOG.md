@@ -72,6 +72,7 @@ All notable changes to this project will be documented in this file.  The format
 * Remove asymmetric key functionality (move to `casper-types` crate behind feature "std").
 * Remove time types (move to `casper-types` with some functionality behind feature "std").
 * Remove `reject_incompatible_versions` option from `config.toml`, meaning now all versions different than the current one are rejected through the `chainspec_hash` check in the network handshake.
+* Remove the `[protocol][last_emergency_restart]` field from the chainspec - fast sync will use the global state directly for recognizing such restarts instead.
 
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.

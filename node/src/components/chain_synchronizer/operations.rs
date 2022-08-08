@@ -162,7 +162,7 @@ where
         {
             return Err(Error::TrustedHeaderTooEarly {
                 trusted_header: Box::new(trusted_block_header),
-                protocol_version: config.protocol_version(),
+                current_protocol_version: config.protocol_version(),
                 activation_point: config.chainspec().protocol_config.activation_point.era_id(),
             });
         }
