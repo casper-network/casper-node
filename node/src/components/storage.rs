@@ -1231,8 +1231,7 @@ impl Storage {
     }
 
     /// Retrieves a block header by height.
-    /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
-    /// before the most recent emergency upgrade.
+    /// Returns `None` if they are less than the fault tolerance threshold.
     pub(crate) fn read_block_header_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
@@ -1244,8 +1243,7 @@ impl Storage {
     }
 
     /// Retrieves a block by height.
-    /// Returns `None` if they are less than the fault tolerance threshold, or if the block is from
-    /// before the most recent emergency upgrade.
+    /// Returns `None` if they are less than the fault tolerance threshold.
     fn read_block_and_sufficient_finality_signatures_by_height(
         &self,
         height: u64,
@@ -1632,8 +1630,7 @@ impl Storage {
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
-    /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
-    /// before the most recent emergency upgrade.
+    /// returns `None` if they are less than the fault tolerance threshold.
     fn get_block_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1711,8 +1708,7 @@ impl Storage {
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
-    /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
-    /// before the most recent emergency upgrade.
+    /// returns `None` if they are less than the fault tolerance threshold.
     fn get_block_header_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1737,8 +1733,7 @@ impl Storage {
     }
 
     /// Retrieves finality signatures for a block with a given header; returns `None` if they
-    /// are less than the fault tolerance threshold or if the block is from before the most recent
-    /// emergency upgrade.
+    /// are less than the fault tolerance threshold.
     fn get_sufficient_finality_signatures<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1783,8 +1778,7 @@ impl Storage {
     }
 
     /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
-    /// are less than the fault tolerance threshold or if the block is from before the most recent
-    /// emergency upgrade.
+    /// are less than the fault tolerance threshold.
     fn get_sufficient_finality_signatures_by_hash<Tx: Transaction>(
         &self,
         txn: &mut Tx,
