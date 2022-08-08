@@ -60,8 +60,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-use casper_types::EraId;
-
 use crate::{
     components::{deploy_acceptor, fetcher, fetcher::FetchedOrNotFound},
     effect::{
@@ -930,18 +928,13 @@ fn handle_fetch_response<R, I>(
     rng: &mut NodeRng,
     sender: NodeId,
     serialized_item: &[u8],
-    verifiable_chunked_hash_activation: EraId,
 ) -> Effects<<R as Reactor>::Event>
 where
     I: Item,
     R: Reactor,
     <R as Reactor>::Event: From<fetcher::Event<I>> + From<BlocklistAnnouncement>,
 {
-    match fetcher::Event::<I>::from_get_response_serialized_item(
-        sender,
-        serialized_item,
-        verifiable_chunked_hash_activation,
-    ) {
+    match fetcher::Event::<I>::from_get_response_serialized_item(sender, serialized_item) {
         Some(fetcher_event) => {
             Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
         }
@@ -964,7 +957,6 @@ fn handle_get_response<R>(
     rng: &mut NodeRng,
     sender: NodeId,
     message: NetResponse,
-    verifiable_chunked_hash_activation: EraId,
 ) -> Effects<<R as Reactor>::Event>
 where
     R: Reactor,
@@ -1021,17 +1013,11 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
-        NetResponse::Block(ref serialized_item) => handle_fetch_response::<R, Block>(
-            reactor,
-            effect_builder,
-            rng,
-            sender,
-            serialized_item,
-            verifiable_chunked_hash_activation,
-        ),
+        NetResponse::Block(ref serialized_item) => {
+            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
+        }
         NetResponse::GossipedAddress(_) => {
             // The item trait is used for both fetchers and gossiped things, but this kind of
             // item is never fetched, only gossiped.
@@ -1050,7 +1036,6 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
         NetResponse::BlockHeaderByHash(ref serialized_item) => {
@@ -1060,7 +1045,6 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
         NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
@@ -1070,7 +1054,6 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
         NetResponse::BlockAndDeploys(ref serialized_item) => {
@@ -1080,7 +1063,6 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
         NetResponse::BlockHeadersBatch(ref serialized_item) => {
@@ -1090,7 +1072,6 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
         NetResponse::FinalitySignatures(ref serialized_item) => {
@@ -1100,7 +1081,6 @@ where
                 rng,
                 sender,
                 serialized_item,
-                verifiable_chunked_hash_activation,
             )
         }
     }

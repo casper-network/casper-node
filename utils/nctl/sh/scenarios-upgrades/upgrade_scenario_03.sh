@@ -81,7 +81,6 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            chainspec_path="$NCTL/overrides/upgrade_scenario_3.pre.chainspec.toml.in" \
             accounts_path="$NCTL/overrides/upgrade_scenario_3.pre.accounts.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
@@ -208,7 +207,6 @@ function _step_08()
     source "$NCTL/sh/assets/upgrade_from_stage.sh" \
         stage="$STAGE_ID" \
         verbose=false \
-        chainspec_path="$NCTL/overrides/upgrade_scenario_3.post.chainspec.toml.in" \
         accounts_path="$NCTL/overrides/upgrade_scenario_3.post.accounts.toml"
 
     log "... awaiting 2 eras + 1 block"

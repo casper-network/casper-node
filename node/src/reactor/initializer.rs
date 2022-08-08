@@ -209,10 +209,6 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .last_emergency_restart,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -240,10 +236,6 @@ impl Reactor {
                 .vesting_schedule_period
                 .millis(),
             registry,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation,
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
