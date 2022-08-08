@@ -638,15 +638,12 @@ pub(crate) struct KeyBlockInfo {
 }
 
 impl KeyBlockInfo {
-    pub(crate) fn maybe_from_block_header(
-        block_header: &BlockHeader,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Option<KeyBlockInfo> {
+    pub(crate) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
             .and_then(|next_era_validator_weights| {
                 Some(KeyBlockInfo {
-                    key_block_hash: block_header.hash(verifiable_chunked_hash_activation),
+                    key_block_hash: block_header.hash(),
                     validator_weights: next_era_validator_weights.clone(),
                     era_start: block_header.timestamp(),
                     height: block_header.height(),
@@ -817,9 +814,7 @@ where
         };
         match ctx.effect_builder.fetch::<I>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
-                if *item.header().parent_hash()
-                    != parent_header.hash(ctx.config.verifiable_chunked_hash_activation())
-                {
+                if *item.header().parent_hash() != parent_header.hash() {
                     return Err(Error::UnexpectedParentHash {
                         parent: Box::new(parent_header.clone()),
                         child: Box::new(item.header().clone()),
@@ -828,9 +823,7 @@ where
                 break Some(item);
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                if *item.header().parent_hash()
-                    != parent_header.hash(ctx.config.verifiable_chunked_hash_activation())
-                {
+                if *item.header().parent_hash() != parent_header.hash() {
                     warn!(
                         ?peer,
                         fetched_header = ?item.header(),
@@ -1169,10 +1162,9 @@ where
     // Fetch each parent hash one by one until we have the switch block info.
     let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
-        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            &current_header_to_walk_back_from,
-            ctx.config.verifiable_chunked_hash_activation(),
-        ) {
+        if let Some(key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
+        {
             break Ok(key_block_info);
         }
 
@@ -1234,10 +1226,9 @@ where
             highest_synced_block_header = higher_block_header_with_metadata.block_header;
 
             // If the new block is a switch block, update the validator weights, etc...
-            if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-                &highest_synced_block_header,
-                ctx.config.verifiable_chunked_hash_activation(),
-            ) {
+            if let Some(key_block_info) =
+                KeyBlockInfo::maybe_from_block_header(&highest_synced_block_header)
+            {
                 highest_synced_key_block_info = key_block_info;
             }
         } else {
@@ -1426,12 +1417,7 @@ where
                     .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
             }
             FetchedData::FromPeer { item, peer } => {
-                match BlockHeadersBatch::validate(
-                    &*item,
-                    &batch_id,
-                    lowest_trusted_block_header,
-                    ctx.config.verifiable_chunked_hash_activation(),
-                ) {
+                match BlockHeadersBatch::validate(&*item, &batch_id, lowest_trusted_block_header) {
                     Ok(new_lowest) => {
                         info!(?batch_id, ?peer, "received valid batch of headers");
                         ctx.effect_builder
@@ -1525,7 +1511,7 @@ where
             .await
             .ok_or(Error::NoSuchBlockHeight(block_height))?;
 
-        let block_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+        let block_hash = block_header.hash();
 
         if block_height % 1_000 == 0 {
             info!(
@@ -1678,7 +1664,7 @@ impl BlockSignaturesCollector {
         {
             debug!(
                 block_header_hash =
-                    ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
+                    ?block_header.hash(),
                 height = block_header.height(),
                 ?era_for_validators_retrieval,
                 "fetched sufficient finality signatures"
@@ -1760,7 +1746,7 @@ where
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
-    let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+    let block_header_hash = block_header.hash();
 
     for peer in peer_list {
         let fetched_signatures = fetch_finality_signatures_with_retry(
@@ -2117,10 +2103,7 @@ where
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
 
     // Execute blocks to get to current.
-    let mut execution_pre_state = ExecutionPreState::from_block_header(
-        highest_synced_block_header,
-        ctx.config.verifiable_chunked_hash_activation(),
-    );
+    let mut execution_pre_state = ExecutionPreState::from_block_header(highest_synced_block_header);
     info!(
         era_id = ?highest_synced_block_header.era_id(),
         height = highest_synced_block_header.height(),
@@ -2229,15 +2212,11 @@ where
             .await;
 
         highest_synced_block_header = block.take_header();
-        execution_pre_state = ExecutionPreState::from_block_header(
-            &highest_synced_block_header,
-            ctx.config.verifiable_chunked_hash_activation(),
-        );
+        execution_pre_state = ExecutionPreState::from_block_header(&highest_synced_block_header);
 
-        if let Some(new_key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            &highest_synced_block_header,
-            ctx.config.verifiable_chunked_hash_activation(),
-        ) {
+        if let Some(new_key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(&highest_synced_block_header)
+        {
             key_block_info = new_key_block_info;
         }
 
@@ -2326,8 +2305,6 @@ fn is_current_era_given_current_timestamp(
 mod tests {
     use std::iter;
 
-    use rand::Rng;
-
     use casper_types::{testing::TestRng, EraId, PublicKey, SecretKey};
 
     use super::*;
@@ -2346,7 +2323,6 @@ mod tests {
         era_id: EraId,
         height: u64,
         switch_block: bool,
-        verifiable_chunked_hash_activation: EraId,
     ) -> BlockHeader {
         let secret_key = SecretKey::doc_example();
         let public_key = PublicKey::from(secret_key);
@@ -2382,7 +2358,6 @@ mod tests {
             finalized_block,
             next_era_validator_weights,
             Default::default(), // protocol version
-            verifiable_chunked_hash_activation,
         )
         .expect("failed to create block for tests")
         .take_header()
@@ -2390,7 +2365,6 @@ mod tests {
 
     #[test]
     fn test_is_current_era() {
-        let mut rng = TestRng::new();
         let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         let genesis_time = chainspec
@@ -2411,36 +2385,18 @@ mod tests {
             SmallNetworkConfig::default(),
         );
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
-        let switch_block5 = create_block(
-            era6_start,
-            EraId::from(5),
-            100,
-            true,
-            verifiable_chunked_hash_activation,
-        );
+        let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
 
-        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(
-            &switch_block5,
-            verifiable_chunked_hash_activation,
-        )
-        .expect("no switch block info for switch block");
+        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(&switch_block5)
+            .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the
         // required number of blocks (115 - 100 > 10).
         let block_time = era6_start + era_duration - 10.into();
         let now = block_time + 5.into();
-        let block = create_block(
-            block_time,
-            EraId::from(6),
-            115,
-            false,
-            verifiable_chunked_hash_activation,
-        );
+        let block = create_block(block_time, EraId::from(6), 115, false);
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -2453,13 +2409,7 @@ mod tests {
         // passed.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 4;
-        let block = create_block(
-            block_time,
-            EraId::from(6),
-            105,
-            false,
-            verifiable_chunked_hash_activation,
-        );
+        let block = create_block(block_time, EraId::from(6), 105, false);
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -2470,13 +2420,7 @@ mod tests {
         // If both criteria are satisfied, the era could have ended.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 5;
-        let block = create_block(
-            block_time,
-            EraId::from(6),
-            105,
-            false,
-            verifiable_chunked_hash_activation,
-        );
+        let block = create_block(block_time, EraId::from(6), 105, false);
         assert!(!is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,

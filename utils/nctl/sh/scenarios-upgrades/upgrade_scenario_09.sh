@@ -73,9 +73,7 @@ function _step_01()
     log_step_upgrades 0 "Begin upgrade_scenario_09"
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
-    source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID" \
-            chainspec_path="$NCTL/overrides/upgrade_scenario_9.pre.chainspec.toml.in"
+    source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
 }
@@ -104,8 +102,7 @@ function _step_03()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$ACTIVATION_POINT" \
-            chainspec_path="$NCTL/overrides/upgrade_scenario_9.post.chainspec.toml.in"
+            era="$ACTIVATION_POINT"
         echo ""
     done
 
@@ -194,8 +191,7 @@ function _step_07()
         stage="$STAGE_ID" \
         verbose=false \
         node="6" \
-        era="$ACTIVATION_POINT" \
-        chainspec_path="$NCTL/overrides/upgrade_scenario_9.post.chainspec.toml.in"
+        era="$ACTIVATION_POINT"
     echo ""
     # add hash to upgrades config
     PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"

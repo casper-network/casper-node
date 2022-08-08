@@ -2,7 +2,6 @@
 version = '1.0.0'
 hard_reset = false
 activation_point = 1
-verifiable_chunked_hash_activation = 0
 
 [network]
 name = 'test-chain'

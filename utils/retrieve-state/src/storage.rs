@@ -5,6 +5,8 @@ use std::{
 };
 
 use lmdb::DatabaseFlags;
+use num_rational::Ratio;
+use tracing::info;
 
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
@@ -19,9 +21,7 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
-use casper_types::{EraId, ProtocolVersion};
-use num_rational::Ratio;
-use tracing::info;
+use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
 
@@ -128,10 +128,7 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> 
     }
 }
 
-pub fn create_storage(
-    chain_download_path: impl AsRef<Path>,
-    verifiable_chunked_hash_activation: EraId,
-) -> Result<Storage, anyhow::Error> {
+pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
     storage_config.path = chain_download_path.clone();
@@ -141,7 +138,6 @@ pub fn create_storage(
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
         Ratio::new(1, 3),
-        verifiable_chunked_hash_activation,
     )?)
 }
 
@@ -165,8 +161,7 @@ mod tests {
             .clone();
 
         let dir = tempfile::tempdir().unwrap().into_path();
-        let mut storage =
-            create_storage(dir, example_block.header.height.into()).expect("should create storage");
+        let mut storage = create_storage(dir).expect("should create storage");
 
         let example_deploy = GetDeployResult::doc_example().deploy.clone();
 

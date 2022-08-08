@@ -6,7 +6,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, EraId, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, EraId, PublicKey, U512};
 
 use crate::types::{
     block::EraReport, Block, BlockHash, Deploy, DeployConfigurationFailure, DeployHash,
@@ -29,6 +29,12 @@ pub enum BlockCreationError {
         /// An optional map of the next era validator weights used to construct an `EraEnd`.
         maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     },
+    /// Failed to convert to a `CLValue`.
+    #[error("{0}")]
+    CLValue(CLValueError),
+    /// Failed to serialize something to add its Merkle root to the global state.
+    #[error("{0}")]
+    BytesRepr(bytesrepr::Error),
 }
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.

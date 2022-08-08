@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, trace, warn};
@@ -13,7 +13,10 @@ use casper_execution_engine::{
     storage::global_state::lmdb::LmdbGlobalState,
 };
 use casper_hashing::Digest;
-use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
+use casper_types::{
+    bytesrepr::ToBytes, CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, U512,
+};
 
 use crate::{
     components::{
@@ -23,7 +26,7 @@ use crate::{
             BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
-    types::{Block, Deploy, DeployHeader, FinalizedBlock},
+    types::{error::BlockCreationError, Block, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
@@ -42,7 +45,6 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
-    verifiable_chunked_hash_activation: EraId,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -97,6 +99,27 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
+    let execution_results_root_hash = compute_execution_results_root_hash(
+        &mut execution_results.iter().map(|(_, _, result)| result),
+    )?;
+    let block_height = finalized_block.height();
+
+    let execution_results_root_hash_effect = iter::once((
+        Key::BlockEffectsRootHash { block_height },
+        Transform::Write(
+            CLValue::from_t(execution_results_root_hash)
+                .map_err(BlockCreationError::CLValue)?
+                .into(),
+        ),
+    ))
+    .collect();
+
+    scratch_state.apply_effect(
+        CorrelationId::new(),
+        state_root_hash,
+        execution_results_root_hash_effect,
+    )?;
+
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
     }
@@ -146,7 +169,6 @@ pub fn execute_finalized_block(
     engine_state.flush_environment()?;
 
     // Update the metric.
-    let block_height = finalized_block.height();
     if let Some(metrics) = metrics.as_ref() {
         metrics.chain_height.set(block_height as i64);
     }
@@ -171,7 +193,6 @@ pub fn execute_finalized_block(
         finalized_block,
         next_era_validator_weights,
         protocol_version,
-        verifiable_chunked_hash_activation,
     )?);
 
     Ok(BlockAndExecutionEffects {
@@ -179,6 +200,19 @@ pub fn execute_finalized_block(
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })
+}
+
+/// Computes the root hash for a Merkle tree constructed from the root hashes
+fn compute_execution_results_root_hash<'a>(
+    results: &mut impl Iterator<Item = &'a ExecutionResult>,
+) -> Result<Digest, BlockCreationError> {
+    let mut execution_results = vec![];
+    for result in results {
+        execution_results.push(Digest::hash(
+            &result.to_bytes().map_err(BlockCreationError::BytesRepr)?,
+        ));
+    }
+    Ok(Digest::hash_merkle_tree(execution_results))
 }
 
 /// Commits the execution effects.

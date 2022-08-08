@@ -549,7 +549,6 @@ mod tests {
         const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
         const IS_NOT_SWITCH: bool = false;
         const IS_SWITCH: bool = true;
-        const VERIFIABLE_CHUNKED_HASH_ACTIVATION: u64 = 10;
 
         let highest_block_header = None;
         let next_upgrade_activation_point = None;
@@ -565,7 +564,6 @@ mod tests {
                 HEIGHT,
                 PROTOCOL_VERSION,
                 IS_NOT_SWITCH,
-                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
                 None,
             )
             .header()
@@ -591,7 +589,6 @@ mod tests {
                 HEIGHT,
                 PROTOCOL_VERSION,
                 IS_NOT_SWITCH,
-                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
                 None,
             )
             .header()
@@ -610,7 +607,6 @@ mod tests {
                 HEIGHT,
                 PROTOCOL_VERSION,
                 IS_NOT_SWITCH,
-                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
                 None,
             )
             .header()
@@ -629,7 +625,6 @@ mod tests {
                 HEIGHT,
                 PROTOCOL_VERSION,
                 IS_SWITCH,
-                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
                 None,
             )
             .header()

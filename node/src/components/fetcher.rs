@@ -12,8 +12,6 @@ use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
-use casper_types::EraId;
-
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
     effect::{
@@ -271,7 +269,6 @@ where
 {
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
-    verifiable_chunked_hash_activation: EraId,
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -281,18 +278,12 @@ impl<T: Item> Fetcher<T> {
         name: &str,
         config: Config,
         registry: &Registry,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
-            verifiable_chunked_hash_activation,
             metrics: Metrics::new(name, registry)?,
         })
-    }
-
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
     }
 }
 
@@ -710,23 +701,15 @@ where
                 }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer, responder),
             },
-            Event::GotRemotely {
-                verifiable_chunked_hash_activation: _,
-                item,
-                source,
-            } => {
+            Event::GotRemotely { item, source } => {
                 match source {
                     Source::Peer(peer) => {
                         self.metrics().found_on_peer.inc();
-                        if let Err(err) = item.validate(self.verifiable_chunked_hash_activation()) {
+                        if let Err(err) = item.validate() {
                             warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
                             effect_builder.announce_disconnect_from_peer(peer).ignore()
                         } else {
-                            self.signal(
-                                item.id(self.verifiable_chunked_hash_activation()),
-                                Ok(*item),
-                                peer,
-                            )
+                            self.signal(item.id(), Ok(*item), peer)
                         }
                     }
                     Source::Client | Source::Ourself => {
@@ -750,31 +733,17 @@ where
 pub(crate) struct FetcherBuilder<'a> {
     config: FetcherConfig,
     registry: &'a Registry,
-    verifiable_chunked_hash_activation: EraId,
 }
 
 impl<'a> FetcherBuilder<'a> {
-    pub(crate) fn new(
-        config: FetcherConfig,
-        registry: &'a Registry,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Self {
-        Self {
-            config,
-            registry,
-            verifiable_chunked_hash_activation,
-        }
+    pub(crate) fn new(config: FetcherConfig, registry: &'a Registry) -> Self {
+        Self { config, registry }
     }
 
     pub(crate) fn build<T: Item + 'static>(
         &self,
         name: &str,
     ) -> Result<Fetcher<T>, prometheus::Error> {
-        Fetcher::new(
-            name,
-            self.config,
-            self.registry,
-            self.verifiable_chunked_hash_activation,
-        )
+        Fetcher::new(name, self.config, self.registry)
     }
 }
