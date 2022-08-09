@@ -3,6 +3,9 @@ name = "global-state-update-gen"
 version = "0.2.0"
 authors = ["Bartłomiej Kamiński <bart@casperlabs.io>"]
 edition = "2018"
+license-file = "../../LICENSE"
+description = "A tool used to make changes to casper-node's global state"
+readme = "README.md"
 
 [dependencies]
 base16 = "0.2.1"
