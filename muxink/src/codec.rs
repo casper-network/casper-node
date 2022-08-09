@@ -103,25 +103,45 @@ pub enum TranscodingIoError<TransErr, IoErr> {
     Io(IoErr),
 }
 
+/// "and_then"-style transcoder (FIXME)
+///
+/// Wraps a given transcoder that transcodes from `T -> Result<U, F>`. The resulting
+/// `ResultTranscoder` will transcode a `Result<T, E>` to `Result<U, ChainErr<E, F>>`.
+///
+/// alternative:
 #[derive(Debug)]
-pub struct ResultTranscoder<Trans, E2> {
+pub struct ResultTranscoder<Trans, E> {
     transcoder: Trans,
-    err_type: PhantomData<E2>,
+    err_type: PhantomData<E>,
 }
 
-impl<Input, E1, Trans, Output, E2> Transcoder<Result<Input, E1>> for ResultTranscoder<Trans, E2>
-where
-    Trans: Transcoder<Input, Output = Output, Error = E2>,
-    E2: From<E1> + std::error::Error + Debug + Send + Sync + 'static,
-    Output: Send + Sync + 'static,
-{
-    type Error = E2;
-    type Output = Output;
+impl<Trans, E> ResultTranscoder<Trans, E> {
+    /// Creates a new transcoder processing results.
+    pub fn new(transcoder: Trans) -> Self {
+        Self {
+            transcoder,
+            err_type: PhantomData,
+        }
+    }
+}
 
-    fn transcode(&mut self, input: Result<Input, E1>) -> Result<Self::Output, Self::Error> {
+impl<T, E, Trans, U, F> Transcoder<Result<T, E>> for ResultTranscoder<Trans, E>
+where
+    Trans: Transcoder<T, Output = U, Error = F>,
+    E: Send + Sync + std::error::Error + 'static,
+    F: Send + Sync + std::error::Error + 'static,
+    U: Send + Sync + 'static,
+{
+    type Output = U;
+    type Error = TranscodingIoError<F, E>;
+
+    fn transcode(&mut self, input: Result<T, E>) -> Result<Self::Output, Self::Error> {
         match input {
-            Ok(t1) => self.transcoder.transcode(t1),
-            Err(err) => Err(err.into()),
+            Ok(t1) => self
+                .transcoder
+                .transcode(t1)
+                .map_err(TranscodingIoError::Transcoder),
+            Err(err) => Err(TranscodingIoError::Io(err)),
         }
     }
 }
@@ -228,9 +248,55 @@ where
         }
     }
 }
+
 impl<T, S> TranscodingStream<T, S> {
     /// Creates a new transcoding stream.
     pub(crate) fn new(transcoder: T, stream: S) -> TranscodingStream<T, S> {
         TranscodingStream { transcoder, stream }
+    }
+}
+
+#[cfg(test)]
+
+mod tests {
+    use bytes::Bytes;
+    use futures::{stream, FutureExt, StreamExt};
+    use thiserror::Error;
+
+    #[test]
+    #[cfg(feature = "muxink_bincode_codec")]
+    fn construct_stream_that_transcodes_results() {
+        use bincode::Options;
+
+        use crate::{
+            codec::bincode::{bincode_transcode_options, BincodeDecoder},
+            StreamMuxExt,
+        };
+
+        let encoded = bincode_transcode_options()
+            .serialize(&(1u32, 2u32, 3u32))
+            .unwrap();
+
+        /// A mock source error.
+        #[derive(Debug, Error)]
+        #[error("source error")]
+        struct SourceError;
+
+        // The source will yield a single frame that is length delimited.
+        let source = Box::pin(stream::once(async move {
+            let raw = Bytes::from(encoded);
+            Result::<_, SourceError>::Ok(raw)
+        }));
+
+        let mut stream = source.and_then_transcode(BincodeDecoder::<(u32, u32, u32)>::new());
+
+        let output = stream
+            .next()
+            .now_or_never()
+            .expect("did not expect not-ready")
+            .expect("did not expect stream to have ended")
+            .expect("should be successful item");
+
+        assert_eq!(output, (1, 2, 3));
     }
 }

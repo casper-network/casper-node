@@ -130,7 +130,8 @@ where
     }
 }
 
-fn bincode_transcode_options() -> impl bincode::config::Options {
+/// Options for bincode encoding when selecting the bincode format.
+pub(crate) fn bincode_transcode_options() -> impl bincode::config::Options {
     DefaultOptions::new()
         .reject_trailing_bytes()
         .with_varint_encoding()

@@ -14,10 +14,10 @@ use std::num::NonZeroUsize;
 use bytes::Buf;
 use codec::{
     length_delimited::{LengthDelimited, LengthPrefixedFrame},
-    Transcoder, TranscodingSink, TranscodingStream,
+    ResultTranscoder, Transcoder, TranscodingSink, TranscodingStream,
 };
 use fragmented::{Defragmentizer, Fragmentizer, SingleFragment};
-use futures::Sink;
+use futures::{Sink, Stream};
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
 ///
@@ -144,32 +144,38 @@ impl<S> SinkMuxExt for S {
 }
 
 /// Convenience trait for the construction of stream chains.
-pub trait StreamMuxExt: Sized {
+// Note: The trait bounds are not strictly necessary, but make compiler error messages a lot easier
+//       to read.
+pub trait StreamMuxExt: Sized + Stream + Unpin {
     /// Wraps the current stream with a transcoder.
-    fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self>;
-
-    /// Wraps the current stream in a bincode transcoder.
-    #[cfg(feature = "bincode")]
-    fn bincode<T>(self) -> TranscodingStream<codec::bincode::BincodeDecoder<T>, Self> {
-        self.with_transcoder(codec::bincode::BincodeDecoder::new())
-    }
-
-    /// Wraps the current stream in a defragmentizer.
-    fn defragmenting(self, max_frame_size: usize) -> Defragmentizer<Self>;
-}
-
-impl<S> StreamMuxExt for S
-where
-    S: Sized,
-{
-    fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self> {
+    fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self>
+    where
+        T: Transcoder<Self::Item> + Unpin,
+    {
         TranscodingStream::new(transcoder, self)
     }
 
+    /// Wraps the current stream with a `Result`-mapping transcoder.
+    #[inline]
+    fn and_then_transcode<Trans, E, T>(
+        self,
+        transcoder: Trans,
+    ) -> TranscodingStream<ResultTranscoder<Trans, E>, Self>
+    where
+        Trans: Transcoder<T>,
+        Self: Stream<Item = Result<T, E>>,
+    {
+        let result_transcoder = ResultTranscoder::<_, E>::new(transcoder);
+        TranscodingStream::new(result_transcoder, self)
+    }
+
+    /// Wraps the current stream in a defragmentizer.
     fn defragmenting(self, max_frame_size: usize) -> Defragmentizer<Self> {
         Defragmentizer::new(max_frame_size, self)
     }
 }
+
+impl<S> StreamMuxExt for S where S: Sized + Stream + Unpin {}
 
 #[rustfmt::skip]
 #[cfg(test)]
