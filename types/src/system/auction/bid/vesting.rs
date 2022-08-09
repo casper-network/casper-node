@@ -168,7 +168,7 @@ impl ToBytes for VestingSchedule {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.initial_release_timestamp_millis).write_bytes(writer)?;
+        self.initial_release_timestamp_millis.write_bytes(writer)?;
         match &self.locked_amounts {
             None => {
                 UNINITIALIZED_LOCKED_AMOUNTS_TAG.write_bytes(writer)?;

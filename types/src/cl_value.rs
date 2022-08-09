@@ -156,7 +156,7 @@ impl ToBytes for CLValue {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.bytes).write_bytes(writer)?;
+        self.bytes.write_bytes(writer)?;
         self.cl_type.append_bytes(writer)?;
         Ok(())
     }

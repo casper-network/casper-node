@@ -198,14 +198,14 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        (&self.deploy_hash).write_bytes(&mut result)?;
-        (&self.from).write_bytes(&mut result)?;
-        (&self.to).write_bytes(&mut result)?;
-        (&self.source).write_bytes(&mut result)?;
-        (&self.target).write_bytes(&mut result)?;
-        (&self.amount).write_bytes(&mut result)?;
-        (&self.gas).write_bytes(&mut result)?;
-        (&self.id).write_bytes(&mut result)?;
+        self.deploy_hash.write_bytes(&mut result)?;
+        self.from.write_bytes(&mut result)?;
+        self.to.write_bytes(&mut result)?;
+        self.source.write_bytes(&mut result)?;
+        self.target.write_bytes(&mut result)?;
+        self.amount.write_bytes(&mut result)?;
+        self.gas.write_bytes(&mut result)?;
+        self.id.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -221,8 +221,8 @@ impl ToBytes for Transfer {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.deploy_hash).write_bytes(writer)?;
-        (&self.from).write_bytes(writer)?;
+        self.deploy_hash.write_bytes(writer)?;
+        self.from.write_bytes(writer)?;
         self.to.write_bytes(writer)?;
         self.source.write_bytes(writer)?;
         self.target.write_bytes(writer)?;
@@ -378,7 +378,7 @@ impl ToBytes for TransferAddr {
 
     #[inline(always)]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.0).write_bytes(writer)?;
+        self.0.write_bytes(writer)?;
         Ok(())
     }
 }
