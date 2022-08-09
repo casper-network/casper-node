@@ -68,19 +68,11 @@ impl Config {
         self.chainspec.protocol_config.version
     }
 
-    pub(super) fn activation_point(&self) -> EraId {
-        self.chainspec.protocol_config.activation_point.era_id()
-    }
-
     pub(super) fn genesis_timestamp(&self) -> Option<Timestamp> {
         self.chainspec
             .protocol_config
             .activation_point
             .genesis_timestamp()
-    }
-
-    pub(super) fn last_emergency_restart(&self) -> Option<EraId> {
-        self.chainspec.protocol_config.last_emergency_restart
     }
 
     pub(super) fn era_duration(&self) -> TimeDiff {

@@ -157,6 +157,16 @@ where
             },
         };
 
+        if trusted_block_header.protocol_version() != config.protocol_version()
+            && !config.is_last_block_before_activation(&trusted_block_header)
+        {
+            return Err(Error::TrustedHeaderTooEarly {
+                trusted_header: Box::new(trusted_block_header),
+                current_protocol_version: config.protocol_version(),
+                activation_point: config.chainspec().protocol_config.activation_point.era_id(),
+            });
+        }
+
         ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
 
         Ok(Some(ctx))
@@ -225,15 +235,6 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
         self.trusted_block_header
             .as_ref()
             .expect("trusted block header not initialized")
-    }
-
-    /// Returns the trusted block hash.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if not initialized properly using `ChainSyncContext::new`.
-    fn trusted_hash(&self) -> BlockHash {
-        self.trusted_block_header().hash()
     }
 
     fn trusted_block_is_last_before_activation(&self) -> bool {
@@ -1161,20 +1162,6 @@ where
     // Fetch each parent hash one by one until we have the switch block info.
     let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
-        // Check that we are not restarting right after an emergency restart, which is too early
-        match ctx.config.last_emergency_restart() {
-            Some(last_emergency_restart)
-                if last_emergency_restart > current_header_to_walk_back_from.era_id()
-                    && !ctx.trusted_block_is_last_before_activation() =>
-            {
-                return Err(Error::TrustedHeaderEraTooEarly {
-                    trusted_header: Box::new(ctx.trusted_block_header().clone()),
-                    maybe_last_emergency_restart_era_id: ctx.config.last_emergency_restart(),
-                })
-            }
-            _ => {}
-        }
-
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
         {
@@ -1698,10 +1685,7 @@ async fn era_validator_weights_for_block<'a, REv>(
 where
     REv: From<StorageRequest>,
 {
-    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
-        &block_header.era_id(),
-        ctx.config.last_emergency_restart(),
-    );
+    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(&block_header.era_id());
     let switch_block_of_previous_era = ctx
         .effect_builder
         .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
@@ -1866,26 +1850,9 @@ async fn finalize_finality_signature_fetch<REv>(
 }
 
 /// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(
-    era_id: &EraId,
-    last_emergency_restart: Option<EraId>,
-) -> EraId {
-    // TODO: This function needs to handle multiple emergency restarts.
-    if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
-        // For eras > 0 which are not the last emergency restart eras we need to use validator set
-        // from the previous era
-        *era_id - 1
-    } else {
-        // When we're in era 0 or in the era of last emergency restart we
-        // use that era as a source for validators, because:
-        //
-        // 1) If we're in Era 0 there's no previous era, but since validators never change during
-        // that era we can safely use the Era 0's switch block.
-        //
-        // 2) In case of being in last emergency restart era, the validators from the previous era
-        // may no longer be valid.
-        *era_id
-    }
+fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
+    // TODO: This function needs to handle upgrades with changes to the validator set.
+    era_id.saturating_sub(1)
 }
 
 /// Runs the initial chain synchronization task ("fast sync").
@@ -1931,12 +1898,6 @@ where
             Some(block_header) => block_header,
             None => return Err(Error::NoHighestBlockHeader),
         };
-
-    if let Some(outcome) =
-        prepare_for_emergency_upgrade_if_needed(&ctx, &highest_block_header).await?
-    {
-        return Ok(outcome);
-    }
 
     if let Some(outcome) = prepare_for_upgrade_if_needed(&ctx, &highest_block_header).await? {
         return Ok(outcome);
@@ -2025,58 +1986,6 @@ fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(
     };
 
     Ok(())
-}
-
-/// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an emergency
-/// upgrade before syncing further, or `Ok(None)` if not.
-///
-/// If this returns `Ok(Some...)`, we sync the trie store in preparation for running commit_upgrade.
-async fn prepare_for_emergency_upgrade_if_needed<REv>(
-    ctx: &ChainSyncContext<'_, REv>,
-    highest_block_header: &BlockHeader,
-) -> Result<Option<FastSyncOutcome>, Error>
-where
-    REv: From<FetcherRequest<TrieOrChunk>>
-        + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>
-        + From<StorageRequest>,
-{
-    let emergency_restart_era = match ctx.config.last_emergency_restart() {
-        Some(era_id) if era_id == ctx.config.activation_point() => era_id,
-        _ => return Ok(None),
-    };
-
-    // After an emergency restart, the old validators cannot be trusted anymore. So the last block
-    // before the restart or a later block must be given by the trusted hash. That way we never have
-    // to use the untrusted validators' finality signatures.
-    if ctx.trusted_block_header().next_block_era_id() < emergency_restart_era {
-        return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
-            last_emergency_restart_era: emergency_restart_era,
-            trusted_hash: ctx.trusted_hash(),
-            trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
-        });
-    }
-    // If the trusted block is the last block before an emergency restart, and we haven't
-    // already run the upgrade, we have to compute the immediate switch block ourselves, since
-    // there's no other way to verify that block. We just sync the trie there and return, so the
-    // upgrade can be applied.
-    if ctx.trusted_block_is_last_before_activation()
-        && highest_block_header.protocol_version() < ctx.config.protocol_version()
-    {
-        info!("synchronizing trie store before committing emergency upgrade");
-        ctx.progress.start_fetching_tries_for_emergency_upgrade(
-            ctx.trusted_block_header().height(),
-            *ctx.trusted_block_header().state_root_hash(),
-        );
-        sync_trie_store(ctx.trusted_block_header(), ctx).await?;
-        info!("finished synchronizing before committing emergency upgrade");
-        return Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
-            switch_block_header_before_upgrade: ctx.trusted_block_header().clone(),
-            is_emergency_upgrade: true,
-        }));
-    }
-
-    Ok(None)
 }
 
 /// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an upgrade before
@@ -2524,40 +2433,22 @@ mod tests {
     fn gets_correct_era_id_for_validators_retrieval() {
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0), None)
+            get_era_id_for_validators_retrieval(&EraId::from(0))
         );
 
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1), None)
+            get_era_id_for_validators_retrieval(&EraId::from(1))
         );
 
         assert_eq!(
             EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2), None)
+            get_era_id_for_validators_retrieval(&EraId::from(2))
         );
 
         assert_eq!(
             EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000), None)
-        );
-    }
-
-    #[test]
-    fn gets_correct_era_id_for_validators_when_emergency_restart() {
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0), Some(EraId::from(7)))
-        );
-
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1), Some(EraId::from(2)))
-        );
-
-        assert_eq!(
-            EraId::from(2),
-            get_era_id_for_validators_retrieval(&EraId::from(2), Some(EraId::from(2)))
+            get_era_id_for_validators_retrieval(&EraId::from(1000))
         );
     }
 

@@ -138,7 +138,6 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
         Ratio::new(1, 3),
-        None,
     )?)
 }
 

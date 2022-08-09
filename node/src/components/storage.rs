@@ -188,8 +188,6 @@ pub struct Storage {
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
     #[data_size(skip)]
     finality_threshold_fraction: Ratio<u64>,
-    /// The most recent era in which the network was manually restarted.
-    last_emergency_restart: Option<EraId>,
 }
 
 /// A storage component event.
@@ -284,7 +282,6 @@ impl Storage {
         protocol_version: ProtocolVersion,
         network_name: &str,
         finality_threshold_fraction: Ratio<u64>,
-        last_emergency_restart: Option<EraId>,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -428,7 +425,6 @@ impl Storage {
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
-            last_emergency_restart,
         };
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
@@ -1748,16 +1744,6 @@ impl Storage {
         txn: &mut Tx,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        if let Some(last_emergency_restart) = self.last_emergency_restart {
-            if block_header.era_id() <= last_emergency_restart {
-                warn!(
-                    ?block_header,
-                    ?last_emergency_restart,
-                    "finality signatures from before last emergency restart requested"
-                );
-                return Ok(None);
-            }
-        }
         let block_signatures = match self.get_finality_signatures(txn, &block_header.hash())? {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
