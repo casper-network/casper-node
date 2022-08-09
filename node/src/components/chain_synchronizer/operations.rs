@@ -21,9 +21,14 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
+use casper_execution_engine::{
+    core::engine_state::{QueryRequest, QueryResult},
+    storage::trie::{TrieOrChunk, TrieOrChunkId},
+};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{
+    bytesrepr::Bytes, EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp, U512,
+};
 
 use crate::{
     components::{
@@ -1511,6 +1516,7 @@ where
         + From<MarkBlockCompletedRequest>,
 {
     let trusted_block_height = ctx.trusted_block_header().height();
+    let trusted_state_root_hash = ctx.trusted_block_header().state_root_hash();
     loop {
         let block_height = latest_height_requested.fetch_add(1, Ordering::SeqCst);
         if block_height >= trusted_block_height {
@@ -1553,6 +1559,64 @@ where
                     );
                     return Err(error);
                 }
+
+                let query_request = QueryRequest::new(
+                    trusted_state_root_hash.clone(),
+                    Key::DeployApprovalsRootHash { block_height },
+                    vec![],
+                );
+
+                let query_result = ctx
+                    .effect_builder
+                    .query_global_state(query_request)
+                    .await
+                    .map_err(Error::ExecutionEngine)?;
+                match query_result {
+                    QueryResult::RootNotFound => {
+                        return Err(Error::TrustedHeaderStateRootNotFound);
+                    } // Error
+                    QueryResult::ValueNotFound(_err) => {}
+                    QueryResult::CircularReference(_err) => todo!(), // TODO Ask
+                    QueryResult::DepthLimit { depth: _ } => todo!(), // TODO Ask
+                    QueryResult::Success { value, proofs: _ } => {
+                        let deploy_approvals_root_hash: Digest = match *value {
+                            StoredValue::CLValue(cl_value) => cl_value
+                                .into_t()
+                                .map_err(|cl_value_error| Error::CLValueError { cl_value_error })?,
+                            stored_value => {
+                                return Err(Error::WrongTypeUnderDeployApprovalsRootHash {
+                                    stored_value,
+                                });
+                            }
+                        };
+
+                        let mut approval_hashes = vec![];
+                        for digest in fetched_block
+                            .block
+                            .deploy_hashes()
+                            .iter()
+                            .map(|deploy_hash| deploy_hash.inner().clone())
+                            .chain(
+                                fetched_block
+                                    .block
+                                    .transfer_hashes()
+                                    .iter()
+                                    .map(|transfer_hash| transfer_hash.inner().clone()),
+                            )
+                        {
+                            approval_hashes.push(digest);
+                        }
+                        let computed_deploy_approvals_root_hash =
+                            Digest::hash_merkle_tree(approval_hashes);
+
+                        if deploy_approvals_root_hash != computed_deploy_approvals_root_hash {
+                            return Err(Error::WrongDeployApprovalsRootHash {
+                                deploy_approvals_root_hash,
+                                computed_deploy_approvals_root_hash,
+                            });
+                        }
+                    }
+                };
                 ctx.effect_builder.mark_block_completed(block_height).await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }

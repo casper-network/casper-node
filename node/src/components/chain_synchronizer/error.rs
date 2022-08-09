@@ -9,7 +9,7 @@ use casper_execution_engine::{
     storage::trie::TrieOrChunk,
 };
 use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::{CLValueError, EraId, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{
@@ -174,6 +174,37 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         AcquireError,
     ),
+
+    /// CLValue didn't evaluate to expected type.
+    #[error("the CLValue did not evaluate to the expected type: {cl_value_error:?}")]
+    CLValueError {
+        #[serde(skip_serializing)]
+        cl_value_error: CLValueError,
+    },
+
+    /// The state root hash on the trusted block header is missing.
+    #[error("the state root hash on the trusted block header is missing")]
+    TrustedHeaderStateRootNotFound,
+
+    /// The type of the value under the deploy approvals root hash key is wrong.
+    #[error(
+        "the type of the value under the deploy approvals root hash key is wrong: {stored_value:?}"
+    )]
+    WrongTypeUnderDeployApprovalsRootHash {
+        #[serde(skip_serializing)]
+        stored_value: StoredValue,
+    },
+
+    /// The computed deploy approvals root hash doesn't match the one provided in the state root of
+    /// the trusted block header.
+    #[error(
+        "the computed deploy approvals root hash doesn't match the one provided in the state root of the trusted block header. \
+        computed: {computed_deploy_approvals_root_hash:?}, provided: {deploy_approvals_root_hash:?}."
+    )]
+    WrongDeployApprovalsRootHash {
+        deploy_approvals_root_hash: Digest,
+        computed_deploy_approvals_root_hash: Digest,
+    },
 }
 
 #[derive(Error, Debug)]
