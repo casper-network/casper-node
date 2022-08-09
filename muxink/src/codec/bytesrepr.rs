@@ -11,8 +11,11 @@ use thiserror::Error;
 use super::{DecodeResult, FrameDecoder, Transcoder};
 use crate::codec::DecodeResult::Failed;
 
+/// `bytesrepr` error wrapper.
+///
+/// Exists solely because `bytesrepr::Error` does not implement `std::error::Error`.
 #[derive(Debug, Error)]
-#[error("bytesrepr error")]
+#[error("bytesrepr encoding/decoding error")]
 pub struct Error(bytesrepr::Error);
 
 /// Bytesrepr encoder.
@@ -42,7 +45,7 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        Ok(input.into_bytes().map_err(Error)?.into())
+        input.into_bytes().map_err(Error).map(Bytes::from)
     }
 }
 
