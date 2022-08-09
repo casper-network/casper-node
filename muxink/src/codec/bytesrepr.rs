@@ -86,7 +86,8 @@ where
         let transcoded = FromBytes::from_bytes(buffer.as_ref());
         match transcoded {
             Ok((data, rem)) => {
-                let _ = buffer.split_to(buffer.remaining() - rem.len());
+                let remaining_length = rem.len();
+                let _ = buffer.split_to(buffer.remaining() - remaining_length);
                 DecodeResult::Item(data)
             }
             Err(err) => match &err {
