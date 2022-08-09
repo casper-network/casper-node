@@ -96,6 +96,8 @@ where
                 | bytesrepr::Error::NotRepresentable
                 | bytesrepr::Error::ExceededRecursionDepth
                 | bytesrepr::Error::OutOfMemory => Failed(Error(err)),
+                // Handle non-exhaustive case.
+                _ => Failed(Error(err)),
             },
         }
     }
