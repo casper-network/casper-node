@@ -42,7 +42,7 @@ where
     type Output = Bytes;
 
     fn transcode(&mut self, input: T) -> Result<Self::Output, Self::Error> {
-        Ok(input.into_bytes().map_err(|err| Error(err))?.into())
+        Ok(input.into_bytes().map_err(Error)?.into())
     }
 }
 
@@ -71,7 +71,7 @@ where
     type Output = T;
 
     fn transcode(&mut self, input: R) -> Result<Self::Output, Self::Error> {
-        Ok(bytesrepr::deserialize_from_slice(input).map_err(|eee| Error(eee))?)
+        bytesrepr::deserialize_from_slice(input).map_err(Error)
     }
 }
 
