@@ -158,7 +158,7 @@ pub(crate) enum BlockHeadersBatchValidationError {
     #[error("Empty batch")]
     BatchEmpty,
     #[error(
-        "Hash of the highest block from batch doesn't match expected. 
+        "Hash of the highest block from batch doesn't match expected.
         Expected: {expected}, got: {got}."
     )]
     HighestBlockHashMismatch { expected: BlockHash, got: BlockHash },

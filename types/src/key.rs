@@ -9,7 +9,6 @@ use alloc::{
 use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
-    mem,
     str::FromStr,
 };
 
@@ -47,6 +46,7 @@ const UNBOND_PREFIX: &str = "unbond-";
 const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const BLOCK_EFFECTS_ROOT_HASH_PREFIX: &str = "block-effects-root-hash-";
+const DEPLOY_APPROVALS_ROOT_HASH_REGISTRY_PREFIX: &str = "deploy-approvals-root-hash-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -79,7 +79,9 @@ const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + CHAINSPEC_REGISTRY_KEY_BYTES.len();
-const KEY_BLOCK_EFFECTS_ROOT_HASH_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + mem::size_of::<u64>();
+const KEY_BLOCK_EFFECTS_ROOT_HASH_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
+const KEY_DEPLOY_APPROVALS_ROOT_HASH_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -105,6 +107,7 @@ pub enum KeyTag {
     Unbond = 11,
     ChainspecRegistry = 12,
     BlockEffectsRootHash = 13,
+    DeployApprovalsRootHash = 14,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -143,7 +146,13 @@ pub enum Key {
     /// A `Key` variant under which we store the root hash of a Merkle tree containing the
     /// execution results for the block at this height.
     BlockEffectsRootHash {
-        /// The height of the block which these execution results correspond to
+        /// The height of the block which these execution results correspond to.
+        block_height: u64,
+    },
+    /// A `Key` variant under which we store the root hash of a Merkle tree containing the
+    /// approvals for all the deploys in the block at this height.
+    DeployApprovalsRootHash {
+        /// The height of the block whose deploy approvals are hashed here.
         block_height: u64,
     },
 }
@@ -178,8 +187,10 @@ pub enum FromStrError {
     Unbond(String),
     /// Chainspec registry error.
     ChainspecRegistry(String),
-    /// Execution results root hash error
+    /// Execution results root hash error.
     BlockEffectsRootHash(String),
+    /// DeployApprovalsRootHash parse error.
+    DeployApprovalsRootHash(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -239,6 +250,13 @@ impl Display for FromStrError {
                     error
                 )
             }
+            FromStrError::DeployApprovalsRootHash(error) => {
+                write!(
+                    f,
+                    "deploy-approvals-root-hash-key from string error: {}",
+                    error
+                )
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -262,9 +280,8 @@ impl Key {
             Key::Unbond(_) => String::from("Key::Unbond"),
             Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
-            Key::BlockEffectsRootHash { block_height: _ } => {
-                String::from("Key::BlockEffectsRootHash")
-            }
+            Key::BlockEffectsRootHash { .. } => String::from("Key::BlockEffectsRootHash"),
+            Key::DeployApprovalsRootHash { .. } => String::from("Key::DeployApprovalsRootHash"),
         }
     }
 
@@ -337,6 +354,12 @@ impl Key {
             Key::BlockEffectsRootHash { block_height } => {
                 format!("{}{}", BLOCK_EFFECTS_ROOT_HASH_PREFIX, block_height,)
             }
+            Key::DeployApprovalsRootHash { block_height } => {
+                format!(
+                    "{}{}",
+                    DEPLOY_APPROVALS_ROOT_HASH_REGISTRY_PREFIX, block_height
+                )
+            }
         }
     }
 
@@ -354,6 +377,16 @@ impl Key {
             let hash_addr = HashAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::Hash(error.to_string()))?;
             return Ok(Key::Hash(hash_addr));
+        }
+
+        // We try this variant before `DeployInfo` as DEPLOY_INFO_PREFIX is a valid prefix of
+        // DEPLOY_APPROVALS_ROOT_HASH_REGISTRY_PREFIX.
+        if let Some(block_height_str) =
+            input.strip_prefix(DEPLOY_APPROVALS_ROOT_HASH_REGISTRY_PREFIX)
+        {
+            let block_height = u64::from_str(block_height_str)
+                .map_err(|error| FromStrError::DeployApprovalsRootHash(error.to_string()))?;
+            return Ok(Key::DeployApprovalsRootHash { block_height });
         }
 
         if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
@@ -588,6 +621,9 @@ impl Display for Key {
             Key::BlockEffectsRootHash { block_height } => {
                 write!(f, "Key::BlockEffectsRootHash({})", block_height)
             }
+            Key::DeployApprovalsRootHash { block_height } => {
+                write!(f, "Key::DeployApprovalsRootHash({})", block_height)
+            }
         }
     }
 }
@@ -614,7 +650,8 @@ impl Tagged<KeyTag> for Key {
             Key::Dictionary(_) => KeyTag::Dictionary,
             Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
-            Key::BlockEffectsRootHash { block_height: _ } => KeyTag::BlockEffectsRootHash,
+            Key::BlockEffectsRootHash { .. } => KeyTag::BlockEffectsRootHash,
+            Key::DeployApprovalsRootHash { .. } => KeyTag::DeployApprovalsRootHash,
         }
     }
 }
@@ -705,7 +742,10 @@ impl ToBytes for Key {
             }
             Key::ChainspecRegistry => result.append(&mut CHAINSPEC_REGISTRY_KEY_BYTES.to_bytes()?),
             Key::BlockEffectsRootHash { block_height } => {
-                result.append(&mut block_height.to_le_bytes().to_vec())
+                result.append(&mut block_height.to_bytes()?)
+            }
+            Key::DeployApprovalsRootHash { block_height } => {
+                result.append(&mut block_height.to_bytes()?)
             }
         }
         Ok(result)
@@ -728,56 +768,30 @@ impl ToBytes for Key {
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
             Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
-            Key::BlockEffectsRootHash { block_height: _ } => KEY_BLOCK_EFFECTS_ROOT_HASH_LENGTH,
+            Key::BlockEffectsRootHash { .. } => KEY_BLOCK_EFFECTS_ROOT_HASH_LENGTH,
+            Key::DeployApprovalsRootHash { .. } => KEY_DEPLOY_APPROVALS_ROOT_HASH_SERIALIZED_LENGTH,
         }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.push(self.tag());
         match self {
-            Key::Account(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
-            }
-            Key::Hash(hash) => {
-                writer.extend_from_slice(hash);
-            }
-            Key::URef(uref) => {
-                writer.extend_from_slice(&uref.addr());
-                writer.push(uref.access_rights().bits());
-            }
-            Key::Transfer(addr) => {
-                writer.extend_from_slice(addr.as_bytes());
-            }
-            Key::DeployInfo(addr) => {
-                writer.extend_from_slice(addr.as_bytes());
-            }
-            Key::EraInfo(era_id) => {
-                writer.extend_from_slice(&era_id.to_le_bytes());
-            }
-            Key::Balance(uref_addr) => {
-                writer.extend_from_slice(uref_addr);
-            }
-            Key::Bid(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
-            }
-            Key::Withdraw(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
-            }
-            Key::Unbond(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
-            }
-            Key::Dictionary(addr) => {
-                writer.extend_from_slice(addr);
-            }
-            Key::SystemContractRegistry => {
-                writer.extend_from_slice(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES);
-            }
-            Key::ChainspecRegistry => writer.extend_from_slice(&CHAINSPEC_REGISTRY_KEY_BYTES),
-            Key::BlockEffectsRootHash { block_height } => {
-                writer.extend_from_slice(&block_height.to_le_bytes())
-            }
-        };
-        Ok(())
+            Key::Account(account_hash) => account_hash.write_bytes(writer),
+            Key::Hash(hash) => hash.write_bytes(writer),
+            Key::URef(uref) => uref.write_bytes(writer),
+            Key::Transfer(addr) => addr.write_bytes(writer),
+            Key::DeployInfo(deploy_hash) => deploy_hash.write_bytes(writer),
+            Key::EraInfo(era_id) => era_id.write_bytes(writer),
+            Key::Balance(uref_addr) => uref_addr.write_bytes(writer),
+            Key::Bid(account_hash) => account_hash.write_bytes(writer),
+            Key::Withdraw(account_hash) => account_hash.write_bytes(writer),
+            Key::Unbond(account_hash) => account_hash.write_bytes(writer),
+            Key::Dictionary(addr) => addr.write_bytes(writer),
+            Key::SystemContractRegistry => SYSTEM_CONTRACT_REGISTRY_KEY_BYTES.write_bytes(writer),
+            Key::ChainspecRegistry => CHAINSPEC_REGISTRY_KEY_BYTES.write_bytes(writer),
+            Key::BlockEffectsRootHash { block_height } => block_height.write_bytes(writer),
+            Key::DeployApprovalsRootHash { block_height } => block_height.write_bytes(writer),
+        }
     }
 }
 
@@ -790,7 +804,7 @@ impl FromBytes for Key {
                 Ok((Key::Account(account_hash), rem))
             }
             tag if tag == KeyTag::Hash as u8 => {
-                let (hash, rem) = FromBytes::from_bytes(remainder)?;
+                let (hash, rem) = HashAddr::from_bytes(remainder)?;
                 Ok((Key::Hash(hash), rem))
             }
             tag if tag == KeyTag::URef as u8 => {
@@ -802,11 +816,11 @@ impl FromBytes for Key {
                 Ok((Key::Transfer(transfer_addr), rem))
             }
             tag if tag == KeyTag::DeployInfo as u8 => {
-                let (deploy_hash, rem) = FromBytes::from_bytes(remainder)?;
+                let (deploy_hash, rem) = DeployHash::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
             tag if tag == KeyTag::EraInfo as u8 => {
-                let (era_id, rem) = FromBytes::from_bytes(remainder)?;
+                let (era_id, rem) = EraId::from_bytes(remainder)?;
                 Ok((Key::EraInfo(era_id), rem))
             }
             tag if tag == KeyTag::Balance as u8 => {
@@ -830,16 +844,20 @@ impl FromBytes for Key {
                 Ok((Key::Dictionary(addr), rem))
             }
             tag if tag == KeyTag::SystemContractRegistry as u8 => {
-                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::SystemContractRegistry, rem))
             }
             tag if tag == KeyTag::ChainspecRegistry as u8 => {
-                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::ChainspecRegistry, rem))
             }
             tag if tag == KeyTag::BlockEffectsRootHash as u8 => {
                 let (block_height, rem) = u64::from_bytes(remainder)?;
                 Ok((Key::BlockEffectsRootHash { block_height }, rem))
+            }
+            tag if tag == KeyTag::DeployApprovalsRootHash as u8 => {
+                let (block_height, rem) = u64::from_bytes(remainder)?;
+                Ok((Key::DeployApprovalsRootHash { block_height }, rem))
             }
             _ => Err(Error::Formatting),
         }
@@ -864,13 +882,14 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::SystemContractRegistry => unimplemented!(),
         Key::Unbond(_) => unimplemented!(),
         Key::ChainspecRegistry => unimplemented!(),
-        Key::BlockEffectsRootHash { block_height: _ } => unimplemented!(),
+        Key::BlockEffectsRootHash { .. } => unimplemented!(),
+        Key::DeployApprovalsRootHash { .. } => unimplemented!(),
     }
 }
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0u8..=13) {
+        match rng.gen_range(0..=14) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -885,6 +904,9 @@ impl Distribution<Key> for Standard {
             11 => Key::Unbond(rng.gen()),
             12 => Key::ChainspecRegistry,
             13 => Key::BlockEffectsRootHash {
+                block_height: rng.gen(),
+            },
+            14 => Key::DeployApprovalsRootHash {
                 block_height: rng.gen(),
             },
             _ => unreachable!(),
@@ -911,6 +933,7 @@ mod serde_helpers {
         Unbond(String),
         ChainspecRegistry(String),
         BlockEffectsRootHash(String),
+        DeployApprovalsRootHash(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -932,8 +955,11 @@ mod serde_helpers {
                     HumanReadable::SystemContractRegistry(formatted_string)
                 }
                 Key::ChainspecRegistry => HumanReadable::ChainspecRegistry(formatted_string),
-                Key::BlockEffectsRootHash { block_height: _ } => {
+                Key::BlockEffectsRootHash { .. } => {
                     HumanReadable::BlockEffectsRootHash(formatted_string)
+                }
+                Key::DeployApprovalsRootHash { .. } => {
+                    HumanReadable::DeployApprovalsRootHash(formatted_string)
                 }
             }
         }
@@ -953,19 +979,12 @@ mod serde_helpers {
                 | HumanReadable::Balance(formatted_string)
                 | HumanReadable::Bid(formatted_string)
                 | HumanReadable::Withdraw(formatted_string)
-                | HumanReadable::Unbond(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-                HumanReadable::Dictionary(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-                HumanReadable::SystemContractRegistry(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-                HumanReadable::ChainspecRegistry(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-                HumanReadable::BlockEffectsRootHash(formatted_string) => {
+                | HumanReadable::Unbond(formatted_string)
+                | HumanReadable::Dictionary(formatted_string)
+                | HumanReadable::SystemContractRegistry(formatted_string)
+                | HumanReadable::ChainspecRegistry(formatted_string)
+                | HumanReadable::BlockEffectsRootHash(formatted_string)
+                | HumanReadable::DeployApprovalsRootHash(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -987,7 +1006,8 @@ mod serde_helpers {
         SystemContractRegistry,
         Unbond(&'a AccountHash),
         ChainspecRegistry,
-        BlockEffectsRootHash(&'a u64),
+        BlockEffectsRootHash { block_height: u64 },
+        DeployApprovalsRootHash { block_height: u64 },
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1007,7 +1027,14 @@ mod serde_helpers {
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
                 Key::BlockEffectsRootHash { block_height } => {
-                    BinarySerHelper::BlockEffectsRootHash(block_height)
+                    BinarySerHelper::BlockEffectsRootHash {
+                        block_height: *block_height,
+                    }
+                }
+                Key::DeployApprovalsRootHash { block_height } => {
+                    BinarySerHelper::DeployApprovalsRootHash {
+                        block_height: *block_height,
+                    }
                 }
             }
         }
@@ -1028,7 +1055,8 @@ mod serde_helpers {
         SystemContractRegistry,
         Unbond(AccountHash),
         ChainspecRegistry,
-        BlockEffectsRootHash(u64),
+        BlockEffectsRootHash { block_height: u64 },
+        DeployApprovalsRootHash { block_height: u64 },
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -1047,8 +1075,11 @@ mod serde_helpers {
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
                 BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
-                BinaryDeserHelper::BlockEffectsRootHash(block_height) => {
+                BinaryDeserHelper::BlockEffectsRootHash { block_height } => {
                     Key::BlockEffectsRootHash { block_height }
+                }
+                BinaryDeserHelper::DeployApprovalsRootHash { block_height } => {
+                    Key::DeployApprovalsRootHash { block_height }
                 }
             }
         }
@@ -1108,7 +1139,10 @@ mod tests {
     const BLOCK_EFFECTS_ROOT_HASH_KEY: Key = Key::BlockEffectsRootHash {
         block_height: BLOCK_HEIGHT,
     };
-    const KEYS: [Key; 14] = [
+    const DEPLOY_APPROVALS_ROOT_HASH_KEY: Key = Key::DeployApprovalsRootHash {
+        block_height: BLOCK_HEIGHT,
+    };
+    const KEYS: [Key; 15] = [
         ACCOUNT_KEY,
         HASH_KEY,
         UREF_KEY,
@@ -1123,6 +1157,7 @@ mod tests {
         CHAINSPEC_REGISTRY_KEY,
         UNBOND_KEY,
         BLOCK_EFFECTS_ROOT_HASH_KEY,
+        DEPLOY_APPROVALS_ROOT_HASH_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
@@ -1231,7 +1266,11 @@ mod tests {
         assert_eq!(
             format!("{}", BLOCK_EFFECTS_ROOT_HASH_KEY),
             format!("Key::BlockEffectsRootHash({})", BLOCK_HEIGHT,)
-        )
+        );
+        assert_eq!(
+            format!("{}", DEPLOY_APPROVALS_ROOT_HASH_KEY),
+            format!("Key::DeployApprovalsRootHash({})", BLOCK_HEIGHT,)
+        );
     }
 
     #[test]
@@ -1411,6 +1450,10 @@ mod tests {
                 r#"{{"BlockEffectsRootHash":"block-effects-root-hash-{}"}}"#,
                 BLOCK_HEIGHT
             ),
+            format!(
+                r#"{{"DeployApprovalsRootHash":"deploy-approvals-root-hash-{}"}}"#,
+                BLOCK_HEIGHT
+            ),
         ];
 
         assert_eq!(
@@ -1461,6 +1504,9 @@ mod tests {
         round_trip(&Key::SystemContractRegistry);
         round_trip(&Key::ChainspecRegistry);
         round_trip(&Key::BlockEffectsRootHash {
+            block_height: BLOCK_HEIGHT,
+        });
+        round_trip(&Key::DeployApprovalsRootHash {
             block_height: BLOCK_HEIGHT,
         });
     }

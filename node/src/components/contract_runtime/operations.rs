@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, trace, warn};
@@ -64,6 +64,7 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
+    let maybe_deploy_approvals_root_hash = compute_approvals_root_hash(&deploys, &transfers)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
@@ -80,7 +81,7 @@ pub fn execute_finalized_block(
         );
 
         // TODO: this is currently working coincidentally because we are passing only one
-        // deploy_item per exec. The execution results coming back from the ee lacks the
+        // deploy_item per exec. The execution results coming back from the EE lack the
         // mapping between deploy_hash and execution result, and this outer logic is
         // enriching it with the deploy hash. If we were passing multiple deploys per exec
         // the relation between the deploy and the execution results would be lost.
@@ -99,33 +100,40 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    let execution_results_root_hash = compute_execution_results_root_hash(
-        &mut execution_results.iter().map(|(_, _, result)| result),
-    )?;
+    // Write the deploy approvals and execution results Merkle root hashes to global state if there
+    // were any deploys.
     let block_height = finalized_block.height();
+    if let Some(deploy_approvals_root_hash) = maybe_deploy_approvals_root_hash {
+        let execution_results_root_hash = compute_execution_results_root_hash(
+            &mut execution_results.iter().map(|(_, _, result)| result),
+        )?;
 
-    let execution_results_root_hash_effect = iter::once((
-        Key::BlockEffectsRootHash { block_height },
-        Transform::Write(
-            CLValue::from_t(execution_results_root_hash)
-                .map_err(BlockCreationError::CLValue)?
-                .into(),
-        ),
-    ))
-    .collect();
-
-    scratch_state.apply_effect(
-        CorrelationId::new(),
-        state_root_hash,
-        execution_results_root_hash_effect,
-    )?;
+        let mut effects = AdditiveMap::new();
+        let _ = effects.insert(
+            Key::DeployApprovalsRootHash { block_height },
+            Transform::Write(
+                CLValue::from_t(deploy_approvals_root_hash)
+                    .map_err(BlockCreationError::CLValue)?
+                    .into(),
+            ),
+        );
+        let _ = effects.insert(
+            Key::BlockEffectsRootHash { block_height },
+            Transform::Write(
+                CLValue::from_t(execution_results_root_hash)
+                    .map_err(BlockCreationError::CLValue)?
+                    .into(),
+            ),
+        );
+        scratch_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+    }
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
     }
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
-    // validators
+    // validators.
     let maybe_step_effect_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
@@ -200,19 +208,6 @@ pub fn execute_finalized_block(
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })
-}
-
-/// Computes the root hash for a Merkle tree constructed from the root hashes
-fn compute_execution_results_root_hash<'a>(
-    results: &mut impl Iterator<Item = &'a ExecutionResult>,
-) -> Result<Digest, BlockCreationError> {
-    let mut execution_results = vec![];
-    for result in results {
-        execution_results.push(Digest::hash(
-            &result.to_bytes().map_err(BlockCreationError::BytesRepr)?,
-        ));
-    }
-    Ok(Digest::hash_merkle_tree(execution_results))
 }
 
 /// Commits the execution effects.
@@ -404,4 +399,34 @@ where
     }
     trace!(?result, "step response");
     result
+}
+
+/// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
+fn compute_execution_results_root_hash<'a>(
+    results: &mut impl Iterator<Item = &'a ExecutionResult>,
+) -> Result<Digest, BlockCreationError> {
+    let mut execution_results = vec![];
+    for result in results {
+        execution_results.push(Digest::hash(
+            &result.to_bytes().map_err(BlockCreationError::BytesRepr)?,
+        ));
+    }
+    Ok(Digest::hash_merkle_tree(execution_results))
+}
+
+/// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
+/// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
+fn compute_approvals_root_hash(
+    deploys: &[Deploy],
+    transfers: &[Deploy],
+) -> Result<Option<Digest>, BlockCreationError> {
+    let mut approval_hashes = vec![];
+    for deploy in deploys.iter().chain(transfers) {
+        let bytes = deploy
+            .approvals()
+            .to_bytes()
+            .map_err(BlockCreationError::BytesRepr)?;
+        approval_hashes.push(Digest::hash(bytes));
+    }
+    Ok((!approval_hashes.is_empty()).then(|| Digest::hash_merkle_tree(approval_hashes)))
 }

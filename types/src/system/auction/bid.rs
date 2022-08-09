@@ -317,8 +317,8 @@ impl CLTyped for Bid {
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        (&self.validator_public_key).write_bytes(&mut result)?;
-        (&self.bonding_purse).write_bytes(&mut result)?;
+        self.validator_public_key.write_bytes(&mut result)?;
+        self.bonding_purse.write_bytes(&mut result)?;
         self.staked_amount.write_bytes(&mut result)?;
         self.delegation_rate.write_bytes(&mut result)?;
         self.vesting_schedule.write_bytes(&mut result)?;
@@ -338,8 +338,8 @@ impl ToBytes for Bid {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.validator_public_key).write_bytes(writer)?;
-        (&self.bonding_purse).write_bytes(writer)?;
+        self.validator_public_key.write_bytes(writer)?;
+        self.bonding_purse.write_bytes(writer)?;
         self.staked_amount.write_bytes(writer)?;
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;

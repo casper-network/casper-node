@@ -34,9 +34,9 @@ pub extern "C" fn call() {
 #[no_mangle]
 pub extern "C" fn recurse() {
     let target: ContractHash = runtime::get_named_arg(ARG_TARGET);
-    let _ret: () = runtime::call_contract(
+    runtime::call_contract(
         target,
         RECURSE_ENTRYPOINT,
         runtime_args! { ARG_TARGET => target },
-    );
+    )
 }
