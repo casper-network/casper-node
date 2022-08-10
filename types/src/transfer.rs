@@ -32,7 +32,7 @@ pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 
 /// A newtype wrapping a <code>[u8; [DEPLOY_HASH_LENGTH]]</code> which is the raw bytes of the
 /// deploy hash.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct DeployHash([u8; DEPLOY_HASH_LENGTH]);
 
@@ -110,6 +110,12 @@ impl<'de> Deserialize<'de> for DeployHash {
             <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
         };
         Ok(DeployHash(bytes))
+    }
+}
+
+impl Debug for DeployHash {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "DeployHash({})", base16::encode_lower(&self.0))
     }
 }
 

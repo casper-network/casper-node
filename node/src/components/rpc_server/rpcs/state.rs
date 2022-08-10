@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use casper_execution_engine::{
     core::engine_state::{BalanceResult, GetBidsResult, QueryResult},
@@ -1048,7 +1048,7 @@ impl RpcWithParams for GetTrie {
                 Ok(result)
             }
             Err(error) => {
-                error!(?error, "failed to get trie");
+                warn!(?error, "failed to get trie");
                 Err(Error::new(
                     ErrorCode::FailedToGetTrie,
                     format!("{:?}", error),
