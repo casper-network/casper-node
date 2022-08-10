@@ -70,6 +70,12 @@ enum WasmValidationError {
     /// Module tries to import a function that the host does not provide.
     #[error("module imports a non-existent function")]
     MissingHostFunction,
+    /// Opcode for a global access refers to a non-existing global
+    #[error("opcode for a global access refers to non-existing global index {index}")]
+    IncorrectGlobalOperation {
+        /// Provided index.
+        index: u32,
+    },
 }
 
 /// An error emitted by the Wasm preprocessor.
@@ -267,6 +273,8 @@ pub fn preprocess(
 ) -> Result<Module, PreprocessingError> {
     let module = deserialize(module_bytes)?;
 
+    ensure_valid_access(&module)?;
+
     if memory_section(&module).is_none() {
         // `pwasm_utils::externalize_mem` expects a non-empty memory section to exist in the module,
         // and panics otherwise.
@@ -289,6 +297,35 @@ pub fn preprocess(
     let module = stack_height::inject_limiter(module, wasm_config.max_stack_height)
         .map_err(|_| PreprocessingError::StackLimiter)?;
     Ok(module)
+}
+
+fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
+    let code_section = if let Some(type_section) = module.code_section() {
+        type_section
+    } else {
+        return Ok(());
+    };
+
+    let global_len = module
+        .global_section()
+        .map(|global_section| global_section.entries().len())
+        .unwrap_or(0);
+
+    for instr in code_section
+        .bodies()
+        .iter()
+        .flat_map(|body| body.code().elements())
+    {
+        match instr {
+            Instruction::GetGlobal(idx) | Instruction::SetGlobal(idx)
+                if *idx as usize >= global_len =>
+            {
+                return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx })
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
