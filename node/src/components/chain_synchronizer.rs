@@ -524,6 +524,7 @@ where
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
         + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>

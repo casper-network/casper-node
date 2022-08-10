@@ -27,7 +27,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::Bytes, EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp, U512,
+    bytesrepr::{Bytes, ToBytes},
+    EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp, U512,
 };
 
 use crate::{
@@ -1345,7 +1346,8 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<ChainSynchronizerAnnouncement>,
+        + From<ChainSynchronizerAnnouncement>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>,
 {
     info!("starting chain sync to genesis");
     let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
@@ -1471,7 +1473,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
     info!("syncing blocks and deploys and state since Genesis");
@@ -1513,7 +1516,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>,
 {
     let trusted_block_height = ctx.trusted_block_header().height();
     let trusted_state_root_hash = ctx.trusted_block_header().state_root_hash();
@@ -1566,6 +1570,8 @@ where
                     vec![],
                 );
 
+                // TODO Extract fetching the root hash to an effect or simply to a function in this
+                // file.
                 let query_result = ctx
                     .effect_builder
                     .query_global_state(query_request)
@@ -1590,29 +1596,56 @@ where
                             }
                         };
 
-                        let mut approval_hashes = vec![];
-                        for digest in fetched_block
-                            .block
-                            .deploy_hashes()
-                            .iter()
-                            .map(|deploy_hash| deploy_hash.inner().clone())
-                            .chain(
-                                fetched_block
-                                    .block
-                                    .transfer_hashes()
-                                    .iter()
-                                    .map(|transfer_hash| transfer_hash.inner().clone()),
-                            )
-                        {
-                            approval_hashes.push(digest);
-                        }
-                        let computed_deploy_approvals_root_hash =
-                            Digest::hash_merkle_tree(approval_hashes);
+                        let mut found_valid_approvals = false;
+                        let mut wrong_root_hashes = vec![];
 
-                        if deploy_approvals_root_hash != computed_deploy_approvals_root_hash {
+                        for peer in get_filtered_fully_connected_peers(ctx).await {
+                            let mut approval_hashes = vec![];
+                            for deploy_hash in fetched_block
+                                .block
+                                .deploy_hashes()
+                                .iter()
+                                .chain(fetched_block.block.transfer_hashes().iter())
+                            {
+                                let finalized_approvals =
+                                    match fetch_finalized_approvals(deploy_hash.clone(), peer, ctx)
+                                        .await
+                                    {
+                                        Ok(finalized_approvals) => finalized_approvals,
+                                        Err(_err) => {
+                                            // TODO Trace error
+                                            continue; // Try next peer
+                                        }
+                                    };
+                                approval_hashes.push(Digest::hash(
+                                    finalized_approvals
+                                        .finalized_approvals()
+                                        .as_ref()
+                                        .to_bytes()
+                                        .map_err(|err| Error::SerializationError { err })?,
+                                ));
+                            }
+                            let computed_deploy_approvals_root_hash =
+                                Digest::hash_merkle_tree(approval_hashes);
+
+                            if deploy_approvals_root_hash != computed_deploy_approvals_root_hash {
+                                // TODO Trace bad root hash and peer
+
+                                // This peer gave us the wrong sets of approvals, we're proceeding
+                                // to the next one to try again.
+                                wrong_root_hashes.push(computed_deploy_approvals_root_hash);
+                                continue;
+                            } else {
+                                // TODO Store the good approvals?
+                                found_valid_approvals = true;
+                                break;
+                            }
+                        }
+
+                        if !found_valid_approvals {
                             return Err(Error::WrongDeployApprovalsRootHash {
                                 deploy_approvals_root_hash,
-                                computed_deploy_approvals_root_hash,
+                                computed_deploy_approvals_root_hashes: wrong_root_hashes,
                             });
                         }
                     }

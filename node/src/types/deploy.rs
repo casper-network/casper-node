@@ -667,6 +667,11 @@ impl FinalizedApprovalsWithId {
     pub fn into_inner(self) -> BTreeSet<Approval> {
         self.approvals.into_inner()
     }
+
+    /// Return a reference to the inner FinalizedApprovals.
+    pub fn finalized_approvals(&self) -> &FinalizedApprovals {
+        &self.approvals
+    }
 }
 
 /// Error type containing the error message passed from `crypto::verify`

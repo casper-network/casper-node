@@ -9,7 +9,7 @@ use casper_execution_engine::{
     storage::trie::TrieOrChunk,
 };
 use casper_hashing::Digest;
-use casper_types::{CLValueError, EraId, ProtocolVersion, StoredValue};
+use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{
@@ -198,13 +198,18 @@ pub(crate) enum Error {
     /// The computed deploy approvals root hash doesn't match the one provided in the state root of
     /// the trusted block header.
     #[error(
-        "the computed deploy approvals root hash doesn't match the one provided in the state root of the trusted block header. \
-        computed: {computed_deploy_approvals_root_hash:?}, provided: {deploy_approvals_root_hash:?}."
+        "all of the computed deploy approvals root hashes computed from approvals fetched from peers doesn't \
+        match the one provided in the state root of the trusted block header. \
+        computed: {computed_deploy_approvals_root_hashes:?}, provided: {deploy_approvals_root_hash:?}."
     )]
     WrongDeployApprovalsRootHash {
         deploy_approvals_root_hash: Digest,
-        computed_deploy_approvals_root_hash: Digest,
+        computed_deploy_approvals_root_hashes: Vec<Digest>,
     },
+
+    /// Error while serializing.
+    #[error("error while serializing: {err:?}")]
+    SerializationError { err: bytesrepr::Error },
 }
 
 #[derive(Error, Debug)]
