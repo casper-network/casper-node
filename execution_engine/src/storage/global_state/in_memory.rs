@@ -256,7 +256,7 @@ impl StateProvider for InMemoryGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes)))
+                    Ok(Some(TrieOrChunk::Value(bytes)))
                 } else {
                     let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))

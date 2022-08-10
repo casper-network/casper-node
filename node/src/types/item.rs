@@ -90,14 +90,14 @@ impl Item for TrieOrChunk {
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         match self {
-            TrieOrChunk::Trie(_) => Ok(()),
+            TrieOrChunk::Value(_) => Ok(()),
             TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
         }
     }
 
     fn id(&self) -> Self::Id {
         match self {
-            TrieOrChunk::Trie(node_bytes) => TrieOrChunkId(0, Digest::hash(&node_bytes)),
+            TrieOrChunk::Value(node_bytes) => TrieOrChunkId(0, Digest::hash(&node_bytes)),
             TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
                 chunked_data.proof().index(),
                 chunked_data.proof().root_hash(),

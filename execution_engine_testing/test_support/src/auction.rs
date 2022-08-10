@@ -234,7 +234,7 @@ fn find_necessary_tries<S>(
             .expect("trie should exist");
 
         let trie_bytes = match trie_or_chunk {
-            TrieOrChunk::Trie(trie) => trie,
+            TrieOrChunk::Value(trie) => trie,
             TrieOrChunk::ChunkWithProof(_) => continue,
         };
 

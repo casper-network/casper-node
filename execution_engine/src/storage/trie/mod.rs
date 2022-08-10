@@ -349,21 +349,24 @@ impl ::std::fmt::Debug for PointerBlock {
     }
 }
 
-/// Represents a Merkle Tree or a chunk of data with attached proof.
+/// Represents a value or a chunk of data with attached proof.
 /// Chunk with attached proof is used when the requested
-/// trie is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
+/// value is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TrieOrChunk {
-    /// Represents a Merkle Trie.
-    Trie(Bytes),
+pub enum ValueOrChunk<V> {
+    /// Represents a value.
+    Value(V),
     /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
 }
 
+/// Represents an enum that can contain either a whole trie or a chunk of it.
+pub type TrieOrChunk = ValueOrChunk<Bytes>;
+
 impl Display for TrieOrChunk {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            TrieOrChunk::Trie(trie) => f.debug_tuple("Trie").field(trie).finish(),
+            TrieOrChunk::Value(value_bytes) => f.debug_tuple("Value").field(value_bytes).finish(),
             TrieOrChunk::ChunkWithProof(chunk) => f
                 .debug_struct("ChunkWithProof")
                 .field("index", &chunk.proof().index())
@@ -373,28 +376,28 @@ impl Display for TrieOrChunk {
     }
 }
 
-impl TrieOrChunk {
-    const TRIE_TAG: u8 = 0;
+impl<V> ValueOrChunk<V> {
+    const VALUE_TAG: u8 = 0;
     const CHUNK_TAG: u8 = 1;
 
     fn tag(&self) -> u8 {
         match self {
-            TrieOrChunk::Trie(_) => Self::TRIE_TAG,
-            TrieOrChunk::ChunkWithProof(_) => Self::CHUNK_TAG,
+            ValueOrChunk::Value(_) => Self::VALUE_TAG,
+            ValueOrChunk::ChunkWithProof(_) => Self::CHUNK_TAG,
         }
     }
 }
 
-impl ToBytes for TrieOrChunk {
+impl<V: ToBytes> ToBytes for ValueOrChunk<V> {
     fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         buf.push(self.tag());
 
         match self {
-            TrieOrChunk::Trie(trie) => {
-                buf.append(&mut trie.to_bytes()?);
+            ValueOrChunk::Value(v) => {
+                v.write_bytes(buf)?;
             }
-            TrieOrChunk::ChunkWithProof(chunk) => {
-                buf.append(&mut chunk.to_bytes()?);
+            ValueOrChunk::ChunkWithProof(chunk) => {
+                chunk.write_bytes(buf)?;
             }
         }
 
@@ -410,23 +413,23 @@ impl ToBytes for TrieOrChunk {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                TrieOrChunk::Trie(trie) => trie.serialized_length(),
-                TrieOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
+                ValueOrChunk::Value(v) => v.serialized_length(),
+                ValueOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
             }
     }
 }
 
-impl FromBytes for TrieOrChunk {
+impl<V: FromBytes> FromBytes for ValueOrChunk<V> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
-            Self::TRIE_TAG => {
-                let (trie_bytes, rem) = Bytes::from_bytes(rem)?;
-                Ok((TrieOrChunk::Trie(trie_bytes), rem))
+            Self::VALUE_TAG => {
+                let (value, rem) = V::from_bytes(rem)?;
+                Ok((ValueOrChunk::Value(value), rem))
             }
             Self::CHUNK_TAG => {
                 let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
-                Ok((TrieOrChunk::ChunkWithProof(chunk), rem))
+                Ok((ValueOrChunk::ChunkWithProof(chunk), rem))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

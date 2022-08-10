@@ -264,7 +264,7 @@ impl StateProvider for LmdbGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes)))
+                    Ok(Some(TrieOrChunk::Value(bytes)))
                 } else {
                     let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
@@ -580,7 +580,7 @@ mod tests {
             .get_trie(correlation_id, TrieOrChunkId(0, root_hash))
             .expect("should get trie correctly")
             .expect("should be Some()");
-        assert!(matches!(trie, TrieOrChunk::Trie(_)));
+        assert!(matches!(trie, TrieOrChunk::Value(_)));
 
         // Expect another `Trie` with two LeafPointers.
         let trie = state
@@ -590,7 +590,7 @@ mod tests {
             )
             .expect("should get trie correctly")
             .expect("should be Some()");
-        assert!(matches!(trie, TrieOrChunk::Trie(_)));
+        assert!(matches!(trie, TrieOrChunk::Value(_)));
 
         // Now, the next hash will point to the actual leaf, which as we expect
         // contains large data, so we expect to get `ChunkWithProof`.
@@ -643,7 +643,7 @@ mod tests {
     }
 
     fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
-        let next_hash = if let TrieOrChunk::Trie(trie_bytes) = trie_or_chunk {
+        let next_hash = if let TrieOrChunk::Value(trie_bytes) = trie_or_chunk {
             if let Trie::Node { pointer_block } =
                 bytesrepr::deserialize::<Trie<Key, StoredValue>>(Vec::<u8>::from(trie_bytes))
                     .expect("Could not parse trie bytes")

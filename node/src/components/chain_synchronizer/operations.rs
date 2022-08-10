@@ -461,7 +461,7 @@ where
             } => *trie_or_chunk,
         };
     let chunk_with_proof = match trie_or_chunk {
-        TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
+        TrieOrChunk::Value(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
         TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
     };
 
@@ -482,7 +482,7 @@ where
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
                 FetchedData::FromPeer { item, .. } => match *item {
-                    TrieOrChunk::Trie(_) => Err(
+                    TrieOrChunk::Value(_) => Err(
                         FetchTrieError::TrieBeingFetchedByChunksSomehowFetchWholeFromPeer {
                             digest: id,
                         },
