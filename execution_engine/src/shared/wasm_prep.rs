@@ -335,6 +335,9 @@ pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
 
 #[cfg(test)]
 mod tests {
+    use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
+    use parity_wasm::{builder, elements::Instructions};
+
     use super::*;
 
     #[test]
@@ -353,5 +356,118 @@ mod tests {
             PreprocessingError::MissingMemorySection => (),
             error => panic!("expected MissingMemorySection, got {:?}", error),
         }
+    }
+
+    #[test]
+    fn should_not_overflow_in_export_section() {
+        let module = builder::module()
+            .function()
+            .signature()
+            .build()
+            .body()
+            .with_instructions(Instructions::new(vec![Instruction::Nop, Instruction::End]))
+            .build()
+            .build()
+            .export()
+            .field(DEFAULT_ENTRY_POINT_NAME)
+            .internal()
+            .func(u32::MAX)
+            .build()
+            // Memory section is mandatory
+            .memory()
+            .build()
+            .build();
+        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_overflow_in_element_section() {
+        const CALL_FN_IDX: u32 = 0;
+
+        let module = builder::module()
+            .function()
+            .signature()
+            .build()
+            .body()
+            .with_instructions(Instructions::new(vec![Instruction::Nop, Instruction::End]))
+            .build()
+            .build()
+            // Export above function
+            .export()
+            .field(DEFAULT_ENTRY_POINT_NAME)
+            .internal()
+            .func(CALL_FN_IDX)
+            .build()
+            .table()
+            .with_element(u32::MAX, vec![u32::MAX])
+            .build()
+            // Memory section is mandatory
+            .memory()
+            .build()
+            .build();
+        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_overflow_in_call_opcode() {
+        let module = builder::module()
+            .function()
+            .signature()
+            .build()
+            .body()
+            .with_instructions(Instructions::new(vec![
+                Instruction::Call(u32::MAX),
+                Instruction::End,
+            ]))
+            .build()
+            .build()
+            // Export above function
+            .export()
+            .field(DEFAULT_ENTRY_POINT_NAME)
+            .build()
+            // .with_sections(vec![Section::Start(u32::MAX)])
+            // Memory section is mandatory
+            .memory()
+            .build()
+            .build();
+        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_overflow_in_start_section() {
+        let module = builder::module()
+            .with_section(Section::Start(u32::MAX))
+            .memory()
+            .build()
+            .build();
+        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            "{:?}",
+            error,
+        );
     }
 }
