@@ -1,3 +1,4 @@
+mod error;
 mod event;
 mod metrics;
 mod pending_signatures;
@@ -5,22 +6,22 @@ mod signature;
 mod signature_cache;
 mod state;
 
-use std::convert::Infallible;
+use std::{collections::BTreeMap, convert::Infallible};
 
 use datasize::DataSize;
 use itertools::Itertools;
 use num::rational::Ratio;
 use prometheus::Registry;
-use tracing::error;
+use tracing::{error, info};
 
-use casper_types::ProtocolVersion;
+use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
 
 use self::{
     metrics::Metrics,
     state::{LinearChain, Outcome, Outcomes},
 };
 use crate::{
-    components::Component,
+    components::{contract_runtime::EraValidatorsRequest, Component},
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
@@ -29,9 +30,10 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::ActivationPoint,
+    types::{ActivationPoint, BlockHeader},
     NodeRng,
 };
+pub(crate) use error::Error;
 pub(crate) use event::Event;
 
 #[derive(DataSize, Debug)]
@@ -202,4 +204,66 @@ where
             }
         }
     }
+}
+
+/// Returns the validator weights that should be used to check the finality signatures for the given
+/// block.
+pub(crate) async fn era_validator_weights_for_block<REv>(
+    block_header: &BlockHeader,
+    effect_builder: EffectBuilder<REv>,
+) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error>
+where
+    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
+{
+    let era_for_validators_retrieval = block_header.era_id().saturating_sub(1);
+    let switch_block_of_previous_era = effect_builder
+        .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
+        .await
+        .ok_or(Error::NoSwitchBlockForEra {
+            era_id: era_for_validators_retrieval,
+        })?;
+    if block_header.protocol_version() != switch_block_of_previous_era.protocol_version() {
+        if let Some(next_validator_weights) = block_header.next_era_validator_weights() {
+            let request = EraValidatorsRequest::new(
+                *switch_block_of_previous_era.state_root_hash(),
+                switch_block_of_previous_era.protocol_version(),
+            );
+            let validator_map = effect_builder
+                .get_era_validators_from_contract_runtime(request)
+                .await
+                .map_err(Error::GetEraValidators)?;
+            let next_era_id = block_header.next_block_era_id();
+            if let Some(next_validator_weights_according_to_previous_block) =
+                validator_map.get(&next_era_id)
+            {
+                if next_validator_weights_according_to_previous_block != next_validator_weights {
+                    // The validator weights that had been assigned to next_era_id before the
+                    // upgrade don't match the ones in block_header. So the validators were changed
+                    // as part of the upgrade. That usually means that the ones before the upgrade
+                    // cannot be trusted anymore, and we expect the new validators to sign this
+                    // block.
+                    info!(
+                        ?switch_block_of_previous_era,
+                        ?next_validator_weights_according_to_previous_block,
+                        first_block_after_the_upgrade = ?block_header,
+                        next_validator_weights_after_the_upgrade = ?next_validator_weights,
+                        "validator map changed in upgrade"
+                    );
+                    return Ok((block_header.era_id(), next_validator_weights.clone()));
+                }
+            } else {
+                return Err(Error::MissingValidatorMapEntry {
+                    block_header: Box::new(switch_block_of_previous_era),
+                    missing_era_id: block_header.next_block_era_id(),
+                });
+            }
+        }
+    }
+    let validator_weights = switch_block_of_previous_era
+        .next_era_validator_weights()
+        .ok_or(Error::MissingNextEraValidators {
+            height: switch_block_of_previous_era.height(),
+            era_id: era_for_validators_retrieval,
+        })?;
+    Ok((era_for_validators_retrieval, validator_weights.clone()))
 }

@@ -48,11 +48,11 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeadersBatch,
+        BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
+        StatusFeed,
     },
     utils::{DisplayIter, Source},
 };

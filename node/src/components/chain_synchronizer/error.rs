@@ -14,7 +14,7 @@ use casper_types::{EraId, ProtocolVersion};
 use crate::{
     components::{
         consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError,
+        fetcher::FetcherError, linear_chain,
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
@@ -31,6 +31,9 @@ pub(crate) enum Error {
         engine_state::Error,
     ),
 
+    #[error(transparent)]
+    LinearChain(#[from] linear_chain::Error),
+
     #[error(
         "trusted header is from before the last upgrade and isn't the last header before \
          activation. \
@@ -43,12 +46,6 @@ pub(crate) enum Error {
         current_protocol_version: ProtocolVersion,
         activation_point: EraId,
     },
-
-    #[error("cannot get switch block for era: {era_id}")]
-    NoSwitchBlockForEra { era_id: EraId },
-
-    #[error("switch block at height {height} for era {era_id} contains no validator weights")]
-    MissingNextEraValidators { height: u64, era_id: EraId },
 
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
@@ -109,25 +106,6 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         GetEraValidatorsError,
     ),
-
-    /// Expected entry in validator map not found.
-    #[error("stored block has no validator map entry for {missing_era_id}: {block_header:?}")]
-    MissingValidatorMapEntry {
-        block_header: Box<BlockHeader>,
-        missing_era_id: EraId,
-    },
-
-    /// Trusted block is earlier than a validator change upgrade.
-    #[error(
-        "joining with trusted hash before an upgrade that changed the validators - find a more \
-         recent hash from after the upgrade. \
-         first block after the upgrade: {upgrade_block_header:?}, \
-         trusted block header: {trusted_block_header:?}"
-    )]
-    TryingToJoinBeforeLastValidatorChangeUpgrade {
-        upgrade_block_header: Box<BlockHeader>,
-        trusted_block_header: Box<BlockHeader>,
-    },
 
     #[error("stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
     UnexpectedParentHash {

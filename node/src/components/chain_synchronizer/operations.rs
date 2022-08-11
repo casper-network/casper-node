@@ -32,8 +32,9 @@ use crate::{
             Config, Metrics, ProgressHolder,
         },
         consensus::{self, error::FinalitySignatureError},
-        contract_runtime::{BlockAndExecutionEffects, EraValidatorsRequest, ExecutionPreState},
+        contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
+        linear_chain,
     },
     effect::{
         announcements::{
@@ -1650,7 +1651,8 @@ impl BlockSignaturesCollector {
         }
 
         let (era_for_validators_retrieval, validator_weights) =
-            era_validator_weights_for_block(block_header, ctx).await?;
+            linear_chain::era_validator_weights_for_block(block_header, *ctx.effect_builder)
+                .await?;
 
         if let Err(err) = consensus::validate_finality_signatures(&signatures, &validator_weights) {
             warn!(
@@ -1671,10 +1673,9 @@ impl BlockSignaturesCollector {
             .is_ok()
         {
             debug!(
-                block_header_hash =
-                    ?block_header.hash(),
+                block_header_hash = %block_header.hash(),
                 height = block_header.height(),
-                ?era_for_validators_retrieval,
+                %era_for_validators_retrieval,
                 "fetched sufficient finality signatures"
             );
             Ok(HandleSignaturesResult::HaveSufficient)
@@ -1684,80 +1685,8 @@ impl BlockSignaturesCollector {
     }
 }
 
-/// Reads the validator weights that should be used to check the finality signatures for the given
-/// block.
-async fn era_validator_weights_for_block<'a, REv>(
-    block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error>
-where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
-{
-    // TODO: Deduplicate this logic; it will also be used in the fetcher.
-    let era_for_validators_retrieval = block_header.era_id().saturating_sub(1);
-    let switch_block_of_previous_era = ctx
-        .effect_builder
-        .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-        .await
-        .ok_or(Error::NoSwitchBlockForEra {
-            era_id: era_for_validators_retrieval,
-        })?;
-    if block_header.protocol_version() != switch_block_of_previous_era.protocol_version() {
-        if let Some(next_validator_weights) = block_header.next_era_validator_weights() {
-            let request = EraValidatorsRequest::new(
-                *switch_block_of_previous_era.state_root_hash(),
-                switch_block_of_previous_era.protocol_version(),
-            );
-            let validator_map = ctx
-                .effect_builder
-                .get_era_validators_from_contract_runtime(request)
-                .await
-                .map_err(Error::GetEraValidators)?;
-            let next_era_id = block_header.next_block_era_id();
-            if let Some(next_validator_weights_according_to_previous_block) =
-                validator_map.get(&next_era_id)
-            {
-                if next_validator_weights_according_to_previous_block != next_validator_weights {
-                    // The validator weights that had been assigned to next_era_id before the
-                    // upgrade don't match the ones in block_header. So the validators were changed
-                    // as part of this upgrade. That usually means that the ones before the upgrade
-                    // cannot be trusted anymore, and we expect the new validators to sign this
-                    // block. To really know this block is correct we _must_ have a trusted hash of
-                    // the block itself or one of its descendants.
-                    if ctx.trusted_block_header().height() < block_header.height() {
-                        return Err(Error::TryingToJoinBeforeLastValidatorChangeUpgrade {
-                            upgrade_block_header: Box::new(block_header.clone()),
-                            trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
-                        });
-                    }
-                    info!(
-                        ?switch_block_of_previous_era,
-                        ?next_validator_weights_according_to_previous_block,
-                        first_block_after_the_upgrade = ?block_header,
-                        next_validator_weights_after_the_upgrade = ?next_validator_weights,
-                        "validator map changed in upgrade"
-                    );
-                    return Ok((block_header.era_id(), next_validator_weights.clone()));
-                }
-            } else {
-                return Err(Error::MissingValidatorMapEntry {
-                    block_header: Box::new(switch_block_of_previous_era),
-                    missing_era_id: block_header.next_block_era_id(),
-                });
-            }
-        }
-    }
-    let validator_weights = switch_block_of_previous_era
-        .next_era_validator_weights()
-        .ok_or(Error::MissingNextEraValidators {
-            height: switch_block_of_previous_era.height(),
-            era_id: era_for_validators_retrieval,
-        })?;
-    Ok((era_for_validators_retrieval, validator_weights.clone()))
-}
-
-// Fetches the finality signatures from the given peer. In case of timeout, it'll
-// retry up to `retries` times. Other errors interrupt the process immediately.
+/// Fetches the finality signatures from the given peer. In case of timeout, it'll retry up to
+/// `retries` times. Other errors interrupt the process immediately.
 async fn fetch_finality_signatures_with_retry<REv>(
     block_hash: BlockHash,
     peer: NodeId,
@@ -1857,7 +1786,8 @@ where
     // default quorum fraction. However, in the "sync to genesis" process, we can consider
     // finality signatures as valid when their total weight is at least
     // `finality_threshold_fraction` of the total validator weights.
-    let (_, validator_weights) = era_validator_weights_for_block(&block_header, ctx).await?;
+    let (_, validator_weights) =
+        linear_chain::era_validator_weights_for_block(&block_header, *ctx.effect_builder).await?;
     sig_collector.check_if_sufficient_for_sync_to_genesis(
         &validator_weights,
         ctx.config.finality_threshold_fraction(),

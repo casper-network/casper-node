@@ -146,11 +146,11 @@ use crate::{
     effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeadersBatch,
+        BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        NodeId, NodeState,
     },
     utils::{SharedFlag, Source},
 };

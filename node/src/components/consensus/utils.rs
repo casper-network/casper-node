@@ -139,6 +139,8 @@ pub(crate) fn check_sufficient_finality_signatures(
     )
 }
 
+// TODO - remove the `allow` below.
+#[allow(unused)]
 pub(crate) fn get_minimal_set_of_signatures(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     finality_threshold_fraction: Ratio<u64>,

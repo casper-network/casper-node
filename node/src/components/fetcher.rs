@@ -559,8 +559,8 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         async move {
             // TODO: Only header needed.
             let BlockWithMetadata {
-                block,
                 finality_signatures,
+                ..
             } = effect_builder
                 .get_block_with_metadata_from_storage(id, false)
                 .await?;
