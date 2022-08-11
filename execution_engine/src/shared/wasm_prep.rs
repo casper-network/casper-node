@@ -1,7 +1,10 @@
 //! Preprocessing of Wasm modules.
 use std::fmt::{self, Display, Formatter};
 
-use parity_wasm::elements::{self, Instruction, MemorySection, Module, Section, TableType, Type};
+use parity_wasm::elements::{
+    self, External, FunctionType, Instruction, Internal, MemorySection, Module, Section, TableType,
+    Type,
+};
 use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
@@ -73,6 +76,18 @@ enum WasmValidationError {
     /// Opcode for a global access refers to a non-existing global
     #[error("opcode for a global access refers to non-existing global index {index}")]
     IncorrectGlobalOperation {
+        /// Provided index.
+        index: u32,
+    },
+    /// Missing function index.
+    #[error("missing function index {index}")]
+    MissingFunctionIndex {
+        /// Provided index.
+        index: u32,
+    },
+    /// Missing function type.
+    #[error("missing type index {index}")]
+    MissingFunctionType {
         /// Provided index.
         index: u32,
     },
@@ -300,31 +315,104 @@ pub fn preprocess(
 }
 
 fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
-    let code_section = if let Some(type_section) = module.code_section() {
-        type_section
-    } else {
-        return Ok(());
-    };
+    // Copy types from module as is.
+    let types: Vec<FunctionType> = module
+        .type_section()
+        .map(|ts| {
+            ts.types()
+                .iter()
+                .map(|&Type::Function(ref ty)| ty)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
 
-    let global_len = module
-        .global_section()
-        .map(|global_section| global_section.entries().len())
-        .unwrap_or(0);
+    // Function space that contains indexes of imported functions from import section and indexes
+    // from function section.
+    //
+    // It is an indirection from the i-th element of the index space into a type section as created
+    // in the `types` variable above.
+    let mut func_type_indices = Vec::new();
 
-    for instr in code_section
-        .bodies()
-        .iter()
-        .flat_map(|body| body.code().elements())
-    {
-        match instr {
-            Instruction::GetGlobal(idx) | Instruction::SetGlobal(idx)
-                if *idx as usize >= global_len =>
-            {
-                return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx })
+    if let Some(import_section) = module.import_section() {
+        for import_entry in import_section.entries() {
+            if let External::Function(idx) = import_entry.external() {
+                func_type_indices.push((*idx, false));
             }
-            _ => {}
         }
     }
+
+    if let Some(function_section) = module.function_section() {
+        for function_entry in function_section.entries() {
+            let idx = function_entry.type_ref();
+            func_type_indices.push((idx, false));
+        }
+    }
+
+    if let Some(idx) = module.start_section() {
+        ensure_function_exists(&idx, &mut func_type_indices, &types)?;
+    }
+
+    if let Some(export_section) = module.export_section() {
+        for export_entry in export_section.entries() {
+            if let Internal::Function(idx) = export_entry.internal() {
+                ensure_function_exists(idx, &mut func_type_indices, &types)?;
+            }
+        }
+    }
+
+    if let Some(code_section) = module.code_section() {
+        let global_len = module
+            .global_section()
+            .map(|global_section| global_section.entries().len())
+            .unwrap_or(0);
+
+        for instr in code_section
+            .bodies()
+            .iter()
+            .flat_map(|body| body.code().elements())
+        {
+            match instr {
+                Instruction::Call(idx) => {
+                    ensure_function_exists(idx, &mut func_type_indices, &types)?
+                }
+                Instruction::GetGlobal(idx) | Instruction::SetGlobal(idx)
+                    if *idx as usize >= global_len =>
+                {
+                    return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx })
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(element_section) = module.elements_section() {
+        for element_segment in element_section.entries() {
+            for idx in element_segment.members() {
+                ensure_function_exists(idx, &mut func_type_indices, &types)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Ensures a function exists in a types table.
+fn ensure_function_exists(
+    idx: &u32,
+    func_type_indices: &mut [(u32, bool)],
+    types: &[FunctionType],
+) -> Result<(), WasmValidationError> {
+    let (ty_idx, is_validated) = func_type_indices
+        .get_mut(*idx as usize)
+        .ok_or(WasmValidationError::MissingFunctionIndex { index: *idx })?;
+    if *is_validated {
+        return Ok(());
+    }
+    let _ty = types
+        .get(*ty_idx as usize)
+        .ok_or(WasmValidationError::MissingFunctionType { index: *ty_idx })?;
+    *is_validated = true;
     Ok(())
 }
 
@@ -336,7 +424,10 @@ pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
 #[cfg(test)]
 mod tests {
     use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
-    use parity_wasm::{builder, elements::Instructions};
+    use parity_wasm::{
+        builder,
+        elements::{CodeSection, Instructions},
+    };
 
     use super::*;
 
@@ -448,16 +539,37 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            if msg == &format!("missing function index {index}", index=u32::MAX)),
             "{:?}",
             error,
         );
     }
 
     #[test]
-    fn should_not_overflow_in_start_section() {
+    fn should_not_overflow_in_start_section_without_code_section() {
         let module = builder::module()
             .with_section(Section::Start(u32::MAX))
+            .memory()
+            .build()
+            .build();
+        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            if msg == &format!("missing function index {index}", index=u32::MAX)),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_overflow_in_start_section_with_code() {
+        let module = builder::module()
+            .with_section(Section::Start(u32::MAX))
+            .with_section(Section::Code(CodeSection::with_bodies(Vec::new())))
             .memory()
             .build()
             .build();
@@ -465,7 +577,8 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            if msg == &format!("missing function index {index}", index=u32::MAX)),
             "{:?}",
             error,
         );
