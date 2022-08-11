@@ -88,7 +88,7 @@ use crate::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
-        trie::{TrieOrChunk, TrieOrChunkId, TrieRaw},
+        trie::TrieRaw,
     },
     system::auction,
 };
@@ -1649,18 +1649,6 @@ where
         self.state
             .commit(correlation_id, pre_state_hash, effects)
             .map_err(|err| Error::Exec(err.into()))
-    }
-
-    /// Gets a trie (or chunk) object for given state root hash.
-    pub fn get_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        Ok(self.state.get_trie(correlation_id, trie_or_chunk_id)?)
     }
 
     /// Gets a trie object for given state root hash.

@@ -14,7 +14,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_hashing::{ChunkWithProof, Digest};
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use datasize::DataSize;
 
@@ -364,7 +364,20 @@ pub enum ValueOrChunk<V> {
 pub type TrieOrChunk = ValueOrChunk<Bytes>;
 
 /// Newtype representing a trie node in its raw form without deserializing into `Trie`.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TrieRaw(pub Bytes);
+
+impl TrieRaw {
+    /// Consumes self and returns inner bytes.
+    pub fn into_inner(self) -> Bytes {
+        self.0
+    }
+
+    /// Returns a reference inner bytes.
+    pub fn inner(&self) -> &Bytes {
+        &self.0
+    }
+}
 
 impl Display for TrieOrChunk {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

@@ -7,7 +7,7 @@ use std::{
 
 use tracing::error;
 
-use casper_hashing::{ChunkWithProof, Digest};
+use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
 
 use crate::{
@@ -17,7 +17,7 @@ use crate::{
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId, TrieRaw},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
@@ -281,35 +281,6 @@ impl StateProvider for ScratchGlobalState {
 
     fn empty_root(&self) -> Digest {
         self.empty_root_hash
-    }
-
-    fn get_trie(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Self::Error> {
-        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
-
-        let maybe_trie_or_chunk = bytes.map_or_else(
-            || Ok(None),
-            |bytes| {
-                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Value(bytes)))
-                } else {
-                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
-                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
-                }
-            },
-        );
-
-        txn.commit()?;
-        maybe_trie_or_chunk
     }
 
     fn get_trie_full(

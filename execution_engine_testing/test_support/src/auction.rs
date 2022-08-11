@@ -14,13 +14,13 @@ use casper_execution_engine::{
     shared::newtypes::CorrelationId,
     storage::{
         global_state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie, TrieRaw},
+        trie::{Pointer, Trie},
     },
 };
 use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash,
-    bytesrepr::{self, Bytes},
+    bytesrepr::{self},
     runtime_args,
     system::auction,
     Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
@@ -231,10 +231,11 @@ fn find_necessary_tries<S>(
         }
         necessary_tries.insert(root);
 
-        let trie_bytes: TrieRaw = engine_state
+        let trie_bytes = engine_state
             .get_trie_full(CorrelationId::new(), root)
             .unwrap()
-            .expect("trie should exist");
+            .expect("trie should exist")
+            .0;
 
         if let Some(0) = trie_bytes.first() {
             continue;
