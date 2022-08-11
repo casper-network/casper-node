@@ -8,7 +8,7 @@ use std::{
 use tracing::error;
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use casper_types::{Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -17,7 +17,7 @@ use crate::{
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId, TrieRaw},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
@@ -316,10 +316,11 @@ impl StateProvider for ScratchGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
+        let ret: Option<TrieRaw> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(TrieRaw);
         txn.commit()?;
         Ok(ret)
     }

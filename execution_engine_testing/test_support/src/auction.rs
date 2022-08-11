@@ -14,13 +14,16 @@ use casper_execution_engine::{
     shared::newtypes::CorrelationId,
     storage::{
         global_state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{Pointer, Trie, TrieRaw},
     },
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    account::AccountHash,
+    bytesrepr::{self, Bytes},
+    runtime_args,
+    system::auction,
+    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
 
 use rand::Rng;
@@ -228,15 +231,10 @@ fn find_necessary_tries<S>(
         }
         necessary_tries.insert(root);
 
-        let trie_or_chunk: TrieOrChunk = engine_state
-            .get_trie(CorrelationId::new(), TrieOrChunkId(0, root))
+        let trie_bytes: TrieRaw = engine_state
+            .get_trie_full(CorrelationId::new(), root)
             .unwrap()
             .expect("trie should exist");
-
-        let trie_bytes = match trie_or_chunk {
-            TrieOrChunk::Value(trie) => trie,
-            TrieOrChunk::ChunkWithProof(_) => continue,
-        };
 
         if let Some(0) = trie_bytes.first() {
             continue;

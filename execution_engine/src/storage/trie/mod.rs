@@ -363,6 +363,9 @@ pub enum ValueOrChunk<V> {
 /// Represents an enum that can contain either a whole trie or a chunk of it.
 pub type TrieOrChunk = ValueOrChunk<Bytes>;
 
+/// Newtype representing a trie node in its raw form without deserializing into `Trie`.
+pub struct TrieRaw(pub Bytes);
+
 impl Display for TrieOrChunk {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {

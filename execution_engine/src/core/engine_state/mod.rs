@@ -34,7 +34,7 @@ use tracing::{debug, error};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{Bytes, ToBytes},
+    bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::{
         auction::{
@@ -88,7 +88,7 @@ use crate::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
-        trie::{TrieOrChunk, TrieOrChunkId},
+        trie::{TrieOrChunk, TrieOrChunkId, TrieRaw},
     },
     system::auction,
 };
@@ -1668,7 +1668,7 @@ where
         &self,
         correlation_id: CorrelationId,
         trie_key: Digest,
-    ) -> Result<Option<Bytes>, Error>
+    ) -> Result<Option<TrieRaw>, Error>
     where
         Error: From<S::Error>,
     {

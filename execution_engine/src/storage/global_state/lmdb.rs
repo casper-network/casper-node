@@ -5,7 +5,7 @@ use std::{
 };
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use casper_types::{Key, StoredValue};
 use tracing::trace;
 
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{
             merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
-            TrieOrChunkId,
+            TrieOrChunkId, TrieRaw,
         },
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
@@ -280,10 +280,11 @@ impl StateProvider for LmdbGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
+        let ret: Option<TrieRaw> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(TrieRaw);
         txn.commit()?;
         Ok(ret)
     }
