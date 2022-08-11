@@ -49,8 +49,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock, TrieOrChunk,
-        TrieOrChunkId,
+        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
+        FinalizedBlock, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -73,9 +73,9 @@ pub(crate) enum ContractRuntimeError {
     // It was not possible to get trie with the specified id
     #[error("error retrieving trie by id: {0}")]
     FailedToRetrieveTrieById(#[source] engine_state::Error),
-    /// Merkle proof construction error.
-    #[error("{0}")]
-    MerkleConstructionError(#[source] casper_hashing::MerkleConstructionError),
+    /// Chunking error.
+    #[error("failed to chunk the data {0}")]
+    ChunkingError(#[source] ChunkingError),
 }
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -866,22 +866,21 @@ impl ContractRuntime {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let trie_raw = engine_state.get_trie_full(correlation_id, trie_key)?;
-
-        let result = trie_raw.map_or_else(
-            || Ok(None),
-            |trie_raw| {
-                if trie_raw.inner().len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Value(trie_raw.into_inner())))
-                } else {
-                    let chunk_with_proof = ChunkWithProof::new(&trie_raw.into_inner(), trie_index)?;
-                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
-                }
-            },
-        );
-
-        metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        result
+        match engine_state.get_trie_full(correlation_id, trie_key)? {
+            None => {
+                metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                Ok(None)
+            }
+            Some(trie_raw) => {
+                metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                let trie_or_chunk = TrieOrChunk::new(
+                    trie_raw.into_inner(),
+                    trie_index,
+                    ChunkWithProof::CHUNK_SIZE_BYTES,
+                )?;
+                Ok(Some(trie_or_chunk))
+            }
+        }
     }
 
     fn get_trie_full(

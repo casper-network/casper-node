@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -18,12 +18,27 @@ pub enum ValueOrChunk<V> {
     ChunkWithProof(ChunkWithProof),
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Error, Eq)]
 /// Error returned when constructing an instance of `ValueOrChunk`.
 pub enum ChunkingError {
     /// Merkle proof construction error
-    #[error("{0}")]
-    MerkleConstruction(#[from] MerkleConstructionError),
+    MerkleConstruction(MerkleConstructionError),
+    /// Serialization error
+    SerializationError(bytesrepr::Error),
+}
+
+impl Display for ChunkingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ChunkingError::MerkleConstruction(error) => f
+                .debug_tuple("MerkleConstructionError")
+                .field(&error)
+                .finish(),
+            ChunkingError::SerializationError(error) => {
+                f.debug_tuple("SerializationError").field(&error).finish()
+            }
+        }
+    }
 }
 
 impl<V> ValueOrChunk<V> {
@@ -32,13 +47,14 @@ impl<V> ValueOrChunk<V> {
     /// `chunk_index`-th chunk of the value's byte representation.
     pub fn new(data: V, chunk_index: u64, max_chunk_size: usize) -> Result<Self, ChunkingError>
     where
-        V: AsRef<[u8]>,
+        V: ToBytes,
     {
-        if data.as_ref().len() <= max_chunk_size {
+        let bytes = ToBytes::to_bytes(&data).map_err(ChunkingError::SerializationError)?;
+        if bytes.len() <= max_chunk_size {
             Ok(ValueOrChunk::Value(data))
         } else {
-            let chunk_with_proof = ChunkWithProof::new(&data.as_ref(), chunk_index)
-                .map_err(|error| ChunkingError::MerkleConstruction(error))?;
+            let chunk_with_proof = ChunkWithProof::new(&bytes, chunk_index)
+                .map_err(ChunkingError::MerkleConstruction)?;
             Ok(ValueOrChunk::ChunkWithProof(chunk_with_proof))
         }
     }
@@ -47,11 +63,11 @@ impl<V> ValueOrChunk<V> {
 /// Represents an enum that can contain either a whole trie or a chunk of it.
 pub type TrieOrChunk = ValueOrChunk<Bytes>;
 
-impl Display for TrieOrChunk {
+impl<V: Debug> Display for ValueOrChunk<V> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            TrieOrChunk::Value(value_bytes) => f.debug_tuple("Value").field(value_bytes).finish(),
-            TrieOrChunk::ChunkWithProof(chunk) => f
+            ValueOrChunk::Value(data) => f.debug_tuple("Value").field(data).finish(),
+            ValueOrChunk::ChunkWithProof(chunk) => f
                 .debug_struct("ChunkWithProof")
                 .field("index", &chunk.proof().index())
                 .field("hash", &chunk.proof().root_hash())
@@ -77,8 +93,8 @@ impl<V: ToBytes> ToBytes for ValueOrChunk<V> {
         buf.push(self.tag());
 
         match self {
-            ValueOrChunk::Value(v) => {
-                v.write_bytes(buf)?;
+            ValueOrChunk::Value(data) => {
+                data.write_bytes(buf)?;
             }
             ValueOrChunk::ChunkWithProof(chunk) => {
                 chunk.write_bytes(buf)?;
@@ -97,7 +113,7 @@ impl<V: ToBytes> ToBytes for ValueOrChunk<V> {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ValueOrChunk::Value(v) => v.serialized_length(),
+                ValueOrChunk::Value(data) => data.serialized_length(),
                 ValueOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
             }
     }
@@ -154,5 +170,21 @@ impl<'a> Display for TrieOrChunkIdDisplay<'a> {
 impl Display for TrieOrChunkId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "({}, {})", self.0, self.1)
+    }
+}
+
+#[cfg(test)]
+mod value_chunking {
+    use super::ValueOrChunk;
+
+    #[test]
+    fn returns_value_or_chunk() {
+        let max_chunk_size = u32::MAX as usize;
+
+        // Smaller than the maximum chunk size.
+        let input = 1u32;
+
+        let value = ValueOrChunk::new(input, 0, max_chunk_size).unwrap();
+        assert!(matches!(value, ValueOrChunk::Value { .. }));
     }
 }

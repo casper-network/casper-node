@@ -96,7 +96,7 @@ impl Item for TrieOrChunk {
 
     fn id(&self) -> Self::Id {
         match self {
-            TrieOrChunk::Value(node_bytes) => TrieOrChunkId(0, Digest::hash(&node_bytes)),
+            TrieOrChunk::Value(trie) => TrieOrChunkId(0, Digest::hash(&trie)),
             TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
                 chunked_data.proof().index(),
                 chunked_data.proof().root_hash(),
