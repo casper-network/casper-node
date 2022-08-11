@@ -16,17 +16,14 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self,
-        balance::{BalanceRequest, BalanceResult},
-        era_validators::GetEraValidatorsError,
-        genesis::GenesisSuccess,
-        get_bids::{GetBidsRequest, GetBidsResult},
-        query::{QueryRequest, QueryResult},
-        UpgradeConfig, UpgradeSuccess,
-    },
-    storage::trie::{TrieOrChunk, TrieOrChunkId},
+use casper_execution_engine::core::engine_state::{
+    self,
+    balance::{BalanceRequest, BalanceResult},
+    era_validators::GetEraValidatorsError,
+    genesis::GenesisSuccess,
+    get_bids::{GetBidsRequest, GetBidsResult},
+    query::{QueryRequest, QueryResult},
+    UpgradeConfig, UpgradeSuccess,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -52,7 +49,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
+        FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };

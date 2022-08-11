@@ -121,7 +121,6 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
-    storage::trie::{TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -151,6 +150,7 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{SharedFlag, Source},
 };

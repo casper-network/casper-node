@@ -19,8 +19,6 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::storage::trie::TrieOrChunk;
-
 use crate::{
     components::{
         chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
@@ -69,6 +67,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalizedApprovalsWithId,
+        TrieOrChunk,
     },
     utils::WithDir,
     NodeRng,

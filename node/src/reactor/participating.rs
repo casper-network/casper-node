@@ -22,8 +22,6 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{error, info};
 
-use casper_execution_engine::storage::trie::TrieOrChunk;
-
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -72,7 +70,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId,
+        FinalizedApprovalsWithId, TrieOrChunk,
     },
     utils::{Source, WithDir},
     NodeRng,

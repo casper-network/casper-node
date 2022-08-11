@@ -21,7 +21,6 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
 
@@ -49,7 +48,7 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId,
-        FinalizedBlock, Item, NodeId,
+        FinalizedBlock, Item, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::work_queue::WorkQueue,
 };

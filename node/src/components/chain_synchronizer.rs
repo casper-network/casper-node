@@ -11,10 +11,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::{
-    core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess},
-    storage::trie::TrieOrChunk,
-};
+use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -38,7 +35,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
-        FinalizedApprovalsWithId, FinalizedBlock, NodeConfig, NodeState,
+        FinalizedApprovalsWithId, FinalizedBlock, NodeConfig, NodeState, TrieOrChunk,
     },
     NodeRng, SmallNetworkConfig,
 };

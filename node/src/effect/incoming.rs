@@ -4,14 +4,13 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use casper_execution_engine::storage::trie::TrieOrChunkIdDisplay;
 use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
     components::{consensus, gossiper},
     protocol::Message,
-    types::{FinalitySignature, NodeId, Tag},
+    types::{FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
 };
 
 use super::AutoClosingResponder;

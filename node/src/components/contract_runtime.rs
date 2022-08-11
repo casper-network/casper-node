@@ -31,10 +31,7 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        self,
-        global_state::lmdb::LmdbGlobalState,
-        transaction_source::lmdb::LmdbEnvironment,
-        trie::{TrieOrChunk, TrieOrChunkId},
+        self, global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -51,7 +48,10 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock},
+    types::{
+        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock, TrieOrChunk,
+        TrieOrChunkId,
+    },
     NodeRng,
 };
 pub(crate) use config::Config;

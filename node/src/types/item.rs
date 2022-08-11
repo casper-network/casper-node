@@ -9,10 +9,9 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use thiserror::Error;
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
 
-use crate::types::{BlockHash, BlockHeader};
+use crate::types::{BlockHash, BlockHeader, TrieOrChunk, TrieOrChunkId};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
