@@ -44,7 +44,6 @@ use crate::{
         },
         EffectBuilder,
     },
-    fatal,
     storage::StorageRequest,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
@@ -2254,30 +2253,28 @@ where
 {
     let start_instant = Timestamp::now();
 
-    let mut ordered_deploys = BTreeMap::new();
+    let hashes: Vec<_> = hashes.cloned().collect();
 
-    let mut stream = futures::stream::iter(hashes.cloned().enumerate())
+    // We want to use `buffer_unordered` to avoid being blocked on any particularly slow fetch
+    // attempts (which could happen if we used for example `stream::buffered`), but we also need to
+    // ensure the fetched deploys are returned from this function in the order as specified in the
+    // `hashes` iterator.  Hence we keep track of the index of each of these hashes in the `Vec` of
+    // fetched deploys to allow for sorting on completion of the stream.
+    let mut indexed_deploys: Vec<(usize, Deploy)> = Vec::with_capacity(hashes.len());
+    let mut stream = futures::stream::iter(hashes.into_iter().enumerate())
         .map(|(index, hash)| async move { (index, fetch_and_store_deploy(hash, ctx).await) })
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
     while let Some((index, result)) = stream.next().await {
         let deploy = result?;
         trace!("fetched {:?}", deploy);
-        if let Some(deploy) = ordered_deploys.insert(index, *deploy) {
-            error!(
-                %deploy,
-                %index,
-                "already inserted deploy at given index"
-            );
-            fatal!(
-                ctx.effect_builder,
-                "already inserted {} at given index",
-                deploy.id()
-            )
-            .await;
-        }
+        indexed_deploys.push((index, *deploy));
     }
 
-    let deploys = ordered_deploys.into_values().collect();
+    indexed_deploys.sort();
+    let deploys = indexed_deploys
+        .into_iter()
+        .map(|(_index, deploy)| deploy)
+        .collect();
     ctx.metrics
         .observe_fetch_deploys_duration_seconds(start_instant);
     Ok(deploys)
