@@ -135,7 +135,8 @@ use crate::{
         chainspec_loader::NextUpgrade,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+            BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
+            EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1258,7 +1259,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_trie(
         self,
         trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, engine_state::Error>
+    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError>
     where
         REv: From<ContractRuntimeRequest>,
     {

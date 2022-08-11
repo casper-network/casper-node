@@ -31,7 +31,7 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        self, global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -73,6 +73,9 @@ pub(crate) enum ContractRuntimeError {
     // It was not possible to get trie with the specified id
     #[error("error retrieving trie by id: {0}")]
     FailedToRetrieveTrieById(#[source] engine_state::Error),
+    /// Merkle proof construction error.
+    #[error("{0}")]
+    MerkleConstructionError(#[source] casper_hashing::MerkleConstructionError),
 }
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -859,7 +862,7 @@ impl ContractRuntime {
         engine_state: &EngineState<LmdbGlobalState>,
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
+    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
@@ -871,12 +874,7 @@ impl ContractRuntime {
                 if trie_raw.inner().len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
                     Ok(Some(TrieOrChunk::Value(trie_raw.into_inner())))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(&trie_raw.into_inner(), trie_index)
-                        .map_err(|error| {
-                            engine_state::Error::Storage(storage::error::Error::MerkleConstruction(
-                                error,
-                            ))
-                        })?;
+                    let chunk_with_proof = ChunkWithProof::new(&trie_raw.into_inner(), trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },

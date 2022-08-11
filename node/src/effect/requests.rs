@@ -36,7 +36,8 @@ use crate::{
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+            BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
+            EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
@@ -1014,7 +1015,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// The ID of the trie (or chunk of a trie) to be read.
         trie_or_chunk_id: TrieOrChunkId,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunk>, engine_state::Error>>,
+        responder: Responder<Result<Option<TrieOrChunk>, ContractRuntimeError>>,
     },
     /// Get a trie by its ID.
     GetTrieFull {
