@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.7"
+version = "1.4.8"
 dependencies = [
  "ansi_term",
  "anyhow",
