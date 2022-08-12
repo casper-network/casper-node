@@ -602,8 +602,14 @@ impl Storage {
                 let item_id = decode_item_id::<BlockWithMetadata>(serialized_id)?;
                 let opt_item = self
                     .read_block_and_metadata_by_height(item_id)
-                    .map_err(FatalStorageError::from)?;
-                // TODO: At least one signature?
+                    .map_err(FatalStorageError::from)?
+                    .and_then(|block_with_metadata| {
+                        if block_with_metadata.finality_signatures.proofs.is_empty() {
+                            None
+                        } else {
+                            Some(block_with_metadata)
+                        }
+                    });
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -631,8 +637,18 @@ impl Storage {
                 let item_id = decode_item_id::<BlockHeaderWithMetadata>(serialized_id)?;
                 let opt_item = self
                     .read_block_header_and_metadata_by_height(item_id)
-                    .map_err(FatalStorageError::from)?;
-                // TODO: At least one signature?
+                    .map_err(FatalStorageError::from)?
+                    .and_then(|block_header_with_metadata| {
+                        if block_header_with_metadata
+                            .block_signatures
+                            .proofs
+                            .is_empty()
+                        {
+                            None
+                        } else {
+                            Some(block_header_with_metadata)
+                        }
+                    });
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
