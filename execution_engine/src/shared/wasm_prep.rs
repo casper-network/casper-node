@@ -132,6 +132,17 @@ impl Display for PreprocessingError {
     }
 }
 
+/// Ensures that all the references to functions and global variables in the wasm bytecode are
+/// properly declared.
+///
+/// This validates that:
+///
+/// - Start function points to a function declared in the Wasm bytecode
+/// - All exported functions are pointing to functions declared in the Wasm bytecode
+/// - `call` instructions reference a function declared in the Wasm bytecode.
+/// - `global.set`, `global.get` instructions are referencing an existing global declared in the
+///   Wasm bytecode.
+/// - All members of the "elem" section point at functions declared in the Wasm bytecode.
 fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
     let function_types_count = module
         .type_section()
@@ -209,6 +220,13 @@ fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
         }
     }
 
+    Ok(())
+}
+
+fn ensure_valid_function_index(index: u32, function_count: u32) -> Result<(), WasmValidationError> {
+    if index >= function_count {
+        return Err(WasmValidationError::MissingFunctionIndex { index });
+    }
     Ok(())
 }
 
@@ -392,13 +410,6 @@ pub fn preprocess(
     let module = stack_height::inject_limiter(module, wasm_config.max_stack_height)
         .map_err(|_| PreprocessingError::StackLimiter)?;
     Ok(module)
-}
-
-fn ensure_valid_function_index(index: u32, function_count: u32) -> Result<(), WasmValidationError> {
-    if index >= function_count {
-        return Err(WasmValidationError::MissingFunctionIndex { index });
-    }
-    Ok(())
 }
 
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
