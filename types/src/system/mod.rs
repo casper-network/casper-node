@@ -87,7 +87,7 @@ mod system_contract_type {
     ///
     /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
     /// `ext_ffi::casper_get_system_contract()`.
-    #[derive(Debug, Copy, Clone, PartialEq)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub enum SystemContractType {
         /// Mint contract.
         Mint,

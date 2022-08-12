@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 /// A correlation id is a unique identifier which can be used to track the progress of a given
 /// execution engine operation.
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, Serialize)]
 pub struct CorrelationId(Uuid);
 
 impl CorrelationId {

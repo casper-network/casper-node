@@ -10,6 +10,8 @@ use crate::{
     NodeRng,
 };
 
+type ConditionChecker<R> = Box<dyn Fn(&<R as Reactor>::Event) -> bool + Send>;
+
 /// A reactor wrapping an inner reactor, and which has an optional hook into
 /// `Reactor::dispatch_event()`.
 ///
@@ -20,16 +22,13 @@ use crate::{
 /// Once the condition is met, the hook is reset to `None`.
 pub(crate) struct ConditionCheckReactor<R: Reactor> {
     reactor: R,
-    condition_checker: Option<Box<dyn Fn(&R::Event) -> bool + Send>>,
+    condition_checker: Option<ConditionChecker<R>>,
     condition_result: bool,
 }
 
 impl<R: Reactor> ConditionCheckReactor<R> {
     /// Sets the condition checker hook.
-    pub(crate) fn set_condition_checker(
-        &mut self,
-        condition_checker: Box<dyn Fn(&R::Event) -> bool + Send>,
-    ) {
+    pub(crate) fn set_condition_checker(&mut self, condition_checker: ConditionChecker<R>) {
         self.condition_checker = Some(condition_checker);
     }
 

@@ -599,3 +599,133 @@ fn should_not_allow_to_import_gas_function() {
         error,
     );
 }
+
+#[ignore]
+#[test]
+fn should_not_get_non_existing_global() {
+    let get_undeclared_global = r#"(module
+        (memory $memory 16)
+        (export "call" (func $call_fn))
+        (func $call_fn
+            global.get 0
+            drop
+        )
+    )"#;
+
+    test_non_existing_global(get_undeclared_global, 0);
+}
+
+#[ignore]
+#[test]
+fn should_not_get_global_above_declared_range() {
+    let get_undeclared_global = r#"(module
+        (memory $memory 16)
+        (export "call" (func $call_fn))
+        (func $call_fn
+            global.get 3
+            drop
+        )
+        (global $global0 i32 (i32.const 0))
+        (global $global1 i32 (i32.const 1))
+        (global $global256 i32 (i32.const 2))
+    )"#;
+
+    test_non_existing_global(get_undeclared_global, 3);
+}
+
+#[ignore]
+#[test]
+fn should_not_set_non_existing_global() {
+    let set_undeclared_global = r#"(module
+        (memory $memory 16)
+        (export "call" (func $call_fn))
+        (func $call_fn
+            i32.const 123
+            global.set 0
+            drop
+        )
+    )"#;
+
+    test_non_existing_global(set_undeclared_global, 0);
+}
+
+#[ignore]
+#[test]
+fn should_not_set_non_existing_global_u32_max() {
+    let set_undeclared_global = format!(
+        r#"(module
+        (memory $memory 16)
+        (export "call" (func $call_fn))
+        (func $call_fn
+            i32.const 0
+            global.set {index}
+        )
+        (global $global0 (mut i32) (i32.const 0))
+        (global $global1 (mut i32) (i32.const 1))
+        (global $global256 (mut i32) (i32.const 2))
+    )"#,
+        index = u32::MAX
+    );
+
+    test_non_existing_global(&set_undeclared_global, u32::MAX);
+}
+
+#[ignore]
+#[test]
+fn should_not_get_non_existing_global_u32_max() {
+    let set_undeclared_global = format!(
+        r#"(module
+        (memory $memory 16)
+        (export "call" (func $call_fn))
+        (func $call_fn
+            global.get {index}
+            drop
+        )
+        (global $global0 (mut i32) (i32.const 0))
+    )"#,
+        index = u32::MAX
+    );
+
+    test_non_existing_global(&set_undeclared_global, u32::MAX);
+}
+
+#[ignore]
+#[test]
+fn should_not_set_non_existing_global_above_declared_range() {
+    let set_undeclared_global = r#"(module
+        (memory $memory 16)
+        (export "call" (func $call_fn))
+        (func $call_fn
+            i32.const 0
+            global.set 123
+        )
+        (global $global0 (mut i32) (i32.const 0))
+        (global $global1 (mut i32) (i32.const 1))
+        (global $global256 (mut i32) (i32.const 2))
+    )"#;
+
+    test_non_existing_global(set_undeclared_global, 123);
+}
+
+fn test_non_existing_global(module_wat: &str, index: u32) {
+    let module_bytes = wat::parse_str(module_wat).unwrap();
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let exec_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+    builder.exec(exec_request).expect_failure().commit();
+    let error = builder.get_error().expect("should fail");
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
+            if msg == &format!("opcode for a global access refers to non-existing global index {index}")
+        ),
+        "{:?}",
+        error,
+    );
+}

@@ -8,7 +8,7 @@ use casper_types::bytesrepr;
 use crate::storage::{error::in_memory, global_state::CommitError};
 
 /// Error enum representing possible errors from database internals.
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum DbError {
     /// LMDB error returned from underlying `lmdb` crate.
     #[error(transparent)]
@@ -16,7 +16,7 @@ pub enum DbError {
 }
 
 /// Error enum representing possible error states in DB interactions.
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {
     /// Error from the underlying database.
     #[error(transparent)]
