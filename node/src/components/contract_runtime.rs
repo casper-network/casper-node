@@ -35,7 +35,7 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_hashing::{ChunkWithProof, Digest};
+use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, ProtocolVersion, Timestamp};
 
 use crate::{
@@ -872,8 +872,7 @@ impl ContractRuntime {
                 Ok(None)
             }
             Some(trie_raw) => {
-                let trie_or_chunk =
-                    TrieOrChunk::new(trie_raw, chunk_index, ChunkWithProof::CHUNK_SIZE_BYTES)?;
+                let trie_or_chunk = TrieOrChunk::new(trie_raw, chunk_index)?;
                 metrics.get_trie.observe(start.elapsed().as_secs_f64());
                 Ok(Some(trie_or_chunk))
             }

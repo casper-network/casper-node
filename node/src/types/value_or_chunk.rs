@@ -46,12 +46,15 @@ impl<V> ValueOrChunk<V> {
     /// Creates an instance of `ValueOrChunk::Value` if data is less than `max_chunk_size`
     /// or a `ValueOrChunk::ChunkWithProof` if it is. In the latter case it will return only the
     /// `chunk_index`-th chunk of the value's byte representation.
-    pub fn new(data: V, chunk_index: u64, max_chunk_size: usize) -> Result<Self, ChunkingError>
+    pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
     where
         V: ToBytes,
     {
         let bytes = ToBytes::to_bytes(&data).map_err(ChunkingError::SerializationError)?;
-        if bytes.len() <= max_chunk_size {
+        // NOTE: Cannot accept the chunk size bytes as an argument without changing the
+        // IndexedMerkleProof. The chunk size there is hardcoded and will be used when
+        // determining the chunk.
+        if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
             Ok(ValueOrChunk::Value(data))
         } else {
             let chunk_with_proof = ChunkWithProof::new(&bytes, chunk_index)
