@@ -82,9 +82,9 @@ impl Chainspec {
 
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
 
-        if self.core_config.unbonding_delay < self.core_config.auction_delay {
+        if self.core_config.unbonding_delay <= self.core_config.auction_delay {
             warn!(
-                "unbonding delay is set to {} but it should be greater or equal to the auction delay (currently set to {})",
+                "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
                 self.core_config.unbonding_delay, self.core_config.auction_delay);
             return false;
         }
