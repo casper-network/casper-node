@@ -509,19 +509,12 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         responder: FetchResponder<BlockHeaderWithMetadata>,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
         async move {
-            // TODO: Only header needed.
-            let BlockWithMetadata {
-                block,
-                finality_signatures,
-            } = effect_builder
-                .get_block_with_metadata_from_storage_by_height(id, false)
+            let block_header_with_metadata = effect_builder
+                .get_block_header_with_metadata_from_storage_by_height(id, false)
                 .await?;
             // TODO: Check if sufficient, otherwise return None. Take validator change updates into
             // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
-            Some(BlockHeaderWithMetadata {
-                block_header: block.take_header(),
-                block_signatures: finality_signatures,
-            })
+            Some(block_header_with_metadata)
         }
         .event(move |result| Event::GetFromStorageResult {
             id,
@@ -557,16 +550,14 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>> {
         async move {
-            // TODO: Only header needed.
-            let BlockWithMetadata {
-                finality_signatures,
-                ..
+            let BlockHeaderWithMetadata {
+                block_signatures, ..
             } = effect_builder
-                .get_block_with_metadata_from_storage(id, false)
+                .get_block_header_with_metadata_from_storage(id, false)
                 .await?;
             // TODO: Check if sufficient, otherwise return None. Take validator change updates into
             // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
-            Some(finality_signatures)
+            Some(block_signatures)
         }
         .event(move |result| Event::GetFromStorageResult {
             id,

@@ -906,6 +906,35 @@ impl Storage {
                     }))
                     .ignore()
             }
+            StorageRequest::GetBlockHeaderAndMetadataByHash {
+                block_hash,
+                only_from_available_block_range,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+
+                let block_header: BlockHeader = {
+                    if let Some(block_header) = self.get_single_block_header_restricted(
+                        &mut txn,
+                        &block_hash,
+                        only_from_available_block_range,
+                    )? {
+                        block_header
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    }
+                };
+                let block_signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(block_hash, block_header.era_id()),
+                };
+                responder
+                    .respond(Some(BlockHeaderWithMetadata {
+                        block_header,
+                        block_signatures,
+                    }))
+                    .ignore()
+            }
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
                 only_from_available_block_range,
@@ -934,6 +963,39 @@ impl Storage {
                     .respond(Some(BlockWithMetadata {
                         block,
                         finality_signatures,
+                    }))
+                    .ignore()
+            }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            } => {
+                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
+                let mut txn = self.env.begin_ro_txn()?;
+
+                let block_header = {
+                    if let Some(block_header) =
+                        self.get_block_header_by_height(&mut txn, block_height)?
+                    {
+                        block_header
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    }
+                };
+
+                let hash = block_header.hash();
+                let block_signatures = match self.get_finality_signatures(&mut txn, &hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(hash, block_header.era_id()),
+                };
+                responder
+                    .respond(Some(BlockHeaderWithMetadata {
+                        block_header,
+                        block_signatures,
                     }))
                     .ignore()
             }
@@ -1244,10 +1306,9 @@ impl Storage {
             } else {
                 return Ok(None);
             };
-        let block_signatures = if let Some(block_signatures) = self.get_finality_signatures(
-            &mut txn,
-            &block_header.hash(),
-        )? {
+        let block_signatures = if let Some(block_signatures) =
+            self.get_finality_signatures(&mut txn, &block_header.hash())?
+        {
             block_signatures
         } else {
             return Ok(None);

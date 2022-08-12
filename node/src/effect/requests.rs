@@ -48,11 +48,11 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
-        StatusFeed,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
+        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -402,6 +402,16 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
+    /// Retrieve block header and its metadata by its hash.
+    GetBlockHeaderAndMetadataByHash {
+        /// The hash of the block.
+        block_hash: BlockHash,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<BlockHeaderWithMetadata>>,
+    },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
         /// The height of the block.
@@ -411,6 +421,16 @@ pub(crate) enum StorageRequest {
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
+    },
+    /// Retrieve block header and its metadata at a given height.
+    GetBlockHeaderAndMetadataByHeight {
+        /// The height of the block.
+        block_height: BlockHeight,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<BlockHeaderWithMetadata>>,
     },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
@@ -527,10 +547,24 @@ impl Display for StorageRequest {
                     block_hash
                 )
             }
+            StorageRequest::GetBlockHeaderAndMetadataByHash { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get block header and metadata for block with hash: {}",
+                    block_hash
+                )
+            }
             StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
                 write!(
                     formatter,
                     "get block and metadata for block at height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get block header and metadata for block at height: {}",
                     block_height
                 )
             }

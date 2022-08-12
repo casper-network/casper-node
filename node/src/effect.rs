@@ -146,11 +146,11 @@ use crate::{
     effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
-        NodeId, NodeState,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
     utils::{SharedFlag, Source},
 };
@@ -1417,6 +1417,26 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block header by hash with its associated metadata.
+    pub(crate) async fn get_block_header_with_metadata_from_storage(
+        self,
+        block_hash: BlockHash,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHash {
+                block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block by height with its associated metadata.
     pub(crate) async fn get_block_with_metadata_from_storage_by_height(
         self,
@@ -1428,6 +1448,26 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header by height with its associated metadata.
+    pub(crate) async fn get_block_header_with_metadata_from_storage_by_height(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHeight {
                 block_height,
                 only_from_available_block_range,
                 responder,
