@@ -151,7 +151,7 @@ impl TrieOrChunkId {
     }
 
     /// Given a serialized ID, deserializes it for display purposes.
-    pub fn fmt_serialized(f: &mut Formatter, serialized_id: &[u8]) -> fmt::Result {
+    fn fmt_serialized(f: &mut Formatter, serialized_id: &[u8]) -> fmt::Result {
         match bincode::deserialize::<Self>(serialized_id) {
             Ok(ref trie_or_chunk_id) => Display::fmt(trie_or_chunk_id, f),
             Err(_) => f.write_str("<invalid>"),
@@ -160,7 +160,7 @@ impl TrieOrChunkId {
 }
 
 /// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
-pub struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
+pub(crate) struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
 
 impl<'a> Display for TrieOrChunkIdDisplay<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
