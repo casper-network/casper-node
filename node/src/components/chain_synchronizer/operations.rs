@@ -36,7 +36,9 @@ use crate::{
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ChainSynchronizerAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
+        },
         requests::{
             ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
         },
@@ -1876,6 +1878,7 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
+        + From<ControlAnnouncement>
         + Send,
 {
     info!("fast syncing chain");
@@ -2098,6 +2101,7 @@ where
         + From<BlocklistAnnouncement>
         + From<StorageRequest>
         + From<MarkBlockCompletedRequest>
+        + From<ControlAnnouncement>
         + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
@@ -2169,11 +2173,13 @@ where
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
             for peer in get_filtered_fully_connected_peers(ctx).await {
+                attempts += 1;
                 warn!(
-                    block_hash=%block.hash(),
+                    fetched_block=%block,
+                    executed_block=%block_and_execution_effects.block(),
+                    attempts,
                     "retrying execution due to deploy approvals mismatch"
                 );
-                attempts += 1;
                 ctx.progress.retry_executing_block(block.height(), attempts);
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
@@ -2240,21 +2246,35 @@ async fn fetch_and_store_deploys<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<Vec<Deploy>, Error>
 where
-    REv: From<StorageRequest> + From<FetcherRequest<Deploy>> + From<NetworkInfoRequest>,
+    REv: From<StorageRequest>
+        + From<FetcherRequest<Deploy>>
+        + From<NetworkInfoRequest>
+        + From<ControlAnnouncement>,
 {
     let start_instant = Timestamp::now();
 
     let hashes: Vec<_> = hashes.cloned().collect();
-    let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
-    let mut stream = futures::stream::iter(hashes)
-        .map(|hash| fetch_and_store_deploy(hash, ctx))
+
+    // We want to use `buffer_unordered` to avoid being blocked on any particularly slow fetch
+    // attempts (which could happen if we used for example `stream::buffered`), but we also need to
+    // ensure the fetched deploys are returned from this function in the order as specified in the
+    // `hashes` iterator.  Hence we keep track of the index of each of these hashes in the `Vec` of
+    // fetched deploys to allow for sorting on completion of the stream.
+    let mut indexed_deploys: Vec<(usize, Deploy)> = Vec::with_capacity(hashes.len());
+    let mut stream = futures::stream::iter(hashes.into_iter().enumerate())
+        .map(|(index, hash)| async move { (index, fetch_and_store_deploy(hash, ctx).await) })
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
-    while let Some(result) = stream.next().await {
+    while let Some((index, result)) = stream.next().await {
         let deploy = result?;
         trace!("fetched {:?}", deploy);
-        deploys.push(*deploy);
+        indexed_deploys.push((index, *deploy));
     }
 
+    indexed_deploys.sort();
+    let deploys = indexed_deploys
+        .into_iter()
+        .map(|(_index, deploy)| deploy)
+        .collect();
     ctx.metrics
         .observe_fetch_deploys_duration_seconds(start_instant);
     Ok(deploys)
