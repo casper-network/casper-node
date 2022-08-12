@@ -461,7 +461,7 @@ impl ContractRuntime {
                     let start = Instant::now();
                     let result = engine_state.put_trie_and_find_missing_descendant_trie_keys(
                         correlation_id,
-                        &*trie_bytes,
+                        trie_bytes.inner(),
                     );
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
@@ -872,12 +872,9 @@ impl ContractRuntime {
                 Ok(None)
             }
             Some(trie_raw) => {
+                let trie_or_chunk =
+                    TrieOrChunk::new(trie_raw, trie_index, ChunkWithProof::CHUNK_SIZE_BYTES)?;
                 metrics.get_trie.observe(start.elapsed().as_secs_f64());
-                let trie_or_chunk = TrieOrChunk::new(
-                    trie_raw.into_inner(),
-                    trie_index,
-                    ChunkWithProof::CHUNK_SIZE_BYTES,
-                )?;
                 Ok(Some(trie_or_chunk))
             }
         }

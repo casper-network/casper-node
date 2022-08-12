@@ -349,7 +349,7 @@ impl ::std::fmt::Debug for PointerBlock {
 }
 
 /// Newtype representing a trie node in its raw form without deserializing into `Trie`.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TrieRaw(pub Bytes);
 
 impl TrieRaw {
@@ -361,6 +361,23 @@ impl TrieRaw {
     /// Returns a reference inner bytes.
     pub fn inner(&self) -> &Bytes {
         &self.0
+    }
+}
+
+impl ToBytes for TrieRaw {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for TrieRaw {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (bytes, rem) = Bytes::from_bytes(bytes)?;
+        Ok((TrieRaw(bytes), rem))
     }
 }
 

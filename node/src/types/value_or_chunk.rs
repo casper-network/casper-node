@@ -1,10 +1,11 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+use casper_execution_engine::storage::trie::TrieRaw;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use datasize::DataSize;
 
 /// Represents a value or a chunk of data with attached proof.
@@ -61,7 +62,7 @@ impl<V> ValueOrChunk<V> {
 }
 
 /// Represents an enum that can contain either a whole trie or a chunk of it.
-pub type TrieOrChunk = ValueOrChunk<Bytes>;
+pub type TrieOrChunk = ValueOrChunk<TrieRaw>;
 
 impl<V: Debug> Display for ValueOrChunk<V> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

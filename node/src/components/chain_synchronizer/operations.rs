@@ -9,6 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use casper_execution_engine::storage::trie::TrieRaw;
 use datasize::DataSize;
 use futures::{
     stream::{futures_unordered::FuturesUnordered, StreamExt},
@@ -439,7 +440,7 @@ where
 
 enum TrieAlreadyPresentOrDownloaded {
     AlreadyPresent,
-    Downloaded(Bytes),
+    Downloaded(TrieRaw),
 }
 
 async fn fetch_trie_retry_forever<REv>(
@@ -516,8 +517,10 @@ where
     chunk_map.insert(0, first_chunk);
 
     // Concatenate all of the chunks into a trie
-    let trie_bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
-    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes))
+    let trie_bytes: Bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
+    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(TrieRaw(
+        trie_bytes,
+    )))
 }
 
 /// Fetches and stores a block header from the network.

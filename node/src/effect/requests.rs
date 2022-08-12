@@ -16,14 +16,17 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::core::engine_state::{
-    self,
-    balance::{BalanceRequest, BalanceResult},
-    era_validators::GetEraValidatorsError,
-    genesis::GenesisSuccess,
-    get_bids::{GetBidsRequest, GetBidsResult},
-    query::{QueryRequest, QueryResult},
-    UpgradeConfig, UpgradeSuccess,
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        balance::{BalanceRequest, BalanceResult},
+        era_validators::GetEraValidatorsError,
+        genesis::GenesisSuccess,
+        get_bids::{GetBidsRequest, GetBidsResult},
+        query::{QueryRequest, QueryResult},
+        UpgradeConfig, UpgradeSuccess,
+    },
+    storage::trie::TrieRaw,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -1027,7 +1030,7 @@ pub(crate) enum ContractRuntimeRequest {
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
-        trie_bytes: Bytes,
+        trie_bytes: TrieRaw,
         /// Responder to call with the result. Contains the missing descendants of the inserted
         /// trie.
         responder: Responder<Result<Vec<Digest>, engine_state::Error>>,

@@ -121,6 +121,7 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
+    storage::trie::TrieRaw,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -1294,7 +1295,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
-        trie_bytes: Bytes,
+        trie_bytes: TrieRaw,
     ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
