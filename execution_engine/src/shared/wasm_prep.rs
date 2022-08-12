@@ -132,6 +132,86 @@ impl Display for PreprocessingError {
     }
 }
 
+fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
+    let function_types_count = module
+        .type_section()
+        .map(|ts| ts.types().len())
+        .unwrap_or_default();
+
+    let mut function_count = 0_u32;
+    if let Some(import_section) = module.import_section() {
+        for import_entry in import_section.entries() {
+            if let External::Function(function_type_index) = import_entry.external() {
+                if (*function_type_index as usize) < function_types_count {
+                    function_count = function_count.saturating_add(1);
+                } else {
+                    return Err(WasmValidationError::MissingFunctionType {
+                        index: *function_type_index,
+                    });
+                }
+            }
+        }
+    }
+    if let Some(function_section) = module.function_section() {
+        for function_entry in function_section.entries() {
+            let function_type_index = function_entry.type_ref();
+            if (function_type_index as usize) < function_types_count {
+                function_count = function_count.saturating_add(1);
+            } else {
+                return Err(WasmValidationError::MissingFunctionType {
+                    index: function_type_index,
+                });
+            }
+        }
+    }
+
+    if let Some(function_index) = module.start_section() {
+        ensure_valid_function_index(function_index, function_count)?;
+    }
+    if let Some(export_section) = module.export_section() {
+        for export_entry in export_section.entries() {
+            if let Internal::Function(function_index) = export_entry.internal() {
+                ensure_valid_function_index(*function_index, function_count)?;
+            }
+        }
+    }
+
+    if let Some(code_section) = module.code_section() {
+        let global_len = module
+            .global_section()
+            .map(|global_section| global_section.entries().len())
+            .unwrap_or(0);
+
+        for instr in code_section
+            .bodies()
+            .iter()
+            .flat_map(|body| body.code().elements())
+        {
+            match instr {
+                Instruction::Call(idx) => {
+                    ensure_valid_function_index(*idx, function_count)?;
+                }
+                Instruction::GetGlobal(idx) | Instruction::SetGlobal(idx)
+                    if *idx as usize >= global_len =>
+                {
+                    return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(element_section) = module.elements_section() {
+        for element_segment in element_section.entries() {
+            for idx in element_segment.members() {
+                ensure_valid_function_index(*idx, function_count)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Checks if given wasm module contains a non-empty memory section.
 fn memory_section(module: &Module) -> Option<&MemorySection> {
     for section in module.sections() {
@@ -186,20 +266,6 @@ fn ensure_table_size_limit(mut module: Module, limit: u32) -> Result<Module, Was
     Ok(module)
 }
 
-/// Ensures that module doesn't declare too many globals.
-///
-/// Globals are not limited through the `stack_height` as locals are. Neither does
-/// the linear memory limit `memory_pages` applies to them.
-fn ensure_global_variable_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
-    if let Some(global_section) = module.global_section() {
-        let actual = global_section.entries().len();
-        if actual > limit as usize {
-            return Err(WasmValidationError::TooManyGlobals { max: limit, actual });
-        }
-    }
-    Ok(())
-}
-
 /// Ensure that any `br_table` instruction adheres to its immediate value limit.
 fn ensure_br_table_size_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
     let code_section = if let Some(type_section) = module.code_section() {
@@ -219,6 +285,20 @@ fn ensure_br_table_size_limit(module: &Module, limit: u32) -> Result<(), WasmVal
                     actual: br_table_data.table.len(),
                 });
             }
+        }
+    }
+    Ok(())
+}
+
+/// Ensures that module doesn't declare too many globals.
+///
+/// Globals are not limited through the `stack_height` as locals are. Neither does
+/// the linear memory limit `memory_pages` applies to them.
+fn ensure_global_variable_limit(module: &Module, limit: u32) -> Result<(), WasmValidationError> {
+    if let Some(global_section) = module.global_section() {
+        let actual = global_section.entries().len();
+        if actual > limit as usize {
+            return Err(WasmValidationError::TooManyGlobals { max: limit, actual });
         }
     }
     Ok(())
@@ -312,86 +392,6 @@ pub fn preprocess(
     let module = stack_height::inject_limiter(module, wasm_config.max_stack_height)
         .map_err(|_| PreprocessingError::StackLimiter)?;
     Ok(module)
-}
-
-fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
-    let function_types_count = module
-        .type_section()
-        .map(|ts| ts.types().len())
-        .unwrap_or_default();
-
-    let mut function_count = 0_u32;
-    if let Some(import_section) = module.import_section() {
-        for import_entry in import_section.entries() {
-            if let External::Function(function_type_index) = import_entry.external() {
-                if (*function_type_index as usize) < function_types_count {
-                    function_count = function_count.saturating_add(1);
-                } else {
-                    return Err(WasmValidationError::MissingFunctionType {
-                        index: *function_type_index,
-                    });
-                }
-            }
-        }
-    }
-    if let Some(function_section) = module.function_section() {
-        for function_entry in function_section.entries() {
-            let function_type_index = function_entry.type_ref();
-            if (function_type_index as usize) < function_types_count {
-                function_count = function_count.saturating_add(1);
-            } else {
-                return Err(WasmValidationError::MissingFunctionType {
-                    index: function_type_index,
-                });
-            }
-        }
-    }
-
-    if let Some(function_index) = module.start_section() {
-        ensure_valid_function_index(function_index, function_count)?;
-    }
-    if let Some(export_section) = module.export_section() {
-        for export_entry in export_section.entries() {
-            if let Internal::Function(function_index) = export_entry.internal() {
-                ensure_valid_function_index(*function_index, function_count)?;
-            }
-        }
-    }
-
-    if let Some(code_section) = module.code_section() {
-        let global_len = module
-            .global_section()
-            .map(|global_section| global_section.entries().len())
-            .unwrap_or(0);
-
-        for instr in code_section
-            .bodies()
-            .iter()
-            .flat_map(|body| body.code().elements())
-        {
-            match instr {
-                Instruction::Call(idx) => {
-                    ensure_valid_function_index(*idx, function_count)?;
-                }
-                Instruction::GetGlobal(idx) | Instruction::SetGlobal(idx)
-                    if *idx as usize >= global_len =>
-                {
-                    return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx });
-                }
-                _ => {}
-            }
-        }
-    }
-
-    if let Some(element_section) = module.elements_section() {
-        for element_segment in element_section.entries() {
-            for idx in element_segment.members() {
-                ensure_valid_function_index(*idx, function_count)?;
-            }
-        }
-    }
-
-    Ok(())
 }
 
 fn ensure_valid_function_index(index: u32, function_count: u32) -> Result<(), WasmValidationError> {
