@@ -2,8 +2,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use parity_wasm::elements::{
-    self, External, FunctionType, Instruction, Internal, MemorySection, Module, Section, TableType,
-    Type,
+    self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
 };
 use pwasm_utils::{self, stack_height};
 use thiserror::Error;
@@ -316,48 +315,45 @@ pub fn preprocess(
 }
 
 fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
-    // Copy types from module as is.
-    let types: Vec<FunctionType> = module
+    let function_types_count = module
         .type_section()
-        .map(|ts| {
-            ts.types()
-                .iter()
-                .map(|&Type::Function(ref ty)| ty)
-                .cloned()
-                .collect()
-        })
+        .map(|ts| ts.types().len())
         .unwrap_or_default();
 
-    // Function space that contains indexes of imported functions from import section and indexes
-    // from function section.
-    //
-    // It is an indirection from the i-th element of the index space into a type section as created
-    // in the `types` variable above.
-    let mut func_type_indices = Vec::new();
-
+    let mut function_count = 0_u32;
     if let Some(import_section) = module.import_section() {
         for import_entry in import_section.entries() {
-            if let External::Function(idx) = import_entry.external() {
-                func_type_indices.push((*idx, false));
+            if let External::Function(function_type_index) = import_entry.external() {
+                if (*function_type_index as usize) < function_types_count {
+                    function_count = function_count.saturating_add(1);
+                } else {
+                    return Err(WasmValidationError::MissingFunctionType {
+                        index: *function_type_index,
+                    });
+                }
+            }
+        }
+    }
+    if let Some(function_section) = module.function_section() {
+        for function_entry in function_section.entries() {
+            let function_type_index = function_entry.type_ref();
+            if (function_type_index as usize) < function_types_count {
+                function_count = function_count.saturating_add(1);
+            } else {
+                return Err(WasmValidationError::MissingFunctionType {
+                    index: function_type_index,
+                });
             }
         }
     }
 
-    if let Some(function_section) = module.function_section() {
-        for function_entry in function_section.entries() {
-            let idx = function_entry.type_ref();
-            func_type_indices.push((idx, false));
-        }
+    if let Some(function_index) = module.start_section() {
+        ensure_valid_function_index(function_index, function_count)?;
     }
-
-    if let Some(idx) = module.start_section() {
-        ensure_function_exists(&idx, &mut func_type_indices, &types)?;
-    }
-
     if let Some(export_section) = module.export_section() {
         for export_entry in export_section.entries() {
-            if let Internal::Function(idx) = export_entry.internal() {
-                ensure_function_exists(idx, &mut func_type_indices, &types)?;
+            if let Internal::Function(function_index) = export_entry.internal() {
+                ensure_valid_function_index(*function_index, function_count)?;
             }
         }
     }
@@ -375,12 +371,12 @@ fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
         {
             match instr {
                 Instruction::Call(idx) => {
-                    ensure_function_exists(idx, &mut func_type_indices, &types)?
+                    ensure_valid_function_index(*idx, function_count)?;
                 }
                 Instruction::GetGlobal(idx) | Instruction::SetGlobal(idx)
                     if *idx as usize >= global_len =>
                 {
-                    return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx })
+                    return Err(WasmValidationError::IncorrectGlobalOperation { index: *idx });
                 }
                 _ => {}
             }
@@ -390,7 +386,7 @@ fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
     if let Some(element_section) = module.elements_section() {
         for element_segment in element_section.entries() {
             for idx in element_segment.members() {
-                ensure_function_exists(idx, &mut func_type_indices, &types)?;
+                ensure_valid_function_index(*idx, function_count)?;
             }
         }
     }
@@ -398,22 +394,10 @@ fn ensure_valid_access(module: &Module) -> Result<(), WasmValidationError> {
     Ok(())
 }
 
-/// Ensures a function exists in a types table.
-fn ensure_function_exists(
-    idx: &u32,
-    func_type_indices: &mut [(u32, bool)],
-    types: &[FunctionType],
-) -> Result<(), WasmValidationError> {
-    let (ty_idx, is_validated) = func_type_indices
-        .get_mut(*idx as usize)
-        .ok_or(WasmValidationError::MissingFunctionIndex { index: *idx })?;
-    if *is_validated {
-        return Ok(());
+fn ensure_valid_function_index(index: u32, function_count: u32) -> Result<(), WasmValidationError> {
+    if index >= function_count {
+        return Err(WasmValidationError::MissingFunctionIndex { index });
     }
-    let _ty = types
-        .get(*ty_idx as usize)
-        .ok_or(WasmValidationError::MissingFunctionType { index: *ty_idx })?;
-    *is_validated = true;
     Ok(())
 }
 
