@@ -435,7 +435,7 @@ impl DocExample for ListRpcsResult {
 }
 
 /// "rpc.discover" RPC.
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct ListRpcs {}
 
 #[async_trait]

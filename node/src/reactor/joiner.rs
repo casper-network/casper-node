@@ -594,7 +594,7 @@ impl reactor::Reactor for Reactor {
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
-        let deploy_acceptor = DeployAcceptor::new(&*chainspec_loader.chainspec(), registry)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
 
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",

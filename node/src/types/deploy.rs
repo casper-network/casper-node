@@ -1656,7 +1656,7 @@ impl From<Deploy> for DeployItem {
 ///
 /// Currently a stop-gap measure to associate an immutable deploy with additional metadata. Holds
 /// execution results.
-#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
@@ -1664,7 +1664,7 @@ pub struct DeployMetadata {
 }
 
 /// Additional information describing a deploy.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum DeployMetadataExt {
     /// Holds the execution results of a deploy.
     Metadata(DeployMetadata),
