@@ -179,16 +179,59 @@ impl Display for TrieOrChunkId {
 
 #[cfg(test)]
 mod value_chunking {
+    use casper_hashing::ChunkWithProof;
+    use casper_types::bytesrepr::{self, Bytes};
+
     use super::ValueOrChunk;
+
+    fn create_test_bytes(length: usize) -> Bytes {
+        std::iter::repeat(1u8)
+            .take(length)
+            .collect::<Vec<u8>>()
+            .into()
+    }
 
     #[test]
     fn returns_value_or_chunk() {
-        let max_chunk_size = u32::MAX as usize;
-
-        // Smaller than the maximum chunk size.
-        let input = 1u32;
-
-        let value = ValueOrChunk::new(input, 0, max_chunk_size).unwrap();
+        let input: Bytes = create_test_bytes(1u8 as usize);
+        let value = ValueOrChunk::new(input, 0).unwrap();
         assert!(matches!(value, ValueOrChunk::Value { .. }));
+
+        let input: Bytes = create_test_bytes(ChunkWithProof::CHUNK_SIZE_BYTES + 1);
+        let value_or_chunk = ValueOrChunk::new(input.clone(), 0).unwrap();
+        let first_chunk = match value_or_chunk {
+            ValueOrChunk::Value(_) => panic!("expected chunk"),
+            ValueOrChunk::ChunkWithProof(chunk) => chunk,
+        };
+
+        // try to read all the chunks
+        let chunk_count = first_chunk.proof().count();
+        let mut chunks = vec![first_chunk];
+
+        for i in 1..chunk_count {
+            match ValueOrChunk::new(input.clone(), i).unwrap() {
+                ValueOrChunk::Value(_) => panic!("expected chunk"),
+                ValueOrChunk::ChunkWithProof(chunk) => chunks.push(chunk),
+            }
+        }
+
+        // there should be no chunk with index `chunk_count`
+        assert!(matches!(
+            ValueOrChunk::new(input.clone(), chunk_count),
+            Err(super::ChunkingError::MerkleConstruction(_))
+        ));
+
+        // all chunks should be valid
+        assert!(chunks.iter().all(|chunk| chunk.verify().is_ok()));
+
+        // reassemble the data
+        let data: Vec<u8> = chunks
+            .into_iter()
+            .flat_map(|chunk| chunk.into_chunk())
+            .collect();
+
+        let retrieved_input: Bytes = bytesrepr::deserialize(data).unwrap();
+
+        assert_eq!(input, retrieved_input);
     }
 }
