@@ -40,7 +40,7 @@ const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-wasm";
 
 /// Set of errors which may happen when working with contract headers.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Error {
     /// Attempt to override an existing or previously existing version with a

@@ -4,7 +4,7 @@ use std::fmt::{Debug, Display};
 
 use datasize::DataSize;
 
-#[derive(DataSize, Debug, PartialEq)]
+#[derive(DataSize, Debug, PartialEq, Eq)]
 pub enum StopReason {
     ForUpgrade,
     ForDowngrade,
