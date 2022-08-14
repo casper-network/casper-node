@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.4.8
+
+### Changed
+* Update `casper-execution-engine`.
+
+
+
 ## 1.4.7
 
 ### Changed
