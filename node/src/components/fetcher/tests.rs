@@ -84,6 +84,7 @@ reactor!(Reactor {
         deploy_fetcher = Fetcher::<Deploy>(
             "deploy",
             cfg.fetcher_config,
+            chainspec_loader.chainspec().highway_config.finality_threshold_fraction,
             registry);
     }
 

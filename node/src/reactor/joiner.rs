@@ -579,7 +579,11 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
         )?;
 
-        let fetcher_builder = FetcherBuilder::new(config.fetcher, registry);
+        let fetcher_builder = FetcherBuilder::new(
+            config.fetcher,
+            chainspec.highway_config.finality_threshold_fraction,
+            registry,
+        );
 
         let deploy_fetcher = fetcher_builder.build("deploy")?;
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;

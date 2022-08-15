@@ -6,14 +6,19 @@ mod tests;
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
+use num_rational::Ratio;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
 use crate::{
-    components::{fetcher::event::FetchResponder, Component},
+    components::{
+        consensus::{self, error::FinalitySignatureError},
+        fetcher::event::FetchResponder,
+        linear_chain, Component,
+    },
     effect::{
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -268,6 +273,8 @@ where
     T: Item + 'static,
 {
     get_from_peer_timeout: Duration,
+    #[data_size(skip)]
+    finality_threshold_fraction: Ratio<u64>,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
     metrics: Metrics,
@@ -277,10 +284,12 @@ impl<T: Item> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: Config,
+        finality_threshold_fraction: Ratio<u64>,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
+            finality_threshold_fraction,
             responders: HashMap::new(),
             metrics: Metrics::new(name, registry)?,
         })
@@ -467,13 +476,19 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockWithMetadata>,
     ) -> Effects<Event<BlockWithMetadata>> {
+        let finality_threshold_fraction = self.finality_threshold_fraction;
         async move {
             let block_with_metadata = effect_builder
                 .get_block_with_metadata_from_storage_by_height(id, false)
                 .await?;
-            // TODO: Check if sufficient, otherwise return None. Take validator change updates into
-            // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
-            Some(block_with_metadata)
+            has_enough_block_signatures(
+                effect_builder,
+                block_with_metadata.block.header(),
+                &block_with_metadata.finality_signatures,
+                finality_threshold_fraction,
+            )
+            .await
+            .then_some(block_with_metadata)
         }
         .event(move |result| Event::GetFromStorageResult {
             id,
@@ -508,13 +523,19 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockHeaderWithMetadata>,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
+        let finality_threshold_fraction = self.finality_threshold_fraction;
         async move {
             let block_header_with_metadata = effect_builder
                 .get_block_header_with_metadata_from_storage_by_height(id, false)
                 .await?;
-            // TODO: Check if sufficient, otherwise return None. Take validator change updates into
-            // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
-            Some(block_header_with_metadata)
+            has_enough_block_signatures(
+                effect_builder,
+                &block_header_with_metadata.block_header,
+                &block_header_with_metadata.block_signatures,
+                finality_threshold_fraction,
+            )
+            .await
+            .then_some(block_header_with_metadata)
         }
         .event(move |result| Event::GetFromStorageResult {
             id,
@@ -549,15 +570,19 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         peer: NodeId,
         responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>> {
+        let finality_threshold_fraction = self.finality_threshold_fraction;
         async move {
-            let BlockHeaderWithMetadata {
-                block_signatures, ..
-            } = effect_builder
+            let block_header_with_metadata = effect_builder
                 .get_block_header_with_metadata_from_storage(id, false)
                 .await?;
-            // TODO: Check if sufficient, otherwise return None. Take validator change updates into
-            // account! (See chain_synchronizer::operations::era_validator_weights_for_block.)
-            Some(block_signatures)
+            has_enough_block_signatures(
+                effect_builder,
+                &block_header_with_metadata.block_header,
+                &block_header_with_metadata.block_signatures,
+                finality_threshold_fraction,
+            )
+            .await
+            .then_some(block_header_with_metadata.block_signatures)
         }
         .event(move |result| Event::GetFromStorageResult {
             id,
@@ -752,18 +777,81 @@ where
 
 pub(crate) struct FetcherBuilder<'a> {
     config: FetcherConfig,
+    finality_threshold_fraction: Ratio<u64>,
     registry: &'a Registry,
 }
 
 impl<'a> FetcherBuilder<'a> {
-    pub(crate) fn new(config: FetcherConfig, registry: &'a Registry) -> Self {
-        Self { config, registry }
+    pub(crate) fn new(
+        config: FetcherConfig,
+        finality_threshold_fraction: Ratio<u64>,
+        registry: &'a Registry,
+    ) -> Self {
+        Self {
+            config,
+            finality_threshold_fraction,
+            registry,
+        }
     }
 
     pub(crate) fn build<T: Item + 'static>(
         &self,
         name: &str,
     ) -> Result<Fetcher<T>, prometheus::Error> {
-        Fetcher::new(name, self.config, self.registry)
+        Fetcher::new(
+            name,
+            self.config,
+            self.finality_threshold_fraction,
+            self.registry,
+        )
+    }
+}
+
+/// Returns `true` if the cumulative weight of the given signatures is sufficient for the given
+/// block using the specified `finality_threshold_fraction`.
+///
+/// Note that signatures are _not_ cryptographically verified in this function.
+async fn has_enough_block_signatures<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block_header: &BlockHeader,
+    block_signatures: &BlockSignatures,
+    finality_threshold_fraction: Ratio<u64>,
+) -> bool
+where
+    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<BlocklistAnnouncement>,
+{
+    let validator_weights =
+        match linear_chain::era_validator_weights_for_block(block_header, effect_builder).await {
+            Ok((_, validator_weights)) => validator_weights,
+            Err(error) => {
+                warn!(
+                    ?error,
+                    ?block_header,
+                    ?block_signatures,
+                    "failed to get validator weights for given block"
+                );
+                return false;
+            }
+        };
+
+    match consensus::check_sufficient_finality_signatures(
+        &validator_weights,
+        finality_threshold_fraction,
+        Some(block_signatures),
+    ) {
+        Err(error @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
+            info!(?error, "insufficient block signatures from storage");
+            false
+        }
+        Err(error @ FinalitySignatureError::BogusValidator { .. }) => {
+            error!(?error, "bogus validator block signature from storage");
+            false
+        }
+        // TODO - make this an error condition once we start using `get_minimal_set_of_signatures`.
+        Err(FinalitySignatureError::TooManySignatures { .. }) => {
+            debug!("too many block signatures from storage");
+            true
+        }
+        Ok(_) => true,
     }
 }

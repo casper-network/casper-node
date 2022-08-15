@@ -675,7 +675,7 @@ impl KeyBlockInfo {
 trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
     fn header(&self) -> &BlockHeader;
 
-    fn finality_signatures(&self) -> &BlockSignatures;
+    fn block_signatures(&self) -> &BlockSignatures;
 
     async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
     where
@@ -688,7 +688,7 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
         self.block.header()
     }
 
-    fn finality_signatures(&self) -> &BlockSignatures {
+    fn block_signatures(&self) -> &BlockSignatures {
         &self.finality_signatures
     }
 
@@ -707,7 +707,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
         &self.block_header
     }
 
-    fn finality_signatures(&self) -> &BlockSignatures {
+    fn block_signatures(&self) -> &BlockSignatures {
         &self.block_signatures
     }
 
@@ -851,17 +851,35 @@ where
                     );
                 }
 
-                if let Err(error) = consensus::check_sufficient_finality_signatures(
-                    key_block_info.validator_weights(),
-                    ctx.config.finality_threshold_fraction(),
-                    Some(item.finality_signatures()),
-                ) {
-                    warn!(?error, ?peer, "insufficient finality signatures from peer");
+                if item.block_signatures().proofs.is_empty() {
+                    warn!(?peer, ?item, "no block signatures from peer");
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
-                if let Err(error) = item.finality_signatures().verify() {
+                match consensus::check_sufficient_finality_signatures(
+                    key_block_info.validator_weights(),
+                    ctx.config.finality_threshold_fraction(),
+                    Some(item.block_signatures()),
+                ) {
+                    Err(error @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
+                        info!(?error, ?peer, "insufficient block signatures from peer");
+                        continue;
+                    }
+                    Err(error @ FinalitySignatureError::BogusValidator { .. }) => {
+                        warn!(?error, ?peer, "bogus validator block signature from peer");
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        continue;
+                    }
+                    // TODO - make this an error condition once we start using
+                    // `get_minimal_set_of_signatures`.
+                    Err(FinalitySignatureError::TooManySignatures { .. }) => {
+                        debug!(?peer, "too many block signatures");
+                    }
+                    Ok(_) => (),
+                }
+
+                if let Err(error) = item.block_signatures().verify() {
                     warn!(
                         ?error,
                         ?peer,
@@ -873,7 +891,7 @@ where
 
                 // Store the block or header itself, and the finality signatures.
                 item.store_block_or_header(*ctx.effect_builder).await;
-                let sigs = item.finality_signatures().clone();
+                let sigs = item.block_signatures().clone();
                 ctx.effect_builder.put_signatures_to_storage(sigs).await;
 
                 break Some(item);

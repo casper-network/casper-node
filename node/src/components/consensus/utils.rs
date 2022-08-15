@@ -180,7 +180,7 @@ pub(crate) fn get_minimal_set_of_signatures(
         .map(|(pub_key, _)| pub_key)
         .collect();
 
-    // Chack if we managed to collect sufficient weight (there might not have been enough
+    // Check if we managed to collect sufficient weight (there might not have been enough
     // signatures in the first place).
     if accumulated_weight * U512::from(*lower_bound.denom())
         > total_weight * U512::from(*lower_bound.numer())
