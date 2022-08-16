@@ -47,6 +47,9 @@ pub(crate) enum Error {
     #[error("cannot get switch block for era: {era_id}")]
     NoSwitchBlockForEra { era_id: EraId },
 
+    #[error("no blocks have been found in storage (should have at least genesis switch block)")]
+    NoBlocksInStorage,
+
     #[error("switch block at height {height} for era {era_id} contains no validator weights")]
     MissingNextEraValidators { height: u64, era_id: EraId },
 

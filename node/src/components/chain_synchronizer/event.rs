@@ -1,18 +1,11 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use serde::Serialize;
 
-use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
-use casper_types::PublicKey;
-
-use super::{Error, FastSyncOutcome};
+use super::Error;
 use crate::{
-    contract_runtime::{BlockAndExecutionEffects, BlockExecutionError},
-    effect::requests::NodeStateRequest,
+    components::chainspec_loader::ImmediateSwitchBlockData, effect::requests::NodeStateRequest,
     types::BlockHeader,
 };
 
@@ -20,29 +13,10 @@ use crate::{
 #[allow(clippy::enum_variant_names)]
 pub(crate) enum Event {
     /// The result of running the fast sync task.
-    FastSyncResult(Result<FastSyncOutcome, Error>),
-    /// The result of contract runtime running the genesis process.
-    CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
-    /// The result of contract runtime running the upgrade process.
-    UpgradeResult {
-        switch_block_header_before_upgrade: BlockHeader,
-        is_emergency_upgrade: bool,
+    FastSyncResult {
+        result: Box<Result<BlockHeader, Error>>,
         #[serde(skip_serializing)]
-        result: Result<UpgradeSuccess, engine_state::Error>,
-    },
-    /// The result of executing a finalized block.
-    ExecuteImmediateSwitchBlockResult {
-        maybe_switch_block_header_before_upgrade: Option<BlockHeader>,
-        is_emergency_upgrade: bool,
-        #[serde(skip_serializing)]
-        result: Result<BlockAndExecutionEffects, BlockExecutionError>,
-    },
-    /// The result of running the fast sync task again after an emergency upgrade.
-    FastSyncAfterEmergencyUpgradeResult {
-        #[serde(skip_serializing)]
-        immediate_switch_block_and_exec_effects: BlockAndExecutionEffects,
-        validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
-        result: Result<FastSyncOutcome, Error>,
+        maybe_immediate_switch_block_data: Option<Box<ImmediateSwitchBlockData>>,
     },
     /// A request to provide the node state.
     #[from]
@@ -52,30 +26,14 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::FastSyncResult(result) => {
-                write!(formatter, "fast sync result: {:?}", result)
-            }
-            Event::CommitGenesisResult(result) => {
-                write!(formatter, "commit genesis result: {:?}", result)
-            }
-            Event::UpgradeResult { result, .. } => {
-                write!(formatter, "upgrade result: {:?}", result)
-            }
-            Event::ExecuteImmediateSwitchBlockResult { result, .. } => {
-                write!(
-                    formatter,
-                    "execute immediate switch block result: {:?}",
-                    result
-                )
-            }
-            Event::FastSyncAfterEmergencyUpgradeResult {
-                result: fast_sync_result,
-                ..
+            Event::FastSyncResult {
+                result,
+                maybe_immediate_switch_block_data,
             } => {
                 write!(
                     formatter,
-                    "fast sync after emergency upgrade result: {:?}",
-                    fast_sync_result
+                    "fast sync result: {:?}; immediate switch block data: {:?}",
+                    result, maybe_immediate_switch_block_data
                 )
             }
             Event::GetNodeState(_) => write!(formatter, "get node state"),

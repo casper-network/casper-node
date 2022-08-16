@@ -3,12 +3,11 @@ use std::{sync::Arc, time::Duration};
 use datasize::DataSize;
 use num::rational::Ratio;
 
-use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
-use casper_types::{bytesrepr, EraId, ProtocolVersion, TimeDiff, Timestamp};
+use casper_types::{EraId, ProtocolVersion, TimeDiff};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
-    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeConfig},
+    types::{BlockHash, BlockHeader, Chainspec, NodeConfig},
     SmallNetworkConfig,
 };
 
@@ -70,13 +69,6 @@ impl Config {
         self.chainspec.protocol_config.version
     }
 
-    pub(super) fn genesis_timestamp(&self) -> Option<Timestamp> {
-        self.chainspec
-            .protocol_config
-            .activation_point
-            .genesis_timestamp()
-    }
-
     pub(super) fn era_duration(&self) -> TimeDiff {
         self.chainspec.core_config.era_duration
     }
@@ -103,10 +95,6 @@ impl Config {
 
     pub(super) fn min_round_length(&self) -> TimeDiff {
         self.chainspec.highway_config.min_round_length()
-    }
-
-    pub(super) fn network_name(&self) -> &str {
-        self.chainspec.network_config.name.as_str()
     }
 
     pub(super) fn trusted_hash(&self) -> Option<BlockHash> {
@@ -152,32 +140,6 @@ impl Config {
         self.chainspec
             .protocol_config
             .is_last_block_before_activation(block_header)
-    }
-
-    pub(super) fn new_upgrade_config(
-        &self,
-        upgrade_block_header: &BlockHeader,
-        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-    ) -> Result<Box<UpgradeConfig>, bytesrepr::Error> {
-        let global_state_update = self.chainspec.protocol_config.get_update_mapping()?;
-        let chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
-            chainspec_raw_bytes.chainspec_bytes(),
-            chainspec_raw_bytes.maybe_global_state_bytes(),
-        );
-        let upgrade_config = UpgradeConfig::new(
-            *upgrade_block_header.state_root_hash(),
-            upgrade_block_header.protocol_version(),
-            self.chainspec.protocol_version(),
-            Some(self.chainspec.protocol_config.activation_point.era_id()),
-            Some(self.chainspec.core_config.validator_slots),
-            Some(self.chainspec.core_config.auction_delay),
-            Some(self.chainspec.core_config.locked_funds_period.millis()),
-            Some(self.chainspec.core_config.round_seigniorage_rate),
-            Some(self.chainspec.core_config.unbonding_delay),
-            global_state_update,
-            chainspec_registry,
-        );
-        Ok(Box::new(upgrade_config))
     }
 
     pub(super) fn chainspec(&self) -> Arc<Chainspec> {

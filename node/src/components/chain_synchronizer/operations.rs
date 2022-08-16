@@ -57,19 +57,6 @@ use crate::{
 const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 
-/// The outcome of `run_fast_sync_task`.
-#[derive(Debug, Serialize)]
-pub(crate) enum FastSyncOutcome {
-    ShouldCommitGenesis,
-    ShouldCommitUpgrade {
-        switch_block_header_before_upgrade: BlockHeader,
-        is_emergency_upgrade: bool,
-    },
-    Synced {
-        highest_block_header: BlockHeader,
-    },
-}
-
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
 /// is dropped, the specified gauge is updated with the duration since the scope was entered.
@@ -237,11 +224,6 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
         self.trusted_block_header
             .as_ref()
             .expect("trusted block header not initialized")
-    }
-
-    fn trusted_block_is_last_before_activation(&self) -> bool {
-        self.config
-            .is_last_block_before_activation(self.trusted_block_header())
     }
 
     /// Removes known bad peers from a given peer list.
@@ -1869,7 +1851,7 @@ pub(super) async fn run_fast_sync_task<REv>(
     config: Config,
     metrics: Metrics,
     progress: ProgressHolder,
-) -> Result<FastSyncOutcome, Error>
+) -> Result<BlockHeader, Error>
 where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
@@ -1896,7 +1878,7 @@ where
             .await?
         {
             Some(ctx) => ctx,
-            None => return Ok(FastSyncOutcome::ShouldCommitGenesis),
+            None => return Err(Error::NoBlocksInStorage),
         };
     verify_trusted_block_header(&ctx)?;
 
@@ -1907,10 +1889,6 @@ where
             Some(block_header) => block_header,
             None => return Err(Error::NoHighestBlockHeader),
         };
-
-    if let Some(outcome) = prepare_for_upgrade_if_needed(&ctx, &highest_block_header).await? {
-        return Ok(outcome);
-    }
 
     let (highest_synced_block_header, highest_synced_key_block_info) = fast_sync(&ctx).await?;
 
@@ -1944,9 +1922,7 @@ where
         "finished initial chain sync",
     );
 
-    Ok(FastSyncOutcome::Synced {
-        highest_block_header,
-    })
+    Ok(highest_block_header)
 }
 
 async fn fetch_and_store_initial_trusted_block_header<REv>(
@@ -1995,73 +1971,6 @@ fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(
     };
 
     Ok(())
-}
-
-/// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an upgrade before
-/// syncing further, or `Ok(None)` if not.
-///
-/// If this returns `Ok(Some...)`, we sync the trie store in preparation for running commit_upgrade.
-async fn prepare_for_upgrade_if_needed<REv>(
-    ctx: &ChainSyncContext<'_, REv>,
-    highest_block_header: &BlockHeader,
-) -> Result<Option<FastSyncOutcome>, Error>
-where
-    REv: From<NetworkInfoRequest>
-        + From<BlocklistAnnouncement>
-        + From<ContractRuntimeRequest>
-        + From<FetcherRequest<BlockHeaderWithMetadata>>
-        + From<FetcherRequest<TrieOrChunk>>
-        + From<FetcherRequest<BlockHeader>>
-        + From<StorageRequest>
-        + Send,
-{
-    // If the trusted block is the last switch block before an upgrade, and we haven't already run
-    // the upgrade:
-    // 1. Get the trusted era validators from this last switch block
-    // 2. Try to get the next block by height; if there is `None` then,
-    // 3. Sync the trie store
-    if !ctx.trusted_block_is_last_before_activation()
-        || highest_block_header.protocol_version() >= ctx.config.protocol_version()
-    {
-        return Ok(None);
-    }
-    let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-
-    if is_current_era(
-        ctx.trusted_block_header(),
-        &trusted_key_block_info,
-        ctx.config,
-    ) {
-        info!(
-            era = ctx.trusted_block_header().era_id().value(),
-            height = ctx.trusted_block_header().height(),
-            timestamp = %ctx.trusted_block_header().timestamp(),
-            "in current era, so synchronizing trie store before committing upgrade",
-        );
-    } else {
-        let fetch_and_store_next_result = fetch_and_store_next::<_, BlockHeaderWithMetadata>(
-            ctx.trusted_block_header(),
-            &trusted_key_block_info,
-            ctx,
-        )
-        .await?;
-
-        if fetch_and_store_next_result.is_some() {
-            return Ok(None);
-        }
-        info!("synchronizing trie store before committing upgrade");
-    }
-
-    ctx.progress.start_fetching_tries_for_upgrade(
-        ctx.trusted_block_header().height(),
-        *ctx.trusted_block_header().state_root_hash(),
-    );
-    sync_trie_store(ctx.trusted_block_header(), ctx).await?;
-    info!("finished synchronizing before committing upgrade");
-    Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
-        switch_block_header_before_upgrade: ctx.trusted_block_header().clone(),
-        is_emergency_upgrade: false,
-    }))
 }
 
 async fn retry_execution_with_approvals_from_peer<REv>(
