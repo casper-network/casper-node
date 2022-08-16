@@ -408,12 +408,9 @@ where
 fn compute_execution_results_root_hash<'a>(
     results: &mut impl Iterator<Item = &'a ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
-    let mut execution_results_serialized = vec![];
-    for result in results {
-        execution_results_serialized
-            .push(result.to_bytes().map_err(BlockCreationError::BytesRepr)?);
-    }
-    let execution_results_bytes = execution_results_serialized
+    let execution_results_bytes = results
+        .cloned()
+        .collect::<Vec<_>>()
         .to_bytes()
         .map_err(BlockCreationError::BytesRepr)?;
     Ok(Digest::hash_bytes_into_chunks_if_necessary(
