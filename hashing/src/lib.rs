@@ -221,6 +221,19 @@ impl Digest {
             .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
         Ok(Digest(slice))
     }
+
+    /// Hash bytes into chunks if necessary.
+    pub fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+        if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+            Digest::hash(bytes)
+        } else {
+            Digest::hash_merkle_tree(
+                bytes
+                    .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                    .map(Digest::hash),
+            )
+        }
+    }
 }
 
 impl CLTyped for Digest {
