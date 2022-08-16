@@ -402,16 +402,23 @@ where
 }
 
 /// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
+///
+/// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
+/// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
 fn compute_execution_results_root_hash<'a>(
     results: &mut impl Iterator<Item = &'a ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
-    let mut execution_results = vec![];
+    let mut execution_results_serialized = vec![];
     for result in results {
-        execution_results.push(Digest::hash(
-            &result.to_bytes().map_err(BlockCreationError::BytesRepr)?,
-        ));
+        execution_results_serialized
+            .push(result.to_bytes().map_err(BlockCreationError::BytesRepr)?);
     }
-    Ok(Digest::hash_merkle_tree(execution_results))
+    let execution_results_bytes = execution_results_serialized
+        .to_bytes()
+        .map_err(BlockCreationError::BytesRepr)?;
+    Ok(Digest::hash_bytes_into_chunks_if_necessary(
+        &execution_results_bytes,
+    ))
 }
 
 /// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
