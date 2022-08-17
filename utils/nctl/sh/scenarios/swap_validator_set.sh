@@ -64,18 +64,18 @@ function main() {
         assert_eviction "$i"
     done
 
-    # 17. Reuse nodes 1-3
+    # 17. Reuse nodes 1, 4, 5
     reuse_original_validators_as_new_nodes
 
     # 18. Start node 1 with pre validator swap block hash
     do_node_start '1' "$PRE_SWAP_HASH"
 
-    # 19. Start node 2 with post validator swap block hash
+    # 19. Start node 4 with post validator swap block hash
     POST_SWAP_HASH=$(do_read_lfb_hash 6)
-    do_node_start '2' "$POST_SWAP_HASH"
+    do_node_start '4' "$POST_SWAP_HASH"
 
-    # 20. Start node 3 with switch block hash
-    do_node_start '3' "$SWICHBLOCK_HASH"
+    # 20. Start node 5 with switch block hash
+    do_node_start '5' "$SWICHBLOCK_HASH"
 
     # 21. Lets some time pass
     nctl-await-n-eras offset='3' sleep_interval='10.0' timeout='300' node='6'
@@ -122,7 +122,7 @@ function reuse_original_validators_as_new_nodes() {
     mkdir -p "$DUMP_PATH"
 
     # loop thru the 3 nodes
-    for i in $(seq 1 3); do
+    for i in 1 4 5; do
         # stop the three nodes that will become make shift
         # joining nodes 11, 12, 13
         log "...stopping node-$i"
