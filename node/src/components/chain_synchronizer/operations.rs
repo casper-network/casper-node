@@ -720,8 +720,10 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 }
 
 /// Fetches the next block or block header from the network by height.
-/// If the fetch operation fails and the number of peers available for fetch was less than the
-/// minimum threshold, we retry the operation once with the new set of peers.
+///
+/// If the number of fully connected peers is less than the minimum threshold, we retry forever.
+///
+/// Each retry operation is invoked after the configured retry interval.
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
@@ -743,7 +745,7 @@ where
             parent: Box::new(parent_header.clone()),
         })?;
 
-    for _ in 0..=1 {
+    loop {
         let peers = prepare_peers_applicable_for_block_fetch(ctx).await;
         let peer_count = peers.len();
         let maybe_item = try_fetch_block_or_block_header_by_height(
@@ -773,26 +775,30 @@ where
                 return Ok(Some(item));
             }
             None => {
-                if peer_count >= ctx.config.minimum_peer_count_threshold_for_fetch_retry {
+                if peer_count
+                    >= ctx
+                        .config
+                        .minimum_peer_count_threshold_for_block_fetch_retry
+                {
                     warn!(
                         %height,
                         attempts_to_get_fully_connected_peers =
                             %ctx.config.max_retries_while_not_connected(),
-                        "unable to fetch item despite having enough peers"
+                        "unable to fetch item despite having enough peers, giving up"
                     );
-                    break;
+                    return Ok(None);
                 }
                 info!(
                     %height,
                     %peer_count,
                     minimum_peer_count_threshold =
-                        %ctx.config.minimum_peer_count_threshold_for_fetch_retry,
-                    "tried fetching with not enough peers, may try again"
+                        %ctx.config.minimum_peer_count_threshold_for_block_fetch_retry,
+                    "tried fetching with not enough peers, trying again"
                 );
+                tokio::time::sleep(ctx.config.retry_interval()).await;
             }
         }
     }
-    Ok(None)
 }
 
 /// Fetches the next block or block header from the network by height.
