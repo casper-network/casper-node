@@ -108,7 +108,7 @@ function reuse_original_validators_as_new_nodes() {
     local NODE_KEYS_PATH
     local USER_KEYS_PATH
 
-    log_step "Converting nodes 1 thru 3 to 'new' joiners"
+    log_step "Converting nodes 1, 4, 5 to 'new' joiners"
 
     # place to move old node stuff
     DUMP_PATH="/tmp/swap_validator_set"
