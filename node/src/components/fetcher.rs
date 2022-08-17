@@ -23,10 +23,10 @@ use crate::{
     },
     protocol::Message,
     types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
-        TrieOrChunk, TrieOrChunkId,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockEffectsOrChunkId, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
+        BlockWithMetadata, Deploy, DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals,
+        FinalizedApprovalsWithId, Item, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -706,6 +706,52 @@ impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
                 maybe_item: Box::new(maybe_batch),
                 responder,
             })
+    }
+}
+
+impl ItemFetcher<BlockEffectsOrChunk> for Fetcher<BlockEffectsOrChunk> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<
+        BlockEffectsOrChunkId,
+        HashMap<NodeId, Vec<FetchResponder<BlockEffectsOrChunk>>>,
+    > {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockEffectsOrChunk>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockEffectsOrChunkId,
+        peer: NodeId,
+        responder: FetchResponder<BlockEffectsOrChunk>,
+    ) -> Effects<Event<BlockEffectsOrChunk>> {
+        async move {
+            let maybe_block_effects = match effect_builder.get_block_effects_or_chunk(id).await {
+                Ok(maybe_block_effects) => maybe_block_effects,
+                Err(error) => {
+                    error!(?error, "get_block_effects");
+                    None
+                }
+            };
+            Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(maybe_block_effects),
+                responder,
+            }
+        }
+        .event(std::convert::identity)
     }
 }
 

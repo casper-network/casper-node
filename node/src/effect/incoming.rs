@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::{
     components::{consensus, gossiper},
     protocol::Message,
-    types::{FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
+    types::{BlockEffectsOrChunkIdDisplay, FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
 };
 
 use super::AutoClosingResponder;
@@ -71,6 +71,10 @@ pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
 
 /// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
+
+pub(crate) type BlockEffectsRequestIncoming = MessageIncoming<BlockEffectsRequest>;
+
+pub(crate) type BlockEffectsResponseIncoming = MessageIncoming<BlockEffectsResponse>;
 
 /// A new finality signature arrived over the network.
 pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
@@ -182,6 +186,27 @@ impl Display for TrieRequest {
     }
 }
 
+/// A request for block effects.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) enum BlockEffectsRequest {
+    BlockEffectsLegacyRequest(Vec<u8>),
+    // BlockEffectsRequest(Vec<u8>),
+}
+
+impl Display for BlockEffectsRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockEffectsRequest::BlockEffectsLegacyRequest(serialized_request) => {
+                write!(
+                    f,
+                    "request for block effects: {}",
+                    BlockEffectsOrChunkIdDisplay(&serialized_request)
+                )
+            } // BlockEffectsRequest::BlockEffectsRequest(_) => todo!(),
+        }
+    }
+}
+
 /// A response for a net request.
 ///
 /// See `NetRequest` for notes.
@@ -237,6 +262,23 @@ impl Display for NetResponse {
             NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
             NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
             NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
+        }
+    }
+}
+
+/// A response to a block effects request.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) enum BlockEffectsResponse {
+    BlockEffectsResponseLegacy(Vec<u8>),
+    // BLockEffectsResponse(Vec<u8>)
+}
+
+impl Display for BlockEffectsResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockEffectsResponse::BlockEffectsResponseLegacy(_) => {
+                write!(f, "block effects legacy response")
+            }
         }
     }
 }

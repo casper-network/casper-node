@@ -26,9 +26,9 @@ use crate::{
     fatal,
     storage::StorageRequest,
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
-        NodeConfig, NodeState, TrieOrChunk,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
+        FinalizedApprovalsWithId, NodeConfig, NodeState, TrieOrChunk,
     },
     NodeRng, SmallNetworkConfig,
 };
@@ -174,6 +174,7 @@ where
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
         + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockEffectsOrChunk>>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>

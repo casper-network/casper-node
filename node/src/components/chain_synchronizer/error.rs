@@ -6,7 +6,7 @@ use tokio::{sync::AcquireError, task::JoinError};
 
 use casper_execution_engine::core::{engine_state, engine_state::GetEraValidatorsError};
 use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion};
 
 use crate::{
     components::{
@@ -14,8 +14,9 @@ use crate::{
         linear_chain::BlockSignatureError,
     },
     types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, TrieOrChunk,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockWithMetadata, Deploy,
+        FinalizedApprovalsWithId, TrieOrChunk,
     },
 };
 
@@ -156,6 +157,14 @@ pub(crate) enum Error {
         FetchTrieError,
     ),
 
+    /// Error fetching block effects.
+    #[error(transparent)]
+    FetchBlockEffects(
+        #[from]
+        #[serde(skip_serializing)]
+        FetchBlockEffectsError,
+    ),
+
     /// Error fetching block headers batch.
     #[error(transparent)]
     FetchHeadersBatch(
@@ -170,6 +179,14 @@ pub(crate) enum Error {
         #[from]
         #[serde(skip_serializing)]
         AcquireError,
+    ),
+
+    /// Error querying global state
+    #[error(transparent)]
+    GlobalStateQueryError(
+        #[from]
+        #[serde(skip_serializing)]
+        GlobalStateQueryError,
     ),
 }
 
@@ -202,4 +219,66 @@ pub(crate) enum FetchBlockHeadersBatchError {
 
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum FetchBlockEffectsError {
+    /// Fetcher error.
+    #[error(transparent)]
+    FetcherError(#[from] FetcherError<BlockEffectsOrChunk>),
+
+    /// BlockEffects were being fetched from peers by chunks but was somehow fetch from storage.
+    #[error(
+        "Element was being fetched from peers by chunks but was somehow fetched from storage. \
+         Perhaps there are parallel downloads going on?"
+    )]
+    BlockEffectsFetchByChunksSomehowFetchedFromStorage,
+
+    /// BlockEffects was being fetched from peers by chunks but it was retrieved whole by a peer
+    /// somehow.
+    #[error(
+        "BlockEffects was being fetched from peers by chunks but it was retrieved whole \
+         by a peer somehow. Block hash: {block_hash:?}"
+    )]
+    BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash: BlockHash },
+
+    /// Deserialization error.
+    #[error("Failed to deserialize chunks into Vec<ExecutionResult>: {0}")]
+    DeserializationError(String),
+}
+
+impl From<bytesrepr::Error> for FetchBlockEffectsError {
+    fn from(err: bytesrepr::Error) -> Self {
+        Self::DeserializationError(format!("{}", err))
+    }
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum GlobalStateQueryError {
+    /// Circular reference.
+    #[error("Unexpected circular reference: {0}")]
+    CircularReference(String),
+
+    /// Query depth limit reached.
+    #[error("Query depth limit reached.")]
+    DepthLimit,
+
+    /// Error deserializing CL value.
+    #[error("Failed to deserialize CL value into expected type: {0}")]
+    CLValueError(String),
+}
+
+impl GlobalStateQueryError {
+    pub(crate) fn invalid_type(expected: String, got: String) -> Self {
+        Self::CLValueError(format!(
+            "Unexpected type under key. Expected: {}, got: {}",
+            expected, got
+        ))
+    }
+}
+
+impl From<CLValueError> for GlobalStateQueryError {
+    fn from(err: CLValueError) -> Self {
+        Self::CLValueError(format!("{}", err))
+    }
 }

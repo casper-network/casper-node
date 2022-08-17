@@ -147,12 +147,12 @@ use crate::{
     effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
-        TrieOrChunk, TrieOrChunkId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockEffectsOrChunk, BlockEffectsOrChunkId,
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo,
+        ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -2196,6 +2196,17 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Requests block effects (or chunk).
+    pub(crate) async fn get_block_effects_or_chunk(
+        &self,
+        id: BlockEffectsOrChunkId,
+    ) -> Result<Option<BlockEffectsOrChunk>, ContractRuntimeError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        todo!()
     }
 }
 

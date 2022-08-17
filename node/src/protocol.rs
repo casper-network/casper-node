@@ -20,9 +20,10 @@ use crate::{
     },
     effect::{
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
-            TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+            BlockEffectsRequest, BlockEffectsRequestIncoming, BlockEffectsResponse,
+            BlockEffectsResponseIncoming, ConsensusMessageIncoming, FinalitySignatureIncoming,
+            GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
+            TrieDemand, TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
     },
@@ -81,6 +82,9 @@ impl Payload for Message {
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
+                    Tag::BlockEffects => MessageKind::BlockTransfer, /* TODO: Do we need a
+                                                                      * specialized
+                                                                      * MessageKind? */
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -119,6 +123,7 @@ impl Payload for Message {
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_requests,
                 Tag::FinalitySignaturesByHash => weights.block_requests,
+                Tag::BlockEffects => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -132,6 +137,7 @@ impl Payload for Message {
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_responses,
                 Tag::FinalitySignaturesByHash => weights.block_responses,
+                Tag::BlockEffects => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -236,6 +242,8 @@ where
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
         + From<TrieRequestIncoming>
+        + From<BlockEffectsRequestIncoming>
+        + From<BlockEffectsResponseIncoming>
         + From<TrieDemand>
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
@@ -303,6 +311,11 @@ where
                     message: NetRequest::FinalitySignatures(serialized_id),
                 }
                 .into(),
+                Tag::BlockEffects => BlockEffectsRequestIncoming {
+                    sender,
+                    message: BlockEffectsRequest::BlockEffectsLegacyRequest(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -361,6 +374,13 @@ where
                 Tag::FinalitySignaturesByHash => NetResponseIncoming {
                     sender,
                     message: NetResponse::FinalitySignatures(serialized_item),
+                }
+                .into(),
+                Tag::BlockEffects => BlockEffectsResponseIncoming {
+                    sender,
+                    message: BlockEffectsResponse::BlockEffectsResponseLegacy(
+                        serialized_item.to_vec(),
+                    ),
                 }
                 .into(),
             },

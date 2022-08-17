@@ -53,9 +53,9 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            BlockEffectsRequestIncoming, BlockEffectsResponseIncoming, ConsensusMessageIncoming,
+            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponseIncoming,
+            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -69,8 +69,8 @@ use crate::{
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
         FinalizedApprovalsWithId, TrieOrChunk,
     },
     utils::{Source, WithDir},
@@ -177,6 +177,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     FinalitySignaturesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockSignatures>),
     #[from]
+    BlockEffectsFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockEffectsOrChunk>),
+    #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
@@ -231,9 +233,13 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
+    BlockEffectsRequestIncoming(BlockEffectsRequestIncoming),
+    #[from]
     TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
+    #[from]
+    BlockEffectsResponseIncoming(BlockEffectsResponseIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
@@ -307,6 +313,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignaturesFetcherRequest(_) => {
                 "FinalitySignaturesFetcherRequest"
             }
+            ParticipatingEvent::BlockEffectsFetcherRequest(_) => "BlockEffectsLegacyFetcherRequest",
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
@@ -338,6 +345,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
             ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
+            ParticipatingEvent::BlockEffectsRequestIncoming(_) => "BlockEffectsRequestIncoming",
+            ParticipatingEvent::BlockEffectsResponseIncoming(_) => "BlockEffectsResponseIncoming",
         }
     }
 }
@@ -474,6 +483,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::FinalitySignaturesFetcherRequest(request) => {
                 write!(f, "finality signatures fetcher request: {}", request)
             }
+            ParticipatingEvent::BlockEffectsFetcherRequest(request) => {
+                write!(f, "block effects legacy fetcher request: {}", request)
+            }
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
@@ -531,6 +543,8 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::BlockEffectsRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::BlockEffectsResponseIncoming(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -1130,6 +1144,9 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            ParticipatingEvent::BlockEffectsFetcherRequest(request) => {
+                todo!()
+            }
             ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -1477,6 +1494,19 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockEffectsRequestIncoming(request) => {
+                todo!("should be routed to Storage as it's the component that can answer requests for block effects")
+            }
+            ParticipatingEvent::BlockEffectsResponseIncoming(BlockEffectsResponseIncoming {
+                sender,
+                message,
+            }) => reactor::handle_fetch_response::<Self, BlockEffectsOrChunk>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                &message.0,
             ),
         }
     }

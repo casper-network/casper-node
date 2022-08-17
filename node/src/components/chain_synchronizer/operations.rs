@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     mem,
     sync::{
         atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
@@ -9,7 +9,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use casper_execution_engine::storage::trie::TrieRaw;
+use casper_execution_engine::{
+    core::engine_state::{self, QueryRequest, QueryResult},
+    storage::trie::TrieRaw,
+};
 use datasize::DataSize;
 use futures::{
     stream::{futures_unordered::FuturesUnordered, StreamExt},
@@ -23,7 +26,10 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{
+    bytesrepr::{self, Bytes},
+    EraId, ExecutionResult, Key, PublicKey, StoredValue, TimeDiff, Timestamp, U512,
+};
 
 use crate::{
     components::{
@@ -46,16 +52,32 @@ use crate::{
     },
     storage::StorageRequest,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId,
-        FinalizedBlock, Item, NodeId, TrieOrChunk, TrieOrChunkId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockEffectsOrChunk, BlockEffectsOrChunkId,
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals,
+        FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId, TrieOrChunk, TrieOrChunkId,
+        ValueOrChunk,
     },
     utils::work_queue::WorkQueue,
 };
 
+use super::error::{FetchBlockEffectsError, GlobalStateQueryError};
+
 const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
+
+/// The outcome of `run_fast_sync_task`.
+#[derive(Debug, Serialize)]
+pub(crate) enum FastSyncOutcome {
+    ShouldCommitGenesis,
+    ShouldCommitUpgrade {
+        switch_block_header_before_upgrade: BlockHeader,
+        is_emergency_upgrade: bool,
+    },
+    Synced {
+        highest_block_header: BlockHeader,
+    },
+}
 
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
@@ -325,8 +347,8 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
     }
 }
 
-/// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
-const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
+/// Restrict the fan-out retrieved by chunks to query at most 10 peers at a time.
+const CHUNK_FETCH_FAN_OUT: usize = 10;
 
 /// Allows us to decide whether syncing peers can also be used when calling `fetch_retry_forever`.
 trait CanUseSyncingNodes {
@@ -350,6 +372,7 @@ impl CanUseSyncingNodes for Block {}
 impl CanUseSyncingNodes for Deploy {}
 impl CanUseSyncingNodes for BlockAndDeploys {}
 impl CanUseSyncingNodes for BlockHeadersBatch {}
+impl CanUseSyncingNodes for BlockEffectsOrChunk {}
 
 /// Returns fully-connected, non-syncing peers that are known to be not banned.
 async fn get_filtered_fully_connected_non_syncing_peers<REv>(
@@ -448,10 +471,7 @@ where
     }
 }
 
-enum TrieAlreadyPresentOrDownloaded {
-    AlreadyPresent,
-    Downloaded(TrieRaw),
-}
+type TrieAlreadyPresentOrDownloaded = AlreadyPresentOrDownloaded<TrieRaw>;
 
 async fn fetch_trie_retry_forever<REv>(
     id: Digest,
@@ -509,7 +529,7 @@ where
         // TRIE_CHUNK_FETCH_FAN_OUT at a time.
         // Doing `buffer_unordered` followed by `try_collect` here means if one of the
         // fetches fails, then the outstanding futures are canceled.
-        .buffer_unordered(TRIE_CHUNK_FETCH_FAN_OUT)
+        .buffer_unordered(CHUNK_FETCH_FAN_OUT)
         .try_collect::<BTreeMap<u64, Bytes>>()
         .await;
 
@@ -1362,6 +1382,7 @@ where
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
         + From<FetcherRequest<BlockHeadersBatch>>
+        + From<FetcherRequest<BlockEffectsOrChunk>>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
@@ -1489,6 +1510,7 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
+        + From<FetcherRequest<BlockEffectsOrChunk>>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
@@ -1532,6 +1554,7 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<FetcherRequest<BlockSignatures>>
+        + From<FetcherRequest<BlockEffectsOrChunk>>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
@@ -1598,7 +1621,8 @@ where
 
         ctx.progress
             .start_fetching_block_signatures_for_sync_forward(block_height);
-        fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
+        fetch_and_store_finality_signatures_by_block_header(&block_header, ctx).await?;
+        fetch_and_store_block_effects_by_block_header(&block_header, ctx).await?;
         ctx.progress
             .finish_syncing_block_for_sync_forward(block_height);
     }
@@ -1720,8 +1744,230 @@ impl BlockSignaturesCollector {
     }
 }
 
-/// Fetches the finality signatures from the given peer. In case of timeout, it'll retry up to
-/// `retries` times. Other errors interrupt the process immediately.
+//TODO: We will generalize it and reuse in https://github.com/casper-network/casper-node/pull/3251
+/// Reads a stored value under `key` in the Global State identifiable by `state_root_hash`.
+///
+/// Any errors are propagated upwards.
+async fn read_key<REv>(
+    state_root_hash: Digest,
+    key: Key,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Option<StoredValue>, Error>
+where
+    REv: From<ContractRuntimeRequest>,
+{
+    let query_request = QueryRequest::new(state_root_hash, key, vec![]);
+
+    let query_result = ctx
+        .effect_builder
+        .query_global_state(query_request)
+        .await
+        .map_err(Error::ExecutionEngine)?;
+
+    match query_result {
+        QueryResult::ValueNotFound(_) => return Ok(None),
+        QueryResult::Success { value, proofs: _ } => return Ok(Some(*value)),
+        QueryResult::RootNotFound => {
+            return Err(Error::ExecutionEngine(engine_state::Error::RootNotFound(
+                state_root_hash,
+            )))
+        }
+        QueryResult::CircularReference(path) => {
+            return Err(GlobalStateQueryError::CircularReference(path).into())
+        }
+        QueryResult::DepthLimit { .. } => return Err(GlobalStateQueryError::DepthLimit.into()),
+    }
+}
+
+/// Tries to read the merkle root of serialize block execution results for specific block.
+/// If the key doesn't exist, returns Ok(None),
+/// if value under the key can't be deserialized into `Digest` type, fails with an error.
+/// Any other error returned in the process is propagated to the caller.
+async fn read_block_execution_results_root_hash<REv>(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Option<Digest>, Error>
+where
+    REv: From<ContractRuntimeRequest>,
+{
+    match read_key(
+        *ctx.trusted_block_header().state_root_hash(),
+        Key::BlockEffectsRootHash {
+            block_height: block_header.height(),
+        },
+        &ctx,
+    )
+    .await?
+    {
+        None => return Ok(None),
+        Some(stored_value) => {
+            let merkle_root: Digest = match stored_value {
+                StoredValue::CLValue(cl_value) => {
+                    cl_value.into_t().map_err(GlobalStateQueryError::from)?
+                }
+                stored_value => {
+                    return Err(GlobalStateQueryError::invalid_type(
+                        "Digest".to_string(),
+                        stored_value.type_name(),
+                    )
+                    .into())
+                }
+            };
+            Ok(Some(merkle_root))
+        }
+    }
+}
+
+async fn fetch_and_store_block_effects_by_block_header<REv>(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv: From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<NetworkInfoRequest>
+        + From<FetcherRequest<BlockEffectsOrChunk>>,
+{
+    let block_execution_results =
+        read_block_execution_results_root_hash(&block_header, ctx).await?;
+
+    if let Some(block_execution_results_merkle_root_hash) = block_execution_results {
+        todo!()
+    } else {
+        fetch_and_store_block_effects_legacy(block_header, ctx).await?;
+    };
+
+    Ok(())
+}
+
+/// Fetches block effects (ExecutionResults) for the `block_header` from peers and stores them in
+/// the storage.
+async fn fetch_and_store_block_effects_legacy<REv>(
+    block_header: &BlockHeader,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<(), Error>
+where
+    REv:
+        From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + From<StorageRequest>,
+{
+    let fetched_block_effects = fetch_block_effects(&ctx, block_header.hash()).await?;
+    match fetched_block_effects {
+        AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
+        AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
+            let execution_results: HashMap<DeployHash, ExecutionResult> =
+                todo!("needs zipping these block effects with deploys :/");
+            ctx.effect_builder
+                .put_execution_results_to_storage(block_header.hash(), execution_results)
+                .await;
+            Ok(())
+        }
+    }
+}
+
+enum AlreadyPresentOrDownloaded<V> {
+    AlreadyPresent,
+    Downloaded(V),
+}
+
+type BlockEffectsFetchResult = AlreadyPresentOrDownloaded<Vec<ExecutionResult>>;
+
+async fn fetch_block_effects<REv>(
+    ctx: &ChainSyncContext<'_, REv>,
+    block_hash: BlockHash,
+) -> Result<BlockEffectsFetchResult, FetchBlockEffectsError>
+where
+    REv: From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest>,
+{
+    //TODO: The code that follows could probably be generalized with what we do for `TrieOrChunk`.
+    // Although, there, `TrieOrChunk` is direct alias for `ValueOrChunk` which we CANNOT do here
+    // b/c in the `ChunkWithProof` enum variant there would be no information about what piece of
+    // data (which block) that chunk refers to. See `Item` implementation for
+    // `BlockEffectsOrChunk`. If we can't compute `id` we won't be able to look up the requesting
+    // process in the `Fetcher`.
+
+    let block_effects_fetch_id = BlockEffectsOrChunkId::legacy(0, block_hash);
+    let effects_or_chunk =
+        match fetch_retry_forever::<_, BlockEffectsOrChunk>(&ctx, block_effects_fetch_id).await? {
+            FetchedData::FromStorage { .. } => return Ok(BlockEffectsFetchResult::AlreadyPresent),
+            FetchedData::FromPeer {
+                item: effects_or_chunk,
+                ..
+            } => *effects_or_chunk,
+        };
+    let chunk_with_proof = match effects_or_chunk {
+        BlockEffectsOrChunk::BlockEffectsLegacy {
+            block_hash: _,
+            value,
+        } => match value {
+            ValueOrChunk::Value(block_effects) => {
+                return Ok(BlockEffectsFetchResult::Downloaded(block_effects))
+            }
+            ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
+        },
+    };
+
+    debug_assert!(
+        chunk_with_proof.proof().index() == 0,
+        "Proof index was not 0.  Proof index: {}",
+        chunk_with_proof.proof().index()
+    );
+    let count = chunk_with_proof.proof().count();
+    let first_chunk = chunk_with_proof.into_chunk();
+    // Start stream iter to get each chunk.
+    // Start from 1 because proof.index() == 0.
+    // Build a map of the chunks.
+    let chunk_map_result = futures::stream::iter(1..count)
+        .map(|index| async move {
+            match fetch_retry_forever::<_, BlockEffectsOrChunk>(
+                &ctx,
+                BlockEffectsOrChunkId::legacy(index, block_hash),
+            )
+            .await?
+            {
+                FetchedData::FromStorage { .. } => {
+                    return Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage)
+                }
+                FetchedData::FromPeer { item, .. } => match *item {
+                    BlockEffectsOrChunk::BlockEffectsLegacy { block_hash, value } => match value {
+                        ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash: BlockHash::new(block_hash) }),
+                        ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                            let index = chunk_with_proof.proof().index();
+                            let chunk = chunk_with_proof.into_chunk();
+                            Ok((index, chunk))
+                        }
+                    },
+                },
+            }
+        })
+        // Do not try to fetch all of the chunks at once; only fetch at most
+        // CHUNK_FETCH_FAN_OUT at a time.
+        // Doing `buffer_unordered` followed by `try_collect` here means if one of the
+        // fetches fails, then the outstanding futures are canceled.
+        .buffer_unordered(CHUNK_FETCH_FAN_OUT)
+        .try_collect::<BTreeMap<u64, Bytes>>()
+        .await;
+
+    // Handle if a parallel process downloaded all the chunks before us.
+    let mut chunk_map = match chunk_map_result {
+        Ok(chunk_map) => chunk_map,
+        Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage) => {
+            // block effects must have been downloaded by a parallel process...
+            return Ok(BlockEffectsFetchResult::AlreadyPresent);
+        }
+        Err(error) => {
+            return Err(error);
+        }
+    };
+    chunk_map.insert(0, first_chunk);
+
+    // Concatenate all of the chunks into block effects.
+    let block_effects: Vec<ExecutionResult> =
+        bytesrepr::deserialize(chunk_map.into_values().flat_map(Vec::<u8>::from).collect())?;
+    Ok(BlockEffectsFetchResult::Downloaded(block_effects))
+}
+
+// Fetches the finality signatures from the given peer. In case of timeout, it'll
+// retry up to `retries` times. Other errors interrupt the process immediately.
 async fn fetch_finality_signatures_with_retry<REv>(
     block_hash: BlockHash,
     peer: NodeId,
@@ -1750,7 +1996,7 @@ where
 }
 
 async fn fetch_and_store_finality_signatures_by_block_header<REv>(
-    block_header: BlockHeader,
+    block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
 where

@@ -52,6 +52,8 @@ pub enum Tag {
     BlockHeaderBatch,
     /// Finality signatures for a block requested by the block's hash.
     FinalitySignaturesByHash,
+    /// Block effects fetched during syncing.
+    BlockEffects,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

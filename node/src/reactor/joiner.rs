@@ -45,9 +45,9 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            BlockEffectsRequestIncoming, BlockEffectsResponseIncoming, ConsensusMessageIncoming,
+            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponseIncoming,
+            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -65,9 +65,9 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalizedApprovalsWithId,
-        TrieOrChunk,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, ExitCode,
+        FinalizedApprovalsWithId, TrieOrChunk,
     },
     utils::WithDir,
     NodeRng,
@@ -121,6 +121,8 @@ pub(crate) enum JoinerEvent {
     #[from]
     FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
     #[from]
+    BlockEffectsFetcher(#[serde(skip_serializing)] fetcher::Event<BlockEffectsOrChunk>),
+    #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
@@ -159,6 +161,8 @@ pub(crate) enum JoinerEvent {
     #[from]
     FinalitySignaturesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockSignatures>),
     #[from]
+    BlockEffectsFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockEffectsOrChunk>),
+    #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
@@ -195,9 +199,13 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
+    BlockEffectsRequestIncoming(BlockEffectsRequestIncoming),
+    #[from]
     TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
+    #[from]
+    BlockEffectsResponseIncoming(BlockEffectsResponseIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
@@ -240,6 +248,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
             JoinerEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             JoinerEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
+            JoinerEvent::BlockEffectsFetcher(_) => "BlockEffectsFetcher",
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
@@ -283,7 +292,10 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             JoinerEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
             JoinerEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
+            JoinerEvent::BlockEffectsFetcherRequest(_) => "BlockEffectsLegacyFetcherRequest",
             JoinerEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
+            JoinerEvent::BlockEffectsRequestIncoming(_) => "BlockEffectsRequestIncoming",
+            JoinerEvent::BlockEffectsResponseIncoming(_) => "BlockEffectsResponseIncoming",
         }
     }
 }
@@ -368,6 +380,9 @@ impl Display for JoinerEvent {
             JoinerEvent::FinalizedApprovalsFetcher(event) => {
                 write!(f, "finalized approvals fetcher event: {}", event)
             }
+            JoinerEvent::BlockEffectsFetcher(event) => {
+                write!(f, "block effects fetcher event: {}", event)
+            }
             JoinerEvent::ContractRuntime(event) => write!(f, "contract runtime event: {:?}", event),
             JoinerEvent::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
@@ -417,6 +432,8 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieDemand(inner) => write!(f, "demand: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::BlockEffectsRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::BlockEffectsResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::ContractRuntimeRequest(req) => {
                 write!(f, "contract runtime request: {}", req)
             }
@@ -448,6 +465,9 @@ impl Display for JoinerEvent {
             JoinerEvent::ChainSynchronizerAnnouncement(ann) => {
                 write!(f, "chain synchronizer announcement: {}", ann)
             }
+            JoinerEvent::BlockEffectsFetcherRequest(inner) => {
+                write!(f, "block effects fetcher request: {}", inner)
+            }
         }
     }
 }
@@ -475,6 +495,7 @@ pub(crate) struct Reactor {
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
+    block_effects_fetcher: Fetcher<BlockEffectsOrChunk>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -758,6 +779,11 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::BlockEffectsFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::BlockEffectsFetcher,
+                self.block_effects_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::DeployFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -1011,6 +1037,9 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::FinalitySignaturesFetcher(request.into()),
             ),
+            JoinerEvent::BlockEffectsFetcherRequest(_) => todo!(),
+            JoinerEvent::BlockEffectsRequestIncoming(_) => todo!(),
+            JoinerEvent::BlockEffectsResponseIncoming(_) => todo!(),
         }
     }
 
