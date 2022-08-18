@@ -10,6 +10,7 @@ const DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES: u32 = 5000;
 /// Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
 const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
 const DEFAULT_MAX_PARALLEL_BLOCK_FETCHES: u32 = 50;
+const DEFAULT_MAX_SYNC_FETCH_ATTEMPTS: u32 = 5;
 const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
 
@@ -30,6 +31,10 @@ pub struct NodeConfig {
     /// Maximum number of trie nodes to fetch in parallel.
     pub max_parallel_trie_fetches: u32,
 
+    /// The maximum number of retries of fetch operations during the chain synchronization process. The retry limit is in effect
+    /// only when the network component reports that enough peers are connected, until that happens, the retries are unbounded.
+    pub max_sync_fetch_attempts: u32,
+
     /// The duration for which to pause between retry attempts while synchronising during joining.
     pub retry_interval: TimeDiff,
 
@@ -48,6 +53,7 @@ impl Default for NodeConfig {
             max_parallel_deploy_fetches: DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES,
             max_parallel_block_fetches: DEFAULT_MAX_PARALLEL_BLOCK_FETCHES,
             max_parallel_trie_fetches: DEFAULT_MAX_PARALLEL_TRIE_FETCHES,
+            max_sync_fetch_attempts: DEFAULT_MAX_SYNC_FETCH_ATTEMPTS,
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
             sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,
             sync_to_genesis: false,

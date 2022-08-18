@@ -18,6 +18,10 @@ max_parallel_block_fetches = 50
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'
 
+# The maximum number of retries of fetch operations during the chain synchronization process. The retry limit is in effect
+# only when the network component reports that enough peers are connected, until that happens, the retries are unbounded.
+max_sync_fetch_attempts = 5
+
 # How often between sync attempts to redeem a bad node.
 sync_peer_redemption_interval = 0
 

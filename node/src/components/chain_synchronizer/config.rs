@@ -23,6 +23,9 @@ pub(super) struct Config {
     max_parallel_trie_fetches: u32,
     /// Maximum number of blocks to fetch in parallel.
     max_parallel_block_fetches: u32,
+    /// The maximum number of retries of fetch operations during the chain synchronization process. The retry limit is in effect
+    /// only when the network component reports that enough peers are connected, until that happens, the retries are unbounded.
+    max_sync_fetch_attempts: u32,
     /// The duration for which to pause between retry attempts while synchronising.
     retry_interval: Duration,
     /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
@@ -54,6 +57,7 @@ impl Config {
             max_parallel_deploy_fetches: node_config.max_parallel_deploy_fetches,
             max_parallel_trie_fetches: node_config.max_parallel_trie_fetches,
             max_parallel_block_fetches: node_config.max_parallel_block_fetches,
+            max_sync_fetch_attempts: node_config.max_sync_fetch_attempts,
             retry_interval: Duration::from_millis(node_config.retry_interval.millis()),
             sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
