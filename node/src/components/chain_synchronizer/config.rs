@@ -35,7 +35,8 @@ pub(super) struct Config {
     pub(crate) redemption_interval: u32,
     /// Block and block header fetch operations are retried forever until we have enough connected
     /// peers. If the operation fails while there are enough peers, the process gives up. By
-    /// default, this is the number of items on the `known_addresses` list in the node config.
+    /// default, this is the number of items on the `known_addresses` list in the node config
+    /// reduced by one.
     pub(crate) minimum_peer_count_threshold_for_block_fetch_retry: usize,
 }
 
@@ -60,7 +61,8 @@ impl Config {
             redemption_interval: node_config.sync_peer_redemption_interval,
             minimum_peer_count_threshold_for_block_fetch_retry: small_network_config
                 .known_addresses
-                .len(),
+                .len()
+                .saturating_sub(1),
         }
     }
 
