@@ -318,7 +318,11 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
 /// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
 const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
-/// Allows us to decide whether syncing peers can also be used when calling `fetch_retry_forever`.
+const fn has_connected_to_network() -> bool {
+    true
+}
+
+/// Allows us to decide whether syncing peers can also be used when calling `fetch`.
 trait CanUseSyncingNodes {
     fn can_use_syncing_nodes() -> bool {
         true
@@ -341,45 +345,40 @@ impl CanUseSyncingNodes for Deploy {}
 impl CanUseSyncingNodes for BlockAndDeploys {}
 impl CanUseSyncingNodes for BlockHeadersBatch {}
 
-/// Returns fully-connected, non-syncing peers that are known to be not banned.
-async fn get_filtered_fully_connected_non_syncing_peers<REv>(
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Vec<NodeId>
-where
-    REv: From<NetworkInfoRequest>,
-{
-    let mut peer_list = ctx
-        .effect_builder
-        .get_fully_connected_non_syncing_peers()
-        .await;
-    ctx.filter_bad_peers(&mut peer_list);
-    peer_list
+struct NetworkInfo {
+    peers: Vec<NodeId>,
+    _is_connected: bool,
 }
 
-/// Returns fully-connected, syncing and non-syncing peers that are known to be not banned.
-async fn get_filtered_fully_connected_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
+/// Returns fully-connected peers that are known to be not banned.
+async fn network_info<REv>(include_syncing: bool, ctx: &ChainSyncContext<'_, REv>) -> NetworkInfo
 where
     REv: From<NetworkInfoRequest>,
 {
-    let mut peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+    let mut peer_list = if include_syncing {
+        ctx.effect_builder.get_fully_connected_peers().await
+    } else {
+        ctx.effect_builder
+            .get_fully_connected_non_syncing_peers()
+            .await
+    };
     ctx.filter_bad_peers(&mut peer_list);
-    peer_list
+    NetworkInfo {
+        peers: peer_list,
+        _is_connected: has_connected_to_network(), // TODO: Replace with SmallNetwork::has_connected_to_network() once available.
+    }
 }
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
-async fn fetch_retry_forever<REv, T>(ctx: &ChainSyncContext<'_, REv>, id: T::Id) -> FetchResult<T>
+async fn fetch<REv, T>(ctx: &ChainSyncContext<'_, REv>, id: T::Id) -> FetchResult<T>
 where
     T: Item + CanUseSyncingNodes + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     let mut attempts = 0_usize;
     loop {
-        let new_peer_list = if T::can_use_syncing_nodes() {
-            get_filtered_fully_connected_peers(ctx).await
-        } else {
-            get_filtered_fully_connected_non_syncing_peers(ctx).await
-        };
+        let new_peer_list = network_info(T::can_use_syncing_nodes(), ctx).await.peers;
 
         if new_peer_list.is_empty() && attempts % 100 == 0 {
             warn!(
@@ -443,23 +442,22 @@ enum TrieAlreadyPresentOrDownloaded {
     Downloaded(Bytes),
 }
 
-async fn fetch_trie_retry_forever<REv>(
+async fn fetch_trie<REv>(
     id: Digest,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError>
 where
     REv: From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest>,
 {
-    let trie_or_chunk =
-        match fetch_retry_forever::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
-            FetchedData::FromStorage { .. } => {
-                return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
-            }
-            FetchedData::FromPeer {
-                item: trie_or_chunk,
-                ..
-            } => *trie_or_chunk,
-        };
+    let trie_or_chunk = match fetch::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
+        FetchedData::FromStorage { .. } => {
+            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
+        }
+        FetchedData::FromPeer {
+            item: trie_or_chunk,
+            ..
+        } => *trie_or_chunk,
+    };
     let chunk_with_proof = match trie_or_chunk {
         TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
         TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
@@ -477,7 +475,7 @@ where
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_retry_forever::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
+            match fetch::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
                 FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
@@ -548,7 +546,7 @@ where
         return Ok(Box::new(stored_block_header));
     }
 
-    let fetched_block_header = fetch_retry_forever::<_, BlockHeader>(ctx, block_hash).await?;
+    let fetched_block_header = fetch::<_, BlockHeader>(ctx, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
@@ -582,7 +580,7 @@ where
         return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
     }
 
-    let fetched_deploy = fetch_retry_forever::<_, Deploy>(ctx, deploy_or_transfer_hash).await?;
+    let fetched_deploy = fetch::<_, Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -901,7 +899,7 @@ where
 {
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = get_filtered_fully_connected_peers(ctx).await;
+        peers = network_info(true, ctx).await.peers;
         if !peers.is_empty() {
             break;
         }
@@ -923,7 +921,7 @@ where
     REv:
         From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest> + From<ContractRuntimeRequest>,
 {
-    let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await?;
+    let fetched_trie = fetch_trie(trie_key, ctx).await?;
     match fetched_trie {
         TrieAlreadyPresentOrDownloaded::AlreadyPresent => Ok(ctx
             .effect_builder
@@ -944,7 +942,7 @@ async fn fetch_and_store_block_by_hash<REv>(
 where
     REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
 {
-    let fetched_block = fetch_retry_forever::<_, Block>(ctx, block_hash).await?;
+    let fetched_block = fetch::<_, Block>(ctx, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -963,7 +961,7 @@ where
     REv: From<NetworkInfoRequest> + From<FetcherRequest<BlockAndDeploys>> + From<StorageRequest>,
 {
     let start = Timestamp::now();
-    let fetched_block = fetch_retry_forever::<_, BlockAndDeploys>(ctx, block_hash).await?;
+    let fetched_block = fetch::<_, BlockAndDeploys>(ctx, block_hash).await?;
     let res = match fetched_block {
         FetchedData::FromStorage {
             item: block_and_deploys,
@@ -1379,14 +1377,13 @@ where
                 lowest_trusted_block_header = new_lowest;
             }
             Err(err) => {
+                // TODO[RC]: Now we actually might get different error (fetch may fail prematurely).
+                //
                 // If we get an error here it means something must have gone really wrong.
                 // We either get the data from storage or from a peer where we retry ad infinitum if
                 // peer times out or item is absent. The only reason we would end up
                 // here is if fetcher couldn't construct a fetch request.
-                error!(
-                    ?err,
-                    "failed to download block headers batch with infinite retries"
-                );
+                error!(?err, "failed to download block headers batch");
                 return Err(err.into());
             }
         }
@@ -1416,7 +1413,7 @@ where
 
     loop {
         let fetched_headers_data: FetchedData<BlockHeadersBatch> =
-            fetch_retry_forever::<_, BlockHeadersBatch>(ctx, batch_id).await?;
+            fetch::<_, BlockHeadersBatch>(ctx, batch_id).await?;
         match fetched_headers_data {
             FetchedData::FromStorage { item } => {
                 return item
@@ -1541,25 +1538,19 @@ where
                     *block_header.state_root_hash(),
                 );
                 if let Err(error) = sync_trie_store(&block_header, ctx).await {
-                    error!(
-                        ?error,
-                        ?block_hash,
-                        "failed to download trie with infinite retries"
-                    );
+                    error!(?error, ?block_hash, "failed to download trie");
                     return Err(error);
                 }
                 ctx.effect_builder.mark_block_completed(block_height).await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => {
-                // We're using `fetch_retry_forever` internally so we should never get
+                // TODO[RC]: Now we actually might get different error (fetch may fail prematurely).
+                //
+                // We're using `fetch` internally so we should never get
                 // an error other than `FetcherError::CouldNotConstructGetRequest` that we don't
                 // want to retry.
-                error!(
-                    ?err,
-                    ?block_hash,
-                    "failed to download block with infinite retries"
-                );
+                error!(?err, ?block_hash, "failed to download block");
             }
         }
 
@@ -1750,7 +1741,7 @@ where
         + From<BlocklistAnnouncement>,
 {
     let start = Timestamp::now();
-    let peer_list = get_filtered_fully_connected_peers(ctx).await;
+    let peer_list = network_info(true, ctx).await.peers;
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
@@ -2178,7 +2169,7 @@ where
         let mut attempts = 0;
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            for peer in get_filtered_fully_connected_peers(ctx).await {
+            for peer in network_info(true, ctx).await.peers {
                 attempts += 1;
                 warn!(
                     fetched_block=%block,

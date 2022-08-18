@@ -31,8 +31,9 @@ pub struct NodeConfig {
     /// Maximum number of trie nodes to fetch in parallel.
     pub max_parallel_trie_fetches: u32,
 
-    /// The maximum number of retries of fetch operations during the chain synchronization process. The retry limit is in effect
-    /// only when the network component reports that enough peers are connected, until that happens, the retries are unbounded.
+    /// The maximum number of retries of fetch operations during the chain synchronization process.
+    /// The retry limit is in effect only when the network component reports that enough peers
+    /// are connected, until that happens, the retries are unbounded.
     pub max_sync_fetch_attempts: u32,
 
     /// The duration for which to pause between retry attempts while synchronising during joining.

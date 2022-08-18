@@ -23,8 +23,9 @@ pub(super) struct Config {
     max_parallel_trie_fetches: u32,
     /// Maximum number of blocks to fetch in parallel.
     max_parallel_block_fetches: u32,
-    /// The maximum number of retries of fetch operations during the chain synchronization process. The retry limit is in effect
-    /// only when the network component reports that enough peers are connected, until that happens, the retries are unbounded.
+    /// The maximum number of retries of fetch operations during the chain synchronization process.
+    /// The retry limit is in effect only when the network component reports that enough peers
+    /// are connected, until that happens, the retries are unbounded.
     max_sync_fetch_attempts: u32,
     /// The duration for which to pause between retry attempts while synchronising.
     retry_interval: Duration,
