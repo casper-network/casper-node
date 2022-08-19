@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, ToBytes};
 use datasize::DataSize;
 
 /// Represents a value or a chunk of data with attached proof.
@@ -76,66 +76,6 @@ impl<V: Debug> Display for ValueOrChunk<V> {
                 .field("index", &chunk.proof().index())
                 .field("hash", &chunk.proof().root_hash())
                 .finish(),
-        }
-    }
-}
-
-impl<V> ValueOrChunk<V> {
-    const VALUE_TAG: u8 = 0;
-    const CHUNK_TAG: u8 = 1;
-
-    fn tag(&self) -> u8 {
-        match self {
-            ValueOrChunk::Value(_) => Self::VALUE_TAG,
-            ValueOrChunk::ChunkWithProof(_) => Self::CHUNK_TAG,
-        }
-    }
-}
-
-impl<V: ToBytes> ToBytes for ValueOrChunk<V> {
-    fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        buf.push(self.tag());
-
-        match self {
-            ValueOrChunk::Value(data) => {
-                data.write_bytes(buf)?;
-            }
-            ValueOrChunk::ChunkWithProof(chunk) => {
-                chunk.write_bytes(buf)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut ret)?;
-        Ok(ret)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                ValueOrChunk::Value(data) => data.serialized_length(),
-                ValueOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
-            }
-    }
-}
-
-impl<V: FromBytes> FromBytes for ValueOrChunk<V> {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, rem) = u8::from_bytes(bytes)?;
-        match tag {
-            Self::VALUE_TAG => {
-                let (value, rem) = V::from_bytes(rem)?;
-                Ok((ValueOrChunk::Value(value), rem))
-            }
-            Self::CHUNK_TAG => {
-                let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
-                Ok((ValueOrChunk::ChunkWithProof(chunk), rem))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
