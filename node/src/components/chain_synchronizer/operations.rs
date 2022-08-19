@@ -319,6 +319,7 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
 /// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
 const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
+// TODO[RC]: Replace this with a proper call to network component once implemented.
 const fn has_connected_to_network() -> bool {
     true
 }
@@ -346,6 +347,7 @@ impl CanUseSyncingNodes for Deploy {}
 impl CanUseSyncingNodes for BlockAndDeploys {}
 impl CanUseSyncingNodes for BlockHeadersBatch {}
 
+/// Gets a list of peers suitable for the fetch operation.
 async fn get_peers<REv>(include_syncing: bool, ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
 where
     REv: From<NetworkInfoRequest>,
@@ -369,10 +371,9 @@ fn should_stop_fetching(
 ) -> bool {
     if !has_connected_to_network {
         return false;
-    } else {
-        *retry_count += 1;
     }
 
+    *retry_count += 1;
     if *retry_count <= max_sync_fetch_attempts {
         return false;
     }
@@ -396,9 +397,8 @@ where
     FetcherError(#[from] FetcherError<T>),
 }
 
-// TODO[RC]: Potentially update other comments.
-/// Fetches an item. Not suited to fetching a block
-/// header or block by height, which require verification with finality signatures.
+/// Fetches an item. Not suited to fetching a block header or block by height, which require
+/// verification with finality signatures.
 async fn fetch_with_retries<REv, T>(
     ctx: &ChainSyncContext<'_, REv>,
     id: T::Id,
@@ -423,10 +423,8 @@ where
         }
 
         let new_peer_list = get_peers(T::can_use_syncing_nodes(), ctx).await;
-
-        // TODO[RC]: If network not ready, worth to keep this counter.
         if new_peer_list.is_empty() && total_attempts % 100 == 0 {
-            warn!(
+            error!(
                 total_attempts,
                 item_type = ?T::TAG,
                 ?id,
@@ -513,7 +511,7 @@ where
             total_attempts,
             retries_while_connected,
         }) => {
-            warn!(
+            error!(
                 total_attempts,
                 retries_while_connected,
                 ?id,
@@ -562,7 +560,7 @@ where
                     total_attempts,
                     retries_while_connected,
                 }) => {
-                    warn!(
+                    error!(
                         total_attempts,
                         retries_while_connected,
                         ?id,
@@ -585,7 +583,7 @@ where
     let mut chunk_map = match chunk_map_result {
         Ok(chunk_map) => chunk_map,
         Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage) => {
-            // trie must have been downloaded by a parallel process...
+            // Trie must have been downloaded by a parallel process...
             return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent);
         }
         Err(error) => {
@@ -641,7 +639,7 @@ where
             total_attempts,
             retries_while_connected,
         }) => {
-            warn!(
+            error!(
                 total_attempts,
                 retries_while_connected,
                 ?id,
@@ -1373,7 +1371,7 @@ where
                 total_attempts,
                 retries_while_connected,
             }) => {
-                warn!(
+                error!(
                     total_attempts,
                     retries_while_connected,
                     ?id,
@@ -1484,12 +1482,9 @@ where
                 lowest_trusted_block_header = new_lowest;
             }
             Err(err) => {
-                // TODO[RC]: Now we actually might get different error (fetch may fail prematurely).
-                //
-                // If we get an error here it means something must have gone really wrong.
-                // We either get the data from storage or from a peer where we retry ad infinitum if
-                // peer times out or item is absent. The only reason we would end up
-                // here is if fetcher couldn't construct a fetch request.
+                // If we get an error here it means that we exhausted the maximum number of fetch
+                // attempts or the fetcher couldn't construct a fetch request. Either case is a
+                // fatal error.
                 error!(?err, "failed to download block headers batch");
                 return Err(err.into());
             }
@@ -1551,7 +1546,7 @@ where
                 total_attempts,
                 retries_while_connected,
             }) => {
-                warn!(
+                error!(
                     total_attempts,
                     retries_while_connected,
                     ?id,
@@ -1663,14 +1658,24 @@ where
                 ctx.effect_builder.mark_block_completed(block_height).await;
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
-            Err(err) => {
-                // TODO[RC]: Now we actually might get different error (fetch may fail prematurely).
-                //
-                // We're using `fetch` internally so we should never get
-                // an error other than `FetcherError::CouldNotConstructGetRequest` that we don't
-                // want to retry.
-                error!(?err, ?block_hash, "failed to download block");
-            }
+            Err(err) => match err {
+                FetchWithRetryError::RetriesExhausted {
+                    id,
+                    total_attempts,
+                    retries_while_connected,
+                } => {
+                    error!(
+                        total_attempts,
+                        retries_while_connected,
+                        ?id,
+                        "fetch retries exhausted"
+                    );
+                    return Err(Error::RetriesExhausted);
+                }
+                FetchWithRetryError::FetcherError(_) => {
+                    error!(?err, ?block_hash, "failed to download block, retrying");
+                }
+            },
         }
 
         ctx.progress
@@ -2391,7 +2396,7 @@ where
                 total_attempts,
                 retries_while_connected,
             }) => {
-                warn!(
+                error!(
                     total_attempts,
                     retries_while_connected,
                     ?id,
