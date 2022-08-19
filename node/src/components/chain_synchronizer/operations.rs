@@ -1354,7 +1354,8 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<ChainSynchronizerAnnouncement>,
+        + From<ChainSynchronizerAnnouncement>
+        + Send,
 {
     info!("starting chain sync to genesis");
     let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
@@ -1480,7 +1481,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
     info!("syncing blocks and deploys and state since Genesis");
@@ -1522,7 +1524,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + Send,
 {
     let trusted_block_height = ctx.trusted_block_header().height();
     loop {
@@ -1662,7 +1665,10 @@ impl BlockSignaturesCollector {
         ctx: &ChainSyncContext<'_, REv>,
     ) -> Result<HandleSignaturesResult, Error>
     where
-        REv: From<StorageRequest> + From<BlocklistAnnouncement> + From<ContractRuntimeRequest>,
+        REv: From<StorageRequest>
+            + From<BlocklistAnnouncement>
+            + From<ContractRuntimeRequest>
+            + Send,
     {
         if signatures.proofs.is_empty() {
             return Ok(HandleSignaturesResult::ContinueFetching);
@@ -1741,7 +1747,8 @@ where
         + From<NetworkInfoRequest>
         + From<FetcherRequest<BlockSignatures>>
         + From<BlocklistAnnouncement>
-        + From<ContractRuntimeRequest>,
+        + From<ContractRuntimeRequest>
+        + Send,
 {
     let start = Timestamp::now();
     let peer_list = get_filtered_fully_connected_peers(ctx).await;

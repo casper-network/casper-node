@@ -818,7 +818,7 @@ async fn has_enough_block_signatures<REv>(
     finality_threshold_fraction: Ratio<u64>,
 ) -> bool
 where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<BlocklistAnnouncement>,
+    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<BlocklistAnnouncement> + Send,
 {
     let validator_weights =
         match linear_chain::era_validator_weights_for_block(block_header, effect_builder).await {

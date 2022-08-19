@@ -542,7 +542,7 @@ impl<REv> EffectBuilder<REv> {
     /// # Cancellation safety
     ///
     /// This future is cancellation safe: If it is dropped without being polled, it merely indicates
-    /// the original requestor is not longer interested in the result, which will be discarded.
+    /// the original requester is not longer interested in the result, which will be discarded.
     pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
