@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
-use casper_types::bytesrepr::{self, ToBytes};
 use datasize::DataSize;
 
 /// Represents a value or a chunk of data with attached proof.
@@ -19,27 +18,15 @@ pub enum ValueOrChunk<V> {
     ChunkWithProof(ChunkWithProof),
 }
 
-#[derive(Debug, PartialEq, Error, Eq)]
+#[derive(Debug, Error)]
 /// Error returned when constructing an instance of `ValueOrChunk`.
 pub enum ChunkingError {
     /// Merkle proof construction error
-    MerkleConstruction(MerkleConstructionError),
+    #[error("error constructing merkle proof for chunk")]
+    MerkleConstruction(#[from] MerkleConstructionError),
     /// Serialization error
-    SerializationError(bytesrepr::Error),
-}
-
-impl Display for ChunkingError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ChunkingError::MerkleConstruction(error) => f
-                .debug_tuple("MerkleConstructionError")
-                .field(&error)
-                .finish(),
-            ChunkingError::SerializationError(error) => {
-                f.debug_tuple("SerializationError").field(&error).finish()
-            }
-        }
-    }
+    #[error("error serializing data: {0}")]
+    SerializationError(#[source] bincode::Error),
 }
 
 impl<V> ValueOrChunk<V> {
@@ -48,9 +35,9 @@ impl<V> ValueOrChunk<V> {
     /// `chunk_index`-th chunk of the value's byte representation.
     pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
     where
-        V: ToBytes,
+        V: Serialize,
     {
-        let bytes = ToBytes::to_bytes(&data).map_err(ChunkingError::SerializationError)?;
+        let bytes = bincode::serialize(&data).map_err(ChunkingError::SerializationError)?;
         // NOTE: Cannot accept the chunk size bytes as an argument without changing the
         // IndexedMerkleProof. The chunk size there is hardcoded and will be used when
         // determining the chunk.
@@ -120,7 +107,7 @@ impl Display for TrieOrChunkId {
 #[cfg(test)]
 mod value_chunking {
     use casper_hashing::ChunkWithProof;
-    use casper_types::bytesrepr::{self, Bytes};
+    use casper_types::bytesrepr::Bytes;
 
     use super::ValueOrChunk;
 
@@ -170,7 +157,7 @@ mod value_chunking {
             .flat_map(|chunk| chunk.into_chunk())
             .collect();
 
-        let retrieved_input: Bytes = bytesrepr::deserialize(data).unwrap();
+        let retrieved_input: Bytes = bincode::deserialize(&data).unwrap();
 
         assert_eq!(input, retrieved_input);
     }
