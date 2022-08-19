@@ -418,7 +418,7 @@ where
             return Err(FetchWithRetryError::RetriesExhausted {
                 id,
                 total_attempts,
-                retries_while_connected: retry_count,
+                retries_while_connected: retry_count - 1,
             });
         }
 
