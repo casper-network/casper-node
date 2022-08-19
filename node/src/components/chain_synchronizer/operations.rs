@@ -346,14 +346,7 @@ impl CanUseSyncingNodes for Deploy {}
 impl CanUseSyncingNodes for BlockAndDeploys {}
 impl CanUseSyncingNodes for BlockHeadersBatch {}
 
-struct NetworkInfo {
-    peers: Vec<NodeId>,
-    _is_connected: bool,
-}
-
-/// Returns fully-connected peers that are known to be not banned.
-// TODO[RC]: Not needed?
-async fn network_info<REv>(include_syncing: bool, ctx: &ChainSyncContext<'_, REv>) -> NetworkInfo
+async fn get_peers<REv>(include_syncing: bool, ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
 where
     REv: From<NetworkInfoRequest>,
 {
@@ -365,10 +358,7 @@ where
             .await
     };
     ctx.filter_bad_peers(&mut peer_list);
-    NetworkInfo {
-        peers: peer_list,
-        _is_connected: has_connected_to_network(), // TODO: Replace with SmallNetwork::has_connected_to_network() once available.
-    }
+    peer_list
 }
 
 /// Fetching should stop only when the network is connected and all retries have been exhausted.
@@ -425,7 +415,7 @@ where
             });
         }
 
-        let new_peer_list = network_info(T::can_use_syncing_nodes(), ctx).await.peers;
+        let new_peer_list = get_peers(T::can_use_syncing_nodes(), ctx).await;
 
         // TODO[RC]: If network not ready, worth to keep this counter.
         if new_peer_list.is_empty() && total_attempts % 100 == 0 {
@@ -975,7 +965,7 @@ where
 {
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = network_info(true, ctx).await.peers;
+        peers = get_peers(true, ctx).await;
         if !peers.is_empty() {
             break;
         }
@@ -1833,7 +1823,7 @@ where
         + From<BlocklistAnnouncement>,
 {
     let start = Timestamp::now();
-    let peer_list = network_info(true, ctx).await.peers;
+    let peer_list = get_peers(true, ctx).await;
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
@@ -2261,7 +2251,7 @@ where
         let mut attempts = 0;
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            for peer in network_info(true, ctx).await.peers {
+            for peer in get_peers(true, ctx).await {
                 attempts += 1;
                 warn!(
                     fetched_block=%block,
