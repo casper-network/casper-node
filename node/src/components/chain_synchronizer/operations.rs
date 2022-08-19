@@ -515,8 +515,8 @@ where
         }) => {
             warn!(
                 total_attempts,
-                ?id,
                 retries_while_connected,
+                ?id,
                 "fetch retries exhausted"
             );
             return Err(FetchTrieError::RetriesExhausted);
@@ -564,8 +564,8 @@ where
                 }) => {
                     warn!(
                         total_attempts,
-                        ?id,
                         retries_while_connected,
+                        ?id,
                         "fetch retries exhausted"
                     );
                     return Err(FetchTrieError::RetriesExhausted);
@@ -626,20 +626,30 @@ where
         return Ok(Box::new(stored_block_header));
     }
 
-    // TODO[RC]: Bubble up proper error.
-    let fetched_block_header = fetch_with_retries::<_, BlockHeader>(ctx, block_hash)
-        .await
-        .map_err(|_| Error::NoHighestBlockHeader)?;
-    match fetched_block_header {
-        FetchedData::FromStorage { item: block_header } => Ok(block_header),
-        FetchedData::FromPeer {
+    match fetch_with_retries::<_, BlockHeader>(ctx, block_hash).await {
+        Ok(FetchedData::FromStorage { item: block_header }) => Ok(block_header),
+        Ok(FetchedData::FromPeer {
             item: block_header, ..
-        } => {
+        }) => {
             ctx.effect_builder
                 .put_block_header_to_storage(block_header.clone())
                 .await;
             Ok(block_header)
         }
+        Err(FetchWithRetryError::RetriesExhausted {
+            id,
+            total_attempts,
+            retries_while_connected,
+        }) => {
+            warn!(
+                total_attempts,
+                retries_while_connected,
+                ?id,
+                "fetch retries exhausted"
+            );
+            return Err(Error::RetriesExhausted);
+        }
+        Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
     }
 }
 
@@ -1365,8 +1375,8 @@ where
             }) => {
                 warn!(
                     total_attempts,
-                    ?id,
                     retries_while_connected,
+                    ?id,
                     "fetch retries exhausted"
                 );
                 return Err(Error::RetriesExhausted);
@@ -1543,8 +1553,8 @@ where
             }) => {
                 warn!(
                     total_attempts,
-                    ?id,
                     retries_while_connected,
+                    ?id,
                     "fetch retries exhausted"
                 );
                 return Err(FetchBlockHeadersBatchError::RetriesExhausted);
@@ -2383,8 +2393,8 @@ where
             }) => {
                 warn!(
                     total_attempts,
-                    ?id,
                     retries_while_connected,
+                    ?id,
                     "fetch retries exhausted"
                 );
                 return Err(Error::RetriesExhausted);

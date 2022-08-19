@@ -18,11 +18,9 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, Item,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
     },
 };
-
-use super::operations::FetchWithRetryError;
 
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
