@@ -503,7 +503,7 @@ enum TrieAlreadyPresentOrDownloaded {
     Downloaded(Bytes),
 }
 
-async fn fetch_trie<REv>(
+async fn fetch_trie_with_retries<REv>(
     id: Digest,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError>
@@ -1025,7 +1025,7 @@ where
     REv:
         From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest> + From<ContractRuntimeRequest>,
 {
-    let fetched_trie = fetch_trie(trie_key, ctx).await?;
+    let fetched_trie = fetch_trie_with_retries(trie_key, ctx).await?;
     match fetched_trie {
         TrieAlreadyPresentOrDownloaded::AlreadyPresent => Ok(ctx
             .effect_builder
