@@ -24,7 +24,7 @@ function main() {
     # 1. Allow chain to progress
     do_await_era_change
     # 2. Verify all nodes are in sync
-    check_network_sync
+    check_network_sync 1 5
     # 3-5. Stop three nodes
     do_stop_node "5"
     do_stop_node "4"
@@ -36,11 +36,11 @@ function main() {
     do_start_node "4" "$STALLED_LFB"
     do_start_node "3" "$STALLED_LFB"
     # 10. Verify all nodes are in sync
-    check_network_sync
+    check_network_sync 1 5
     # 11. Ensure era proceeds after restart
     do_await_era_change "2"
     # 12. Verify all nodes are in sync
-    check_network_sync
+    check_network_sync 1 5
     # 13-15. Compare stalled lfb hash to current
     assert_chain_progressed "5" "$STALLED_LFB"
     assert_chain_progressed "4" "$STALLED_LFB"
