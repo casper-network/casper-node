@@ -362,7 +362,6 @@ where
 }
 
 /// Fetching should stop only when the network is connected and all retries have been exhausted.
-// TODO[RC]: Add unit test.
 fn should_stop_fetching(
     retry_count: &mut usize,
     has_connected_to_network: bool,
@@ -514,7 +513,12 @@ where
             total_attempts,
             retries_while_connected,
         }) => {
-            // TODO[RC]: Log error
+            warn!(
+                total_attempts,
+                ?id,
+                retries_while_connected,
+                "fetch retries exhausted"
+            );
             return Err(FetchTrieError::RetriesExhausted);
         }
         Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
@@ -558,7 +562,12 @@ where
                     total_attempts,
                     retries_while_connected,
                 }) => {
-                    // TODO[RC]: Log error
+                    warn!(
+                        total_attempts,
+                        ?id,
+                        retries_while_connected,
+                        "fetch retries exhausted"
+                    );
                     return Err(FetchTrieError::RetriesExhausted);
                 }
                 Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
@@ -1354,7 +1363,12 @@ where
                 total_attempts,
                 retries_while_connected,
             }) => {
-                // TODO[RC]: Log error
+                warn!(
+                    total_attempts,
+                    ?id,
+                    retries_while_connected,
+                    "fetch retries exhausted"
+                );
                 return Err(Error::RetriesExhausted);
             }
             Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
@@ -1527,7 +1541,12 @@ where
                 total_attempts,
                 retries_while_connected,
             }) => {
-                // TODO[RC]: Log error
+                warn!(
+                    total_attempts,
+                    ?id,
+                    retries_while_connected,
+                    "fetch retries exhausted"
+                );
                 return Err(FetchBlockHeadersBatchError::RetriesExhausted);
             }
             Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
@@ -2362,7 +2381,12 @@ where
                 total_attempts,
                 retries_while_connected,
             }) => {
-                // TODO[RC]: Log error
+                warn!(
+                    total_attempts,
+                    ?id,
+                    retries_while_connected,
+                    "fetch retries exhausted"
+                );
                 return Err(Error::RetriesExhausted);
             }
             Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),

@@ -167,7 +167,7 @@ pub(crate) enum Error {
         AcquireError,
     ),
 
-    #[error("Fetch retries exhausted")]
+    #[error("fetch retries exhausted")]
     RetriesExhausted,
 }
 
@@ -191,7 +191,7 @@ pub(crate) enum FetchTrieError {
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
 
-    #[error("Fetch retries exhausted")]
+    #[error("fetch retries exhausted")]
     RetriesExhausted,
 }
 
@@ -204,6 +204,6 @@ pub(crate) enum FetchBlockHeadersBatchError {
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,
 
-    #[error("Fetch retries exhausted")]
+    #[error("fetch retries exhausted")]
     RetriesExhausted,
 }
