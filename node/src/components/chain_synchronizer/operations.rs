@@ -566,9 +566,9 @@ where
                         ?id,
                         "fetch retries exhausted"
                     );
-                    return Err(FetchTrieError::RetriesExhausted);
+                    Err(FetchTrieError::RetriesExhausted)
                 }
-                Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
+                Err(FetchWithRetryError::FetcherError(err)) => Err(err.into()),
             }
         })
         // Do not try to fetch all of the trie chunks at once; only fetch at most
@@ -645,9 +645,9 @@ where
                 ?id,
                 "fetch retries exhausted"
             );
-            return Err(Error::RetriesExhausted);
+            Err(Error::RetriesExhausted)
         }
-        Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
+        Err(FetchWithRetryError::FetcherError(err)) => Err(err.into()),
     }
 }
 
