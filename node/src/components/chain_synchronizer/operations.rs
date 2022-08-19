@@ -363,14 +363,18 @@ where
 
 /// Fetching should stop only when the network is connected and all retries have been exhausted.
 // TODO[RC]: Add unit test.
-fn should_stop_fetching<REv>(retry_count: &mut usize, ctx: &ChainSyncContext<'_, REv>) -> bool {
-    if !has_connected_to_network() {
+fn should_stop_fetching(
+    retry_count: &mut usize,
+    has_connected_to_network: bool,
+    max_sync_fetch_attempts: usize,
+) -> bool {
+    if !has_connected_to_network {
         return false;
     } else {
         *retry_count += 1;
     }
 
-    if *retry_count <= ctx.config.max_sync_fetch_attempts() {
+    if *retry_count <= max_sync_fetch_attempts {
         return false;
     }
 
@@ -407,7 +411,11 @@ where
     let mut total_attempts = 0_usize;
     let mut retry_count = 0_usize;
     loop {
-        if should_stop_fetching(&mut retry_count, ctx) {
+        if should_stop_fetching(
+            &mut retry_count,
+            has_connected_to_network(),
+            ctx.config.max_sync_fetch_attempts(),
+        ) {
             return Err(FetchWithRetryError::RetriesExhausted {
                 id,
                 total_attempts,
@@ -2603,5 +2611,58 @@ mod tests {
             bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
+    }
+
+    #[test]
+    fn should_not_stop_fetching_and_not_increase_retry_counter_when_network_not_connected() {
+        let mut retry_count = 0;
+        let has_connected_to_network = false;
+        let max_sync_fetch_attempts = 5;
+
+        // Make sure we'll try fetching more times than defined as a limit.
+        let trials = max_sync_fetch_attempts * 3;
+
+        (0..trials).into_iter().for_each(|_| {
+            let result = should_stop_fetching(
+                &mut retry_count,
+                has_connected_to_network,
+                max_sync_fetch_attempts,
+            );
+            assert!(!result);
+        });
+
+        // Retry counter should stay intact.
+        assert_eq!(retry_count, 0);
+    }
+
+    #[test]
+    fn should_respect_fetch_attempts_when_network_connected() {
+        let mut retry_count = 0;
+        let has_connected_to_network = true;
+        let max_sync_fetch_attempts = 2;
+
+        // Start fetching.
+        assert!(!should_stop_fetching(
+            &mut retry_count,
+            has_connected_to_network,
+            max_sync_fetch_attempts,
+        ));
+        assert_eq!(retry_count, 1);
+
+        // Don't give up after the first time failed.
+        assert!(!should_stop_fetching(
+            &mut retry_count,
+            has_connected_to_network,
+            max_sync_fetch_attempts,
+        ));
+        assert_eq!(retry_count, 2);
+
+        // Second attempt failed as well, give up.
+        assert!(should_stop_fetching(
+            &mut retry_count,
+            has_connected_to_network,
+            max_sync_fetch_attempts,
+        ));
+        assert_eq!(retry_count, 3);
     }
 }
