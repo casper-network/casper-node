@@ -128,6 +128,10 @@ impl Config {
         self.max_parallel_block_fetches as usize
     }
 
+    pub(super) fn max_sync_fetch_attempts(&self) -> usize {
+        self.max_sync_fetch_attempts as usize
+    }
+
     pub(super) fn retry_interval(&self) -> Duration {
         self.retry_interval
     }

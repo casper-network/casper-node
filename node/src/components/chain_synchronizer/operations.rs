@@ -18,6 +18,7 @@ use num::rational::Ratio;
 use prometheus::IntGauge;
 use quanta::Instant;
 use serde::Serialize;
+use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
@@ -33,7 +34,7 @@ use crate::{
         },
         consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
-        fetcher::{FetchResult, FetchedData, FetcherError},
+        fetcher::{FetchedData, FetcherError},
     },
     effect::{
         announcements::{
@@ -351,6 +352,7 @@ struct NetworkInfo {
 }
 
 /// Returns fully-connected peers that are known to be not banned.
+// TODO[RC]: Not needed?
 async fn network_info<REv>(include_syncing: bool, ctx: &ChainSyncContext<'_, REv>) -> NetworkInfo
 where
     REv: From<NetworkInfoRequest>,
@@ -369,20 +371,66 @@ where
     }
 }
 
-/// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
+/// Fetching should stop only when the network is connected and all retries have been exhausted.
+// TODO[RC]: Add unit test.
+fn should_stop_fetching<REv>(retry_count: &mut usize, ctx: &ChainSyncContext<'_, REv>) -> bool {
+    if !has_connected_to_network() {
+        return false;
+    } else {
+        *retry_count += 1;
+    }
+
+    if *retry_count <= ctx.config.max_sync_fetch_attempts() {
+        return false;
+    }
+
+    true
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum FetchWithRetryError<T>
+where
+    T: Item,
+{
+    #[error("Fetch retries exhausted for item with id {id:?}. Total attempts: {total_attempts}, retries while network was connected: {retries_while_connected}")]
+    RetriesExhausted {
+        id: T::Id,
+        total_attempts: usize,
+        retries_while_connected: usize,
+    },
+
+    #[error(transparent)]
+    FetcherError(#[from] FetcherError<T>),
+}
+
+// TODO[RC]: Potentially update other comments.
+/// Fetches an item. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
-async fn fetch<REv, T>(ctx: &ChainSyncContext<'_, REv>, id: T::Id) -> FetchResult<T>
+async fn fetch_with_retries<REv, T>(
+    ctx: &ChainSyncContext<'_, REv>,
+    id: T::Id,
+) -> Result<FetchedData<T>, FetchWithRetryError<T>>
 where
     T: Item + CanUseSyncingNodes + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
-    let mut attempts = 0_usize;
+    let mut total_attempts = 0_usize;
+    let mut retry_count = 0_usize;
     loop {
+        if should_stop_fetching(&mut retry_count, ctx) {
+            return Err(FetchWithRetryError::RetriesExhausted {
+                id,
+                total_attempts,
+                retries_while_connected: retry_count,
+            });
+        }
+
         let new_peer_list = network_info(T::can_use_syncing_nodes(), ctx).await.peers;
 
-        if new_peer_list.is_empty() && attempts % 100 == 0 {
+        // TODO[RC]: If network not ready, worth to keep this counter.
+        if new_peer_list.is_empty() && total_attempts % 100 == 0 {
             warn!(
-                attempts,
+                total_attempts,
                 item_type = ?T::TAG,
                 ?id,
                 can_use_syncing_nodes = %T::can_use_syncing_nodes(),
@@ -390,6 +438,7 @@ where
             );
         }
 
+        //-----------------------------------------------------
         for peer in new_peer_list {
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
@@ -429,11 +478,15 @@ where
                     );
                     ctx.mark_bad_peer(peer);
                 }
-                Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
+                Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => {
+                    return Err(error.into())
+                }
             }
         }
+        //----------------------------------------------------
+
         tokio::time::sleep(ctx.config.retry_interval()).await;
-        attempts += 1;
+        total_attempts += 1;
     }
 }
 
@@ -449,15 +502,26 @@ async fn fetch_trie<REv>(
 where
     REv: From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest>,
 {
-    let trie_or_chunk = match fetch::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
-        FetchedData::FromStorage { .. } => {
+    let result = fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await;
+    let trie_or_chunk = match result {
+        Ok(FetchedData::FromStorage { .. }) => {
             return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
         }
-        FetchedData::FromPeer {
+        Ok(FetchedData::FromPeer {
             item: trie_or_chunk,
             ..
-        } => *trie_or_chunk,
+        }) => *trie_or_chunk,
+        Err(FetchWithRetryError::RetriesExhausted {
+            id,
+            total_attempts,
+            retries_while_connected,
+        }) => {
+            // TODO[RC]: Log error
+            return Err(FetchTrieError::RetriesExhausted);
+        }
+        Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
     };
+
     let chunk_with_proof = match trie_or_chunk {
         TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
         TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
@@ -475,11 +539,11 @@ where
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
-                FetchedData::FromStorage { .. } => {
+            match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await {
+                Ok(FetchedData::FromStorage { .. }) => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
-                FetchedData::FromPeer { item, .. } => match *item {
+                Ok(FetchedData::FromPeer { item, .. }) => match *item {
                     TrieOrChunk::Trie(_) => Err(
                         FetchTrieError::TrieBeingFetchedByChunksSomehowFetchWholeFromPeer {
                             digest: id,
@@ -491,6 +555,15 @@ where
                         Ok((index, chunk))
                     }
                 },
+                Err(FetchWithRetryError::RetriesExhausted {
+                    id,
+                    total_attempts,
+                    retries_while_connected,
+                }) => {
+                    // TODO[RC]: Log error
+                    return Err(FetchTrieError::RetriesExhausted);
+                }
+                Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
             }
         })
         // Do not try to fetch all of the trie chunks at once; only fetch at most
@@ -546,7 +619,10 @@ where
         return Ok(Box::new(stored_block_header));
     }
 
-    let fetched_block_header = fetch::<_, BlockHeader>(ctx, block_hash).await?;
+    // TODO[RC]: Bubble up proper error.
+    let fetched_block_header = fetch_with_retries::<_, BlockHeader>(ctx, block_hash)
+        .await
+        .map_err(|_| Error::NoHighestBlockHeader)?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
@@ -564,7 +640,7 @@ where
 async fn fetch_and_store_deploy<REv>(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<Box<Deploy>, FetcherError<Deploy>>
+) -> Result<Box<Deploy>, FetchWithRetryError<Deploy>>
 where
     REv: From<StorageRequest> + From<FetcherRequest<Deploy>> + From<NetworkInfoRequest>,
 {
@@ -580,7 +656,7 @@ where
         return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
     }
 
-    let fetched_deploy = fetch::<_, Deploy>(ctx, deploy_or_transfer_hash).await?;
+    let fetched_deploy = fetch_with_retries::<_, Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -938,11 +1014,11 @@ where
 async fn fetch_and_store_block_by_hash<REv>(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<Box<Block>, FetcherError<Block>>
+) -> Result<Box<Block>, FetchWithRetryError<Block>>
 where
     REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
 {
-    let fetched_block = fetch::<_, Block>(ctx, block_hash).await?;
+    let fetched_block = fetch_with_retries::<_, Block>(ctx, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -956,12 +1032,12 @@ where
 async fn fetch_and_store_block_with_deploys_by_hash<REv>(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>>
+) -> Result<Box<BlockAndDeploys>, FetchWithRetryError<BlockAndDeploys>>
 where
     REv: From<NetworkInfoRequest> + From<FetcherRequest<BlockAndDeploys>> + From<StorageRequest>,
 {
     let start = Timestamp::now();
-    let fetched_block = fetch::<_, BlockAndDeploys>(ctx, block_hash).await?;
+    let fetched_block = fetch_with_retries::<_, BlockAndDeploys>(ctx, block_hash).await?;
     let res = match fetched_block {
         FetchedData::FromStorage {
             item: block_and_deploys,
@@ -1273,9 +1349,18 @@ where
         < ctx.config.deploy_max_ttl()
         && current_header.height() != 0
     {
-        current_header = fetch_and_store_block_by_hash(*current_header.parent_hash(), ctx)
-            .await?
-            .take_header();
+        match fetch_and_store_block_by_hash(*current_header.parent_hash(), ctx).await {
+            Ok(header) => current_header = header.take_header(),
+            Err(FetchWithRetryError::RetriesExhausted {
+                id,
+                total_attempts,
+                retries_while_connected,
+            }) => {
+                // TODO[RC]: Log error
+                return Err(Error::RetriesExhausted);
+            }
+            Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
+        }
     }
     Ok(())
 }
@@ -1412,16 +1497,14 @@ where
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
 
     loop {
-        let fetched_headers_data: FetchedData<BlockHeadersBatch> =
-            fetch::<_, BlockHeadersBatch>(ctx, batch_id).await?;
-        match fetched_headers_data {
-            FetchedData::FromStorage { item } => {
+        match fetch_with_retries::<_, BlockHeadersBatch>(ctx, batch_id).await {
+            Ok(FetchedData::FromStorage { item }) => {
                 return item
                     .lowest()
                     .cloned()
                     .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
             }
-            FetchedData::FromPeer { item, peer } => {
+            Ok(FetchedData::FromPeer { item, peer }) => {
                 match BlockHeadersBatch::validate(&*item, &batch_id, lowest_trusted_block_header) {
                     Ok(new_lowest) => {
                         info!(?batch_id, ?peer, "received valid batch of headers");
@@ -1441,6 +1524,15 @@ where
                     }
                 }
             }
+            Err(FetchWithRetryError::RetriesExhausted {
+                id,
+                total_attempts,
+                retries_while_connected,
+            }) => {
+                // TODO[RC]: Log error
+                return Err(FetchBlockHeadersBatchError::RetriesExhausted);
+            }
+            Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
         }
     }
 }
@@ -2262,9 +2354,21 @@ where
         .map(|(index, hash)| async move { (index, fetch_and_store_deploy(hash, ctx).await) })
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
     while let Some((index, result)) = stream.next().await {
-        let deploy = result?;
-        trace!("fetched {:?}", deploy);
-        indexed_deploys.push((index, *deploy));
+        match result {
+            Ok(deploy) => {
+                trace!("fetched {:?}", deploy);
+                indexed_deploys.push((index, *deploy));
+            }
+            Err(FetchWithRetryError::RetriesExhausted {
+                id,
+                total_attempts,
+                retries_while_connected,
+            }) => {
+                // TODO[RC]: Log error
+                return Err(Error::RetriesExhausted);
+            }
+            Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
+        }
     }
 
     indexed_deploys.sort();

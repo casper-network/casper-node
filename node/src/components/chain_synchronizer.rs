@@ -185,6 +185,10 @@ where
                 self.joining_outcome = Some(JoiningOutcome::ShouldExitForUpgrade);
                 Effects::new()
             }
+            Err(Error::RetriesExhausted) => {
+                // TODO[RC]: Trigger node exit here
+                todo!()
+            }
             Err(error) => {
                 error!(%error, "failed to sync linear chain");
                 fatal!(effect_builder, "{}", error).ignore()

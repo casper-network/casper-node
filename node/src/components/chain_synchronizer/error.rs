@@ -18,9 +18,11 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, Item,
     },
 };
+
+use super::operations::FetchWithRetryError;
 
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
@@ -164,6 +166,9 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         AcquireError,
     ),
+
+    #[error("Fetch retries exhausted")]
+    RetriesExhausted,
 }
 
 #[derive(Error, Debug)]
@@ -185,6 +190,9 @@ pub(crate) enum FetchTrieError {
          by a peer somehow. Trie digest: {digest:?}"
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
+
+    #[error("Fetch retries exhausted")]
+    RetriesExhausted,
 }
 
 #[derive(Error, Debug)]
@@ -195,4 +203,7 @@ pub(crate) enum FetchBlockHeadersBatchError {
 
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,
+
+    #[error("Fetch retries exhausted")]
+    RetriesExhausted,
 }
