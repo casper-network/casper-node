@@ -433,56 +433,69 @@ where
             );
         }
 
-        //-----------------------------------------------------
-        for peer in new_peer_list {
-            trace!(
-                "attempting to fetch {:?} with id {:?} from {:?}",
-                T::TAG,
-                id,
-                peer
-            );
-            match ctx.effect_builder.fetch::<T>(id, peer).await {
-                Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
-                    trace!(
-                        "did not get {:?} with id {:?} from {:?}, got from storage instead",
-                        T::TAG,
-                        id,
-                        peer
-                    );
-                    return Ok(fetched_data);
-                }
-                Ok(fetched_data @ FetchedData::FromPeer { .. }) => {
-                    trace!("fetched {:?} with id {:?} from {:?}", T::TAG, id, peer);
-                    return Ok(fetched_data);
-                }
-                Err(FetcherError::Absent { .. }) => {
-                    warn!(
-                        ?id,
-                        tag = ?T::TAG,
-                        ?peer,
-                        "chain sync could not fetch; trying next peer",
-                    );
-                    ctx.mark_bad_peer(peer);
-                }
-                Err(FetcherError::TimedOut { .. }) => {
-                    warn!(
-                        ?id,
-                        tag = ?T::TAG,
-                        ?peer,
-                        "peer timed out",
-                    );
-                    ctx.mark_bad_peer(peer);
-                }
-                Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => {
-                    return Err(error.into())
-                }
-            }
+        if let Some(value) = fetch_from_peers(new_peer_list, id, ctx).await {
+            return value;
         }
-        //----------------------------------------------------
 
         tokio::time::sleep(ctx.config.retry_interval()).await;
         total_attempts += 1;
     }
+}
+
+async fn fetch_from_peers<REv, T>(
+    new_peer_list: Vec<NodeId>,
+    id: <T as Item>::Id,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Option<Result<FetchedData<T>, FetchWithRetryError<T>>>
+where
+    T: Item + CanUseSyncingNodes + 'static,
+    REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
+{
+    for peer in new_peer_list {
+        trace!(
+            "attempting to fetch {:?} with id {:?} from {:?}",
+            T::TAG,
+            id,
+            peer
+        );
+        match ctx.effect_builder.fetch::<T>(id, peer).await {
+            Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
+                trace!(
+                    "did not get {:?} with id {:?} from {:?}, got from storage instead",
+                    T::TAG,
+                    id,
+                    peer
+                );
+                return Some(Ok(fetched_data));
+            }
+            Ok(fetched_data @ FetchedData::FromPeer { .. }) => {
+                trace!("fetched {:?} with id {:?} from {:?}", T::TAG, id, peer);
+                return Some(Ok(fetched_data));
+            }
+            Err(FetcherError::Absent { .. }) => {
+                warn!(
+                    ?id,
+                    tag = ?T::TAG,
+                    ?peer,
+                    "chain sync could not fetch; trying next peer",
+                );
+                ctx.mark_bad_peer(peer);
+            }
+            Err(FetcherError::TimedOut { .. }) => {
+                warn!(
+                    ?id,
+                    tag = ?T::TAG,
+                    ?peer,
+                    "peer timed out",
+                );
+                ctx.mark_bad_peer(peer);
+            }
+            Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => {
+                return Some(Err(error.into()))
+            }
+        }
+    }
+    None
 }
 
 enum TrieAlreadyPresentOrDownloaded {
