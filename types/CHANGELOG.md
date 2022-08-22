@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
 * Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
+* Add new `Key::BlockEffectsRootHash` key variant under which the Merkle root of the execution results for a given block is written.
+* Add new `Key::DeployApprovalsRootHash` key variant under which the Merkle root of the approvals of all deploys for a given block is written.
 * Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
 * Extend asymmetric key functionality, available via feature "std".
 * Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature "std".

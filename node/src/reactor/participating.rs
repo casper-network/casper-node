@@ -769,11 +769,7 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         )?;
 
-        let fetcher_builder = FetcherBuilder::new(
-            config.fetcher,
-            registry,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
-        );
+        let fetcher_builder = FetcherBuilder::new(config.fetcher, registry);
 
         let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
         let deploy_fetcher = fetcher_builder.build("deploy")?;
@@ -831,10 +827,8 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
-            &highest_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
-        ))?;
+        contract_runtime
+            .set_initial_state(ExecutionPreState::from_block_header(&highest_block_header))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = LinearChainComponent::new(
@@ -844,7 +838,6 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
             next_upgrade_activation_point,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
 
         let (chain_synchronizer, chain_synchronizer_effects) =
@@ -1212,7 +1205,6 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
-                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -1344,12 +1336,7 @@ impl reactor::Reactor for Reactor {
                 let reactor_event_consensus =
                     ParticipatingEvent::Consensus(consensus::Event::BlockAdded {
                         header: Box::new(block.header().clone()),
-                        header_hash: block.header().hash(
-                            self.chainspec_loader
-                                .chainspec()
-                                .protocol_config
-                                .verifiable_chunked_hash_activation,
-                        ),
+                        header_hash: *block.hash(),
                     });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block),
@@ -1430,19 +1417,7 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
-                let verifiable_chunked_hash_activation = self
-                    .chainspec_loader
-                    .chainspec()
-                    .protocol_config
-                    .verifiable_chunked_hash_activation;
-                reactor::handle_get_response(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    message,
-                    verifiable_chunked_hash_activation,
-                )
+                reactor::handle_get_response(self, effect_builder, rng, sender, message)
             }
             ParticipatingEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
                 ParticipatingEvent::ContractRuntime,
@@ -1461,10 +1436,6 @@ impl reactor::Reactor for Reactor {
                     rng,
                     sender,
                     &message.0,
-                    self.chainspec_loader
-                        .chainspec()
-                        .protocol_config
-                        .verifiable_chunked_hash_activation,
                 )
             }
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(

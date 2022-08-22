@@ -125,7 +125,7 @@ impl Error {
     pub fn new<C: ErrorCodeT, T: Serialize>(error_code: C, additional_info: T) -> Self {
         let (code, message): (i64, &'static str) = error_code.into();
 
-        if !C::is_reserved() && code >= -32768 && code <= -32100 {
+        if !C::is_reserved() && (-32768..=-32100).contains(&code) {
             warn!(%code, "provided json-rpc error code is reserved; returning internal error");
             let (code, message) = ReservedErrorCode::InternalError.into();
             return Error {

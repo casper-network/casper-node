@@ -33,10 +33,11 @@ pub(super) struct Config {
     max_retries_while_not_connected: u64,
     /// How many fetches in between attempting to redeem one bad node.
     pub(crate) redemption_interval: u32,
-    /// Block and block header fetch operations are retried *once* when at the initial trial there
-    /// were fewer peers than `minimum_peer_count_threshold_for_fetch_retry` available. By default,
-    /// this is the number of items on the `known_addresses` list in the node config.
-    pub(crate) minimum_peer_count_threshold_for_fetch_retry: usize,
+    /// Block and block header fetch operations are retried forever until we have enough connected
+    /// peers. If the operation fails while there are enough peers, the process gives up. By
+    /// default, this is the number of items on the `known_addresses` list in the node config
+    /// reduced by one.
+    pub(crate) minimum_peer_count_threshold_for_block_fetch_retry: usize,
 }
 
 impl Config {
@@ -58,9 +59,10 @@ impl Config {
             sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
             redemption_interval: node_config.sync_peer_redemption_interval,
-            minimum_peer_count_threshold_for_fetch_retry: small_network_config
+            minimum_peer_count_threshold_for_block_fetch_retry: small_network_config
                 .known_addresses
-                .len(),
+                .len()
+                .saturating_sub(1),
         }
     }
 
@@ -68,25 +70,11 @@ impl Config {
         self.chainspec.protocol_config.version
     }
 
-    pub(super) fn activation_point(&self) -> EraId {
-        self.chainspec.protocol_config.activation_point.era_id()
-    }
-
     pub(super) fn genesis_timestamp(&self) -> Option<Timestamp> {
         self.chainspec
             .protocol_config
             .activation_point
             .genesis_timestamp()
-    }
-
-    pub(super) fn last_emergency_restart(&self) -> Option<EraId> {
-        self.chainspec.protocol_config.last_emergency_restart
-    }
-
-    pub(super) fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.chainspec
-            .protocol_config
-            .verifiable_chunked_hash_activation
     }
 
     pub(super) fn era_duration(&self) -> TimeDiff {

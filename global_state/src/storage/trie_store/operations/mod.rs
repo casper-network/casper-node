@@ -19,7 +19,6 @@ use crate::{
     storage::{
         transaction_source::{Readable, Writable},
         trie::{
-            hash_bytes_into_chunks_if_necessary,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
             Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
         },
@@ -1048,7 +1047,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let trie_hash = hash_bytes_into_chunks_if_necessary(trie_bytes);
+    let trie_hash = Digest::hash_bytes_into_chunks_if_necessary(trie_bytes);
     store.put_raw(txn, &trie_hash, trie_bytes)?;
     Ok(trie_hash)
 }

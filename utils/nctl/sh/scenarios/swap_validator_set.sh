@@ -22,7 +22,7 @@ function main() {
     PRE_SWAP_HASH=$(do_read_lfb_hash 1)
 
     # 2. Verify all nodes are in sync
-    check_network_sync
+    check_network_sync 1 5
 
     # 3. Send some wasm to all running nodes
     log_step "sending wasm trandfers to validators"
@@ -81,7 +81,7 @@ function main() {
     nctl-await-n-eras offset='3' sleep_interval='10.0' timeout='300' node='6'
 
     # 22. Check network is in sync
-    check_network_sync
+    check_network_sync 1 10
 
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \

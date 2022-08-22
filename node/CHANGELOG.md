@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
+* Merkle root hashes for execution results and deploy approvals are written to global state after each block execution.
 * Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
 * Add `sync_to_genesis` to `[node]` config section, which if set to `true` will cause the node to retrieve all blocks, deploys and global state back to genesis while running in participating mode.
@@ -23,7 +24,6 @@ All notable changes to this project will be documented in this file.  The format
 * A diagnostic port can now be enabled via the `[diagnostics_port]` section in the configuration file. See the `README.md` for details.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
 * Add `strict_argument_checking` to the chainspec to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
-* Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
 * Nodes will now also gossip deploys onwards while joining.
 * Add `node_state` field to the `/status` endpoint and the `info_get_status` JSON-RPC, giving an indication of the node's operating mode (joining or participating) and the progress of any ongoing chain-sync task.
@@ -72,6 +72,7 @@ All notable changes to this project will be documented in this file.  The format
 * Remove asymmetric key functionality (move to `casper-types` crate behind feature "std").
 * Remove time types (move to `casper-types` with some functionality behind feature "std").
 * Remove `reject_incompatible_versions` option from `config.toml`, meaning now all versions different than the current one are rejected through the `chainspec_hash` check in the network handshake.
+* Remove the `[protocol][last_emergency_restart]` field from the chainspec - fast sync will use the global state directly for recognizing such restarts instead.
 
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.

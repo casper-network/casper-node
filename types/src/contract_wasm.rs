@@ -282,7 +282,7 @@ impl ToBytes for ContractWasm {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        (&self.bytes).write_bytes(writer)?;
+        self.bytes.write_bytes(writer)?;
         Ok(())
     }
 }
