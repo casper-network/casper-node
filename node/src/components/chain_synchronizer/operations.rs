@@ -2695,7 +2695,7 @@ mod tests {
         let has_connected_to_network = true;
         let max_sync_fetch_attempts = 2;
 
-        // Start fetching.
+        // 1st allowed try.
         assert!(!should_stop_fetching(
             &mut retry_count,
             has_connected_to_network,
@@ -2703,7 +2703,7 @@ mod tests {
         ));
         assert_eq!(retry_count, 1);
 
-        // Don't give up after the first time failed.
+        // 2nd allowed try.
         assert!(!should_stop_fetching(
             &mut retry_count,
             has_connected_to_network,
@@ -2711,7 +2711,7 @@ mod tests {
         ));
         assert_eq!(retry_count, 2);
 
-        // Second attempt failed as well, give up.
+        // 3rd call should return false, as "max_sync_fetch_attempts == 2".
         assert!(should_stop_fetching(
             &mut retry_count,
             has_connected_to_network,
