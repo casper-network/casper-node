@@ -21,7 +21,7 @@ fn purge_vertices() {
     let params = test_params(0);
     let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
 
-    // We use round length 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
+    // We use round exponent 0u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
     //
     // time:  0x00 0x0A 0x1A 0x2A 0x3A
     //
@@ -126,7 +126,7 @@ fn do_not_download_synchronized_dependencies() {
     let util_highway =
         Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
 
-    // We use round exponent 4u8, so a round is 0x40 ms. With seed 0, Carol is the first leader.
+    // We use round exponent 0u8, so a round is 0x40 ms. With seed 0, Carol is the first leader.
     //
     // time:  0x00 0x0A 0x1A 0x2A 0x3A
     //
