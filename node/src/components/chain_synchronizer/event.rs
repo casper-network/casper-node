@@ -21,6 +21,8 @@ use crate::{
 pub(crate) enum Event {
     /// The result of running the fast sync task.
     FastSyncResult(Result<FastSyncOutcome, Error>),
+    /// The result of running the sync to genesis task.
+    SyncResultToGenesisResult(Result<(), Error>),
     /// The result of contract runtime running the genesis process.
     CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
     /// The result of contract runtime running the upgrade process.
@@ -54,6 +56,9 @@ impl Display for Event {
         match self {
             Event::FastSyncResult(result) => {
                 write!(formatter, "fast sync result: {:?}", result)
+            }
+            Event::SyncResultToGenesisResult(result) => {
+                write!(formatter, "sync to genesis result: {:?}", result)
             }
             Event::CommitGenesisResult(result) => {
                 write!(formatter, "commit genesis result: {:?}", result)

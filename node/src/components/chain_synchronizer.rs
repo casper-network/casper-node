@@ -19,6 +19,7 @@ use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
+        chain_synchronizer::error::{FetchBlockHeadersBatchError, FetchTrieError},
         consensus::EraReport,
         contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState},
         Component,
@@ -562,7 +563,7 @@ where
                 synchronizer.metrics.clone(),
                 progress,
             )
-            .ignore();
+            .event(Event::SyncResultToGenesisResult);
 
             return Ok((synchronizer, effects));
         }
@@ -637,6 +638,23 @@ where
         debug!(?event, "handling event");
         match event {
             Event::FastSyncResult(result) => self.handle_fast_sync_result(effect_builder, result),
+            Event::SyncResultToGenesisResult(result) => {
+                // TODO[RC]: When all fetch operations are unified, rely on the single
+                // `Error::RetriesExhausted` variant.
+                if matches!(result, Err(Error::RetriesExhausted))
+                    | matches!(result, Err(Error::FetchHeadersBatch(ref err)) if matches!(err, FetchBlockHeadersBatchError::RetriesExhausted))
+                    | matches!(result, Err(Error::FetchTrie(err)) if matches!(err, FetchTrieError::RetriesExhausted))
+                {
+                    error!("sync to genesis failed due to fetch retries exhaustion; shutting down");
+                    fatal!(
+                        effect_builder,
+                        "sync to genesis failed due to fetch retries exhaustion; please retry",
+                    )
+                    .ignore()
+                } else {
+                    Effects::new()
+                }
+            }
             Event::CommitGenesisResult(result) => {
                 self.handle_commit_genesis_result(effect_builder, result)
             }
