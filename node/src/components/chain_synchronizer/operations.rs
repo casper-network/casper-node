@@ -410,9 +410,10 @@ where
     let mut total_attempts = 0_usize;
     let mut retry_count = 0_usize;
     loop {
+        let has_connected_to_network = has_connected_to_network();
         if should_stop_fetching(
             &mut retry_count,
-            has_connected_to_network(),
+            has_connected_to_network,
             ctx.config.max_sync_fetch_attempts(),
         ) {
             return Err(FetchWithRetryError::RetriesExhausted {
@@ -429,6 +430,7 @@ where
                 item_type = ?T::TAG,
                 ?id,
                 can_use_syncing_nodes = %T::can_use_syncing_nodes(),
+                has_connected_to_network,
                 "failed to attempt to fetch item due to no fully-connected peers"
             );
         }
