@@ -116,6 +116,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .core_config
             .minimum_block_time
             .max(TimeDiff::from(1));
+        // The maximum round exponent x is such that 2^x * m is at most M, where m and M are min
+        // and max round length. So x is the floor of log_2(M / m). Thus the ceiling of
+        // log_2(M / m + 1) is always x + 1.
         let maximum_round_exponent = (highway_config.maximum_round_length / minimum_round_length)
             .saturating_add(1)
             .next_power_of_two()
