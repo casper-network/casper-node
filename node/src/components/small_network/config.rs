@@ -49,6 +49,17 @@ impl Default for Config {
             tarpit_chance: 0.2,
             max_in_flight_demands: 50,
             blocklist_retain_duration: TimeDiff::from_seconds(600),
+            bootstrap_threshold: Default::default(),
+        }
+    }
+}
+
+impl Default for BootstrapThreshold {
+    fn default() -> Self {
+        Self {
+            known_address_connection_percentage: 0.5,
+            connection_count: 20,
+            timeout: TimeDiff::from_seconds(60),
         }
     }
 }
@@ -92,6 +103,20 @@ pub struct Config {
     pub max_in_flight_demands: u32,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
+    /// Thresholds that indicate when bootstrapping is considered complete.
+    pub bootstrap_threshold: BootstrapThreshold,
+}
+
+/// Thresholds for bootstrap completion.
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BootstrapThreshold {
+    /// Percentage of known addresses that, when fully established, trigger bootstrap completion.
+    pub known_address_connection_percentage: f32,
+    /// Number of symmetric connections that trigger bootstrap completion.
+    pub connection_count: u32,
+    /// Timeout that triggers finishing of the bootstrap process if neither condition is reached.
+    pub timeout: TimeDiff,
 }
 
 #[cfg(test)]

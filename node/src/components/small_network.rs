@@ -560,6 +560,8 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
+                self.update_bootstrapping_state();
+
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
@@ -741,6 +743,8 @@ where
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
 
+                self.update_bootstrapping_state();
+
                 effects.extend(
                     tasks::message_sender(
                         receiver,
@@ -873,6 +877,54 @@ where
         }
 
         ret
+    }
+
+    /// Updates the bootstrapping state of the node according to available information.
+    fn update_bootstrapping_state(&mut self) {
+        // Do not spend any effort if we already completed our bootstrapping process.
+        if self.bootstrap_completed {
+            return;
+        }
+
+        // Check for the regular connection threshold, since counting is quicker.
+        let symmetric_connections: HashSet<NodeId> = self
+            .connection_symmetries
+            .iter()
+            .filter_map(|(node_id, cs)| cs.is_symmetric().then_some(*node_id))
+            .collect();
+
+        if symmetric_connections.len() > self.cfg.bootstrap_threshold.connection_count as usize {
+            self.bootstrap_completed = true;
+            info!(
+                target = self.cfg.bootstrap_threshold.connection_count,
+                actual = symmetric_connections.len(),
+                "networking bootstrap completed after connection threshold was met"
+            );
+            return;
+        }
+
+        // Check if we have reached the critical of known nodes connected.
+        let known_nodes_target = (self.cfg.known_addresses.len() as f32
+            * self
+                .cfg
+                .bootstrap_threshold
+                .known_address_connection_percentage)
+            .round() as usize;
+
+        let known_node_ids: HashSet<_> = self.known_node_ids.values().cloned().collect();
+        let known_nodes_connected = symmetric_connections.intersection(&known_node_ids);
+
+        let known_nodes_connected_count = known_nodes_connected.into_iter().count();
+
+        if known_nodes_connected_count > known_nodes_target {
+            self.bootstrap_completed = true;
+            info!(
+                target = known_nodes_target,
+                actual = known_nodes_connected_count,
+                "networking bootstrap completed after known node connection threshold was met"
+            );
+            return;
+        }
     }
 
     /// Returns the node id of this network node.

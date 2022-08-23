@@ -199,6 +199,11 @@ impl ConnectionSymmetry {
             ConnectionSymmetry::OutgoingOnly { .. } | ConnectionSymmetry::Gone => None,
         }
     }
+
+    /// Checks whether the given `ConnectionSymmetric` is in the symmetric state.
+    pub(super) fn is_symmetric(&self) -> bool {
+        matches!(self, ConnectionSymmetry::Symmetric { .. })
+    }
 }
 
 #[cfg(test)]

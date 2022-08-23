@@ -782,6 +782,7 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// Returns `true` if the networking component considers the network to have moved past initial
     /// delays connecting.
+    #[allow(dead_code)] // TODO: Remove once this code is used in fast sync.
     pub async fn get_networking_bootstrap_state(self) -> bool
     where
         REv: From<NetworkInfoRequest>,
