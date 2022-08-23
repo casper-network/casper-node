@@ -381,12 +381,16 @@ fn should_stop_fetching(
     true
 }
 
+/// Possible errors caused by fetch operation that uses the retry mechanism.
 #[derive(Error, Debug)]
 pub(crate) enum FetchWithRetryError<T>
 where
     T: Item,
 {
-    #[error("Fetch retries exhausted for item with id {id:?}. Total attempts: {total_attempts}, retries while network was connected: {retries_while_connected}")]
+    #[error(
+        "Fetch retries exhausted for item with id {id:?}. Total attempts: {total_attempts}, \
+        retries while network was connected: {retries_while_connected}"
+    )]
     RetriesExhausted {
         id: T::Id,
         total_attempts: usize,
@@ -397,8 +401,10 @@ where
     FetcherError(#[from] FetcherError<T>),
 }
 
-/// Fetches an item. Not suited to fetching a block header or block by height, which require
-/// verification with finality signatures.
+/// Fetches an item.
+///
+/// Not suited to fetching a block header or block by height, which require verification with
+/// finality signatures.
 async fn fetch_with_retries<REv, T>(
     ctx: &ChainSyncContext<'_, REv>,
     id: T::Id,
