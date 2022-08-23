@@ -772,7 +772,11 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         )?;
 
-        let fetcher_builder = FetcherBuilder::new(config.fetcher, registry);
+        let fetcher_builder = FetcherBuilder::new(
+            config.fetcher,
+            chainspec.highway_config.finality_threshold_fraction,
+            registry,
+        );
 
         let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
         let deploy_fetcher = fetcher_builder.build("deploy")?;

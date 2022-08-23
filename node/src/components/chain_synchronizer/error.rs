@@ -13,8 +13,8 @@ use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{
-        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError,
+        contract_runtime::BlockExecutionError, fetcher::FetcherError, linear_chain,
+        linear_chain::BlockSignatureError,
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
@@ -31,6 +31,9 @@ pub(crate) enum Error {
         engine_state::Error,
     ),
 
+    #[error(transparent)]
+    LinearChain(#[from] linear_chain::Error),
+
     #[error(
         "trusted header is from before the last upgrade and isn't the last header before \
          activation. \
@@ -44,14 +47,8 @@ pub(crate) enum Error {
         activation_point: EraId,
     },
 
-    #[error("cannot get switch block for era: {era_id}")]
-    NoSwitchBlockForEra { era_id: EraId },
-
     #[error("no blocks have been found in storage (should have at least genesis switch block)")]
     NoBlocksInStorage,
-
-    #[error("switch block at height {height} for era {era_id} contains no validator weights")]
-    MissingNextEraValidators { height: u64, era_id: EraId },
 
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
@@ -96,7 +93,7 @@ pub(crate) enum Error {
     FinalitySignatures(
         #[from]
         #[serde(skip_serializing)]
-        FinalitySignatureError,
+        BlockSignatureError,
     ),
 
     #[error(transparent)]

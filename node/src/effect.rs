@@ -275,7 +275,7 @@ impl<T: Debug> Responder<T> {
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                // If we cannot send a response down the channel, it means the original requestor is
+                // If we cannot send a response down the channel, it means the original requester is
                 // no longer interested in our response. This typically happens during shutdowns, or
                 // in cases where an originating external request has been cancelled.
 
@@ -542,7 +542,7 @@ impl<REv> EffectBuilder<REv> {
     /// # Cancellation safety
     ///
     /// This future is cancellation safe: If it is dropped without being polled, it merely indicates
-    /// the original requestor is not longer interested in the result, which will be discarded.
+    /// the original requester is not longer interested in the result, which will be discarded.
     pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
@@ -1117,26 +1117,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
-    /// are less than the fault tolerance threshold or if the block is from before the most recent
-    /// emergency upgrade.
-    pub(crate) async fn get_sufficient_signatures_from_storage(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<BlockSignatures>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSufficientBlockSignatures {
-                block_hash,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Puts a block header to storage.
     pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
     where
@@ -1152,7 +1132,10 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the requested finality signatures into storage.
+    /// Puts the requested block signatures into storage.
+    ///
+    /// If `signatures.proofs` is empty, no attempt to store will be made, an error will be logged,
+    /// and this function will return `false`.
     pub(crate) async fn put_signatures_to_storage(self, signatures: BlockSignatures) -> bool
     where
         REv: From<StorageRequest>,
@@ -1417,42 +1400,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets a block and sufficient finality signatures from storage.
-    pub(crate) async fn get_block_and_sufficient_finality_signatures_by_height_from_storage(
-        self,
-        block_height: u64,
-    ) -> Option<BlockWithMetadata>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested block and its associated metadata.
-    pub(crate) async fn get_block_header_and_sufficient_finality_signatures_by_height_from_storage(
-        self,
-        block_height: u64,
-    ) -> Option<BlockHeaderWithMetadata>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested block by hash with its associated metadata.
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
@@ -1465,6 +1412,66 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header by hash with its associated metadata.
+    pub(crate) async fn get_block_header_with_metadata_from_storage(
+        self,
+        block_hash: BlockHash,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHash {
+                block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block by height with its associated metadata.
+    pub(crate) async fn get_block_with_metadata_from_storage_by_height(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header by height with its associated metadata.
+    pub(crate) async fn get_block_header_with_metadata_from_storage_by_height(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
                 only_from_available_block_range,
                 responder,
             },

@@ -31,9 +31,9 @@ use crate::{
             error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
             Config, Metrics, ProgressHolder,
         },
-        consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
+        linear_chain::{self, BlockSignatureError},
     },
     effect::{
         announcements::{
@@ -656,7 +656,7 @@ impl KeyBlockInfo {
 trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
     fn header(&self) -> &BlockHeader;
 
-    fn finality_signatures(&self) -> &BlockSignatures;
+    fn block_signatures(&self) -> &BlockSignatures;
 
     async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
     where
@@ -669,8 +669,8 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
         self.block.header()
     }
 
-    fn finality_signatures(&self) -> &BlockSignatures {
-        &self.finality_signatures
+    fn block_signatures(&self) -> &BlockSignatures {
+        &self.block_signatures
     }
 
     async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
@@ -688,7 +688,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
         &self.block_header
     }
 
-    fn finality_signatures(&self) -> &BlockSignatures {
+    fn block_signatures(&self) -> &BlockSignatures {
         &self.block_signatures
     }
 
@@ -832,17 +832,35 @@ where
                     );
                 }
 
-                if let Err(error) = consensus::check_sufficient_finality_signatures(
-                    key_block_info.validator_weights(),
-                    ctx.config.finality_threshold_fraction(),
-                    Some(item.finality_signatures()),
-                ) {
-                    warn!(?error, ?peer, "insufficient finality signatures from peer");
+                if item.block_signatures().proofs.is_empty() {
+                    warn!(?peer, ?item, "no block signatures from peer");
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
-                if let Err(error) = item.finality_signatures().verify() {
+                match linear_chain::check_sufficient_block_signatures(
+                    key_block_info.validator_weights(),
+                    ctx.config.finality_threshold_fraction(),
+                    Some(item.block_signatures()),
+                ) {
+                    Err(error @ BlockSignatureError::InsufficientWeightForFinality { .. }) => {
+                        info!(?error, ?peer, "insufficient block signatures from peer");
+                        continue;
+                    }
+                    Err(error @ BlockSignatureError::BogusValidator { .. }) => {
+                        warn!(?error, ?peer, "bogus validator block signature from peer");
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        continue;
+                    }
+                    // TODO - make this an error condition once we start using
+                    // `get_minimal_set_of_signatures`.
+                    Err(BlockSignatureError::TooManySignatures { .. }) => {
+                        debug!(?peer, "too many block signatures");
+                    }
+                    Ok(_) => (),
+                }
+
+                if let Err(error) = item.block_signatures().verify() {
                     warn!(
                         ?error,
                         ?peer,
@@ -854,7 +872,7 @@ where
 
                 // Store the block or header itself, and the finality signatures.
                 item.store_block_or_header(*ctx.effect_builder).await;
-                let sigs = item.finality_signatures().clone();
+                let sigs = item.block_signatures().clone();
                 ctx.effect_builder.put_signatures_to_storage(sigs).await;
 
                 break Some(item);
@@ -1317,7 +1335,8 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<ChainSynchronizerAnnouncement>,
+        + From<ChainSynchronizerAnnouncement>
+        + Send,
 {
     info!("starting chain sync to genesis");
     let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
@@ -1443,7 +1462,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
     info!("syncing blocks and deploys and state since Genesis");
@@ -1485,7 +1505,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + Send,
 {
     let trusted_block_height = ctx.trusted_block_header().height();
     loop {
@@ -1583,9 +1604,9 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> Result<(), FinalitySignatureError> {
+    ) -> Result<(), BlockSignatureError> {
         are_signatures_sufficient_for_sync_to_genesis(
-            consensus::check_sufficient_finality_signatures(
+            linear_chain::check_sufficient_block_signatures(
                 validator_weights,
                 finality_threshold_fraction,
                 self.0.as_ref(),
@@ -1597,9 +1618,9 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> Result<(), FinalitySignatureError> {
+    ) -> Result<(), BlockSignatureError> {
         are_signatures_sufficient_for_sync_to_genesis(
-            consensus::check_sufficient_finality_signatures_with_quorum_formula(
+            linear_chain::check_sufficient_block_signatures_with_quorum_formula(
                 validator_weights,
                 finality_threshold_fraction,
                 self.0.as_ref(),
@@ -1625,16 +1646,20 @@ impl BlockSignaturesCollector {
         ctx: &ChainSyncContext<'_, REv>,
     ) -> Result<HandleSignaturesResult, Error>
     where
-        REv: From<StorageRequest> + From<BlocklistAnnouncement>,
+        REv: From<StorageRequest>
+            + From<BlocklistAnnouncement>
+            + From<ContractRuntimeRequest>
+            + Send,
     {
         if signatures.proofs.is_empty() {
             return Ok(HandleSignaturesResult::ContinueFetching);
         }
 
         let (era_for_validators_retrieval, validator_weights) =
-            era_validator_weights_for_block(block_header, ctx).await?;
+            linear_chain::era_validator_weights_for_block(block_header, *ctx.effect_builder)
+                .await?;
 
-        if let Err(err) = consensus::validate_finality_signatures(&signatures, &validator_weights) {
+        if let Err(err) = linear_chain::validate_block_signatures(&signatures, &validator_weights) {
             warn!(
                 ?peer,
                 ?err,
@@ -1653,10 +1678,9 @@ impl BlockSignaturesCollector {
             .is_ok()
         {
             debug!(
-                block_header_hash =
-                    ?block_header.hash(),
+                block_header_hash = %block_header.hash(),
                 height = block_header.height(),
-                ?era_for_validators_retrieval,
+                %era_for_validators_retrieval,
                 "fetched sufficient finality signatures"
             );
             Ok(HandleSignaturesResult::HaveSufficient)
@@ -1666,34 +1690,8 @@ impl BlockSignaturesCollector {
     }
 }
 
-/// Reads the validator weights that should be used to check the finality signatures for the given
-/// block.
-async fn era_validator_weights_for_block<'a, REv>(
-    block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error>
-where
-    REv: From<StorageRequest>,
-{
-    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(&block_header.era_id());
-    let switch_block_of_previous_era = ctx
-        .effect_builder
-        .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-        .await
-        .ok_or(Error::NoSwitchBlockForEra {
-            era_id: era_for_validators_retrieval,
-        })?;
-    let validator_weights = switch_block_of_previous_era
-        .next_era_validator_weights()
-        .ok_or(Error::MissingNextEraValidators {
-            height: switch_block_of_previous_era.height(),
-            era_id: era_for_validators_retrieval,
-        })?;
-    Ok((era_for_validators_retrieval, validator_weights.clone()))
-}
-
-// Fetches the finality signatures from the given peer. In case of timeout, it'll
-// retry up to `retries` times. Other errors interrupt the process immediately.
+/// Fetches the finality signatures from the given peer. In case of timeout, it'll retry up to
+/// `retries` times. Other errors interrupt the process immediately.
 async fn fetch_finality_signatures_with_retry<REv>(
     block_hash: BlockHash,
     peer: NodeId,
@@ -1729,7 +1727,9 @@ where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
         + From<FetcherRequest<BlockSignatures>>
-        + From<BlocklistAnnouncement>,
+        + From<BlocklistAnnouncement>
+        + From<ContractRuntimeRequest>
+        + Send,
 {
     let start = Timestamp::now();
     let peer_list = get_filtered_fully_connected_peers(ctx).await;
@@ -1792,7 +1792,8 @@ where
     // default quorum fraction. However, in the "sync to genesis" process, we can consider
     // finality signatures as valid when their total weight is at least
     // `finality_threshold_fraction` of the total validator weights.
-    let (_, validator_weights) = era_validator_weights_for_block(&block_header, ctx).await?;
+    let (_, validator_weights) =
+        linear_chain::era_validator_weights_for_block(&block_header, *ctx.effect_builder).await?;
     sig_collector.check_if_sufficient_for_sync_to_genesis(
         &validator_weights,
         ctx.config.finality_threshold_fraction(),
@@ -1812,10 +1813,10 @@ where
 /// interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that protects
 /// against peers that send too many finality signatures during normal chain operation).
 fn are_signatures_sufficient_for_sync_to_genesis(
-    result: Result<(), FinalitySignatureError>,
-) -> Result<(), FinalitySignatureError> {
+    result: Result<(), BlockSignatureError>,
+) -> Result<(), BlockSignatureError> {
     match result {
-        Err(err) if !matches!(err, FinalitySignatureError::TooManySignatures { .. }) => Err(err),
+        Err(err) if !matches!(err, BlockSignatureError::TooManySignatures { .. }) => Err(err),
         Err(_) | Ok(_) => Ok(()),
     }
 }
@@ -1837,12 +1838,6 @@ async fn finalize_finality_signature_fetch<REv>(
             .await;
         trace!(?block_hash, "stored FinalitySignatures");
     }
-}
-
-/// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
-    // TODO: This function needs to handle upgrades with changes to the validator set.
-    era_id.saturating_sub(1)
 }
 
 /// Runs the initial chain synchronization task ("fast sync").
@@ -2365,35 +2360,12 @@ mod tests {
     }
 
     #[test]
-    fn gets_correct_era_id_for_validators_retrieval() {
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0))
-        );
-
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1))
-        );
-
-        assert_eq!(
-            EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2))
-        );
-
-        assert_eq!(
-            EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000))
-        );
-    }
-
-    #[test]
     fn validates_signatures_sufficiency_for_sync_to_genesis() {
         let consensus_verdict = Ok(());
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
         let mut rng = TestRng::new();
-        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
+        let consensus_verdict = Err(BlockSignatureError::TooManySignatures {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2402,11 +2374,11 @@ mod tests {
             signature_weight: Box::new(U512::from(0u16)),
             weight_minus_minimum: Box::new(U512::from(0u16)),
             total_validator_weight: Box::new(U512::from(0u16)),
-            finality_threshold_fraction: Ratio::new_raw(1, 2),
+            fault_tolerance_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
-        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
+        let consensus_verdict = Err(BlockSignatureError::InsufficientWeightForFinality {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Some(Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2414,11 +2386,11 @@ mod tests {
             ))),
             signature_weight: Some(Box::new(U512::from(0u16))),
             total_validator_weight: Box::new(U512::from(0u16)),
-            finality_threshold_fraction: Ratio::new_raw(1, 2),
+            fault_tolerance_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
 
-        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
+        let consensus_verdict = Err(BlockSignatureError::BogusValidator {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
