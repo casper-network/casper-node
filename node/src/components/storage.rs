@@ -558,22 +558,19 @@ impl Storage {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let mut opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
 
-                match &mut opt_item {
-                    Some(deploy) => {
-                        let mut txn = self
-                            .env
-                            .begin_ro_txn()
-                            .expect("could not create RO transaction");
-                        if let Some(finalized_approvals) = txn
-                            .get_value(self.finalized_approvals_db, &id)
-                            .map_err(|e| {
-                                GetRequestError::Fatal(FatalStorageError::InternalStorage(e))
-                            })?
-                        {
-                            deploy.replace_approvals(finalized_approvals);
-                        }
+                if let Some(deploy) = &mut opt_item {
+                    let mut txn = self
+                        .env
+                        .begin_ro_txn()
+                        .expect("could not create RO transaction");
+                    if let Some(finalized_approvals) = txn
+                        .get_value(self.finalized_approvals_db, &id)
+                        .map_err(|e| {
+                            GetRequestError::Fatal(FatalStorageError::InternalStorage(e))
+                        })?
+                    {
+                        deploy.replace_approvals(finalized_approvals);
                     }
-                    None => {}
                 }
 
                 Ok(self.update_pool_and_send(

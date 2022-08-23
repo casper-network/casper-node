@@ -980,7 +980,7 @@ where
     match ctx
         .effect_builder
         .query_global_state(QueryRequest::new(
-            *ctx.trusted_block_header().id().inner(),
+            *ctx.trusted_block_header().state_root_hash(),
             Key::DeployApprovalsRootHash {
                 block_height: height,
             },
@@ -1032,7 +1032,8 @@ where
     REv: From<NetworkInfoRequest>
         + From<FetcherRequest<BlockAndDeploys>>
         + From<StorageRequest>
-        + From<ContractRuntimeRequest>,
+        + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement>,
 {
     let start = Timestamp::now();
     'a: loop {
@@ -1046,7 +1047,7 @@ where
             } => Ok(block_and_deploys),
             FetchedData::FromPeer {
                 item: block_and_deploys,
-                ..
+                peer,
             } => {
                 if let Some(deploy_approvals_root_hash) =
                     fetch_deploy_approvals_root_hash(block_and_deploys.block.height(), ctx).await?
@@ -1080,6 +1081,7 @@ where
                     if !approval_hashes.is_empty()
                         && Digest::hash_merkle_tree(approval_hashes) != deploy_approvals_root_hash
                     {
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                         continue 'a;
                     }
                     ctx.effect_builder
