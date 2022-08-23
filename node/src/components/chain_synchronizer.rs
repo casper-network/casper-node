@@ -640,10 +640,10 @@ where
             Event::FastSyncResult(result) => self.handle_fast_sync_result(effect_builder, result),
             Event::SyncResultToGenesisResult(result) => {
                 // TODO[RC]: When all fetch operations are unified, rely on the single
-                // `Error::RetriesExhausted` variant.
-                if matches!(result, Err(Error::RetriesExhausted))
-                    | matches!(result, Err(Error::FetchHeadersBatch(ref err)) if matches!(err, FetchBlockHeadersBatchError::RetriesExhausted))
-                    | matches!(result, Err(Error::FetchTrie(err)) if matches!(err, FetchTrieError::RetriesExhausted))
+                // `Error::AttemptsExhausted` variant.
+                if matches!(result, Err(Error::AttemptsExhausted))
+                    | matches!(result, Err(Error::FetchHeadersBatch(ref err)) if matches!(err, FetchBlockHeadersBatchError::AttemptsExhausted))
+                    | matches!(result, Err(Error::FetchTrie(err)) if matches!(err, FetchTrieError::AttemptsExhausted))
                 {
                     error!("sync to genesis failed due to fetch retries exhaustion; shutting down");
                     fatal!(

@@ -365,7 +365,7 @@ where
 
 /// Fetching should stop only when the network is connected and all retries have been exhausted.
 fn should_stop_fetching(
-    retry_count: &mut usize,
+    attempts_count: &mut usize,
     has_connected_to_network: bool,
     max_sync_fetch_attempts: usize,
 ) -> bool {
@@ -373,8 +373,8 @@ fn should_stop_fetching(
         return false;
     }
 
-    *retry_count += 1;
-    if *retry_count <= max_sync_fetch_attempts {
+    if *attempts_count < max_sync_fetch_attempts {
+        *attempts_count += 1;
         return false;
     }
 
@@ -388,13 +388,13 @@ where
     T: Item,
 {
     #[error(
-        "Fetch retries exhausted for item with id {id:?}. Total attempts: {total_attempts}, \
-        retries while network was connected: {retries_while_connected}"
+        "Fetch attempts exhausted for item with id {id:?}. Total attempts: {total_attempts}, \
+        attempts while bootstrapped: {attempts_after_bootstrapped}"
     )]
-    RetriesExhausted {
+    AttemptsExhausted {
         id: T::Id,
         total_attempts: usize,
-        retries_while_connected: usize,
+        attempts_after_bootstrapped: usize,
     },
 
     #[error(transparent)]
@@ -414,18 +414,18 @@ where
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     let mut total_attempts = 0_usize;
-    let mut retry_count = 0_usize;
+    let mut attempts_after_bootstrapped = 0_usize;
     loop {
         let has_connected_to_network = has_connected_to_network();
         if should_stop_fetching(
-            &mut retry_count,
+            &mut attempts_after_bootstrapped,
             has_connected_to_network,
             ctx.config.max_sync_fetch_attempts(),
         ) {
-            return Err(FetchWithRetryError::RetriesExhausted {
+            return Err(FetchWithRetryError::AttemptsExhausted {
                 id,
                 total_attempts,
-                retries_while_connected: retry_count - 1,
+                attempts_after_bootstrapped,
             });
         }
 
@@ -433,7 +433,7 @@ where
         if new_peer_list.is_empty() && total_attempts % 100 == 0 {
             warn!(
                 total_attempts,
-                retry_count,
+                attempts_after_bootstrapped,
                 has_connected_to_network,
                 item_type = ?T::TAG,
                 ?id,
@@ -528,18 +528,18 @@ where
             item: trie_or_chunk,
             ..
         }) => *trie_or_chunk,
-        Err(FetchWithRetryError::RetriesExhausted {
+        Err(FetchWithRetryError::AttemptsExhausted {
             id,
             total_attempts,
-            retries_while_connected,
+            attempts_after_bootstrapped,
         }) => {
             error!(
                 total_attempts,
-                retries_while_connected,
+                attempts_after_bootstrapped,
                 ?id,
-                "fetch retries exhausted"
+                "fetch attempts exhausted"
             );
-            return Err(FetchTrieError::RetriesExhausted);
+            return Err(FetchTrieError::AttemptsExhausted);
         }
         Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
     };
@@ -577,18 +577,18 @@ where
                         Ok((index, chunk))
                     }
                 },
-                Err(FetchWithRetryError::RetriesExhausted {
+                Err(FetchWithRetryError::AttemptsExhausted {
                     id,
                     total_attempts,
-                    retries_while_connected,
+                    attempts_after_bootstrapped,
                 }) => {
                     error!(
                         total_attempts,
-                        retries_while_connected,
+                        attempts_after_bootstrapped,
                         ?id,
-                        "fetch retries exhausted"
+                        "fetch attempts exhausted"
                     );
-                    Err(FetchTrieError::RetriesExhausted)
+                    Err(FetchTrieError::AttemptsExhausted)
                 }
                 Err(FetchWithRetryError::FetcherError(err)) => Err(err.into()),
             }
@@ -656,18 +656,18 @@ where
                 .await;
             Ok(block_header)
         }
-        Err(FetchWithRetryError::RetriesExhausted {
+        Err(FetchWithRetryError::AttemptsExhausted {
             id,
             total_attempts,
-            retries_while_connected,
+            attempts_after_bootstrapped,
         }) => {
             error!(
                 total_attempts,
-                retries_while_connected,
+                attempts_after_bootstrapped,
                 ?id,
-                "fetch retries exhausted"
+                "fetch attempts exhausted"
             );
-            Err(Error::RetriesExhausted)
+            Err(Error::AttemptsExhausted)
         }
         Err(FetchWithRetryError::FetcherError(err)) => Err(err.into()),
     }
@@ -1388,18 +1388,18 @@ where
     {
         match fetch_and_store_block_by_hash(*current_header.parent_hash(), ctx).await {
             Ok(header) => current_header = header.take_header(),
-            Err(FetchWithRetryError::RetriesExhausted {
+            Err(FetchWithRetryError::AttemptsExhausted {
                 id,
                 total_attempts,
-                retries_while_connected,
+                attempts_after_bootstrapped,
             }) => {
                 error!(
                     total_attempts,
-                    retries_while_connected,
+                    attempts_after_bootstrapped,
                     ?id,
-                    "fetch retries exhausted"
+                    "fetch attempts exhausted"
                 );
-                return Err(Error::RetriesExhausted);
+                return Err(Error::AttemptsExhausted);
             }
             Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
         }
@@ -1563,18 +1563,18 @@ where
                     }
                 }
             }
-            Err(FetchWithRetryError::RetriesExhausted {
+            Err(FetchWithRetryError::AttemptsExhausted {
                 id,
                 total_attempts,
-                retries_while_connected,
+                attempts_after_bootstrapped,
             }) => {
                 error!(
                     total_attempts,
-                    retries_while_connected,
+                    attempts_after_bootstrapped,
                     ?id,
-                    "fetch retries exhausted"
+                    "fetch attempts exhausted"
                 );
-                return Err(FetchBlockHeadersBatchError::RetriesExhausted);
+                return Err(FetchBlockHeadersBatchError::AttemptsExhausted);
             }
             Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
         }
@@ -1681,18 +1681,18 @@ where
                 ctx.metrics.chain_sync_blocks_synced.inc();
             }
             Err(err) => match err {
-                FetchWithRetryError::RetriesExhausted {
+                FetchWithRetryError::AttemptsExhausted {
                     id,
                     total_attempts,
-                    retries_while_connected,
+                    attempts_after_bootstrapped,
                 } => {
                     error!(
                         total_attempts,
-                        retries_while_connected,
+                        attempts_after_bootstrapped,
                         ?id,
-                        "fetch retries exhausted"
+                        "fetch attempts exhausted"
                     );
-                    return Err(Error::RetriesExhausted);
+                    return Err(Error::AttemptsExhausted);
                 }
                 FetchWithRetryError::FetcherError(_) => {
                     error!(?err, ?block_hash, "failed to download block, retrying");
@@ -2413,18 +2413,18 @@ where
                 trace!("fetched {:?}", deploy);
                 indexed_deploys.push((index, *deploy));
             }
-            Err(FetchWithRetryError::RetriesExhausted {
+            Err(FetchWithRetryError::AttemptsExhausted {
                 id,
                 total_attempts,
-                retries_while_connected,
+                attempts_after_bootstrapped,
             }) => {
                 error!(
                     total_attempts,
-                    retries_while_connected,
+                    attempts_after_bootstrapped,
                     ?id,
-                    "fetch retries exhausted"
+                    "fetch attempts exhausted"
                 );
-                return Err(Error::RetriesExhausted);
+                return Err(Error::AttemptsExhausted);
             }
             Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
         }
@@ -2676,7 +2676,7 @@ mod tests {
 
     #[test]
     fn should_not_stop_fetching_and_not_increase_retry_counter_when_network_not_connected() {
-        let mut retry_count = 0;
+        let mut attempts_count = 0;
         let has_connected_to_network = false;
         let max_sync_fetch_attempts = 5;
 
@@ -2685,45 +2685,46 @@ mod tests {
 
         (0..trials).into_iter().for_each(|_| {
             let result = should_stop_fetching(
-                &mut retry_count,
+                &mut attempts_count,
                 has_connected_to_network,
                 max_sync_fetch_attempts,
             );
             assert!(!result);
         });
 
-        // Retry counter should stay intact.
-        assert_eq!(retry_count, 0);
+        // Attempt counter should not be increased.
+        assert_eq!(attempts_count, 0);
     }
 
     #[test]
     fn should_respect_fetch_attempts_when_network_connected() {
-        let mut retry_count = 0;
+        let mut attempts_count = 0;
         let has_connected_to_network = true;
         let max_sync_fetch_attempts = 2;
 
         // 1st allowed try.
         assert!(!should_stop_fetching(
-            &mut retry_count,
+            &mut attempts_count,
             has_connected_to_network,
             max_sync_fetch_attempts,
         ));
-        assert_eq!(retry_count, 1);
+        assert_eq!(attempts_count, 1);
 
         // 2nd allowed try.
         assert!(!should_stop_fetching(
-            &mut retry_count,
+            &mut attempts_count,
             has_connected_to_network,
             max_sync_fetch_attempts,
         ));
-        assert_eq!(retry_count, 2);
+        assert_eq!(attempts_count, 2);
 
-        // 3rd call should return false, as "max_sync_fetch_attempts == 2".
+        // 3rd call should return false, as "max_sync_fetch_attempts == 2". Attempt counter should
+        // not be increased.
         assert!(should_stop_fetching(
-            &mut retry_count,
+            &mut attempts_count,
             has_connected_to_network,
             max_sync_fetch_attempts,
         ));
-        assert_eq!(retry_count, 3);
+        assert_eq!(attempts_count, 2);
     }
 }
