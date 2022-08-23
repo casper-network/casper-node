@@ -1,11 +1,13 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::fmt::Debug;
+
 use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::types::json_compatibility::vectorize;
+use crate::{types::json_compatibility::vectorize, utils::fmt_limit::LimitSlice};
 use casper_types::{
     Contract as DomainContract, ContractHash, ContractPackage as DomainContractPackage,
     ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, ProtocolVersion, URef,
@@ -34,7 +36,7 @@ pub struct Groups {
 }
 
 /// A contract struct that can be serialized as  JSON object.
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize, DataSize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
@@ -46,6 +48,24 @@ pub struct Contract {
     #[data_size(skip)]
     #[schemars(with = "String")]
     protocol_version: ProtocolVersion,
+}
+
+impl Debug for Contract {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Contract")
+            .field("contract_package_hash", &self.contract_package_hash)
+            .field("contract_wasm_hash", &self.contract_wasm_hash)
+            .field(
+                "named_keys",
+                &LimitSlice::<_, 10>::new(self.named_keys.as_slice()),
+            )
+            .field(
+                "entry_points",
+                &LimitSlice::<_, 10>::new(self.entry_points.as_slice()),
+            )
+            .field("protocol_version", &self.protocol_version)
+            .finish()
+    }
 }
 
 impl From<&DomainContract> for Contract {
