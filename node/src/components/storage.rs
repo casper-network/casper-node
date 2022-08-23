@@ -556,7 +556,25 @@ impl Storage {
         match incoming.message {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
-                let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
+                let mut opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
+
+                match &mut opt_item {
+                    Some(deploy) => {
+                        let mut txn = self
+                            .env
+                            .begin_ro_txn()
+                            .expect("could not create RO transaction");
+                        if let Some(finalized_approvals) = txn
+                            .get_value(self.finalized_approvals_db, &id)
+                            .map_err(|e| {
+                                GetRequestError::Fatal(FatalStorageError::InternalStorage(e))
+                            })?
+                        {
+                            deploy.replace_approvals(finalized_approvals);
+                        }
+                    }
+                    None => {}
+                }
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -648,9 +666,29 @@ impl Storage {
             }
             NetRequest::BlockAndDeploys(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockAndDeploys>(serialized_id)?;
-                let opt_item = self
+                let mut opt_item = self
                     .read_block_and_deploys_by_hash(item_id)
                     .map_err(FatalStorageError::from)?;
+
+                match &mut opt_item {
+                    Some(block_and_deploys) => {
+                        for deploy in block_and_deploys.deploys.iter_mut() {
+                            let mut txn = self
+                                .env
+                                .begin_ro_txn()
+                                .expect("could not create RO transaction");
+                            if let Some(finalized_approvals) = txn
+                                .get_value(self.finalized_approvals_db, deploy.id())
+                                .map_err(|e| {
+                                    GetRequestError::Fatal(FatalStorageError::InternalStorage(e))
+                                })?
+                            {
+                                deploy.replace_approvals(finalized_approvals);
+                            }
+                        }
+                    }
+                    None => {}
+                }
 
                 Ok(self.update_pool_and_send(
                     effect_builder,

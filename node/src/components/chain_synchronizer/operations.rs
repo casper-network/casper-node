@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     mem,
     sync::{
         atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
@@ -21,9 +21,15 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
+use casper_execution_engine::{
+    core::engine_state::{self, QueryRequest, QueryResult},
+    storage::trie::{TrieOrChunk, TrieOrChunkId},
+};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{
+    bytesrepr::{self, Bytes, ToBytes},
+    CLValueError, EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp, U512,
+};
 
 use crate::{
     components::{
@@ -46,7 +52,7 @@ use crate::{
     },
     storage::StorageRequest,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        Approval, AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId,
         FinalizedBlock, Item, NodeId,
@@ -948,34 +954,145 @@ where
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum FetchAndStoreBlockError {
+    Fetcher(FetcherError<BlockAndDeploys>),
+    WrongTypeUnderDeployApprovalsRootHash(StoredValue),
+    CLValue(CLValueError),
+    Engine(engine_state::Error),
+    BytesRepr(bytesrepr::Error),
+    TrustedStateRootMissing,
+    Impossible(String),
+    NoApprovalsForDeploy(DeployHash),
+}
+
+/// Retrieves the deploy approvals root hash from global state
+async fn fetch_deploy_approvals_root_hash<REv>(
+    height: u64,
+    ctx: &ChainSyncContext<'_, REv>,
+) -> Result<Option<Digest>, FetchAndStoreBlockError>
+where
+    REv: From<NetworkInfoRequest>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>,
+{
+    match ctx
+        .effect_builder
+        .query_global_state(QueryRequest::new(
+            ctx.trusted_block_header().id().inner().clone(),
+            Key::DeployApprovalsRootHash {
+                block_height: height,
+            },
+            vec![],
+        ))
+        .await
+        .map_err(FetchAndStoreBlockError::Engine)?
+    {
+        QueryResult::RootNotFound => {
+            error!("couldn't find the state root for the trusted header");
+            Err(FetchAndStoreBlockError::TrustedStateRootMissing)
+        }
+        QueryResult::DepthLimit { depth } => {
+            error!("reached depth limit: {:?}", depth);
+            Err(FetchAndStoreBlockError::Impossible(
+                "depth limit".to_string(),
+            ))
+        }
+        QueryResult::ValueNotFound(_err) => Ok(None),
+        QueryResult::CircularReference(err) => {
+            error!(
+                "circuluar reference for deploy approvals root hash: {:?}",
+                err
+            );
+            Err(FetchAndStoreBlockError::Impossible(err))
+        }
+        QueryResult::Success { value, proofs: _ } => match *value {
+            StoredValue::CLValue(cl_value) => {
+                let digest: Digest = cl_value
+                    .into_t()
+                    .map_err(FetchAndStoreBlockError::CLValue)?;
+                Ok(Some(digest))
+            }
+            stored_value => {
+                Err(FetchAndStoreBlockError::WrongTypeUnderDeployApprovalsRootHash(stored_value))
+            }
+        },
+    }
+}
+
 /// Downloads and stores a block with all its deploys.
 async fn fetch_and_store_block_with_deploys_by_hash<REv>(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>>
+) -> Result<Box<BlockAndDeploys>, FetchAndStoreBlockError>
 where
-    REv: From<NetworkInfoRequest> + From<FetcherRequest<BlockAndDeploys>> + From<StorageRequest>,
+    REv: From<NetworkInfoRequest>
+        + From<FetcherRequest<BlockAndDeploys>>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>,
 {
     let start = Timestamp::now();
-    let fetched_block = fetch_retry_forever::<_, BlockAndDeploys>(ctx, block_hash).await?;
-    let res = match fetched_block {
-        FetchedData::FromStorage {
-            item: block_and_deploys,
-            ..
-        } => Ok(block_and_deploys),
-        FetchedData::FromPeer {
-            item: block_and_deploys,
-            ..
-        } => {
-            ctx.effect_builder
-                .put_block_and_deploys_to_storage(block_and_deploys.clone())
-                .await;
-            Ok(block_and_deploys)
-        }
-    };
-    ctx.metrics
-        .observe_fetch_block_and_deploys_duration_seconds(start);
-    res
+    'a: loop {
+        let fetched_block = fetch_retry_forever::<_, BlockAndDeploys>(ctx, block_hash)
+            .await
+            .map_err(FetchAndStoreBlockError::Fetcher)?;
+        let res = match fetched_block {
+            FetchedData::FromStorage {
+                item: block_and_deploys,
+                ..
+            } => Ok(block_and_deploys),
+            FetchedData::FromPeer {
+                item: block_and_deploys,
+                ..
+            } => {
+                if let Some(deploy_approvals_root_hash) =
+                    fetch_deploy_approvals_root_hash(block_and_deploys.block.height(), ctx).await?
+                {
+                    let approvals: BTreeMap<DeployHash, BTreeSet<Approval>> = block_and_deploys
+                        .deploys
+                        .iter()
+                        .map(|d| (d.id().clone(), d.approvals().clone()))
+                        .collect();
+                    let mut approval_hashes = vec![];
+                    for (dh, maybe_approvals) in block_and_deploys
+                        .block
+                        .body()
+                        .deploy_hashes()
+                        .iter()
+                        .chain(block_and_deploys.block.body().transfer_hashes().iter())
+                        .map(|dh| (dh.clone(), approvals.get(dh)))
+                    {
+                        if let Some(approvals) = maybe_approvals {
+                            approval_hashes.push(Digest::hash(
+                                approvals
+                                    .to_bytes()
+                                    .map_err(FetchAndStoreBlockError::BytesRepr)?,
+                            ));
+                        } else {
+                            error!("no approvals for deploy {:?}", dh);
+                            return Err(FetchAndStoreBlockError::NoApprovalsForDeploy(dh));
+                        }
+                    }
+
+                    if !approval_hashes.is_empty()
+                        && Digest::hash_merkle_tree(approval_hashes) != deploy_approvals_root_hash
+                    {
+                        continue 'a;
+                    }
+                    ctx.effect_builder
+                        .put_block_and_deploys_to_storage(block_and_deploys.clone())
+                        .await;
+                    Ok(block_and_deploys)
+                } else {
+                    Ok(block_and_deploys)
+                }
+            }
+        };
+        ctx.metrics
+            .observe_fetch_block_and_deploys_duration_seconds(start);
+        return res;
+    }
 }
 
 /// A worker task that takes trie keys from a queue and downloads the trie.
@@ -1741,7 +1858,8 @@ where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
         + From<FetcherRequest<BlockSignatures>>
-        + From<BlocklistAnnouncement>,
+        + From<BlocklistAnnouncement>
+        + From<ContractRuntimeRequest>,
 {
     let start = Timestamp::now();
     let peer_list = get_filtered_fully_connected_peers(ctx).await;
