@@ -664,7 +664,6 @@ impl reactor::Reactor for Reactor {
             }
             JoiningOutcome::Synced {
                 highest_block_header,
-                maybe_immediate_switch_block_data,
             } => {
                 if let Some(ImmediateSwitchBlockData {
                     block_and_execution_effects:
@@ -674,7 +673,9 @@ impl reactor::Reactor for Reactor {
                             maybe_step_effect_and_upcoming_era_validators,
                         },
                     validators_to_sign_immediate_switch_block,
-                }) = maybe_immediate_switch_block_data.map(|data| *data)
+                }) = chainspec_loader
+                    .maybe_immediate_switch_block_data()
+                    .cloned()
                 {
                     // The outcome of joining in this case caused a new switch block to be created,
                     // so we need to emit the effects which would have been created by that

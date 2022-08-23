@@ -552,12 +552,9 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let maybe_immediate_switch_block_data =
-            chainspec_loader.maybe_immediate_switch_block_data();
         let (chain_synchronizer, sync_effects) =
             ChainSynchronizer::<JoinerEvent>::new_for_fast_sync(
                 Arc::clone(chainspec_loader.chainspec()),
-                maybe_immediate_switch_block_data,
                 config.node.clone(),
                 config.network.clone(),
                 effect_builder,

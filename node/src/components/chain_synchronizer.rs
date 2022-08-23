@@ -14,7 +14,7 @@ use tracing::{debug, error, info};
 use casper_execution_engine::storage::trie::TrieOrChunk;
 
 use crate::{
-    components::{chainspec_loader::ImmediateSwitchBlockData, Component},
+    components::Component,
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
@@ -50,7 +50,6 @@ pub(crate) enum JoiningOutcome {
     /// sync task.
     Synced {
         highest_block_header: Box<BlockHeader>,
-        maybe_immediate_switch_block_data: Option<Box<ImmediateSwitchBlockData>>,
     },
 }
 
@@ -95,7 +94,6 @@ where
     /// initial fast sync.
     pub(crate) fn new_for_fast_sync(
         chainspec: Arc<Chainspec>,
-        maybe_immediate_switch_block_data: Option<&ImmediateSwitchBlockData>,
         node_config: NodeConfig,
         small_network_config: SmallNetworkConfig,
         effect_builder: EffectBuilder<REv>,
@@ -106,9 +104,6 @@ where
         let progress = ProgressHolder::new_fast_sync();
         let node_state = NodeState::Joining(progress.progress());
 
-        let maybe_immediate_switch_block_data =
-            maybe_immediate_switch_block_data.map(|data| Box::new(data.clone()));
-
         let effects = operations::run_fast_sync_task(
             effect_builder,
             config.clone(),
@@ -117,7 +112,6 @@ where
         )
         .event(|result| Event::FastSyncResult {
             result: Box::new(result),
-            maybe_immediate_switch_block_data,
         });
 
         let synchronizer = ChainSynchronizer {
@@ -148,14 +142,12 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
         result: Result<BlockHeader, Error>,
-        maybe_immediate_switch_block_data: Option<Box<ImmediateSwitchBlockData>>,
     ) -> Effects<Event> {
         self.progress.finish();
         match result {
             Ok(highest_block_header) => {
                 self.joining_outcome = Some(JoiningOutcome::Synced {
                     highest_block_header: Box::new(highest_block_header),
-                    maybe_immediate_switch_block_data,
                 });
                 Effects::new()
             }
@@ -296,14 +288,9 @@ where
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::FastSyncResult {
-                result,
-                maybe_immediate_switch_block_data,
-            } => self.handle_fast_sync_result(
-                effect_builder,
-                *result,
-                maybe_immediate_switch_block_data,
-            ),
+            Event::FastSyncResult { result } => {
+                self.handle_fast_sync_result(effect_builder, *result)
+            }
             Event::GetNodeState(request) => self.handle_get_node_state_request(request),
         }
     }
