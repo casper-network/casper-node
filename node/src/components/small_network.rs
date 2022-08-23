@@ -393,6 +393,13 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
+        // We set a limit on when to consider bootstrap complete, so start a timer for this.
+        effects.extend(
+            effect_builder
+                .set_timeout(component.cfg.bootstrap_threshold.timeout.into())
+                .event(|_| Event::BootstrapTimerElapsed),
+        );
+
         Ok((component, effects))
     }
 
@@ -1001,6 +1008,12 @@ where
 
             Event::OutgoingDropped { peer_id, peer_addr } => {
                 self.handle_outgoing_dropped(*peer_id, peer_addr)
+            }
+
+            Event::BootstrapTimerElapsed => {
+                self.bootstrap_completed = true;
+                info!("networking bootstrap completed per set timeout");
+                Effects::new()
             }
 
             Event::NetworkRequest { req } => {

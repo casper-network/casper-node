@@ -67,6 +67,9 @@ pub(crate) enum Event<P> {
         peer_addr: SocketAddr,
     },
 
+    /// The bootstrapping timer elapsed.
+    BootstrapTimerElapsed,
+
     /// Incoming network request.
     #[from]
     NetworkRequest {
@@ -134,6 +137,9 @@ impl<P: Display> Display for Event<P> {
             }
             Event::OutgoingDropped { peer_id, peer_addr } => {
                 write!(f, "dropped outgoing {} {}", peer_id, peer_addr)
+            }
+            Event::BootstrapTimerElapsed => {
+                write!(f, "bootstrap timer elapsed")
             }
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
