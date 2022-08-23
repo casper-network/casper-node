@@ -206,6 +206,16 @@ trie_responses = 0
 finalized_approvals_requests = 1
 finalized_approvals_responses = 0
 
+# Threshold for when the networking considers itself sufficiently connected.
+#
+# Some processes will not begin (or fail) unless this threshold is reached.
+[network.bootstrap_threshold]
+# A percentage of known addresses has been reached.
+known_address_connection_percentage = 0.5
+# A number of symmetric connections have been established.
+connection_count = 20
+# Unconditional timeout.
+timeout = '1min'
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
