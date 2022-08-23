@@ -431,12 +431,13 @@ where
 
         let new_peer_list = get_peers(T::can_use_syncing_nodes(), ctx).await;
         if new_peer_list.is_empty() && total_attempts % 100 == 0 {
-            error!(
+            warn!(
                 total_attempts,
+                retry_count,
+                has_connected_to_network,
                 item_type = ?T::TAG,
                 ?id,
                 can_use_syncing_nodes = %T::can_use_syncing_nodes(),
-                has_connected_to_network,
                 "failed to attempt to fetch item due to no fully-connected peers"
             );
         }
