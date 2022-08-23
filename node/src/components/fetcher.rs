@@ -15,9 +15,9 @@ use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
 use crate::{
     components::{
-        consensus::{self, error::FinalitySignatureError},
         fetcher::event::FetchResponder,
-        linear_chain, Component,
+        linear_chain::{self, BlockSignatureError},
+        Component,
     },
     effect::{
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
@@ -834,21 +834,21 @@ where
             }
         };
 
-    match consensus::check_sufficient_finality_signatures(
+    match linear_chain::check_sufficient_block_signatures(
         &validator_weights,
         fault_tolerance_fraction,
         Some(block_signatures),
     ) {
-        Err(error @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
+        Err(error @ BlockSignatureError::InsufficientWeightForFinality { .. }) => {
             info!(?error, "insufficient block signatures from storage");
             false
         }
-        Err(error @ FinalitySignatureError::BogusValidator { .. }) => {
+        Err(error @ BlockSignatureError::BogusValidator { .. }) => {
             error!(?error, "bogus validator block signature from storage");
             false
         }
         // TODO - make this an error condition once we start using `get_minimal_set_of_signatures`.
-        Err(FinalitySignatureError::TooManySignatures { .. }) => {
+        Err(BlockSignatureError::TooManySignatures { .. }) => {
             debug!("too many block signatures from storage");
             true
         }

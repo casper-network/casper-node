@@ -31,10 +31,9 @@ use crate::{
             error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
             Config, Metrics, ProgressHolder,
         },
-        consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
-        linear_chain,
+        linear_chain::{self, BlockSignatureError},
     },
     effect::{
         announcements::{
@@ -857,23 +856,23 @@ where
                     continue;
                 }
 
-                match consensus::check_sufficient_finality_signatures(
+                match linear_chain::check_sufficient_block_signatures(
                     key_block_info.validator_weights(),
                     ctx.config.finality_threshold_fraction(),
                     Some(item.block_signatures()),
                 ) {
-                    Err(error @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {
+                    Err(error @ BlockSignatureError::InsufficientWeightForFinality { .. }) => {
                         info!(?error, ?peer, "insufficient block signatures from peer");
                         continue;
                     }
-                    Err(error @ FinalitySignatureError::BogusValidator { .. }) => {
+                    Err(error @ BlockSignatureError::BogusValidator { .. }) => {
                         warn!(?error, ?peer, "bogus validator block signature from peer");
                         ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                         continue;
                     }
                     // TODO - make this an error condition once we start using
                     // `get_minimal_set_of_signatures`.
-                    Err(FinalitySignatureError::TooManySignatures { .. }) => {
+                    Err(BlockSignatureError::TooManySignatures { .. }) => {
                         debug!(?peer, "too many block signatures");
                     }
                     Ok(_) => (),
@@ -1623,9 +1622,9 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> Result<(), FinalitySignatureError> {
+    ) -> Result<(), BlockSignatureError> {
         are_signatures_sufficient_for_sync_to_genesis(
-            consensus::check_sufficient_finality_signatures(
+            linear_chain::check_sufficient_block_signatures(
                 validator_weights,
                 finality_threshold_fraction,
                 self.0.as_ref(),
@@ -1637,9 +1636,9 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> Result<(), FinalitySignatureError> {
+    ) -> Result<(), BlockSignatureError> {
         are_signatures_sufficient_for_sync_to_genesis(
-            consensus::check_sufficient_finality_signatures_with_quorum_formula(
+            linear_chain::check_sufficient_block_signatures_with_quorum_formula(
                 validator_weights,
                 finality_threshold_fraction,
                 self.0.as_ref(),
@@ -1678,7 +1677,7 @@ impl BlockSignaturesCollector {
             linear_chain::era_validator_weights_for_block(block_header, *ctx.effect_builder)
                 .await?;
 
-        if let Err(err) = consensus::validate_finality_signatures(&signatures, &validator_weights) {
+        if let Err(err) = linear_chain::validate_block_signatures(&signatures, &validator_weights) {
             warn!(
                 ?peer,
                 ?err,
@@ -1832,10 +1831,10 @@ where
 /// interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that protects
 /// against peers that send too many finality signatures during normal chain operation).
 fn are_signatures_sufficient_for_sync_to_genesis(
-    result: Result<(), FinalitySignatureError>,
-) -> Result<(), FinalitySignatureError> {
+    result: Result<(), BlockSignatureError>,
+) -> Result<(), BlockSignatureError> {
     match result {
-        Err(err) if !matches!(err, FinalitySignatureError::TooManySignatures { .. }) => Err(err),
+        Err(err) if !matches!(err, BlockSignatureError::TooManySignatures { .. }) => Err(err),
         Err(_) | Ok(_) => Ok(()),
     }
 }
@@ -2457,7 +2456,7 @@ mod tests {
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
         let mut rng = TestRng::new();
-        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
+        let consensus_verdict = Err(BlockSignatureError::TooManySignatures {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2466,11 +2465,11 @@ mod tests {
             signature_weight: Box::new(U512::from(0u16)),
             weight_minus_minimum: Box::new(U512::from(0u16)),
             total_validator_weight: Box::new(U512::from(0u16)),
-            finality_threshold_fraction: Ratio::new_raw(1, 2),
+            fault_tolerance_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
-        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
+        let consensus_verdict = Err(BlockSignatureError::InsufficientWeightForFinality {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Some(Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2478,11 +2477,11 @@ mod tests {
             ))),
             signature_weight: Some(Box::new(U512::from(0u16))),
             total_validator_weight: Box::new(U512::from(0u16)),
-            finality_threshold_fraction: Ratio::new_raw(1, 2),
+            fault_tolerance_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
 
-        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
+        let consensus_verdict = Err(BlockSignatureError::BogusValidator {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),

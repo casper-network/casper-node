@@ -5,6 +5,7 @@ mod pending_signatures;
 mod signature;
 mod signature_cache;
 mod state;
+mod utils;
 
 use std::convert::Infallible;
 
@@ -38,8 +39,12 @@ use crate::{
     types::{ActivationPoint, BlockHeader},
     NodeRng,
 };
-pub(crate) use error::Error;
+pub(crate) use error::{BlockSignatureError, Error};
 pub(crate) use event::Event;
+pub(crate) use utils::{
+    check_sufficient_block_signatures, check_sufficient_block_signatures_with_quorum_formula,
+    validate_block_signatures,
+};
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainComponent {

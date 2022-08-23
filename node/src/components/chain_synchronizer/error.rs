@@ -13,8 +13,8 @@ use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{
-        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError, linear_chain,
+        contract_runtime::BlockExecutionError, fetcher::FetcherError, linear_chain,
+        linear_chain::BlockSignatureError,
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
@@ -90,7 +90,7 @@ pub(crate) enum Error {
     FinalitySignatures(
         #[from]
         #[serde(skip_serializing)]
-        FinalitySignatureError,
+        BlockSignatureError,
     ),
 
     #[error(transparent)]
