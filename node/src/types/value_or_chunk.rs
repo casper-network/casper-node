@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use casper_execution_engine::storage::trie::TrieRaw;
+use casper_types::bytesrepr::{self, ToBytes};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -23,11 +24,23 @@ pub enum ValueOrChunk<V> {
 #[derive(Debug, Error)]
 pub enum ChunkingError {
     /// Merkle proof construction error.
-    #[error("error constructing merkle proof for chunk")]
-    MerkleConstruction(#[from] MerkleConstructionError),
+    MerkleConstruction(MerkleConstructionError),
     /// Serialization error.
-    #[error("error serializing data: {0}")]
-    SerializationError(#[source] bincode::Error),
+    SerializationError(bytesrepr::Error),
+}
+
+impl Display for ChunkingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ChunkingError::MerkleConstruction(error) => f
+                .debug_tuple("MerkleConstructionError")
+                .field(&error)
+                .finish(),
+            ChunkingError::SerializationError(error) => {
+                f.debug_tuple("SerializationError").field(&error).finish()
+            }
+        }
+    }
 }
 
 impl<V> ValueOrChunk<V> {
@@ -37,9 +50,9 @@ impl<V> ValueOrChunk<V> {
     /// representation.
     pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
     where
-        V: Serialize,
+        V: ToBytes,
     {
-        let bytes = bincode::serialize(&data).map_err(ChunkingError::SerializationError)?;
+        let bytes = ToBytes::to_bytes(&data).map_err(ChunkingError::SerializationError)?;
         // NOTE: Cannot accept the chunk size bytes as an argument without changing the
         // IndexedMerkleProof. The chunk size there is hardcoded and will be used when
         // determining the chunk.
@@ -109,7 +122,7 @@ impl Display for TrieOrChunkId {
 #[cfg(test)]
 mod tests {
     use casper_hashing::ChunkWithProof;
-    use casper_types::bytesrepr::Bytes;
+    use casper_types::bytesrepr::{self, Bytes};
 
     use super::ValueOrChunk;
 
@@ -152,7 +165,7 @@ mod tests {
             .flat_map(|chunk| chunk.into_chunk())
             .collect();
 
-        let retrieved_input: Bytes = bincode::deserialize(&data).unwrap();
+        let retrieved_input: Bytes = bytesrepr::deserialize(data).unwrap();
 
         assert_eq!(input, retrieved_input);
     }

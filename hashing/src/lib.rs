@@ -225,12 +225,12 @@ impl Digest {
     /// Hash bytes into chunks if necessary.
     pub fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Digest::hash(bytes)
+            Digest::blake2b_hash(bytes)
         } else {
             Digest::hash_merkle_tree(
                 bytes
                     .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-                    .map(Digest::hash),
+                    .map(Digest::blake2b_hash),
             )
         }
     }
