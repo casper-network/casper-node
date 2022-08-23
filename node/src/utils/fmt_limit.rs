@@ -28,7 +28,7 @@ where
         }
 
         if count != self.0.len() {
-            f.write_str(" ...")?;
+            f.write_str(", ...")?;
         }
 
         f.write_str("]")?;
@@ -51,12 +51,36 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", LimitSlice::<'_, _, 3>::new(collections.as_slice())),
-            "[0, 1, 2 ...]"
+            "[0, 1, 2, ...]"
         );
 
         assert_eq!(
             format!("{:?}", LimitSlice::<'_, _, 5>::new(collections.as_slice())),
             "[0, 1, 2, 3, 4]"
         );
+
+        assert_eq!(
+            format!("{:?}", LimitSlice::<'_, _, 4>::new(collections.as_slice())),
+            "[0, 1, 2, 3, ...]"
+        );
+
+        assert_eq!(
+            format!("{:?}", LimitSlice::<'_, _, 6>::new(collections.as_slice())),
+            "[0, 1, 2, 3, 4]"
+        );
+
+        assert_eq!(
+            format!("{:?}", LimitSlice::<'_, _, 1>::new(collections.as_slice())),
+            "[0, ...]"
+        );
+
+        // This does not make a lot of sense at all, but it's there.
+        assert_eq!(
+            format!("{:?}", LimitSlice::<'_, _, 0>::new(collections.as_slice())),
+            "[, ...]"
+        );
+
+        // Edge case: Empty slice:
+        assert_eq!(format!("{:?}", LimitSlice::<'_, usize, 5>::new(&[])), "[]");
     }
 }
