@@ -1073,7 +1073,7 @@ where
                                     .map_err(FetchAndStoreBlockError::BytesRepr)?,
                             ));
                         } else {
-                            error!("no approvals for deploy {:?}", dh);
+                            error!(deploy_hash=?dh, "no approvals for deploy");
                             return Err(FetchAndStoreBlockError::NoApprovalsForDeploy(dh));
                         }
                     }

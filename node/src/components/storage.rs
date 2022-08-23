@@ -562,7 +562,7 @@ impl Storage {
                     let mut txn = self
                         .env
                         .begin_ro_txn()
-                        .expect("could not create RO transaction");
+                        .map_err(|e| FatalStorageError::InternalStorage(e.into()))?;
                     if let Some(finalized_approvals) = txn
                         .get_value(self.finalized_approvals_db, &id)
                         .map_err(|e| {
@@ -673,7 +673,7 @@ impl Storage {
                             let mut txn = self
                                 .env
                                 .begin_ro_txn()
-                                .expect("could not create RO transaction");
+                                .map_err(|e| FatalStorageError::InternalStorage(e.into()))?;
                             if let Some(finalized_approvals) = txn
                                 .get_value(self.finalized_approvals_db, deploy.id())
                                 .map_err(|e| {
