@@ -8,6 +8,7 @@ use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
 use datasize::DataSize;
 
 /// Represents a value or a chunk of data with attached proof.
+///
 /// Chunk with attached proof is used when the requested
 /// value is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -18,21 +19,22 @@ pub enum ValueOrChunk<V> {
     ChunkWithProof(ChunkWithProof),
 }
 
+/// Error returned when constructing an instance of [`ValueOrChunk`].
 #[derive(Debug, Error)]
-/// Error returned when constructing an instance of `ValueOrChunk`.
 pub enum ChunkingError {
-    /// Merkle proof construction error
+    /// Merkle proof construction error.
     #[error("error constructing merkle proof for chunk")]
     MerkleConstruction(#[from] MerkleConstructionError),
-    /// Serialization error
+    /// Serialization error.
     #[error("error serializing data: {0}")]
     SerializationError(#[source] bincode::Error),
 }
 
 impl<V> ValueOrChunk<V> {
-    /// Creates an instance of `ValueOrChunk::Value` if data is less than `max_chunk_size`
-    /// or a `ValueOrChunk::ChunkWithProof` if it is. In the latter case it will return only the
-    /// `chunk_index`-th chunk of the value's byte representation.
+    /// Creates an instance of [`ValueOrChunk::Value`] if data size is less than or equal to
+    /// [`ChunkWithProof::CHUNK_SIZE_BYTES`] or a [`ValueOrChunk::ChunkWithProof`] if it is greater.
+    /// In the latter case it will return only the `chunk_index`-th chunk of the value's byte
+    /// representation.
     pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
     where
         V: Serialize,
@@ -90,7 +92,7 @@ impl TrieOrChunkId {
 }
 
 /// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
-pub(crate) struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
+pub struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
 
 impl<'a> Display for TrieOrChunkIdDisplay<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -105,26 +107,19 @@ impl Display for TrieOrChunkId {
 }
 
 #[cfg(test)]
-mod value_chunking {
+mod tests {
     use casper_hashing::ChunkWithProof;
     use casper_types::bytesrepr::Bytes;
 
     use super::ValueOrChunk;
 
-    fn create_test_bytes(length: usize) -> Bytes {
-        std::iter::repeat(1u8)
-            .take(length)
-            .collect::<Vec<u8>>()
-            .into()
-    }
-
     #[test]
     fn returns_value_or_chunk() {
-        let input: Bytes = create_test_bytes(1u8 as usize);
+        let input: Bytes = vec![1u8; 1].into();
         let value = ValueOrChunk::new(input, 0).unwrap();
         assert!(matches!(value, ValueOrChunk::Value { .. }));
 
-        let input: Bytes = create_test_bytes(ChunkWithProof::CHUNK_SIZE_BYTES + 1);
+        let input: Bytes = vec![1u8; ChunkWithProof::CHUNK_SIZE_BYTES + 1].into();
         let value_or_chunk = ValueOrChunk::new(input.clone(), 0).unwrap();
         let first_chunk = match value_or_chunk {
             ValueOrChunk::Value(_) => panic!("expected chunk"),

@@ -350,9 +350,14 @@ impl ::std::fmt::Debug for PointerBlock {
 
 /// Newtype representing a trie node in its raw form without deserializing into `Trie`.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TrieRaw(pub Bytes);
+pub struct TrieRaw(Bytes);
 
 impl TrieRaw {
+    /// Constructs an instance of [`TrieRaw`].
+    pub fn new(bytes: Bytes) -> Self {
+        TrieRaw(bytes)
+    }
+
     /// Consumes self and returns inner bytes.
     pub fn into_inner(self) -> Bytes {
         self.0

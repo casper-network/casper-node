@@ -518,7 +518,7 @@ where
 
     // Concatenate all of the chunks into a trie
     let trie_bytes: Bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
-    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(TrieRaw(
+    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(TrieRaw::new(
         trie_bytes,
     )))
 }

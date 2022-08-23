@@ -254,7 +254,7 @@ impl StateProvider for LmdbGlobalState {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<TrieRaw> =
             Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(TrieRaw);
+                .map(TrieRaw::new);
         txn.commit()?;
         Ok(ret)
     }

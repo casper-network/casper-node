@@ -235,7 +235,7 @@ fn find_necessary_tries<S>(
             .get_trie_full(CorrelationId::new(), root)
             .unwrap()
             .expect("trie should exist")
-            .0;
+            .into_inner();
 
         if let Some(0) = trie_bytes.first() {
             continue;

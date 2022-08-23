@@ -866,17 +866,12 @@ impl ContractRuntime {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
         let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
-        match engine_state.get_trie_full(correlation_id, trie_key)? {
-            None => {
-                metrics.get_trie.observe(start.elapsed().as_secs_f64());
-                Ok(None)
-            }
-            Some(trie_raw) => {
-                let trie_or_chunk = TrieOrChunk::new(trie_raw, chunk_index)?;
-                metrics.get_trie.observe(start.elapsed().as_secs_f64());
-                Ok(Some(trie_or_chunk))
-            }
-        }
+        let ret = match engine_state.get_trie_full(correlation_id, trie_key)? {
+            None => Ok(None),
+            Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw, chunk_index)?)),
+        };
+        metrics.get_trie.observe(start.elapsed().as_secs_f64());
+        ret
     }
 
     fn get_trie_full(
