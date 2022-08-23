@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.  The format
 * The network message format has been replaced with a more efficient encoding while keeping the initial handshake intact.
 * The node flushes outgoing messages immediately, trading bandwidth for latency. This change is made to optimize feedback loops of various components in the system.
 * The JSON-RPC server now returns more useful responses in many error cases.
+* Debug formatting of several types in the JSON-RPC server has been abbreviated, which may affect some debug log entries.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
