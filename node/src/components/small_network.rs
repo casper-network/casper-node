@@ -161,8 +161,8 @@ where
 
     /// An indicator whether or not the networking component considers itself bootstrapped.
     ///
-    /// Indented to be used by other components (which can request it) that rely on the state of the
-    /// network connectivity to make decisions.
+    /// Indented to be used by other components (which can request it) that rely on the state of
+    /// the network connectivity to make decisions.
     bootstrap_completed: bool,
 
     /// Tracks nodes that have announced themselves as nodes that are syncing.
