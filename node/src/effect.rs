@@ -778,6 +778,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the networks current bootstrapping state.
+    ///
+    /// Returns `true` if the networking component considers the network to have moved past initial
+    /// delays connecting.
+    pub async fn get_networking_bootstrap_state(self) -> bool
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::BootstrapState { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Announces which deploys have expired.
     pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
     where

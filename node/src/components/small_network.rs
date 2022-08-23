@@ -157,6 +157,12 @@ where
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
+    /// An indicator whether or not the networking component considers itself bootstrapped.
+    ///
+    /// Indented to be used by other components (which can request it) that rely on the state of the
+    /// network connectivity to make decisions.
+    bootstrap_completed: bool,
+
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
@@ -346,6 +352,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
+            bootstrap_completed: false,
             syncing_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
             close_incoming_sender: Some(close_incoming_sender),
@@ -1004,6 +1011,9 @@ where
                     symmetric_validator_peers.shuffle(rng);
 
                     responder.respond(symmetric_validator_peers).ignore()
+                }
+                NetworkInfoRequest::BootstrapState { responder } => {
+                    responder.respond(self.bootstrap_completed).ignore()
                 }
             },
             Event::PeerAddressReceived(gossiped_address) => {

@@ -205,6 +205,11 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with all connected non-syncing peers in random order.
         responder: Responder<Vec<NodeId>>,
     },
+    /// Get the current bootstrapping state of the network.
+    BootstrapState {
+        /// Responder to be called with the current networking bootstrap state.
+        responder: Responder<bool>,
+    },
 }
 
 impl Display for NetworkInfoRequest {
@@ -218,6 +223,9 @@ impl Display for NetworkInfoRequest {
             }
             NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
                 write!(formatter, "get fully connected non-syncing peers")
+            }
+            NetworkInfoRequest::BootstrapState { responder: _ } => {
+                write!(formatter, "get bootstrapping state")
             }
         }
     }
