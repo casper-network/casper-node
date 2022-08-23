@@ -275,7 +275,7 @@ impl<T: Debug> Responder<T> {
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                // If we cannot send a response down the channel, it means the original requestor is
+                // If we cannot send a response down the channel, it means the original requester is
                 // no longer interested in our response. This typically happens during shutdowns, or
                 // in cases where an originating external request has been cancelled.
 
@@ -1132,7 +1132,10 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the requested finality signatures into storage.
+    /// Puts the requested block signatures into storage.
+    ///
+    /// If `signatures.proofs` is empty, no attempt to store will be made, an error will be logged,
+    /// and this function will return `false`.
     pub(crate) async fn put_signatures_to_storage(self, signatures: BlockSignatures) -> bool
     where
         REv: From<StorageRequest>,

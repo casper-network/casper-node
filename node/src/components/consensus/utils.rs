@@ -143,7 +143,7 @@ pub(crate) fn check_sufficient_finality_signatures(
 #[allow(unused)]
 pub(crate) fn get_minimal_set_of_signatures(
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
-    finality_threshold_fraction: Ratio<u64>,
+    fault_tolerance_fraction: Ratio<u64>,
     mut block_signatures: BlockSignatures,
 ) -> Option<BlockSignatures> {
     // Calculate the values for comparison.
@@ -152,7 +152,7 @@ pub(crate) fn get_minimal_set_of_signatures(
         .map(|(_, weight)| *weight)
         .sum();
 
-    let lower_bound = quorum_fraction(finality_threshold_fraction);
+    let lower_bound = quorum_fraction(fault_tolerance_fraction);
 
     let mut sig_weights: Vec<_> = block_signatures
         .proofs

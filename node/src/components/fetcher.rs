@@ -274,7 +274,7 @@ where
 {
     get_from_peer_timeout: Duration,
     #[data_size(skip)]
-    finality_threshold_fraction: Ratio<u64>,
+    fault_tolerance_fraction: Ratio<u64>,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
     metrics: Metrics,
@@ -284,12 +284,12 @@ impl<T: Item> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: Config,
-        finality_threshold_fraction: Ratio<u64>,
+        fault_tolerance_fraction: Ratio<u64>,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            finality_threshold_fraction,
+            fault_tolerance_fraction,
             responders: HashMap::new(),
             metrics: Metrics::new(name, registry)?,
         })
@@ -476,7 +476,7 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockWithMetadata>,
     ) -> Effects<Event<BlockWithMetadata>> {
-        let finality_threshold_fraction = self.finality_threshold_fraction;
+        let fault_tolerance_fraction = self.fault_tolerance_fraction;
         async move {
             let block_with_metadata = effect_builder
                 .get_block_with_metadata_from_storage_by_height(id, false)
@@ -484,8 +484,8 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
             has_enough_block_signatures(
                 effect_builder,
                 block_with_metadata.block.header(),
-                &block_with_metadata.finality_signatures,
-                finality_threshold_fraction,
+                &block_with_metadata.block_signatures,
+                fault_tolerance_fraction,
             )
             .await
             .then_some(block_with_metadata)
@@ -523,7 +523,7 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockHeaderWithMetadata>,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
-        let finality_threshold_fraction = self.finality_threshold_fraction;
+        let fault_tolerance_fraction = self.fault_tolerance_fraction;
         async move {
             let block_header_with_metadata = effect_builder
                 .get_block_header_with_metadata_from_storage_by_height(id, false)
@@ -532,7 +532,7 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
                 effect_builder,
                 &block_header_with_metadata.block_header,
                 &block_header_with_metadata.block_signatures,
-                finality_threshold_fraction,
+                fault_tolerance_fraction,
             )
             .await
             .then_some(block_header_with_metadata)
@@ -570,7 +570,7 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         peer: NodeId,
         responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>> {
-        let finality_threshold_fraction = self.finality_threshold_fraction;
+        let fault_tolerance_fraction = self.fault_tolerance_fraction;
         async move {
             let block_header_with_metadata = effect_builder
                 .get_block_header_with_metadata_from_storage(id, false)
@@ -579,7 +579,7 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
                 effect_builder,
                 &block_header_with_metadata.block_header,
                 &block_header_with_metadata.block_signatures,
-                finality_threshold_fraction,
+                fault_tolerance_fraction,
             )
             .await
             .then_some(block_header_with_metadata.block_signatures)
@@ -777,19 +777,19 @@ where
 
 pub(crate) struct FetcherBuilder<'a> {
     config: FetcherConfig,
-    finality_threshold_fraction: Ratio<u64>,
+    fault_tolerance_fraction: Ratio<u64>,
     registry: &'a Registry,
 }
 
 impl<'a> FetcherBuilder<'a> {
     pub(crate) fn new(
         config: FetcherConfig,
-        finality_threshold_fraction: Ratio<u64>,
+        fault_tolerance_fraction: Ratio<u64>,
         registry: &'a Registry,
     ) -> Self {
         Self {
             config,
-            finality_threshold_fraction,
+            fault_tolerance_fraction,
             registry,
         }
     }
@@ -801,21 +801,21 @@ impl<'a> FetcherBuilder<'a> {
         Fetcher::new(
             name,
             self.config,
-            self.finality_threshold_fraction,
+            self.fault_tolerance_fraction,
             self.registry,
         )
     }
 }
 
 /// Returns `true` if the cumulative weight of the given signatures is sufficient for the given
-/// block using the specified `finality_threshold_fraction`.
+/// block using the specified `fault_tolerance_fraction`.
 ///
 /// Note that signatures are _not_ cryptographically verified in this function.
 async fn has_enough_block_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     block_header: &BlockHeader,
     block_signatures: &BlockSignatures,
-    finality_threshold_fraction: Ratio<u64>,
+    fault_tolerance_fraction: Ratio<u64>,
 ) -> bool
 where
     REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<BlocklistAnnouncement> + Send,
@@ -836,7 +836,7 @@ where
 
     match consensus::check_sufficient_finality_signatures(
         &validator_weights,
-        finality_threshold_fraction,
+        fault_tolerance_fraction,
         Some(block_signatures),
     ) {
         Err(error @ FinalitySignatureError::InsufficientWeightForFinality { .. }) => {

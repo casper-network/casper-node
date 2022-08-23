@@ -689,7 +689,7 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
     }
 
     fn block_signatures(&self) -> &BlockSignatures {
-        &self.finality_signatures
+        &self.block_signatures
     }
 
     async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)

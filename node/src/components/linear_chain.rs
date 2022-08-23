@@ -529,13 +529,11 @@ mod tests {
             );
 
             let state_root_hash = Digest::hash(&[era.value() as u8]);
-            // If this is a switch block, update the validator weights to have entries for this era
-            // and the next two eras.  Otherwise, just copy the validator weights for the previous
-            // block.
+            // If this is a switch block, update the validator weights to have entries for the next
+            // two eras.  Otherwise, just copy the validator weights for the previous block.
             let validators_in_global_state = match next_two_eras_validator_weights.as_ref() {
                 Some((weights_1, weights_2)) => {
                     let mut validators = EraValidators::new();
-                    validators.insert(era, validators_for_this_block.clone());
                     validators.insert(era + 1, weights_1.clone());
                     validators.insert(era + 2, weights_2.clone());
                     validators

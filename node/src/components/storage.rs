@@ -329,7 +329,7 @@ impl Storage {
         let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
-        info!("reindexing block store");
+        info!("indexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
         let mut deploy_hash_index = BTreeMap::new();
@@ -602,14 +602,7 @@ impl Storage {
                 let item_id = decode_item_id::<BlockWithMetadata>(serialized_id)?;
                 let opt_item = self
                     .read_block_and_metadata_by_height(item_id)
-                    .map_err(FatalStorageError::from)?
-                    .and_then(|block_with_metadata| {
-                        if block_with_metadata.finality_signatures.proofs.is_empty() {
-                            None
-                        } else {
-                            Some(block_with_metadata)
-                        }
-                    });
+                    .map_err(FatalStorageError::from)?;
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -637,18 +630,7 @@ impl Storage {
                 let item_id = decode_item_id::<BlockHeaderWithMetadata>(serialized_id)?;
                 let opt_item = self
                     .read_block_header_and_metadata_by_height(item_id)
-                    .map_err(FatalStorageError::from)?
-                    .and_then(|block_header_with_metadata| {
-                        if block_header_with_metadata
-                            .block_signatures
-                            .proofs
-                            .is_empty()
-                        {
-                            None
-                        } else {
-                            Some(block_header_with_metadata)
-                        }
-                    });
+                    .map_err(FatalStorageError::from)?;
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -688,7 +670,7 @@ impl Storage {
             NetRequest::FinalitySignatures(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
 
-                let opt_item = self.read_finality_signatures(&item_id)?;
+                let opt_item = self.read_block_signatures(&item_id)?;
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -905,20 +887,19 @@ impl Storage {
                     debug_assert_eq!(&block_hash, block.hash());
                     return Ok(responder.respond(None).ignore());
                 }
-                let finality_signatures =
-                    match self.get_finality_signatures(&mut txn, &block_hash)? {
-                        Some(signatures) => signatures,
-                        None => BlockSignatures::new(block_hash, block.header().era_id()),
-                    };
-                if finality_signatures.verify().is_err() {
-                    error!(?block, "invalid finality signatures for block");
-                    debug_assert!(finality_signatures.verify().is_ok());
+                let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(block_hash, block.header().era_id()),
+                };
+                if block_signatures.verify().is_err() {
+                    error!(?block, "invalid block signatures for block");
+                    debug_assert!(block_signatures.verify().is_ok());
                     return Ok(responder.respond(None).ignore());
                 }
                 responder
                     .respond(Some(BlockWithMetadata {
                         block,
-                        finality_signatures,
+                        block_signatures,
                     }))
                     .ignore()
             }
@@ -940,7 +921,7 @@ impl Storage {
                         return Ok(responder.respond(None).ignore());
                     }
                 };
-                let block_signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
+                let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(block_hash, block_header.era_id()),
                 };
@@ -971,14 +952,14 @@ impl Storage {
                 };
 
                 let hash = block.hash();
-                let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
                         block,
-                        finality_signatures,
+                        block_signatures,
                     }))
                     .ignore()
             }
@@ -1004,7 +985,7 @@ impl Storage {
                 };
 
                 let hash = block_header.hash();
-                let block_signatures = match self.get_finality_signatures(&mut txn, &hash)? {
+                let block_signatures = match self.get_block_signatures(&mut txn, &hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(hash, block_header.era_id()),
                 };
@@ -1032,14 +1013,14 @@ impl Storage {
                     }
                 };
                 let hash = highest_block.hash();
-                let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(*hash, highest_block.header().era_id()),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
                         block: highest_block,
-                        finality_signatures,
+                        block_signatures,
                     }))
                     .ignore()
             }
@@ -1047,14 +1028,21 @@ impl Storage {
                 signatures,
                 responder,
             } => {
+                if signatures.proofs.is_empty() {
+                    error!(
+                        ?signatures,
+                        "should not attempt to store empty collection of block signatures"
+                    );
+                    return Ok(responder.respond(false).ignore());
+                }
                 let mut txn = self.env.begin_rw_txn()?;
                 let old_data: Option<BlockSignatures> =
                     txn.get_value(self.block_metadata_db, &signatures.block_hash)?;
                 let new_data = match old_data {
                     None => signatures,
                     Some(mut data) => {
-                        for (pk, sig) in signatures.proofs {
-                            data.insert_proof(pk, sig);
+                        for (public_key, sig) in signatures.proofs {
+                            data.insert_proof(public_key, sig);
                         }
                         data
                     }
@@ -1074,7 +1062,7 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
-                    .respond(self.get_finality_signatures(&mut txn, &block_hash)?)
+                    .respond(self.get_block_signatures(&mut txn, &block_hash)?)
                     .ignore()
             }
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
@@ -1280,7 +1268,9 @@ impl Storage {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
-    /// Retrieves a block by height, together with all stored finality signatures.
+    /// Retrieves a block by height, together with all stored block signatures.
+    ///
+    /// Returns `None` if the block is not stored, or if no block signatures are stored for it.
     pub fn read_block_and_metadata_by_height(
         &self,
         height: u64,
@@ -1294,20 +1284,23 @@ impl Storage {
         } else {
             return Ok(None);
         };
-        let finality_signatures = if let Some(finality_signatures) =
-            self.get_finality_signatures(&mut txn, block.hash())?
-        {
-            finality_signatures
-        } else {
-            return Ok(None);
-        };
+        let block_signatures =
+            if let Some(block_signatures) = self.get_block_signatures(&mut txn, block.hash())? {
+                block_signatures
+            } else {
+                info!(height, "no block signatures stored for block");
+                return Ok(None);
+            };
         Ok(Some(BlockWithMetadata {
             block,
-            finality_signatures,
+            block_signatures,
         }))
     }
 
-    /// Retrieves a block header by height, together with all stored finality signatures.
+    /// Retrieves a block header by height, together with all stored block signatures.
+    ///
+    /// Returns `None` if the block header is not stored, or if no block signatures are stored for
+    /// it.
     pub fn read_block_header_and_metadata_by_height(
         &self,
         height: u64,
@@ -1323,10 +1316,11 @@ impl Storage {
                 return Ok(None);
             };
         let block_signatures = if let Some(block_signatures) =
-            self.get_finality_signatures(&mut txn, &block_header.hash())?
+            self.get_block_signatures(&mut txn, &block_header.hash())?
         {
             block_signatures
         } else {
+            info!(height, "no block signatures stored for block header");
             return Ok(None);
         };
         Ok(Some(BlockHeaderWithMetadata {
@@ -1702,8 +1696,8 @@ impl Storage {
         Ok(txn.get_value(self.transfer_db, block_hash)?)
     }
 
-    /// Retrieves finality signatures for a block with a given block hash.
-    fn get_finality_signatures<Tx: Transaction>(
+    /// Retrieves block signatures for a block with a given block hash.
+    fn get_block_signatures<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
@@ -1711,13 +1705,13 @@ impl Storage {
         Ok(txn.get_value(self.block_metadata_db, block_hash)?)
     }
 
-    /// Retrieves finality signatures for a block with a given block hash.
-    fn read_finality_signatures(
+    /// Retrieves block signatures for a block with a given block hash.
+    fn read_block_signatures(
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        self.get_finality_signatures(&mut txn, block_hash)
+        self.get_block_signatures(&mut txn, block_hash)
     }
 
     /// Directly returns a deploy from internal store.
