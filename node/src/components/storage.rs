@@ -1288,7 +1288,7 @@ impl Storage {
             if let Some(block_signatures) = self.get_block_signatures(&mut txn, block.hash())? {
                 block_signatures
             } else {
-                info!(height, "no block signatures stored for block");
+                debug!(height, "no block signatures stored for block");
                 return Ok(None);
             };
         Ok(Some(BlockWithMetadata {
@@ -1320,7 +1320,7 @@ impl Storage {
         {
             block_signatures
         } else {
-            info!(height, "no block signatures stored for block header");
+            debug!(height, "no block signatures stored for block header");
             return Ok(None);
         };
         Ok(Some(BlockHeaderWithMetadata {
