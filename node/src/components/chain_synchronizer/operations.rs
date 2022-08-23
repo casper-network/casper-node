@@ -957,7 +957,7 @@ where
 #[derive(Debug)]
 pub(crate) enum FetchAndStoreBlockError {
     Fetcher(FetcherError<BlockAndDeploys>),
-    WrongTypeUnderDeployApprovalsRootHash(StoredValue),
+    WrongTypeUnderDeployApprovalsRootHash(Box<StoredValue>),
     CLValue(CLValueError),
     Engine(engine_state::Error),
     BytesRepr(bytesrepr::Error),
@@ -1014,9 +1014,11 @@ where
                     .map_err(FetchAndStoreBlockError::CLValue)?;
                 Ok(Some(digest))
             }
-            stored_value => {
-                Err(FetchAndStoreBlockError::WrongTypeUnderDeployApprovalsRootHash(stored_value))
-            }
+            stored_value => Err(
+                FetchAndStoreBlockError::WrongTypeUnderDeployApprovalsRootHash(Box::new(
+                    stored_value,
+                )),
+            ),
         },
     }
 }
