@@ -1063,7 +1063,7 @@ where
                         .deploy_hashes()
                         .iter()
                         .chain(block_and_deploys.block.body().transfer_hashes().iter())
-                        .map(|dh| (dh.clone(), approvals.get(dh)))
+                        .map(|dh| (*dh, approvals.get(dh)))
                     {
                         if let Some(approvals) = maybe_approvals {
                             approval_hashes.push(Digest::hash(
