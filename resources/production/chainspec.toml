@@ -12,12 +12,6 @@ hard_reset = true
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
 activation_point = 3000
-# Optional era ID in which the last emergency restart happened.
-#last_emergency_restart = 0
-
-# The era ID starting at which the new Merkle tree-based hashing scheme is applied.
-# TODO: Set this to the same value as the upgrade to the first version supporting Merkle tree-based hashing.
-verifiable_chunked_hash_activation = 9999
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -41,6 +35,8 @@ validator_slots = 100
 auction_delay = 1
 # The period after genesis during which a genesis validator's bid is locked.
 locked_funds_period = '90days'
+# The period in which genesis validator's bid is released over time after it's unlocked.
+vesting_schedule_period = '13 weeks'
 # Default number of eras that need to pass to be able to withdraw unbonded funds.
 unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.

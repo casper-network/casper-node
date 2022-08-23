@@ -81,7 +81,6 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            chainspec_path="$NCTL/overrides/upgrade_scenario_3.pre.chainspec.toml.in" \
             accounts_path="$NCTL/overrides/upgrade_scenario_3.pre.accounts.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
@@ -130,11 +129,11 @@ function _step_04()
             validator="$NODE_ID"
 }
 
-# Step 05: Await 3 eras
+# Step 05: Await 4 eras
 function _step_05()
 {
-    log_step_upgrades 5 "Awaiting Auction_Delay = 3"
-    await_n_eras '4' 'true' '5.0'
+    log_step_upgrades 5 "Awaiting Auction_Delay = 3 + 1"
+    nctl-await-n-eras offset='4' sleep_interval='5.0' timeout='300'
 }
 
 # Step 06: Assert NODE_ID is a validator
@@ -208,7 +207,6 @@ function _step_08()
     source "$NCTL/sh/assets/upgrade_from_stage.sh" \
         stage="$STAGE_ID" \
         verbose=false \
-        chainspec_path="$NCTL/overrides/upgrade_scenario_3.post.chainspec.toml.in" \
         accounts_path="$NCTL/overrides/upgrade_scenario_3.post.accounts.toml"
 
     log "... awaiting 2 eras + 1 block"
@@ -289,7 +287,7 @@ function _step_09()
 function _step_10()
 {
     log_step_upgrades 10 "awaiting next era"
-    await_n_eras '1' 'true' '5.0'
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
 }
 
 # Step 11: Unbond previously bonded validator
@@ -321,11 +319,11 @@ function _step_12()
             validator="$NODE_ID"
 }
 
-# Step 13: Await 3 eras
+# Step 13: Await 4 eras
 function _step_13()
 {
-    log_step_upgrades 13 "Awaiting Auction_Delay = 3"
-    await_n_eras '4' 'true' '5.0'
+    log_step_upgrades 13 "Awaiting Auction_Delay = 3 + 1"
+    nctl-await-n-eras offset='4' sleep_interval='5.0' timeout='300'
 }
 
 # Step 14: Assert NODE_ID is NOT a validator

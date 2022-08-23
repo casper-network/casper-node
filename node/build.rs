@@ -1,12 +1,12 @@
 use std::env;
 
-use vergen::ConstantsFlags;
+use vergen::{Config, ShaKind};
 
 fn main() {
-    let mut flags = ConstantsFlags::empty();
-    flags.toggle(ConstantsFlags::SHA_SHORT);
-    flags.toggle(ConstantsFlags::REBUILD_ON_HEAD_CHANGE);
-    vergen::generate_cargo_keys(flags).expect("should generate the cargo keys");
+    let mut config = Config::default();
+    *config.git_mut().sha_kind_mut() = ShaKind::Short;
+    *config.git_mut().rerun_on_head_change_mut() = true;
+    vergen::vergen(config).expect("should generate the cargo keys");
 
     // Make the build profile available to rustc at compile time.
     println!(

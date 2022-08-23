@@ -10,7 +10,10 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+            engine_config::{
+                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+            },
             EngineConfig, Error, ExecuteRequest, DEFAULT_MAX_QUERY_DEPTH,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
@@ -283,6 +286,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         *DOUBLED_WASM_MEMORY_LIMIT,
         SystemConfig::default(),
     );

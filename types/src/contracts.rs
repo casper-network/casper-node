@@ -42,7 +42,7 @@ const PACKAGE_STRING_PREFIX: &str = "contract-package-";
 const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum Error {
@@ -986,7 +986,7 @@ impl ToBytes for EntryPoints {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.0).write_bytes(writer)?;
+        self.0.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1560,7 +1560,7 @@ impl ToBytes for Parameter {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.name).write_bytes(writer)?;
+        self.name.write_bytes(writer)?;
         self.cl_type.append_bytes(writer)
     }
 }

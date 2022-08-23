@@ -16,7 +16,7 @@ use crate::core::{
 
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
 /// will have to create a new account first.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TransferTargetMode {
     /// Unknown target mode.
     Unknown,
@@ -97,7 +97,7 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 ///
 /// Purpose of this builder is to resolve native tranfer args into [`TransferTargetMode`] and a
 /// [`TransferArgs`] instance to execute actual token transfer on the mint contract.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
     transfer_target_mode: TransferTargetMode,

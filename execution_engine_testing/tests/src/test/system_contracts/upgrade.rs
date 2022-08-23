@@ -10,7 +10,10 @@ use casper_engine_test_support::{
 
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+        engine_config::{
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        },
         EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
@@ -140,6 +143,7 @@ fn should_allow_only_wasm_costs_patch_version() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -184,6 +188,7 @@ fn should_allow_only_wasm_costs_minor_version() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -682,6 +687,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         *DEFAULT_WASM_CONFIG,
         new_system_config,
     );

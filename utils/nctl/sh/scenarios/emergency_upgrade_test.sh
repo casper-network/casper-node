@@ -151,7 +151,7 @@ function do_send_transfers() {
 function do_await_deploy_inclusion() {
     # Should be enough to await for one era.
     log_step "awaiting one era…"
-    await_n_eras 1
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
 }
 
 function dispatch_native() {

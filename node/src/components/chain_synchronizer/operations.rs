@@ -36,7 +36,9 @@ use crate::{
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ChainSynchronizerAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
+        },
         requests::{
             ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
         },
@@ -157,6 +159,16 @@ where
             },
         };
 
+        if trusted_block_header.protocol_version() != config.protocol_version()
+            && !config.is_last_block_before_activation(&trusted_block_header)
+        {
+            return Err(Error::TrustedHeaderTooEarly {
+                trusted_header: Box::new(trusted_block_header),
+                current_protocol_version: config.protocol_version(),
+                activation_point: config.chainspec().protocol_config.activation_point.era_id(),
+            });
+        }
+
         ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
 
         Ok(Some(ctx))
@@ -225,16 +237,6 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
         self.trusted_block_header
             .as_ref()
             .expect("trusted block header not initialized")
-    }
-
-    /// Returns the trusted block hash.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if not initialized properly using `ChainSyncContext::new`.
-    fn trusted_hash(&self) -> BlockHash {
-        self.trusted_block_header()
-            .hash(self.config.verifiable_chunked_hash_activation())
     }
 
     fn trusted_block_is_last_before_activation(&self) -> bool {
@@ -638,15 +640,12 @@ pub(crate) struct KeyBlockInfo {
 }
 
 impl KeyBlockInfo {
-    pub(crate) fn maybe_from_block_header(
-        block_header: &BlockHeader,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Option<KeyBlockInfo> {
+    pub(crate) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
             .and_then(|next_era_validator_weights| {
                 Some(KeyBlockInfo {
-                    key_block_hash: block_header.hash(verifiable_chunked_hash_activation),
+                    key_block_hash: block_header.hash(),
                     validator_weights: next_era_validator_weights.clone(),
                     era_start: block_header.timestamp(),
                     height: block_header.height(),
@@ -721,8 +720,10 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 }
 
 /// Fetches the next block or block header from the network by height.
-/// If the fetch operation fails and the number of peers available for fetch was less than the
-/// minimum threshold, we retry the operation once with the new set of peers.
+///
+/// If the number of fully connected peers is less than the minimum threshold, we retry forever.
+///
+/// Each retry operation is invoked after the configured retry interval.
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
@@ -744,7 +745,7 @@ where
             parent: Box::new(parent_header.clone()),
         })?;
 
-    for _ in 0..=1 {
+    loop {
         let peers = prepare_peers_applicable_for_block_fetch(ctx).await;
         let peer_count = peers.len();
         let maybe_item = try_fetch_block_or_block_header_by_height(
@@ -774,26 +775,30 @@ where
                 return Ok(Some(item));
             }
             None => {
-                if peer_count >= ctx.config.minimum_peer_count_threshold_for_fetch_retry {
+                if peer_count
+                    >= ctx
+                        .config
+                        .minimum_peer_count_threshold_for_block_fetch_retry
+                {
                     warn!(
                         %height,
                         attempts_to_get_fully_connected_peers =
                             %ctx.config.max_retries_while_not_connected(),
-                        "unable to fetch item despite having enough peers"
+                        "unable to fetch item despite having enough peers, giving up"
                     );
-                    break;
+                    return Ok(None);
                 }
                 info!(
                     %height,
                     %peer_count,
                     minimum_peer_count_threshold =
-                        %ctx.config.minimum_peer_count_threshold_for_fetch_retry,
-                    "tried fetching with not enough peers, may try again"
+                        %ctx.config.minimum_peer_count_threshold_for_block_fetch_retry,
+                    "tried fetching with not enough peers, trying again"
                 );
+                tokio::time::sleep(ctx.config.retry_interval()).await;
             }
         }
     }
-    Ok(None)
 }
 
 /// Fetches the next block or block header from the network by height.
@@ -817,9 +822,7 @@ where
         };
         match ctx.effect_builder.fetch::<I>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
-                if *item.header().parent_hash()
-                    != parent_header.hash(ctx.config.verifiable_chunked_hash_activation())
-                {
+                if *item.header().parent_hash() != parent_header.hash() {
                     return Err(Error::UnexpectedParentHash {
                         parent: Box::new(parent_header.clone()),
                         child: Box::new(item.header().clone()),
@@ -828,9 +831,7 @@ where
                 break Some(item);
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                if *item.header().parent_hash()
-                    != parent_header.hash(ctx.config.verifiable_chunked_hash_activation())
-                {
+                if *item.header().parent_hash() != parent_header.hash() {
                     warn!(
                         ?peer,
                         fetched_header = ?item.header(),
@@ -1169,24 +1170,9 @@ where
     // Fetch each parent hash one by one until we have the switch block info.
     let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
-        // Check that we are not restarting right after an emergency restart, which is too early
-        match ctx.config.last_emergency_restart() {
-            Some(last_emergency_restart)
-                if last_emergency_restart > current_header_to_walk_back_from.era_id()
-                    && !ctx.trusted_block_is_last_before_activation() =>
-            {
-                return Err(Error::TrustedHeaderEraTooEarly {
-                    trusted_header: Box::new(ctx.trusted_block_header().clone()),
-                    maybe_last_emergency_restart_era_id: ctx.config.last_emergency_restart(),
-                })
-            }
-            _ => {}
-        }
-
-        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            &current_header_to_walk_back_from,
-            ctx.config.verifiable_chunked_hash_activation(),
-        ) {
+        if let Some(key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
+        {
             break Ok(key_block_info);
         }
 
@@ -1248,10 +1234,9 @@ where
             highest_synced_block_header = higher_block_header_with_metadata.block_header;
 
             // If the new block is a switch block, update the validator weights, etc...
-            if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-                &highest_synced_block_header,
-                ctx.config.verifiable_chunked_hash_activation(),
-            ) {
+            if let Some(key_block_info) =
+                KeyBlockInfo::maybe_from_block_header(&highest_synced_block_header)
+            {
                 highest_synced_key_block_info = key_block_info;
             }
         } else {
@@ -1440,12 +1425,7 @@ where
                     .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
             }
             FetchedData::FromPeer { item, peer } => {
-                match BlockHeadersBatch::validate(
-                    &*item,
-                    &batch_id,
-                    lowest_trusted_block_header,
-                    ctx.config.verifiable_chunked_hash_activation(),
-                ) {
+                match BlockHeadersBatch::validate(&*item, &batch_id, lowest_trusted_block_header) {
                     Ok(new_lowest) => {
                         info!(?batch_id, ?peer, "received valid batch of headers");
                         ctx.effect_builder
@@ -1539,7 +1519,7 @@ where
             .await
             .ok_or(Error::NoSuchBlockHeight(block_height))?;
 
-        let block_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+        let block_hash = block_header.hash();
 
         if block_height % 1_000 == 0 {
             info!(
@@ -1692,7 +1672,7 @@ impl BlockSignaturesCollector {
         {
             debug!(
                 block_header_hash =
-                    ?block_header.hash(ctx.config.verifiable_chunked_hash_activation()),
+                    ?block_header.hash(),
                 height = block_header.height(),
                 ?era_for_validators_retrieval,
                 "fetched sufficient finality signatures"
@@ -1713,10 +1693,7 @@ async fn era_validator_weights_for_block<'a, REv>(
 where
     REv: From<StorageRequest>,
 {
-    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(
-        &block_header.era_id(),
-        ctx.config.last_emergency_restart(),
-    );
+    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(&block_header.era_id());
     let switch_block_of_previous_era = ctx
         .effect_builder
         .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
@@ -1777,7 +1754,7 @@ where
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
-    let block_header_hash = block_header.hash(ctx.config.verifiable_chunked_hash_activation());
+    let block_header_hash = block_header.hash();
 
     for peer in peer_list {
         let fetched_signatures = fetch_finality_signatures_with_retry(
@@ -1881,26 +1858,9 @@ async fn finalize_finality_signature_fetch<REv>(
 }
 
 /// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(
-    era_id: &EraId,
-    last_emergency_restart: Option<EraId>,
-) -> EraId {
-    // TODO: This function needs to handle multiple emergency restarts.
-    if *era_id != EraId::from(0) && last_emergency_restart != Some(*era_id) {
-        // For eras > 0 which are not the last emergency restart eras we need to use validator set
-        // from the previous era
-        *era_id - 1
-    } else {
-        // When we're in era 0 or in the era of last emergency restart we
-        // use that era as a source for validators, because:
-        //
-        // 1) If we're in Era 0 there's no previous era, but since validators never change during
-        // that era we can safely use the Era 0's switch block.
-        //
-        // 2) In case of being in last emergency restart era, the validators from the previous era
-        // may no longer be valid.
-        *era_id
-    }
+fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
+    // TODO: This function needs to handle upgrades with changes to the validator set.
+    era_id.saturating_sub(1)
 }
 
 /// Runs the initial chain synchronization task ("fast sync").
@@ -1924,6 +1884,7 @@ where
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
+        + From<ControlAnnouncement>
         + Send,
 {
     info!("fast syncing chain");
@@ -1946,12 +1907,6 @@ where
             Some(block_header) => block_header,
             None => return Err(Error::NoHighestBlockHeader),
         };
-
-    if let Some(outcome) =
-        prepare_for_emergency_upgrade_if_needed(&ctx, &highest_block_header).await?
-    {
-        return Ok(outcome);
-    }
 
     if let Some(outcome) = prepare_for_upgrade_if_needed(&ctx, &highest_block_header).await? {
         return Ok(outcome);
@@ -2040,58 +1995,6 @@ fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(
     };
 
     Ok(())
-}
-
-/// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an emergency
-/// upgrade before syncing further, or `Ok(None)` if not.
-///
-/// If this returns `Ok(Some...)`, we sync the trie store in preparation for running commit_upgrade.
-async fn prepare_for_emergency_upgrade_if_needed<REv>(
-    ctx: &ChainSyncContext<'_, REv>,
-    highest_block_header: &BlockHeader,
-) -> Result<Option<FastSyncOutcome>, Error>
-where
-    REv: From<FetcherRequest<TrieOrChunk>>
-        + From<NetworkInfoRequest>
-        + From<ContractRuntimeRequest>
-        + From<StorageRequest>,
-{
-    let emergency_restart_era = match ctx.config.last_emergency_restart() {
-        Some(era_id) if era_id == ctx.config.activation_point() => era_id,
-        _ => return Ok(None),
-    };
-
-    // After an emergency restart, the old validators cannot be trusted anymore. So the last block
-    // before the restart or a later block must be given by the trusted hash. That way we never have
-    // to use the untrusted validators' finality signatures.
-    if ctx.trusted_block_header().next_block_era_id() < emergency_restart_era {
-        return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
-            last_emergency_restart_era: emergency_restart_era,
-            trusted_hash: ctx.trusted_hash(),
-            trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
-        });
-    }
-    // If the trusted block is the last block before an emergency restart, and we haven't
-    // already run the upgrade, we have to compute the immediate switch block ourselves, since
-    // there's no other way to verify that block. We just sync the trie there and return, so the
-    // upgrade can be applied.
-    if ctx.trusted_block_is_last_before_activation()
-        && highest_block_header.protocol_version() < ctx.config.protocol_version()
-    {
-        info!("synchronizing trie store before committing emergency upgrade");
-        ctx.progress.start_fetching_tries_for_emergency_upgrade(
-            ctx.trusted_block_header().height(),
-            *ctx.trusted_block_header().state_root_hash(),
-        );
-        sync_trie_store(ctx.trusted_block_header(), ctx).await?;
-        info!("finished synchronizing before committing emergency upgrade");
-        return Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
-            switch_block_header_before_upgrade: ctx.trusted_block_header().clone(),
-            is_emergency_upgrade: true,
-        }));
-    }
-
-    Ok(None)
 }
 
 /// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an upgrade before
@@ -2204,15 +2107,13 @@ where
         + From<BlocklistAnnouncement>
         + From<StorageRequest>
         + From<MarkBlockCompletedRequest>
+        + From<ControlAnnouncement>
         + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
 
     // Execute blocks to get to current.
-    let mut execution_pre_state = ExecutionPreState::from_block_header(
-        highest_synced_block_header,
-        ctx.config.verifiable_chunked_hash_activation(),
-    );
+    let mut execution_pre_state = ExecutionPreState::from_block_header(highest_synced_block_header);
     info!(
         era_id = ?highest_synced_block_header.era_id(),
         height = highest_synced_block_header.height(),
@@ -2278,11 +2179,13 @@ where
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
             for peer in get_filtered_fully_connected_peers(ctx).await {
+                attempts += 1;
                 warn!(
-                    block_hash=%block.hash(),
+                    fetched_block=%block,
+                    executed_block=%block_and_execution_effects.block(),
+                    attempts,
                     "retrying execution due to deploy approvals mismatch"
                 );
-                attempts += 1;
                 ctx.progress.retry_executing_block(block.height(), attempts);
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
@@ -2321,15 +2224,11 @@ where
             .await;
 
         highest_synced_block_header = block.take_header();
-        execution_pre_state = ExecutionPreState::from_block_header(
-            &highest_synced_block_header,
-            ctx.config.verifiable_chunked_hash_activation(),
-        );
+        execution_pre_state = ExecutionPreState::from_block_header(&highest_synced_block_header);
 
-        if let Some(new_key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            &highest_synced_block_header,
-            ctx.config.verifiable_chunked_hash_activation(),
-        ) {
+        if let Some(new_key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(&highest_synced_block_header)
+        {
             key_block_info = new_key_block_info;
         }
 
@@ -2353,21 +2252,35 @@ async fn fetch_and_store_deploys<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<Vec<Deploy>, Error>
 where
-    REv: From<StorageRequest> + From<FetcherRequest<Deploy>> + From<NetworkInfoRequest>,
+    REv: From<StorageRequest>
+        + From<FetcherRequest<Deploy>>
+        + From<NetworkInfoRequest>
+        + From<ControlAnnouncement>,
 {
     let start_instant = Timestamp::now();
 
     let hashes: Vec<_> = hashes.cloned().collect();
-    let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
-    let mut stream = futures::stream::iter(hashes)
-        .map(|hash| fetch_and_store_deploy(hash, ctx))
+
+    // We want to use `buffer_unordered` to avoid being blocked on any particularly slow fetch
+    // attempts (which could happen if we used for example `stream::buffered`), but we also need to
+    // ensure the fetched deploys are returned from this function in the order as specified in the
+    // `hashes` iterator.  Hence we keep track of the index of each of these hashes in the `Vec` of
+    // fetched deploys to allow for sorting on completion of the stream.
+    let mut indexed_deploys: Vec<(usize, Deploy)> = Vec::with_capacity(hashes.len());
+    let mut stream = futures::stream::iter(hashes.into_iter().enumerate())
+        .map(|(index, hash)| async move { (index, fetch_and_store_deploy(hash, ctx).await) })
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
-    while let Some(result) = stream.next().await {
+    while let Some((index, result)) = stream.next().await {
         let deploy = result?;
         trace!("fetched {:?}", deploy);
-        deploys.push(*deploy);
+        indexed_deploys.push((index, *deploy));
     }
 
+    indexed_deploys.sort();
+    let deploys = indexed_deploys
+        .into_iter()
+        .map(|(_index, deploy)| deploy)
+        .collect();
     ctx.metrics
         .observe_fetch_deploys_duration_seconds(start_instant);
     Ok(deploys)
@@ -2418,8 +2331,6 @@ fn is_current_era_given_current_timestamp(
 mod tests {
     use std::iter;
 
-    use rand::Rng;
-
     use casper_types::{testing::TestRng, EraId, PublicKey, SecretKey};
 
     use super::*;
@@ -2438,7 +2349,6 @@ mod tests {
         era_id: EraId,
         height: u64,
         switch_block: bool,
-        verifiable_chunked_hash_activation: EraId,
     ) -> BlockHeader {
         let secret_key = SecretKey::doc_example();
         let public_key = PublicKey::from(secret_key);
@@ -2474,7 +2384,6 @@ mod tests {
             finalized_block,
             next_era_validator_weights,
             Default::default(), // protocol version
-            verifiable_chunked_hash_activation,
         )
         .expect("failed to create block for tests")
         .take_header()
@@ -2482,7 +2391,6 @@ mod tests {
 
     #[test]
     fn test_is_current_era() {
-        let mut rng = TestRng::new();
         let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         let genesis_time = chainspec
@@ -2503,36 +2411,18 @@ mod tests {
             SmallNetworkConfig::default(),
         );
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
-
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
-        let switch_block5 = create_block(
-            era6_start,
-            EraId::from(5),
-            100,
-            true,
-            verifiable_chunked_hash_activation,
-        );
+        let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
 
-        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(
-            &switch_block5,
-            verifiable_chunked_hash_activation,
-        )
-        .expect("no switch block info for switch block");
+        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(&switch_block5)
+            .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the
         // required number of blocks (115 - 100 > 10).
         let block_time = era6_start + era_duration - 10.into();
         let now = block_time + 5.into();
-        let block = create_block(
-            block_time,
-            EraId::from(6),
-            115,
-            false,
-            verifiable_chunked_hash_activation,
-        );
+        let block = create_block(block_time, EraId::from(6), 115, false);
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -2545,13 +2435,7 @@ mod tests {
         // passed.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 4;
-        let block = create_block(
-            block_time,
-            EraId::from(6),
-            105,
-            false,
-            verifiable_chunked_hash_activation,
-        );
+        let block = create_block(block_time, EraId::from(6), 105, false);
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -2562,13 +2446,7 @@ mod tests {
         // If both criteria are satisfied, the era could have ended.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 5;
-        let block = create_block(
-            block_time,
-            EraId::from(6),
-            105,
-            false,
-            verifiable_chunked_hash_activation,
-        );
+        let block = create_block(block_time, EraId::from(6), 105, false);
         assert!(!is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -2581,40 +2459,22 @@ mod tests {
     fn gets_correct_era_id_for_validators_retrieval() {
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0), None)
+            get_era_id_for_validators_retrieval(&EraId::from(0))
         );
 
         assert_eq!(
             EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1), None)
+            get_era_id_for_validators_retrieval(&EraId::from(1))
         );
 
         assert_eq!(
             EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2), None)
+            get_era_id_for_validators_retrieval(&EraId::from(2))
         );
 
         assert_eq!(
             EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000), None)
-        );
-    }
-
-    #[test]
-    fn gets_correct_era_id_for_validators_when_emergency_restart() {
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0), Some(EraId::from(7)))
-        );
-
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1), Some(EraId::from(2)))
-        );
-
-        assert_eq!(
-            EraId::from(2),
-            get_era_id_for_validators_retrieval(&EraId::from(2), Some(EraId::from(2)))
+            get_era_id_for_validators_retrieval(&EraId::from(1000))
         );
     }
 

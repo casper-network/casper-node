@@ -41,7 +41,7 @@ function _get_protocol_version_of_next_upgrade()
     local PATH_TO_N1_BIN
     local SEMVAR_CURRENT
     local SEMVAR_NEXT
-    
+
     PATH_TO_N1_BIN="$(get_path_to_net)/nodes/node-1/bin"
 
     # Set semvar of current version.
@@ -79,8 +79,6 @@ function _main()
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
     local COUNT_NODES
-
-    #Set `verifiable_chunked_hash_activation` equal to upgrade activation point
 
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     COUNT_NODES=$(get_count_of_nodes)

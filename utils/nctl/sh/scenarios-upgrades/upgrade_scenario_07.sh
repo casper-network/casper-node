@@ -73,9 +73,8 @@ function _step_01()
 
     log_step_upgrades 1 "Begin upgrade_scenario_07"
 
-    nctl-assets-setup \
-        "chainspec_path=$NCTL/overrides/upgrade_scenario_7.post.chainspec.toml.in"
-    
+    nctl-assets-setup
+
     # Force Hard Reset
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
     sed -i 's/hard_reset = false/hard_reset = true/g' "$PATH_TO_CHAINSPEC"
@@ -218,7 +217,7 @@ function _step_07()
 function _step_08()
 {
     log_step_upgrades 8 "awaiting 10 eras"
-    await_n_eras '10' 'true' '5.0' '2'
+    nctl-await-n-eras offset='10' sleep_interval='5.0' timeout='600' node_id='2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.

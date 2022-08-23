@@ -3,9 +3,9 @@ use std::{
     env,
     fmt::{self, Display, Formatter},
     process,
+    time::SystemTime,
 };
 
-use chrono::{DateTime, SecondsFormat, Utc};
 use log::kv::{self, Key, Value, Visitor};
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
@@ -159,8 +159,7 @@ pub(crate) struct TimestampRfc3999(String);
 
 impl Default for TimestampRfc3999 {
     fn default() -> Self {
-        let now: DateTime<Utc> = Utc::now();
-        TimestampRfc3999(now.to_rfc3339_opts(SecondsFormat::Millis, true))
+        TimestampRfc3999(humantime::format_rfc3339_millis(SystemTime::now()).to_string())
     }
 }
 
@@ -423,10 +422,7 @@ mod tests {
     fn should_have_rfc3339_timestamp(l: &StructuredMessage) -> bool {
         // ISO 8601 / RFC 3339
         // rfc3339 = "YYYY-MM-DDTHH:mm:ss+00:00"
-        match DateTime::parse_from_rfc3339(&l.timestamp.0) {
-            Ok(_d) => true,
-            Err(_) => false,
-        }
+        humantime::parse_rfc3339(&l.timestamp.0).is_ok()
     }
 
     fn should_have_log_level(l: &StructuredMessage) -> bool {
