@@ -930,7 +930,6 @@ where
                 actual = known_nodes_connected_count,
                 "networking bootstrap completed after known node connection threshold was met"
             );
-            return;
         }
     }
 
