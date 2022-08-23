@@ -980,7 +980,7 @@ where
     match ctx
         .effect_builder
         .query_global_state(QueryRequest::new(
-            ctx.trusted_block_header().id().inner().clone(),
+            *ctx.trusted_block_header().id().inner(),
             Key::DeployApprovalsRootHash {
                 block_height: height,
             },
@@ -1054,7 +1054,7 @@ where
                     let approvals: BTreeMap<DeployHash, BTreeSet<Approval>> = block_and_deploys
                         .deploys
                         .iter()
-                        .map(|d| (d.id().clone(), d.approvals().clone()))
+                        .map(|d| (*d.id(), d.approvals().clone()))
                         .collect();
                     let mut approval_hashes = vec![];
                     for (dh, maybe_approvals) in block_and_deploys
