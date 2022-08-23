@@ -1,6 +1,8 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::fmt::Debug;
+
 use datasize::DataSize;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
@@ -52,7 +54,7 @@ struct ActionThresholds {
 }
 
 /// Structure representing a user's account, stored in global state.
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize, DataSize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Account {
     account_hash: AccountHash,
@@ -62,6 +64,18 @@ pub struct Account {
     main_purse: URef,
     associated_keys: Vec<AssociatedKey>,
     action_thresholds: ActionThresholds,
+}
+
+impl Debug for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Account")
+            .field("account_hash", &self.account_hash)
+            .field("named_keys", &self.named_keys.len())
+            .field("main_purse", &self.main_purse)
+            .field("associated_keys", &self.associated_keys)
+            .field("action_thresholds", &self.action_thresholds)
+            .finish()
+    }
 }
 
 impl Account {
