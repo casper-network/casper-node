@@ -1011,8 +1011,12 @@ where
             }
 
             Event::BootstrapTimerElapsed => {
-                self.bootstrap_completed = true;
-                info!("networking bootstrap completed per set timeout");
+                if !self.bootstrap_completed {
+                    self.bootstrap_completed = true;
+                    info!("networking bootstrap completed per set timeout");
+                } else {
+                    debug!("networking bootstrap timer ignored, already complete");
+                }
                 Effects::new()
             }
 
