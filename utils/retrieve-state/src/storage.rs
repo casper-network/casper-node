@@ -5,7 +5,6 @@ use std::{
 };
 
 use lmdb::DatabaseFlags;
-use num_rational::Ratio;
 use tracing::info;
 
 use casper_execution_engine::{
@@ -137,7 +136,6 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         None,
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
-        Ratio::new(1, 3),
     )?)
 }
 

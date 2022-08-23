@@ -22,7 +22,7 @@ function main() {
     # 1. Allow chain to progress
     do_await_era_change
     # 2. Verify all nodes are in sync
-    check_network_sync
+    check_network_sync 1 5
     # 3. Create the doppelganger
     create_doppelganger '5' '6'
     # 4. Get LFB Hash
