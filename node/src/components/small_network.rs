@@ -156,6 +156,8 @@ where
     outgoing_manager: OutgoingManager<OutgoingHandle<P>, ConnectionError>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
+    /// Mapping of known node addresses to their potentially known `NodeId`.
+    known_node_ids: HashMap<SocketAddr, NodeId>,
 
     /// An indicator whether or not the networking component considers itself bootstrapped.
     ///
@@ -352,6 +354,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
+            known_node_ids: HashMap::new(),
             bootstrap_completed: false,
             syncing_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
@@ -710,6 +713,20 @@ where
                         handle,
                         node_id: peer_id,
                     });
+
+                // We update the mapping of node IDs for known addresses if necessary.
+                match self.outgoing_manager.is_unforgettable(peer_addr) {
+                    Some(true) => {
+                        self.known_node_ids.insert(peer_addr, peer_id);
+                        info!(%peer_addr, %peer_id, "found known node");
+                    }
+                    Some(false) => {
+                        // Regular address, do nothing.
+                    }
+                    None => {
+                        warn!("connected to address that is no longer found in outgoing manager, this should not happen");
+                    }
+                }
 
                 let mut effects = self.process_dial_requests(request);
 

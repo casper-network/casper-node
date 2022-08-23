@@ -580,6 +580,13 @@ where
             })
     }
 
+    /// Look up whether a given address is known and marked as unforgettable.
+    ///
+    /// Returns `None` if the address has not been learned (or was forgotten).
+    pub(crate) fn is_unforgettable(&self, addr: SocketAddr) -> Option<bool> {
+        self.outgoing.get(&addr).map(|o| o.is_unforgettable)
+    }
+
     /// Checks if an address is blocked.
     #[cfg(test)]
     pub(crate) fn is_blocked(&self, addr: SocketAddr) -> bool {
