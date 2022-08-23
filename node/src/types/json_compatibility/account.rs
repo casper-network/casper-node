@@ -8,7 +8,9 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{rpcs::docs::DocExample, types::json_compatibility::vectorize};
+use crate::{
+    rpcs::docs::DocExample, types::json_compatibility::vectorize, utils::fmt_limit::LimitSlice,
+};
 use casper_types::{
     account::{Account as ExecutionEngineAccount, AccountHash},
     NamedKey, PublicKey, SecretKey, URef,
@@ -70,7 +72,10 @@ impl Debug for Account {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Account")
             .field("account_hash", &self.account_hash)
-            .field("named_keys", &self.named_keys.len())
+            .field(
+                "named_keys",
+                &LimitSlice::<_, 10>::new(self.named_keys.as_slice()),
+            )
             .field("main_purse", &self.main_purse)
             .field("associated_keys", &self.associated_keys)
             .field("action_thresholds", &self.action_thresholds)

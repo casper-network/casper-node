@@ -14,7 +14,7 @@ use casper_types::{
     AccessRights, EraId, PublicKey, SecretKey, URef, U512,
 };
 
-use crate::rpcs::docs::DocExample;
+use crate::{rpcs::docs::DocExample, utils::fmt_limit::LimitSlice};
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -159,8 +159,11 @@ impl Debug for AuctionState {
         f.debug_struct("AuctionState")
             .field("state_root_hash", &self.state_root_hash)
             .field("block_height", &self.block_height)
-            .field("era_validators", &self.era_validators.len())
-            .field("bids", &self.bids.len())
+            .field(
+                "era_validators",
+                &LimitSlice::<_, 10>::new(self.era_validators.as_slice()),
+            )
+            .field("bids", &LimitSlice::<_, 10>::new(self.bids.as_slice()))
             .finish()
     }
 }
