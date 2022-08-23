@@ -900,7 +900,7 @@ where
             .filter_map(|(node_id, cs)| cs.is_symmetric().then_some(*node_id))
             .collect();
 
-        if symmetric_connections.len() > self.cfg.bootstrap_threshold.connection_count as usize {
+        if symmetric_connections.len() >= self.cfg.bootstrap_threshold.connection_count as usize {
             self.bootstrap_completed = true;
             info!(
                 target = self.cfg.bootstrap_threshold.connection_count,
@@ -923,7 +923,7 @@ where
 
         let known_nodes_connected_count = known_nodes_connected.into_iter().count();
 
-        if known_nodes_connected_count > known_nodes_target {
+        if known_nodes_connected_count >= known_nodes_target {
             self.bootstrap_completed = true;
             info!(
                 target = known_nodes_target,
