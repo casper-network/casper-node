@@ -14,7 +14,7 @@ use super::{
 use crate::{
     components::{
         chain_synchronizer::KeyBlockInfo,
-        consensus::{self, error::FinalitySignatureError},
+        linear_chain::{self, BlockSignatureError},
     },
     types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
@@ -300,12 +300,12 @@ impl LinearChain {
             Some(era_kb_info) => era_kb_info,
         };
         matches!(
-            consensus::check_sufficient_finality_signatures(
+            linear_chain::check_sufficient_block_signatures(
                 era_kb_info.validator_weights(),
                 self.finality_threshold_fraction,
                 Some(signatures),
             ),
-            Ok(()) | Err(FinalitySignatureError::TooManySignatures { .. })
+            Ok(()) | Err(BlockSignatureError::TooManySignatures { .. })
         )
     }
 

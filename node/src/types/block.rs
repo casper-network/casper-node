@@ -1652,17 +1652,17 @@ impl Item for Block {
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BlockWithMetadata {
     pub block: Block,
-    pub finality_signatures: BlockSignatures,
+    pub block_signatures: BlockSignatures,
 }
 
 impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Block at {} with hash {} with {} finality signatures.",
+            "Block at {} with hash {} with {} block signatures.",
             self.block.height(),
             self.block.hash(),
-            self.finality_signatures.proofs.len()
+            self.block_signatures.proofs.len()
         )
     }
 }
@@ -1699,7 +1699,7 @@ impl Item for BlockWithMetadata {
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
-        validate_block_header_and_signature_hash(self.block.header(), &self.finality_signatures)?;
+        validate_block_header_and_signature_hash(self.block.header(), &self.block_signatures)?;
         Ok(())
     }
 

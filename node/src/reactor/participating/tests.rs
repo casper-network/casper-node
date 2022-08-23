@@ -497,10 +497,10 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .participating()
             .storage()
-            .read_block_header_and_sufficient_finality_signatures_by_height(2)
+            .read_block_by_height(2)
             .expect("failed to read from storage")
             .expect("missing switch block")
-            .block_header;
+            .take_header();
         assert_eq!(EraId::from(1), header.era_id());
         assert!(header.is_switch_block());
         assert_eq!(
