@@ -1,7 +1,7 @@
 //! Core types for a Merkle Trie
 
 use std::{
-    convert::TryInto,
+    convert::{Infallible, TryInto},
     fmt::{self, Debug, Display, Formatter},
     iter::Flatten,
     mem::MaybeUninit,
@@ -14,7 +14,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_hashing::Digest;
+use casper_hashing::{Chunkable, Digest};
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(test)]
@@ -369,6 +369,14 @@ impl TrieRaw {
     }
 }
 
+impl Chunkable for TrieRaw {
+    type Error = Infallible;
+
+    fn as_bytes(&self) -> Result<&[u8], Self::Error> {
+        Ok(self.inner().inner_bytes())
+    }
+}
+
 impl ToBytes for TrieRaw {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -466,8 +474,10 @@ impl<K, V> Trie<K, V> {
     where
         Self: ToBytes,
     {
-        self.to_bytes()
-            .map(|bytes| Digest::hash_bytes_into_chunks_if_necessary(&bytes))
+        self.to_bytes().and_then(|bytes| {
+            Digest::hash_bytes_into_chunks_if_necessary(&TrieRaw::new(bytes.into()))
+                .map_err(|_| bytesrepr::Error::Formatting)
+        })
     }
 
     /// Returns a pointer block, if possible.

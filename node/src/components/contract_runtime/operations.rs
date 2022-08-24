@@ -14,8 +14,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, U512,
+    bytesrepr::{self, ToBytes},
+    CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
@@ -413,9 +413,8 @@ fn compute_execution_results_root_hash<'a>(
         .collect::<Vec<_>>()
         .to_bytes()
         .map_err(BlockCreationError::BytesRepr)?;
-    Ok(Digest::hash_bytes_into_chunks_if_necessary(
-        &execution_results_bytes,
-    ))
+    Digest::hash_bytes_into_chunks_if_necessary(&execution_results_bytes)
+        .map_err(|_| BlockCreationError::BytesRepr(bytesrepr::Error::Formatting))
 }
 
 /// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy

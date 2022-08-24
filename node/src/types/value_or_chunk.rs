@@ -1,11 +1,10 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use casper_execution_engine::storage::trie::TrieRaw;
-use casper_types::bytesrepr::{self, ToBytes};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
+use casper_hashing::{ChunkWithProof, Chunkable, Digest, MerkleConstructionError};
 use datasize::DataSize;
 
 /// Represents a value or a chunk of data with attached proof.
@@ -24,23 +23,15 @@ pub enum ValueOrChunk<V> {
 #[derive(Debug, Error)]
 pub enum ChunkingError {
     /// Merkle proof construction error.
-    MerkleConstruction(MerkleConstructionError),
+    #[error("error constructing merkle proof for chunk")]
+    MerkleConstruction(
+        #[from]
+        #[source]
+        MerkleConstructionError,
+    ),
     /// Serialization error.
-    SerializationError(bytesrepr::Error),
-}
-
-impl Display for ChunkingError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ChunkingError::MerkleConstruction(error) => f
-                .debug_tuple("MerkleConstructionError")
-                .field(&error)
-                .finish(),
-            ChunkingError::SerializationError(error) => {
-                f.debug_tuple("SerializationError").field(&error).finish()
-            }
-        }
-    }
+    #[error("error serializing data into chunks: {0}")]
+    SerializationError(String),
 }
 
 impl<V> ValueOrChunk<V> {
@@ -48,18 +39,24 @@ impl<V> ValueOrChunk<V> {
     /// [`ChunkWithProof::CHUNK_SIZE_BYTES`] or a [`ValueOrChunk::ChunkWithProof`] if it is greater.
     /// In the latter case it will return only the `chunk_index`-th chunk of the value's byte
     /// representation.
+    ///
+    /// NOTE: The [`Chunkable`] instance used here needs to match the one used when calling
+    /// [`Digest::hash_bytes_into_chunks_if_necessary`]. This is to ensure that type is turned into
+    /// bytes consistently before chunking and hashing. If not then the merkle proofs for chunks
+    /// won't match.
     pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
     where
-        V: ToBytes,
+        V: Chunkable,
     {
-        let bytes = ToBytes::to_bytes(&data).map_err(ChunkingError::SerializationError)?;
+        let bytes = Chunkable::as_bytes(&data)
+            .map_err(|error| ChunkingError::SerializationError(format!("{:?}", error)))?;
         // NOTE: Cannot accept the chunk size bytes as an argument without changing the
         // IndexedMerkleProof. The chunk size there is hardcoded and will be used when
         // determining the chunk.
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
             Ok(ValueOrChunk::Value(data))
         } else {
-            let chunk_with_proof = ChunkWithProof::new(&bytes, chunk_index)
+            let chunk_with_proof = ChunkWithProof::new(bytes, chunk_index)
                 .map_err(ChunkingError::MerkleConstruction)?;
             Ok(ValueOrChunk::ChunkWithProof(chunk_with_proof))
         }

@@ -131,8 +131,7 @@ impl LmdbGlobalState {
     }
 
     /// Returns an initial, empty root hash of the underlying trie.
-    #[cfg(test)]
-    pub fn empty_root_hash(&self) -> Digest {
+    pub fn empty_state_root_hash(&self) -> Digest {
         self.empty_root_hash
     }
 }

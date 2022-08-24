@@ -979,7 +979,10 @@ mod tests {
             &Registry::default(),
         )
         .unwrap();
-        let empty_state_root = contract_runtime.engine_state.get_state().empty_root_hash();
+        let empty_state_root = contract_runtime
+            .engine_state()
+            .get_state()
+            .empty_state_root_hash();
         let mut effects: AdditiveMap<Key, Transform> = AdditiveMap::new();
         for TestPair(key, value) in test_pair {
             assert!(effects.insert(key, Transform::Write(value)).is_none());

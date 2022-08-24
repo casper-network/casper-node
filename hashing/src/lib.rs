@@ -34,7 +34,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex, CLType, CLTyped,
 };
-pub use chunk_with_proof::ChunkWithProof;
+pub use chunk_with_proof::{ChunkWithProof, Chunkable};
 pub use error::{
     ChunkWithProofVerificationError, Error, MerkleConstructionError, MerkleVerificationError,
 };
@@ -223,15 +223,18 @@ impl Digest {
     }
 
     /// Hash bytes into chunks if necessary.
-    pub fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+    pub fn hash_bytes_into_chunks_if_necessary<C: Chunkable>(
+        data: &C,
+    ) -> Result<Digest, <C as Chunkable>::Error> {
+        let bytes = Chunkable::as_bytes(data)?;
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Digest::blake2b_hash(bytes)
+            Ok(Digest::blake2b_hash(bytes))
         } else {
-            Digest::hash_merkle_tree(
+            Ok(Digest::hash_merkle_tree(
                 bytes
                     .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
                     .map(Digest::blake2b_hash),
-            )
+            ))
         }
     }
 }
