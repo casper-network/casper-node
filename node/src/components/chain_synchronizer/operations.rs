@@ -363,24 +363,6 @@ where
     peer_list
 }
 
-/// Fetching should stop only when the network is connected and all retries have been exhausted.
-fn should_stop_fetching(
-    attempts_count: &mut usize,
-    has_connected_to_network: bool,
-    max_sync_fetch_attempts: usize,
-) -> bool {
-    if !has_connected_to_network {
-        return false;
-    }
-
-    if *attempts_count < max_sync_fetch_attempts {
-        *attempts_count += 1;
-        return false;
-    }
-
-    true
-}
-
 /// Possible errors caused by fetch operation that uses the retry mechanism.
 #[derive(Error, Debug)]
 pub(crate) enum FetchWithRetryError<T>
@@ -413,22 +395,10 @@ where
     T: Item + CanUseSyncingNodes + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
-    let mut total_attempts = 0_usize;
-    let mut attempts_after_bootstrapped = 0_usize;
+    let mut total_attempts = 0;
+    let mut attempts_after_bootstrapped = 0;
     loop {
         let has_connected_to_network = has_connected_to_network();
-        if should_stop_fetching(
-            &mut attempts_after_bootstrapped,
-            has_connected_to_network,
-            ctx.config.max_sync_fetch_attempts(),
-        ) {
-            return Err(FetchWithRetryError::AttemptsExhausted {
-                id,
-                total_attempts,
-                attempts_after_bootstrapped,
-            });
-        }
-
         let new_peer_list = get_peers(T::can_use_syncing_nodes(), ctx).await;
         if new_peer_list.is_empty() && total_attempts % 100 == 0 {
             warn!(
@@ -446,8 +416,19 @@ where
             return value;
         }
 
-        tokio::time::sleep(ctx.config.retry_interval()).await;
         total_attempts += 1;
+        if has_connected_to_network {
+            attempts_after_bootstrapped += 1;
+        }
+        if attempts_after_bootstrapped >= ctx.config.max_sync_fetch_attempts() {
+            return Err(FetchWithRetryError::AttemptsExhausted {
+                id,
+                total_attempts,
+                attempts_after_bootstrapped,
+            });
+        }
+
+        tokio::time::sleep(ctx.config.retry_interval()).await;
     }
 }
 
@@ -2644,59 +2625,5 @@ mod tests {
             bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
-    }
-
-    #[test]
-    fn should_not_stop_fetching_and_not_increase_retry_counter_when_network_not_connected() {
-        let mut attempts_count = 0;
-        let has_connected_to_network = false;
-        let max_sync_fetch_attempts = 5;
-
-        // Make sure we'll try fetching more times than defined as a limit.
-        let trials = max_sync_fetch_attempts * 3;
-
-        (0..trials).into_iter().for_each(|_| {
-            let result = should_stop_fetching(
-                &mut attempts_count,
-                has_connected_to_network,
-                max_sync_fetch_attempts,
-            );
-            assert!(!result);
-        });
-
-        // Attempt counter should not be increased.
-        assert_eq!(attempts_count, 0);
-    }
-
-    #[test]
-    fn should_respect_fetch_attempts_when_network_connected() {
-        let mut attempts_count = 0;
-        let has_connected_to_network = true;
-        let max_sync_fetch_attempts = 2;
-
-        // 1st allowed try.
-        assert!(!should_stop_fetching(
-            &mut attempts_count,
-            has_connected_to_network,
-            max_sync_fetch_attempts,
-        ));
-        assert_eq!(attempts_count, 1);
-
-        // 2nd allowed try.
-        assert!(!should_stop_fetching(
-            &mut attempts_count,
-            has_connected_to_network,
-            max_sync_fetch_attempts,
-        ));
-        assert_eq!(attempts_count, 2);
-
-        // 3rd call should return false, as "max_sync_fetch_attempts == 2". Attempt counter should
-        // not be increased.
-        assert!(should_stop_fetching(
-            &mut attempts_count,
-            has_connected_to_network,
-            max_sync_fetch_attempts,
-        ));
-        assert_eq!(attempts_count, 2);
     }
 }
