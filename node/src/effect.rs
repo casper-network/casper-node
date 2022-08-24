@@ -152,7 +152,7 @@ use crate::{
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
-    utils::{SharedFlag, Source},
+    utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
@@ -280,13 +280,13 @@ impl<T: Debug> Responder<T> {
                 // in cases where an originating external request has been cancelled.
 
                 debug!(
-                    ?data,
+                    data=?FmtLimit::new(1000, &data),
                     "ignored failure to send response to request down oneshot channel"
                 );
             }
         } else {
             error!(
-                ?data,
+                data=?FmtLimit::new(1000, &data),
                 "tried to send a value down a responder channel, but it was already used"
             );
         }
