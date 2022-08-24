@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::{collections::BTreeMap, fmt::Debug};
+use std::collections::BTreeMap;
 
 use num_traits::Zero;
 use once_cell::sync::Lazy;
@@ -14,7 +14,7 @@ use casper_types::{
     AccessRights, EraId, PublicKey, SecretKey, URef, U512,
 };
 
-use crate::{rpcs::docs::DocExample, utils::fmt_limit::LimitSlice};
+use crate::rpcs::docs::DocExample;
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -141,7 +141,7 @@ pub struct JsonBids {
 }
 
 /// Data structure summarizing auction contract data.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuctionState {
     /// Global state hash.
@@ -152,20 +152,6 @@ pub struct AuctionState {
     pub era_validators: Vec<JsonEraValidators>,
     /// All bids contained within a vector.
     bids: Vec<JsonBids>,
-}
-
-impl Debug for AuctionState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuctionState")
-            .field("state_root_hash", &self.state_root_hash)
-            .field("block_height", &self.block_height)
-            .field(
-                "era_validators",
-                &LimitSlice::<_, 10>::new(self.era_validators.as_slice()),
-            )
-            .field("bids", &LimitSlice::<_, 10>::new(self.bids.as_slice()))
-            .finish()
-    }
 }
 
 impl AuctionState {
