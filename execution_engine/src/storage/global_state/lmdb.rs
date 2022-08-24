@@ -129,6 +129,12 @@ impl LmdbGlobalState {
     pub fn trie_store(&self) -> &LmdbTrieStore {
         &self.trie_store
     }
+
+    /// Returns an initial, empty root hash of the underlying trie.
+    #[cfg(test)]
+    pub fn empty_root_hash(&self) -> Digest {
+        self.empty_root_hash
+    }
 }
 
 impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
