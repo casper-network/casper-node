@@ -994,7 +994,7 @@ where
             Err(FetchAndStoreBlockError::TrustedStateRootMissing)
         }
         QueryResult::DepthLimit { depth } => {
-            error!("reached depth limit: {:?}", depth);
+            error!("reached depth limit: {}", depth);
             Err(FetchAndStoreBlockError::Impossible(
                 "depth limit".to_string(),
             ))
@@ -1081,16 +1081,15 @@ where
                     if !approval_hashes.is_empty()
                         && Digest::hash_merkle_tree(approval_hashes) != deploy_approvals_root_hash
                     {
+                        warn!(?peer, "fetched deploy approvals merkle root mismatch");
                         ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                         continue 'a;
                     }
-                    ctx.effect_builder
-                        .put_block_and_deploys_to_storage(block_and_deploys.clone())
-                        .await;
-                    Ok(block_and_deploys)
-                } else {
-                    Ok(block_and_deploys)
                 }
+                ctx.effect_builder
+                    .put_block_and_deploys_to_storage(block_and_deploys.clone())
+                    .await;
+                Ok(block_and_deploys)
             }
         };
         ctx.metrics
