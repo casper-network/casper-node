@@ -324,13 +324,12 @@ impl ChainspecLoader {
             return Effects::new();
         }
 
-        let current_chainspec_activation_point =
-            self.chainspec.protocol_config.activation_point.era_id();
-
         match maybe_highest_block_header {
             Some(header)
-                if header.is_switch_block()
-                    && header.era_id().successor() == current_chainspec_activation_point =>
+                if self
+                    .chainspec
+                    .protocol_config
+                    .is_last_block_before_activation(&header) =>
             {
                 // This is a valid run immediately after upgrading the node version, we'll need to
                 // create an immediate switch block.
@@ -339,20 +338,17 @@ impl ChainspecLoader {
                     self.new_upgrade_config(&header, Arc::clone(&self.chainspec_raw_bytes));
                 async move {
                     match upgrade_config_result {
-                        Ok(upgrade_config) => (
-                            header,
+                        Ok(upgrade_config) => {
                             effect_builder
                                 .upgrade_contract_runtime(upgrade_config)
-                                .await,
-                        ),
-                        Err(error) => (header, Err(error.into())),
+                                .await
+                        }
+                        Err(error) => Err(error.into()),
                     }
                 }
-                .event(|(previous_block_header, upgrade_result)| {
-                    Event::UpgradeResult {
-                        previous_block_header,
-                        upgrade_result,
-                    }
+                .event(move |upgrade_result| Event::UpgradeResult {
+                    previous_block_header: header,
+                    upgrade_result,
                 })
             }
             None if self.chainspec.is_genesis() => {
@@ -609,7 +605,7 @@ impl ChainspecLoader {
 
         // If the switch block before the immediate switch block is `None`, we use the
         // `next_era_validators` of the immediate switch block to sign it.  This is the case at
-        // genesis and for an emergency upgrade.
+        // genesis and after an upgrade changing the set of validators.
         let maybe_era_end = maybe_previous_block_header
             .as_deref()
             .unwrap_or_else(|| immediate_switch_block_and_exec_effects.block.header())

@@ -115,7 +115,7 @@ where
         config: &'a Config,
         metrics: &'a Metrics,
         progress: &'a ProgressHolder,
-    ) -> Result<Option<ChainSyncContext<'a, REv>>, Error> {
+    ) -> Result<ChainSyncContext<'a, REv>, Error> {
         debug_assert!(progress.is_fast_sync());
         let locally_available_block_range_on_start = effect_builder
             .get_available_block_range_from_storage()
@@ -141,14 +141,12 @@ where
                 Some(block_header) => block_header,
                 None => {
                     debug!("no highest block header found in storage");
-                    return Ok(None);
+                    return Err(Error::NoBlocksInStorage);
                 }
             },
         };
 
-        if trusted_block_header.protocol_version() != config.protocol_version()
-            && !config.is_last_block_before_activation(&trusted_block_header)
-        {
+        if trusted_block_header.protocol_version() != config.protocol_version() {
             return Err(Error::TrustedHeaderTooEarly {
                 trusted_header: Box::new(trusted_block_header),
                 current_protocol_version: config.protocol_version(),
@@ -158,7 +156,7 @@ where
 
         ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
 
-        Ok(Some(ctx))
+        Ok(ctx)
     }
 }
 
@@ -1869,16 +1867,11 @@ where
     progress.start();
 
     let ctx =
-        match ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics, &progress)
-            .await?
-        {
-            Some(ctx) => ctx,
-            None => return Err(Error::NoBlocksInStorage),
-        };
+        ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics, &progress).await?;
     verify_trusted_block_header(&ctx)?;
 
     // We should have at least one block header in storage now as a result of calling
-    // `ChainSyncContext::new`.
+    // `ChainSyncContext::new_for_fast_sync`.
     let mut highest_block_header =
         match effect_builder.get_highest_block_header_from_storage().await {
             Some(block_header) => block_header,

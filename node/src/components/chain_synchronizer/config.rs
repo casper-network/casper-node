@@ -7,7 +7,7 @@ use casper_types::{EraId, ProtocolVersion, TimeDiff};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
-    types::{BlockHash, BlockHeader, Chainspec, NodeConfig},
+    types::{BlockHash, Chainspec, NodeConfig},
     SmallNetworkConfig,
 };
 
@@ -133,13 +133,6 @@ impl Config {
     /// Returns `ChainspecConsensusExt::earliest_switch_block_needed`.
     pub(super) fn earliest_switch_block_needed(&self, era_id: EraId) -> EraId {
         self.chainspec.earliest_switch_block_needed(era_id)
-    }
-
-    /// Returns `ProtocolConfig::is_last_block_before_activation`.
-    pub(super) fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {
-        self.chainspec
-            .protocol_config
-            .is_last_block_before_activation(block_header)
     }
 
     pub(super) fn chainspec(&self) -> Arc<Chainspec> {
