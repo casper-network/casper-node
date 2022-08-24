@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_execution_engine::core::engine_state::{
     self, ChainspecRegistry, GenesisSuccess, UpgradeConfig, UpgradeSuccess,
 };
-use casper_types::{bytesrepr, crypto::PublicKey, file_utils, EraId, ProtocolVersion};
+use casper_types::{bytesrepr, crypto::PublicKey, file_utils, EraId, ProtocolVersion, Timestamp};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
@@ -354,12 +354,27 @@ impl ChainspecLoader {
             None if self.chainspec.is_genesis() => {
                 // This is a valid initial run on a new network at genesis.
                 trace!("valid initial run at genesis");
-                effect_builder
-                    .commit_genesis(
-                        Arc::clone(&self.chainspec),
-                        Arc::clone(&self.chainspec_raw_bytes),
-                    )
-                    .event(Event::CommitGenesisResult)
+                // unwrap is safe as `chainspec.is_genesis()` is true
+                if Timestamp::now()
+                    < self
+                        .chainspec
+                        .protocol_config
+                        .activation_point
+                        .genesis_timestamp()
+                        .unwrap()
+                {
+                    trace!("creating genesis immediate switch block");
+                    effect_builder
+                        .commit_genesis(
+                            Arc::clone(&self.chainspec),
+                            Arc::clone(&self.chainspec_raw_bytes),
+                        )
+                        .event(Event::CommitGenesisResult)
+                } else {
+                    trace!("started after genesis; not creating the switch block");
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                    Effects::new()
+                }
             }
             _ => {
                 // We're neither at genesis nor right after an upgrade - proceed to fast sync
