@@ -778,7 +778,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the networks current bootstrapping state.
+    /// Gets the network's current bootstrapping state.
     ///
     /// Returns `true` if the networking component considers the network to have moved past initial
     /// delays connecting.

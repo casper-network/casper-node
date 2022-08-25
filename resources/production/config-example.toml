@@ -209,7 +209,7 @@ finalized_approvals_responses = 0
 # Threshold for when the networking considers itself sufficiently connected.
 #
 # Some processes will not begin (or fail) unless this threshold is reached.
-[network.bootstrap_threshold]
+[network.bootstrap_thresholds]
 # A percentage of known addresses has been reached.
 known_address_connection_percentage = 0.5
 # A number of symmetric connections have been established.

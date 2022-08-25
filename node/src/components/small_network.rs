@@ -161,7 +161,7 @@ where
 
     /// An indicator whether or not the networking component considers itself bootstrapped.
     ///
-    /// Indented to be used by other components (which can request it) that rely on the state of
+    /// Intended to be used by other components (which can request it) that rely on the state of
     /// the network connectivity to make decisions.
     bootstrap_completed: bool,
 
@@ -910,7 +910,7 @@ where
             return;
         }
 
-        // Check if we have reached the critical of known nodes connected.
+        // Check if we have reached the critical number of known nodes connected.
         let known_nodes_target = (self.cfg.known_addresses.len() as f32
             * self
                 .cfg
