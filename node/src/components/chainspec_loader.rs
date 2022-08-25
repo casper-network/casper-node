@@ -11,7 +11,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use std::{
-    collections::HashSet,
     fmt::{self, Display, Formatter},
     fs,
     path::{Path, PathBuf},
@@ -77,7 +76,6 @@ pub(crate) enum Event {
         upgrade_result: Result<UpgradeSuccess, engine_state::Error>,
     },
     ExecuteImmediateSwitchBlockResult {
-        maybe_previous_block_header: Option<Box<BlockHeader>>,
         #[serde(skip_serializing)]
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     },
@@ -109,15 +107,11 @@ impl Display for Event {
             Event::UpgradeResult { upgrade_result, .. } => {
                 write!(formatter, "upgrade result: {:?}", upgrade_result)
             }
-            Event::ExecuteImmediateSwitchBlockResult {
-                maybe_previous_block_header,
-                result,
-            } => {
+            Event::ExecuteImmediateSwitchBlockResult { result } => {
                 write!(
                     formatter,
-                    "execute immediate switch block result; previous block header = {:?}, \
-                    result = {:?}",
-                    maybe_previous_block_header, result
+                    "execute immediate switch block result = {:?}",
+                    result
                 )
             }
             Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
@@ -177,12 +171,6 @@ impl Display for NextUpgrade {
 }
 
 #[derive(Clone, DataSize, Debug)]
-pub(crate) struct ImmediateSwitchBlockData {
-    pub(crate) block_and_execution_effects: BlockAndExecutionEffects,
-    pub(crate) validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
-}
-
-#[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainspecLoader {
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
@@ -191,7 +179,7 @@ pub(crate) struct ChainspecLoader {
     root_dir: PathBuf,
     reactor_exit: Option<ReactorExit>,
     next_upgrade: Option<NextUpgrade>,
-    maybe_immediate_switch_block_data: Option<ImmediateSwitchBlockData>,
+    maybe_immediate_switch_block_data: Option<BlockAndExecutionEffects>,
 }
 
 impl ChainspecLoader {
@@ -488,7 +476,6 @@ impl ChainspecLoader {
 
                 self.execute_immediate_switch_block(
                     effect_builder,
-                    None,
                     initial_pre_state,
                     finalized_block,
                 )
@@ -537,11 +524,8 @@ impl ChainspecLoader {
                     PublicKey::System,
                 );
 
-                // TODO: figure out whether the upgrade changes the validator set based on the
-                // global state and don't pass the previous header if it does.
                 self.execute_immediate_switch_block(
                     effect_builder,
-                    Some(previous_block_header),
                     initial_pre_state,
                     finalized_block,
                 )
@@ -560,7 +544,6 @@ impl ChainspecLoader {
     fn execute_immediate_switch_block<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        maybe_previous_block_header: Option<Box<BlockHeader>>,
         initial_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
     ) -> Effects<Event>
@@ -595,16 +578,12 @@ impl ChainspecLoader {
             );
             Ok(block_and_execution_effects)
         }
-        .event(move |result| Event::ExecuteImmediateSwitchBlockResult {
-            maybe_previous_block_header,
-            result,
-        })
+        .event(move |result| Event::ExecuteImmediateSwitchBlockResult { result })
     }
 
     fn handle_execute_immediate_switch_block_result<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        maybe_previous_block_header: Option<Box<BlockHeader>>,
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     ) -> Effects<Event>
     where
@@ -618,35 +597,7 @@ impl ChainspecLoader {
             }
         };
 
-        // If the switch block before the immediate switch block is `None`, we use the
-        // `next_era_validators` of the immediate switch block to sign it.  This is the case at
-        // genesis and after an upgrade changing the set of validators.
-        let maybe_era_end = maybe_previous_block_header
-            .as_deref()
-            .unwrap_or_else(|| immediate_switch_block_and_exec_effects.block.header())
-            .era_end();
-
-        match maybe_era_end {
-            Some(era_end) => {
-                let validators_to_sign_immediate_switch_block = era_end
-                    .next_era_validator_weights()
-                    .keys()
-                    .cloned()
-                    .collect();
-                self.maybe_immediate_switch_block_data = Some(ImmediateSwitchBlockData {
-                    block_and_execution_effects: immediate_switch_block_and_exec_effects,
-                    validators_to_sign_immediate_switch_block,
-                });
-            }
-            None => {
-                error!("upgrade/genesis switch block missing era end");
-                return fatal!(
-                    effect_builder,
-                    "upgrade/genesis switch block missing era end"
-                )
-                .ignore();
-            }
-        };
+        self.maybe_immediate_switch_block_data = Some(immediate_switch_block_and_exec_effects);
 
         // We can proceed to the joiner.
         self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
@@ -672,7 +623,7 @@ impl ChainspecLoader {
         self.reactor_exit
     }
 
-    pub(crate) fn maybe_immediate_switch_block_data(&self) -> Option<&ImmediateSwitchBlockData> {
+    pub(crate) fn maybe_immediate_switch_block_data(&self) -> Option<&BlockAndExecutionEffects> {
         self.maybe_immediate_switch_block_data.as_ref()
     }
 
@@ -780,14 +731,9 @@ where
                 previous_block_header,
                 upgrade_result,
             } => self.handle_upgrade_result(effect_builder, previous_block_header, upgrade_result),
-            Event::ExecuteImmediateSwitchBlockResult {
-                maybe_previous_block_header,
-                result,
-            } => self.handle_execute_immediate_switch_block_result(
-                effect_builder,
-                maybe_previous_block_header,
-                result,
-            ),
+            Event::ExecuteImmediateSwitchBlockResult { result } => {
+                self.handle_execute_immediate_switch_block_result(effect_builder, result)
+            }
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }

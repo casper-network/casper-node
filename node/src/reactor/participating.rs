@@ -29,7 +29,7 @@ use crate::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
-        chainspec_loader::{self, ChainspecLoader, ImmediateSwitchBlockData},
+        chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
@@ -67,6 +67,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
@@ -665,14 +666,10 @@ impl reactor::Reactor for Reactor {
             JoiningOutcome::Synced {
                 highest_block_header,
             } => {
-                if let Some(ImmediateSwitchBlockData {
-                    block_and_execution_effects:
-                        BlockAndExecutionEffects {
-                            block,
-                            execution_results,
-                            maybe_step_effect_and_upcoming_era_validators,
-                        },
-                    validators_to_sign_immediate_switch_block,
+                if let Some(BlockAndExecutionEffects {
+                    block,
+                    execution_results,
+                    maybe_step_effect_and_upcoming_era_validators,
                 }) = chainspec_loader
                     .maybe_immediate_switch_block_data()
                     .cloned()
@@ -709,16 +706,38 @@ impl reactor::Reactor for Reactor {
                         );
                     }
 
-                    // We're responsible for signing the new block if we're in the provided list.
-                    if validators_to_sign_immediate_switch_block.contains(&our_public_key) {
-                        let signature = FinalitySignature::new(
-                            *block.hash(),
-                            current_era_id,
-                            &our_secret_key,
-                            our_public_key.clone(),
-                        );
-                        effects.extend(
-                            async move {
+                    let secret_key = our_secret_key.clone();
+                    let public_key = our_public_key.clone();
+                    let block_hash = *block.hash();
+                    effects.extend(
+                        async move {
+                            let validator_weights =
+                                match linear_chain::era_validator_weights_for_block(
+                                    block.header(),
+                                    effect_builder,
+                                )
+                                .await
+                                {
+                                    Ok((_era_id, weights)) => weights,
+                                    Err(error) => {
+                                        return fatal!(
+                                            effect_builder,
+                                            "couldn't get era validators for header: {}",
+                                            error
+                                        )
+                                        .await;
+                                    }
+                                };
+
+                            // We're responsible for signing the new block if we're in the provided list.
+                            if validator_weights.contains_key(&public_key) {
+                                let signature = FinalitySignature::new(
+                                    block_hash,
+                                    current_era_id,
+                                    &secret_key,
+                                    public_key.clone(),
+                                );
+
                                 effect_builder
                                     .announce_created_finality_signature(signature.clone())
                                     .await;
@@ -728,11 +747,11 @@ impl reactor::Reactor for Reactor {
                                     .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
                                     .await;
                                 let message = Message::FinalitySignature(Box::new(signature));
-                                effect_builder.broadcast_message(message).await
+                                effect_builder.broadcast_message(message).await;
                             }
-                            .ignore(),
-                        );
-                    }
+                        }
+                        .ignore(),
+                    );
                 }
 
                 *highest_block_header
