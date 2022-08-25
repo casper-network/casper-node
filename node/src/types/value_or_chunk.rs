@@ -41,7 +41,7 @@ impl<V> ValueOrChunk<V> {
     /// representation.
     ///
     /// NOTE: The [`Chunkable`] instance used here needs to match the one used when calling
-    /// [`Digest::hash_bytes_into_chunks_if_necessary`]. This is to ensure that type is turned into
+    /// [`Digest::hash_into_chunks_if_necessary`]. This is to ensure that type is turned into
     /// bytes consistently before chunking and hashing. If not then the merkle proofs for chunks
     /// won't match.
     pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
