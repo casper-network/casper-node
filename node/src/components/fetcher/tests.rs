@@ -97,6 +97,7 @@ reactor!(Reactor {
         // This test contains no linear chain requests, so we panic if we receive any.
         NetworkRequest<Message> -> network;
         StorageRequest -> storage;
+        MarkBlockCompletedRequest -> storage;
         StateStoreRequest -> storage;
         FetcherRequest<Deploy> -> deploy_fetcher;
         TrieDemand -> !;

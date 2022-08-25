@@ -47,6 +47,9 @@ pub(crate) enum Error {
         activation_point: EraId,
     },
 
+    #[error("no blocks have been found in storage (should provide recent trusted hash)")]
+    NoBlocksInStorage,
+
     #[error(
         "configured trusted block is different from the stored block at the same height \
          configured block header: {config_header:?}, \

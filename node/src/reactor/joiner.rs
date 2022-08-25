@@ -1022,9 +1022,7 @@ impl reactor::Reactor for Reactor {
                 JoiningOutcome::ShouldExitForUpgrade => {
                     ReactorExit::ProcessShouldExit(ExitCode::Success)
                 }
-                JoiningOutcome::Synced { .. } | JoiningOutcome::RanUpgradeOrGenesis { .. } => {
-                    ReactorExit::ProcessShouldContinue
-                }
+                JoiningOutcome::Synced { .. } => ReactorExit::ProcessShouldContinue,
             })
     }
 
