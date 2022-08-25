@@ -146,17 +146,29 @@ where
             trie_fetch_limit: Semaphore::new(config.max_parallel_trie_fetches()),
         };
 
-        let trusted_block_header = match config.trusted_hash() {
-            Some(trusted_hash) => {
-                *fetch_and_store_initial_trusted_block_header(&ctx, metrics, trusted_hash).await?
+        // The config may contain the hash of a block that is known to be on the correct chain. We
+        // Also assume that all blocks in storage are correct. Fast sync will use whichever is more
+        // recent as a trusted starting point.
+        let maybe_stored_header = effect_builder.get_highest_block_header_from_storage().await;
+        let maybe_config_header = if let Some(trusted_hash) = config.trusted_hash() {
+            Some(*fetch_and_store_initial_trusted_block_header(&ctx, metrics, trusted_hash).await?)
+        } else {
+            None
+        };
+        let trusted_block_header = match (maybe_config_header, maybe_stored_header) {
+            (Some(config_header), None) => config_header,
+            (None, Some(stored_header)) => stored_header,
+            (None, None) => {
+                debug!("no highest block header found in storage, no trusted header configured");
+                return Ok(None);
             }
-            None => match effect_builder.get_highest_block_header_from_storage().await {
-                Some(block_header) => block_header,
-                None => {
-                    debug!("no highest block header found in storage");
-                    return Ok(None);
+            (Some(config_header), Some(highest_header)) => {
+                if config_header.height() > highest_header.height() {
+                    config_header
+                } else {
+                    highest_header
                 }
-            },
+            }
         };
 
         if trusted_block_header.protocol_version() != config.protocol_version()
