@@ -4,8 +4,10 @@ use casper_execution_engine::storage::trie::TrieRaw;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::{ChunkWithProof, Chunkable, Digest, MerkleConstructionError};
+use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
 use datasize::DataSize;
+
+use super::Chunkable;
 
 /// Represents a value or a chunk of data with attached proof.
 ///
