@@ -166,6 +166,19 @@ where
                 if config_header.height() > stored_header.height() {
                     config_header
                 } else {
+                    if let Some(stored_header_at_same_height) = effect_builder
+                        .get_block_header_at_height_from_storage(config_header.height(), false)
+                        .await
+                    {
+                        if stored_header_at_same_height != config_header {
+                            return Err(Error::TrustedHeaderOnDifferentFork {
+                                config_header: Box::new(config_header),
+                                stored_header_at_same_height: Box::new(
+                                    stored_header_at_same_height,
+                                ),
+                            });
+                        }
+                    }
                     info!(
                         %config_header,
                         %stored_header,
