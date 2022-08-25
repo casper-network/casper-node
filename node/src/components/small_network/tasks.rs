@@ -256,7 +256,7 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let (peer_id, transport) = match server_setup_tls(stream, &context.our_cert, &context).await {
+    let (peer_id, transport) = match server_setup_tls(&context, stream).await {
         Ok(value) => value,
         Err(error) => {
             return IncomingConnection::FailedEarly { peer_addr, error };
@@ -319,15 +319,16 @@ where
 ///
 /// This function groups the TLS setup into a convenient function, enabling the `?` operator.
 pub(super) async fn server_setup_tls<REv>(
-    stream: TcpStream,
-    cert: &TlsCert,
     context: &NetworkContext<REv>,
+    stream: TcpStream,
 ) -> Result<(NodeId, Transport), ConnectionError> {
-    let mut tls_stream =
-        tls::create_tls_acceptor(cert.as_x509().as_ref(), context.secret_key.as_ref())
-            .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
-            .and_then(|ssl| SslStream::new(ssl, stream))
-            .map_err(ConnectionError::TlsInitialization)?;
+    let mut tls_stream = tls::create_tls_acceptor(
+        context.our_cert.as_x509().as_ref(),
+        context.secret_key.as_ref(),
+    )
+    .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
+    .and_then(|ssl| SslStream::new(ssl, stream))
+    .map_err(ConnectionError::TlsInitialization)?;
 
     SslStream::accept(Pin::new(&mut tls_stream))
         .await
