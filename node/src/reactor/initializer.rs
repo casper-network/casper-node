@@ -236,7 +236,8 @@ impl Reactor {
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
-        let small_network_identity = SmallNetworkIdentity::new()?;
+        let network_config = config.map_ref(|cfg| cfg.network.clone());
+        let small_network_identity = SmallNetworkIdentity::from_config(&network_config)?;
 
         let reactor = Reactor {
             config,

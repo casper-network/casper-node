@@ -31,8 +31,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::Context;
-use casper_types::file_utils::read_file;
+use casper_types::file_utils::{read_file, ReadFileError};
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use nid::Nid;
@@ -53,7 +52,9 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(test)]
+use serde::Deserializer;
+use serde::{Deserialize, Serialize, Serializer};
 use thiserror::Error;
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
@@ -224,6 +225,12 @@ impl TlsCert {
     pub(crate) fn as_x509(&self) -> &X509 {
         &self.x509
     }
+
+    /// Consumes [`TlsCert`] instance and returns inner x509 certificate.
+    #[cfg(test)]
+    pub(crate) fn into_x509(self) -> X509 {
+        self.x509
+    }
 }
 
 impl Debug for TlsCert {
@@ -246,13 +253,16 @@ impl PartialEq for TlsCert {
 
 impl Eq for TlsCert {}
 
-// Serialization and deserialization happens only via x509, which is checked upon deserialization.
+// Serialization and deserialization happens only via x509.
+#[cfg(test)]
 impl<'de> Deserialize<'de> for TlsCert {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        validate_cert(x509_serde::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+        let x509 = x509_serde::deserialize(deserializer)?;
+        // NOTE: This is possibly invalid certificate and has to be validated after deserialization.
+        tls_cert_from_x509(x509).map_err(serde::de::Error::custom)
     }
 }
 
@@ -263,6 +273,54 @@ impl Serialize for TlsCert {
     {
         x509_serde::serialize(&self.x509, serializer)
     }
+}
+
+/// Error during loading a x509 certificate.
+#[derive(Debug, Error, Serialize)]
+pub(crate) enum LoadCertError {
+    #[error(transparent)]
+    ReadFile(
+        #[serde(skip_serializing)]
+        #[from]
+        ReadFileError,
+    ),
+    #[error("unable to load x509 certificate {0:?}")]
+    X509(
+        #[serde(skip_serializing)]
+        #[from]
+        ErrorStack,
+    ),
+}
+
+/// Load a certificate from a file.
+pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> Result<X509, LoadCertError> {
+    eprintln!("loading cert {:?}", src.as_ref());
+    let pem = read_file(src.as_ref())?;
+    Ok(X509::from_pem(&pem)?)
+}
+
+/// Error during loading a secret key.
+#[derive(Debug, Error, Serialize)]
+pub(crate) enum LoadSecretKeyError {
+    #[error(transparent)]
+    ReadFile(
+        #[serde(skip_serializing)]
+        #[from]
+        ReadFileError,
+    ),
+    #[error("unable to load private key from pem {0:?}")]
+    PrivateKeyFromPem(
+        #[serde(skip_serializing)]
+        #[from]
+        ErrorStack,
+    ),
+}
+
+pub(crate) fn load_secret_key<P: AsRef<Path>>(src: P) -> Result<PKey<Private>, LoadSecretKeyError> {
+    let pem = read_file(src.as_ref())?;
+
+    // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
+    Ok(PKey::private_key_from_pem(&pem)?)
 }
 
 /// A signed value.
@@ -433,13 +491,103 @@ pub enum ValidationError {
         #[source]
         ErrorStack,
     ),
+    /// Wrong certificate authority.
+    #[error("the certificate is not signed by provided certificate authority")]
+    WrongCertificateAuthority,
+    /// Failed to read public key from certificate.
+    #[error("error reading public key from ca certificate: {0:?}")]
+    CannotReadCAPublicKey(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
+}
+
+/// Checks that the certificate is signed by a provided certificate authority and returns the
+/// fingerprint of the public key.
+pub(crate) fn validate_cert_with_authority(
+    cert: X509,
+    ca: &X509,
+) -> Result<TlsCert, ValidationError> {
+    let authority_key = ca
+        .public_key()
+        .map_err(ValidationError::CannotReadCAPublicKey)?;
+    if !cert
+        .verify(authority_key.as_ref())
+        .map_err(ValidationError::FailedToValidateSignature)?
+    {
+        return Err(ValidationError::WrongCertificateAuthority);
+    }
+
+    // Check expiration times against current time.
+    let asn1_now = Asn1Time::from_unix(now()).map_err(ValidationError::TimeIssue)?;
+    if asn1_now
+        .compare(cert.not_before())
+        .map_err(ValidationError::TimeIssue)?
+        != Ordering::Greater
+    {
+        return Err(ValidationError::NotYetValid);
+    }
+
+    if asn1_now
+        .compare(cert.not_after())
+        .map_err(ValidationError::TimeIssue)?
+        != Ordering::Less
+    {
+        return Err(ValidationError::Expired);
+    }
+
+    // Ensure that the key is using the correct curve parameters.
+    let public_key = cert
+        .public_key()
+        .map_err(ValidationError::CannotReadPublicKey)?;
+
+    let ec_key = public_key
+        .ec_key()
+        .map_err(ValidationError::CouldNotExtractEcKey)?;
+
+    ec_key.check_key().map_err(ValidationError::KeyFailsCheck)?;
+    if ec_key.group().curve_name() != Some(SIGNATURE_CURVE) {
+        // The underlying curve is not the one we chose.
+        return Err(ValidationError::WrongCurve);
+    }
+
+    // We now have a valid certificate and can extract the fingerprint.
+    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+    let digest = &cert
+        .digest(Sha512::create_message_digest())
+        .map_err(ValidationError::InvalidFingerprint)?;
+    let cert_fingerprint = CertFingerprint(Sha512::from_openssl_digest(digest));
+
+    // Additionally we can calculate a fingerprint for the public key:
+    let mut big_num_context =
+        BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
+
+    let buf = ec_key
+        .public_key()
+        .to_bytes(
+            ec::EcGroup::from_curve_name(SIGNATURE_CURVE)
+                .expect("broken constant SIGNATURE_CURVE")
+                .as_ref(),
+            ec::PointConversionForm::COMPRESSED,
+            &mut big_num_context,
+        )
+        .map_err(ValidationError::PublicKeyEncodingFailed)?;
+
+    let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
+
+    Ok(TlsCert {
+        x509: cert,
+        cert_fingerprint,
+        key_fingerprint,
+    })
 }
 
 /// Checks that the cryptographic parameters on a certificate are correct and returns the
 /// fingerprint of the public key.
 ///
 /// At the very least this ensures that no weaker ciphers have been used to forge a certificate.
-pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
+pub(crate) fn validate_self_signed_cert(cert: X509) -> Result<TlsCert, ValidationError> {
     if cert.signature_algorithm().object().nid() != SIGNATURE_ALGORITHM {
         // The signature algorithm is not of the exact kind we are using to generate our
         // certificates, an attacker could have used a weaker one to generate colliding keys.
@@ -486,6 +634,24 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
         .public_key()
         .map_err(ValidationError::CannotReadPublicKey)?;
 
+    // Finally we can check the actual signature.
+    if !cert
+        .verify(&public_key)
+        .map_err(ValidationError::FailedToValidateSignature)?
+    {
+        return Err(ValidationError::InvalidSignature);
+    }
+
+    // We now have a valid certificate and can extract the fingerprint.
+    tls_cert_from_x509(cert)
+}
+
+fn tls_cert_from_x509(cert: X509) -> Result<TlsCert, ValidationError> {
+    // Ensure that the key is using the correct curve parameters.
+    let public_key = cert
+        .public_key()
+        .map_err(ValidationError::CannotReadPublicKey)?;
+
     let ec_key = public_key
         .ec_key()
         .map_err(ValidationError::CouldNotExtractEcKey)?;
@@ -496,25 +662,14 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
         return Err(ValidationError::WrongCurve);
     }
 
-    // Finally we can check the actual signature.
-    if !cert
-        .verify(&public_key)
-        .map_err(ValidationError::FailedToValidateSignature)?
-    {
-        return Err(ValidationError::InvalidSignature);
-    }
-
-    // We now have a valid certificate and can extract the fingerprint.
     assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
     let digest = &cert
         .digest(Sha512::create_message_digest())
         .map_err(ValidationError::InvalidFingerprint)?;
     let cert_fingerprint = CertFingerprint(Sha512::from_openssl_digest(digest));
-
     // Additionally we can calculate a fingerprint for the public key:
     let mut big_num_context =
         BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
-
     let buf = ec_key
         .public_key()
         .to_bytes(
@@ -525,29 +680,12 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
             &mut big_num_context,
         )
         .map_err(ValidationError::PublicKeyEncodingFailed)?;
-
     let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
-
     Ok(TlsCert {
         x509: cert,
         cert_fingerprint,
         key_fingerprint,
     })
-}
-
-/// Loads a certificate from a file.
-pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
-    let pem = read_file(src.as_ref()).with_context(|| "failed to load certificate")?;
-
-    X509::from_pem(&pem).context("parsing certificate")
-}
-
-/// Loads a private key from a file.
-pub(crate) fn load_private_key<P: AsRef<Path>>(src: P) -> anyhow::Result<PKey<Private>> {
-    let pem = read_file(src.as_ref()).with_context(|| "failed to load private key")?;
-
-    // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
-    PKey::private_key_from_pem(&pem).context("parsing private key")
 }
 
 /// Returns an OpenSSL compatible timestamp.
@@ -671,7 +809,7 @@ fn generate_cert(private_key: &PKey<Private>, cn: &str) -> SslResult<X509> {
 
     // Cheap sanity check.
     assert!(
-        validate_cert(cert.clone()).is_ok(),
+        validate_self_signed_cert(cert.clone()).is_ok(),
         "newly generated cert does not pass our own validity check"
     );
 
@@ -685,9 +823,11 @@ mod x509_serde {
     use std::str;
 
     use openssl::x509::X509;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    use super::validate_cert;
+    use serde::Serializer;
+    #[cfg(test)]
+    use serde::{Deserialize, Deserializer};
+    #[cfg(test)]
+    use std::borrow::Cow;
 
     /// Serde-compatible serialization for X509 certificates.
     pub(super) fn serialize<S>(value: &X509, serializer: S) -> Result<S::Ok, S::Error>
@@ -701,18 +841,14 @@ mod x509_serde {
     }
 
     /// Serde-compatible deserialization for X509 certificates.
+    #[cfg(test)]
     pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<X509, D::Error>
     where
         D: Deserializer<'de>,
     {
-        // Create an extra copy for simplicity here. If this becomes a bottleneck, feel free to try
-        // to leverage Cow<str> here, or implement a custom visitor that handles both cases.
-        let s: String = Deserialize::deserialize(deserializer)?;
+        let s: Cow<'de, str> = Deserialize::deserialize(deserializer)?;
         let x509 = X509::from_pem(s.as_bytes()).map_err(serde::de::Error::custom)?;
-
-        validate_cert(x509)
-            .map_err(serde::de::Error::custom)
-            .map(|tc| tc.x509)
+        Ok(x509)
     }
 }
 
@@ -804,7 +940,7 @@ impl Hash for Sha512 {
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_node_cert, mkname, name_to_string, validate_cert, TlsCert};
+    use super::*;
 
     #[test]
     fn simple_name_to_string() {
@@ -820,7 +956,7 @@ mod tests {
     fn test_tls_cert_serde_roundtrip() {
         let (cert, _private_key) = generate_node_cert().expect("failed to generate key, cert pair");
 
-        let tls_cert = validate_cert(cert).expect("generated cert is not valid");
+        let tls_cert = validate_self_signed_cert(cert).expect("generated cert is not valid");
 
         // There is no `PartialEq` impl for `TlsCert`, so we simply serialize it twice.
         let serialized = bincode::serialize(&tls_cert).expect("could not serialize");
@@ -829,5 +965,66 @@ mod tests {
         let serialized_again = bincode::serialize(&deserialized).expect("could not serialize");
 
         assert_eq!(serialized, serialized_again);
+
+        let validated_deserialized_cert =
+            validate_self_signed_cert(deserialized.into_x509()).expect("could not validate cert");
+
+        assert_eq!(tls_cert, validated_deserialized_cert);
+    }
+
+    #[test]
+    fn test_validate_cert_with_authority() {
+        let (ca_cert, ca_private_key) =
+            generate_node_cert().expect("failed to generate key, cert pair");
+
+        let (different_ca_cert, _ca_private_key) =
+            generate_node_cert().expect("failed to generate key, cert pair");
+
+        let node_private_key = generate_private_key().expect("failed to generate private key");
+
+        let node_cert = make_ca_signed_cert(node_private_key, ca_private_key);
+
+        validate_self_signed_cert(node_cert.clone())
+            .expect_err("should not validate CA signed cert as self signed");
+
+        let _node_tls_cert = validate_cert_with_authority(node_cert.clone(), &ca_cert)
+            .expect("should validate with ca cert");
+
+        let validation_error = validate_cert_with_authority(node_cert, &different_ca_cert)
+            .expect_err("should not validate cert against different CA");
+
+        assert!(
+            matches!(validation_error, ValidationError::WrongCertificateAuthority),
+            "{:?}",
+            validation_error
+        );
+    }
+
+    fn make_ca_signed_cert(private_key: PKey<Private>, ca_private_key: PKey<Private>) -> X509 {
+        let mut builder = X509Builder::new().unwrap();
+        builder.set_version(2).unwrap();
+        builder
+            .set_serial_number(mknum(1).unwrap().as_ref())
+            .unwrap();
+        let issuer = mkname("US", "Casper Blockchain", "node-0").unwrap();
+        builder.set_issuer_name(issuer.as_ref()).unwrap();
+        builder.set_subject_name(issuer.as_ref()).unwrap();
+        let ts = now();
+        builder
+            .set_not_before(Asn1Time::from_unix(ts - 60).unwrap().as_ref())
+            .unwrap();
+        builder
+            .set_not_after(
+                Asn1Time::from_unix(ts + 10 * 365 * 24 * 60 * 60)
+                    .unwrap()
+                    .as_ref(),
+            )
+            .unwrap();
+        builder.set_pubkey(private_key.as_ref()).unwrap();
+        assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+        builder
+            .sign(ca_private_key.as_ref(), Sha512::create_message_digest())
+            .unwrap();
+        builder.build()
     }
 }

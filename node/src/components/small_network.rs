@@ -56,7 +56,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
+use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, x509::X509};
 use pkey::{PKey, Private};
 use prometheus::Registry;
 use rand::{prelude::SliceRandom, seq::IteratorRandom};
@@ -86,6 +86,7 @@ pub(crate) use self::{
 };
 use self::{
     chain_info::ChainInfo,
+    config::IdentityConfig,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
@@ -107,7 +108,7 @@ use crate::{
         AutoClosingResponder, EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
-    tls::{self, TlsCert, ValidationError},
+    tls::{self, LoadCertError, LoadSecretKeyError, TlsCert, ValidationError},
     types::NodeId,
     utils::{self, display_error, Source, WithDir},
     NodeRng,
@@ -310,6 +311,7 @@ where
             event_queue,
             our_id: NodeId::from(&small_network_identity),
             our_cert: small_network_identity.tls_certificate,
+            our_ca: small_network_identity.ca_certificate,
             secret_key: small_network_identity.secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info,
@@ -1117,6 +1119,10 @@ pub(crate) enum SmallNetworkIdentityError {
     CouldNotGenerateTlsCertificate(OpenSslErrorStack),
     #[error(transparent)]
     ValidationError(#[from] ValidationError),
+    #[error(transparent)]
+    LoadCertError(#[from] LoadCertError),
+    #[error(transparent)]
+    LoadSecretKeyError(#[from] LoadSecretKeyError),
 }
 
 /// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
@@ -1124,17 +1130,51 @@ pub(crate) enum SmallNetworkIdentityError {
 pub(crate) struct SmallNetworkIdentity {
     secret_key: Arc<PKey<Private>>,
     tls_certificate: Arc<TlsCert>,
+    ca_certificate: Option<Arc<X509>>,
 }
 
 impl SmallNetworkIdentity {
-    pub(crate) fn new() -> result::Result<Self, SmallNetworkIdentityError> {
-        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
-            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
-        let tls_certificate = tls::validate_cert(not_yet_validated_x509_cert)?;
-        Ok(SmallNetworkIdentity {
+    fn new(
+        secret_key: PKey<Private>,
+        tls_certificate: TlsCert,
+        ca_certificate: Option<X509>,
+    ) -> Self {
+        Self {
             secret_key: Arc::new(secret_key),
             tls_certificate: Arc::new(tls_certificate),
-        })
+            ca_certificate: ca_certificate.map(Arc::new),
+        }
+    }
+
+    pub(crate) fn from_config(
+        config: &WithDir<Config>,
+    ) -> result::Result<Self, SmallNetworkIdentityError> {
+        match &config.value().identity {
+            Some(identity) => Self::from_identity_config(identity),
+            None => Self::with_generated_certs(),
+        }
+    }
+
+    fn from_identity_config(
+        identity: &IdentityConfig,
+    ) -> result::Result<Self, SmallNetworkIdentityError> {
+        let not_yet_validated_x509_cert = tls::load_cert(&identity.tls_certificate)?;
+        let secret_key = tls::load_secret_key(&identity.secret_key)?;
+        let ca_cert = tls::load_cert(&identity.ca_certificate)?;
+        let x509_cert = tls::validate_cert_with_authority(not_yet_validated_x509_cert, &ca_cert)?;
+
+        Ok(SmallNetworkIdentity::new(
+            secret_key,
+            x509_cert,
+            Some(ca_cert),
+        ))
+    }
+
+    pub(crate) fn with_generated_certs() -> result::Result<Self, SmallNetworkIdentityError> {
+        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
+            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
+        let tls_certificate = tls::validate_self_signed_cert(not_yet_validated_x509_cert)?;
+        Ok(SmallNetworkIdentity::new(secret_key, tls_certificate, None))
     }
 }
 
@@ -1146,6 +1186,7 @@ where
         SmallNetworkIdentity {
             secret_key: small_network.context.secret_key.clone(),
             tls_certificate: small_network.context.our_cert.clone(),
+            ca_certificate: small_network.context.our_ca.clone(),
         }
     }
 }
