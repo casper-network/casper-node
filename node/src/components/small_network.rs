@@ -396,7 +396,7 @@ where
         // We set a limit on when to consider bootstrap complete, so start a timer for this.
         effects.extend(
             effect_builder
-                .set_timeout(component.cfg.bootstrap_threshold.timeout.into())
+                .set_timeout(component.cfg.bootstrap_thresholds.timeout.into())
                 .event(|_| Event::BootstrapTimerElapsed),
         );
 
@@ -900,10 +900,10 @@ where
             .filter_map(|(node_id, cs)| cs.is_symmetric().then_some(*node_id))
             .collect();
 
-        if symmetric_connections.len() >= self.cfg.bootstrap_threshold.connection_count as usize {
+        if symmetric_connections.len() >= self.cfg.bootstrap_thresholds.connection_count as usize {
             self.bootstrap_completed = true;
             info!(
-                target = self.cfg.bootstrap_threshold.connection_count,
+                target = self.cfg.bootstrap_thresholds.connection_count,
                 actual = symmetric_connections.len(),
                 "networking bootstrap completed after connection threshold was met"
             );
@@ -914,7 +914,7 @@ where
         let known_nodes_target = (self.cfg.known_addresses.len() as f32
             * self
                 .cfg
-                .bootstrap_threshold
+                .bootstrap_thresholds
                 .known_address_connection_percentage)
             .round() as usize;
 
