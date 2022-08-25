@@ -1832,9 +1832,11 @@ where
         read_block_execution_results_root_hash(&block_header, ctx).await?;
 
     if let Some(block_execution_results_merkle_root_hash) = block_execution_results {
-        todo!()
+        let fetch_id = BlockEffectsOrChunkId::new(block_execution_results_merkle_root_hash);
+        fetch_and_store_block_effects(block_header, fetch_id, ctx).await?;
     } else {
-        fetch_and_store_block_effects_legacy(block_header, ctx).await?;
+        let fetch_id = BlockEffectsOrChunkId::legacy(block_header.hash());
+        fetch_and_store_block_effects(block_header, fetch_id, ctx).await?;
     };
 
     Ok(())
@@ -1842,15 +1844,16 @@ where
 
 /// Fetches block effects (ExecutionResults) for the `block_header` from peers and stores them in
 /// the storage.
-async fn fetch_and_store_block_effects_legacy<REv>(
+async fn fetch_and_store_block_effects<REv>(
     block_header: &BlockHeader,
+    fetch_id: BlockEffectsOrChunkId,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<(), Error>
 where
     REv:
         From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + From<StorageRequest>,
 {
-    let fetched_block_effects = fetch_block_effects(&ctx, block_header.hash()).await?;
+    let fetched_block_effects = fetch_block_effects(&ctx, fetch_id).await?;
     match fetched_block_effects {
         AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
         AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
@@ -1873,7 +1876,7 @@ type BlockEffectsFetchResult = AlreadyPresentOrDownloaded<Vec<ExecutionResult>>;
 
 async fn fetch_block_effects<REv>(
     ctx: &ChainSyncContext<'_, REv>,
-    block_hash: BlockHash,
+    fetch_id: BlockEffectsOrChunkId,
 ) -> Result<BlockEffectsFetchResult, FetchBlockEffectsError>
 where
     REv: From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest>,
@@ -1885,9 +1888,8 @@ where
     // `BlockEffectsOrChunk`. If we can't compute `id` we won't be able to look up the requesting
     // process in the `Fetcher`.
 
-    let block_effects_fetch_id = BlockEffectsOrChunkId::legacy(0, block_hash);
     let effects_or_chunk =
-        match fetch_retry_forever::<_, BlockEffectsOrChunk>(&ctx, block_effects_fetch_id).await? {
+        match fetch_retry_forever::<_, BlockEffectsOrChunk>(&ctx, fetch_id).await? {
             FetchedData::FromStorage { .. } => return Ok(BlockEffectsFetchResult::AlreadyPresent),
             FetchedData::FromPeer {
                 item: effects_or_chunk,
@@ -1920,7 +1922,7 @@ where
         .map(|index| async move {
             match fetch_retry_forever::<_, BlockEffectsOrChunk>(
                 &ctx,
-                BlockEffectsOrChunkId::legacy(index, block_hash),
+                fetch_id.next_chunk(index),
             )
             .await?
             {
@@ -1929,7 +1931,7 @@ where
                 }
                 FetchedData::FromPeer { item, .. } => match *item {
                     BlockEffectsOrChunk::BlockEffectsLegacy { block_hash, value } => match value {
-                        ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash: BlockHash::new(block_hash) }),
+                        ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash }),
                         ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
                             let index = chunk_with_proof.proof().index();
                             let chunk = chunk_with_proof.into_chunk();

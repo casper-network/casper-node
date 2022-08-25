@@ -1789,10 +1789,11 @@ pub enum BlockEffectsOrChunk {
     /// Legacy meaning their merkle root can't be verified against what is expected.
     BlockEffectsLegacy {
         /// Block to which this value or chunk refers to.
-        block_hash: Digest,
+        block_hash: BlockHash,
         /// Complete block effects for the block or a chunk of the complete data.
         value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
     },
+    BlockEffects(ValueOrChunk<Vec<casper_types::ExecutionResult>>),
 }
 
 impl PartialEq for BlockEffectsOrChunk {
@@ -1819,7 +1820,14 @@ impl Display for BlockEffectsOrChunk {
                 block_hash,
                 value: _,
             } => {
-                write!(f, "block effects for block={}", block_hash)
+                write!(
+                    f,
+                    "block effects for pre-1.5 block with hash={}",
+                    block_hash
+                )
+            }
+            BlockEffectsOrChunk::BlockEffects(value_or_chunk) => {
+                write!(f, "block effects for post-1.5 block={}", value_or_chunk)
             }
         }
     }
@@ -1829,16 +1837,27 @@ impl Display for BlockEffectsOrChunk {
 pub enum BlockEffectsOrChunkId {
     BlockEffectsOrChunkLegacyId {
         chunk_index: u64,
-        block_hash: Digest,
+        block_hash: BlockHash,
+    },
+    BlockEffectsOrChunkId {
+        chunk_index: u64,
+        effects_merkle_root: Digest,
     },
 }
 
 impl BlockEffectsOrChunkId {
+    pub fn new(effects_merkle_root: Digest) -> Self {
+        BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+            chunk_index: 0,
+            effects_merkle_root,
+        }
+    }
+
     /// Constructs a request ID for legacy block effects - pre-1.5.0
-    pub fn legacy(chunk_index: u64, block_hash: BlockHash) -> Self {
+    pub fn legacy(block_hash: BlockHash) -> Self {
         BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
-            chunk_index,
-            block_hash: *block_hash.inner(),
+            chunk_index: 0,
+            block_hash,
         }
     }
 
@@ -1847,6 +1866,25 @@ impl BlockEffectsOrChunkId {
         match bincode::deserialize::<Self>(serialized_id) {
             Ok(ref effects_or_chunk_id) => fmt::Display::fmt(effects_or_chunk_id, f),
             Err(_) => f.write_str("<invalid>"),
+        }
+    }
+
+    pub fn next_chunk(&self, next_chunk: u64) -> Self {
+        match self {
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                chunk_index: _,
+                block_hash,
+            } => BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                chunk_index: next_chunk,
+                block_hash: *block_hash,
+            },
+            BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                chunk_index,
+                effects_merkle_root,
+            } => BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                chunk_index: next_chunk,
+                effects_merkle_root: *effects_merkle_root,
+            },
         }
     }
 }
@@ -1861,6 +1899,14 @@ impl Display for BlockEffectsOrChunkId {
                 f,
                 "BlockEffectsOrChunkLegacyId({}, {})",
                 chunk_index, block_hash
+            ),
+            BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                chunk_index,
+                effects_merkle_root,
+            } => write!(
+                f,
+                "BlockEffectsOrChunk({}, {})",
+                chunk_index, effects_merkle_root
             ),
         }
     }
@@ -1893,6 +1939,10 @@ impl Item for BlockEffectsOrChunk {
                 ValueOrChunk::Value(_) => Ok(()),
                 ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
             },
+            BlockEffectsOrChunk::BlockEffects(value) => match value {
+                ValueOrChunk::Value(_) => Ok(()),
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
+            },
         }
     }
 
@@ -1907,6 +1957,17 @@ impl Item for BlockEffectsOrChunk {
                     BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
                         chunk_index: chunks.proof().index(),
                         block_hash: *block_hash,
+                    }
+                }
+            },
+            BlockEffectsOrChunk::BlockEffects(value) => match value {
+                ValueOrChunk::Value(execution_results) => BlockEffectsOrChunkId::new(
+                    Digest::hash_into_chunks_if_necessary(&execution_results).unwrap(),
+                ),
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                    BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                        chunk_index: chunk_with_proof.proof().index(),
+                        effects_merkle_root: chunk_with_proof.proof().root_hash(),
                     }
                 }
             },
