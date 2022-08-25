@@ -321,7 +321,7 @@ impl ChainspecLoader {
             {
                 // This is a valid run immediately after upgrading the node version, we'll need to
                 // create an immediate switch block.
-                trace!("valid run immediately after upgrade");
+                info!("valid run immediately after upgrade");
                 let upgrade_config_result =
                     self.new_upgrade_config(&header, Arc::clone(&self.chainspec_raw_bytes));
                 async move {
@@ -351,7 +351,7 @@ impl ChainspecLoader {
                         .genesis_timestamp()
                         .unwrap()
                 {
-                    trace!("creating genesis immediate switch block");
+                    info!("creating genesis immediate switch block");
                     effect_builder
                         .commit_genesis(
                             Arc::clone(&self.chainspec),
@@ -359,14 +359,14 @@ impl ChainspecLoader {
                         )
                         .event(Event::CommitGenesisResult)
                 } else {
-                    trace!("started after genesis; not creating the switch block");
+                    info!("started after genesis; not creating the switch block");
                     self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
                     Effects::new()
                 }
             }
             _ => {
                 // We're neither at genesis nor right after an upgrade - proceed to fast sync
-                trace!("valid run ready to be passed to the joiner reactor");
+                info!("valid run ready to be passed to the joiner reactor");
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
                 Effects::new()
             }

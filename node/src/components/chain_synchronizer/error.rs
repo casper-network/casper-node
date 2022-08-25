@@ -47,7 +47,7 @@ pub(crate) enum Error {
         activation_point: EraId,
     },
 
-    #[error("no blocks have been found in storage (should have at least genesis switch block)")]
+    #[error("no blocks have been found in storage (should provide recent trusted hash)")]
     NoBlocksInStorage,
 
     #[error(
