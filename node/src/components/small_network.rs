@@ -86,6 +86,7 @@ pub(crate) use self::{
 };
 use self::{
     chain_info::ChainInfo,
+    config::BootstrapThresholds,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
@@ -893,46 +894,63 @@ where
             return;
         }
 
-        // Check for the regular connection threshold, since counting is quicker.
-        let symmetric_connections: HashSet<NodeId> = self
-            .connection_symmetries
-            .iter()
-            .filter_map(|(node_id, cs)| cs.is_symmetric().then_some(*node_id))
-            .collect();
-
-        if symmetric_connections.len() >= self.cfg.bootstrap_thresholds.connection_count as usize {
-            self.bootstrap_completed = true;
-            info!(
-                target = self.cfg.bootstrap_thresholds.connection_count,
-                actual = symmetric_connections.len(),
-                "networking bootstrap completed after connection threshold was met"
-            );
-            return;
-        }
-
-        // Check if we have reached the critical number of known nodes connected.
-        let known_nodes_target = self.cfg.known_addresses.len() * 100
-            / self.cfg.bootstrap_thresholds.known_address_connection_perc as usize;
-
         let known_node_ids: HashSet<_> = self.known_node_ids.values().cloned().collect();
-        let known_nodes_connected = symmetric_connections.intersection(&known_node_ids);
 
-        let known_nodes_connected_count = known_nodes_connected.into_iter().count();
-
-        if known_nodes_connected_count >= known_nodes_target {
-            self.bootstrap_completed = true;
-            info!(
-                target = known_nodes_target,
-                actual = known_nodes_connected_count,
-                "networking bootstrap completed after known node connection threshold was met"
-            );
-        }
+        self.bootstrap_completed = has_finished_bootstrapping(
+            self.cfg.bootstrap_thresholds,
+            &self.connection_symmetries,
+            self.cfg.known_addresses.len(),
+            &known_node_ids,
+        );
     }
 
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.context.our_id
+    }
+}
+
+/// Determines whether or not the bootstrapping should be considered finished, based on factors
+/// other than time.
+fn has_finished_bootstrapping(
+    thresholds: BootstrapThresholds,
+    connection_symmetries: &HashMap<NodeId, ConnectionSymmetry>,
+    known_address_count: usize,
+    known_node_ids: &HashSet<NodeId>,
+) -> bool {
+    // Check for the regular connection threshold, since counting is quicker.
+    let symmetric_connections: HashSet<NodeId> = connection_symmetries
+        .iter()
+        .filter_map(|(node_id, cs)| cs.is_symmetric().then_some(*node_id))
+        .collect();
+
+    if symmetric_connections.len() >= thresholds.connection_count as usize {
+        info!(
+            target = thresholds.connection_count,
+            actual = symmetric_connections.len(),
+            "networking bootstrap completed after connection threshold was met"
+        );
+        return true;
+    }
+
+    // Check if we have reached the critical number of known nodes connected.
+    let known_nodes_target =
+        known_address_count * 100 / thresholds.known_address_connection_perc as usize;
+
+    let known_nodes_connected = symmetric_connections.intersection(&known_node_ids);
+
+    let known_nodes_connected_count = known_nodes_connected.into_iter().count();
+
+    if known_nodes_connected_count >= known_nodes_target {
+        info!(
+            target = known_nodes_target,
+            actual = known_nodes_connected_count,
+            "networking bootstrap completed after known node connection threshold was met"
+        );
+        true
+    } else {
+        false
     }
 }
 

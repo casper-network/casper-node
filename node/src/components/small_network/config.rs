@@ -108,7 +108,7 @@ pub struct Config {
 }
 
 /// Thresholds for bootstrap completion.
-#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootstrapThresholds {
     /// Percentage of known addresses that, when fully established, trigger bootstrap completion.
