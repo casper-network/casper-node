@@ -211,7 +211,7 @@ finalized_approvals_responses = 0
 # Some processes will not begin (or fail) unless this threshold is reached.
 [network.bootstrap_thresholds]
 # A percentage of known addresses has been reached.
-known_address_connection_percentage = 0.5
+known_address_connection_perc = 50
 # A number of symmetric connections have been established.
 connection_count = 20
 # Unconditional timeout.

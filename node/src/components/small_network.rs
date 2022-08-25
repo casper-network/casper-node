@@ -911,12 +911,8 @@ where
         }
 
         // Check if we have reached the critical number of known nodes connected.
-        let known_nodes_target = (self.cfg.known_addresses.len() as f32
-            * self
-                .cfg
-                .bootstrap_thresholds
-                .known_address_connection_percentage)
-            .round() as usize;
+        let known_nodes_target = self.cfg.known_addresses.len() * 100
+            / self.cfg.bootstrap_thresholds.known_address_connection_perc as usize;
 
         let known_node_ids: HashSet<_> = self.known_node_ids.values().cloned().collect();
         let known_nodes_connected = symmetric_connections.intersection(&known_node_ids);

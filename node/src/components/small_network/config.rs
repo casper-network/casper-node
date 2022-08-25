@@ -57,7 +57,7 @@ impl Default for Config {
 impl Default for BootstrapThresholds {
     fn default() -> Self {
         Self {
-            known_address_connection_percentage: 0.5,
+            known_address_connection_perc: 50,
             connection_count: 20,
             timeout: TimeDiff::from_seconds(60),
         }
@@ -112,7 +112,7 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct BootstrapThresholds {
     /// Percentage of known addresses that, when fully established, trigger bootstrap completion.
-    pub known_address_connection_percentage: f32,
+    pub known_address_connection_perc: u8,
     /// Number of symmetric connections that trigger bootstrap completion.
     pub connection_count: u32,
     /// Timeout that triggers finishing of the bootstrap process if neither condition is reached.
