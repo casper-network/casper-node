@@ -222,8 +222,8 @@ impl Digest {
         Ok(Digest(slice))
     }
 
-    /// Hash bytes into chunks if necessary.
-    pub fn hash_bytes_into_chunks_if_necessary<C: Chunkable>(
+    /// Hash data into chunks if necessary.
+    pub fn hash_into_chunks_if_necessary<C: Chunkable>(
         data: &C,
     ) -> Result<Digest, <C as Chunkable>::Error> {
         let bytes = Chunkable::as_bytes(data)?;

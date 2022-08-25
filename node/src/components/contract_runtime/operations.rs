@@ -413,7 +413,7 @@ fn compute_execution_results_root_hash<'a>(
         .collect::<Vec<_>>()
         .to_bytes()
         .map_err(BlockCreationError::BytesRepr)?;
-    Digest::hash_bytes_into_chunks_if_necessary(&execution_results_bytes)
+    Digest::hash_into_chunks_if_necessary(&execution_results_bytes)
         .map_err(|_| BlockCreationError::BytesRepr(bytesrepr::Error::Formatting))
 }
 

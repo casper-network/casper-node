@@ -475,7 +475,7 @@ impl<K, V> Trie<K, V> {
         Self: ToBytes,
     {
         self.to_bytes().and_then(|bytes| {
-            Digest::hash_bytes_into_chunks_if_necessary(&TrieRaw::new(bytes.into()))
+            Digest::hash_into_chunks_if_necessary(&TrieRaw::new(bytes.into()))
                 .map_err(|_| bytesrepr::Error::Formatting)
         })
     }

@@ -1047,7 +1047,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let trie_hash = Digest::hash_bytes_into_chunks_if_necessary(&trie_bytes)
+    let trie_hash = Digest::hash_into_chunks_if_necessary(&trie_bytes)
         .map_err(|_| bytesrepr::Error::Formatting)?;
     store.put_raw(txn, &trie_hash, trie_bytes)?;
     Ok(trie_hash)

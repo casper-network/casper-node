@@ -963,6 +963,8 @@ mod tests {
         next_hash
     }
 
+    // Creates a test ContractRuntime and feeds the underlying GlobalState with `test_pair`.
+    // Returns [`ContractRuntime`] instance and the new merkle root after applying the `test_pair`.
     fn create_test_state(test_pair: [TestPair; 2]) -> (ContractRuntime, Digest) {
         let temp_dir = tempdir().unwrap();
         let contract_runtime = ContractRuntime::new(
