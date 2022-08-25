@@ -729,7 +729,8 @@ impl reactor::Reactor for Reactor {
                                     }
                                 };
 
-                            // We're responsible for signing the new block if we're in the provided list.
+                            // We're responsible for signing the new block if we're in the provided
+                            // list.
                             if validator_weights.contains_key(&public_key) {
                                 let signature = FinalitySignature::new(
                                     block_hash,
