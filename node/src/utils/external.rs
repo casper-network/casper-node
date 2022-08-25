@@ -142,7 +142,7 @@ impl Loadable for X509 {
             Err(LoadCertError::ReadFile(error)) => {
                 anyhow::Error::new(error).context("failed to load certificate")
             }
-            Err(LoadCertError::X509(error)) => {
+            Err(LoadCertError::X509CertFromPem(error)) => {
                 anyhow::Error::new(error).context("parsing certificate")
             }
         };

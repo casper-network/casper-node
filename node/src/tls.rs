@@ -278,49 +278,48 @@ impl Serialize for TlsCert {
 /// Error during loading a x509 certificate.
 #[derive(Debug, Error, Serialize)]
 pub(crate) enum LoadCertError {
-    #[error(transparent)]
+    #[error("could not load certificate file: {0}")]
     ReadFile(
         #[serde(skip_serializing)]
-        #[from]
+        #[source]
         ReadFileError,
     ),
     #[error("unable to load x509 certificate {0:?}")]
-    X509(
+    X509CertFromPem(
         #[serde(skip_serializing)]
-        #[from]
+        #[source]
         ErrorStack,
     ),
 }
 
 /// Load a certificate from a file.
 pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> Result<X509, LoadCertError> {
-    eprintln!("loading cert {:?}", src.as_ref());
-    let pem = read_file(src.as_ref())?;
-    Ok(X509::from_pem(&pem)?)
+    let pem = read_file(src.as_ref()).map_err(LoadCertError::ReadFile)?;
+    X509::from_pem(&pem).map_err(LoadCertError::X509CertFromPem)
 }
 
 /// Error during loading a secret key.
 #[derive(Debug, Error, Serialize)]
 pub(crate) enum LoadSecretKeyError {
-    #[error(transparent)]
+    #[error("could not load secret key file: {0}")]
     ReadFile(
         #[serde(skip_serializing)]
-        #[from]
+        #[source]
         ReadFileError,
     ),
     #[error("unable to load private key from pem {0:?}")]
     PrivateKeyFromPem(
         #[serde(skip_serializing)]
-        #[from]
+        #[source]
         ErrorStack,
     ),
 }
 
 pub(crate) fn load_secret_key<P: AsRef<Path>>(src: P) -> Result<PKey<Private>, LoadSecretKeyError> {
-    let pem = read_file(src.as_ref())?;
+    let pem = read_file(src.as_ref()).map_err(LoadSecretKeyError::ReadFile)?;
 
     // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
-    Ok(PKey::private_key_from_pem(&pem)?)
+    PKey::private_key_from_pem(&pem).map_err(LoadSecretKeyError::PrivateKeyFromPem)
 }
 
 /// A signed value.
