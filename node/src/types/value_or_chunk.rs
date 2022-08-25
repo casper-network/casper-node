@@ -119,7 +119,7 @@ impl Display for TrieOrChunkId {
 #[cfg(test)]
 mod tests {
     use casper_hashing::ChunkWithProof;
-    use casper_types::bytesrepr::{self, Bytes};
+    use casper_types::bytesrepr::Bytes;
 
     use super::ValueOrChunk;
 
@@ -162,8 +162,9 @@ mod tests {
             .flat_map(|chunk| chunk.into_chunk())
             .collect();
 
-        let retrieved_input: Bytes = bytesrepr::deserialize(data).unwrap();
+        // Since `Bytes` are chunked "as-is", there's no deserialization of the bytes required.
+        let retrieved_bytes: Bytes = data.into();
 
-        assert_eq!(input, retrieved_input);
+        assert_eq!(input, retrieved_bytes);
     }
 }
