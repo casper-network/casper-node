@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use tracing::{error, trace};
+use tracing::{error, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -96,11 +96,12 @@ where
                             current = next;
                         }
                         None => {
-                            panic!(
+                            warn!(
                                 "No trie value at key: {:?} (reading from key: {:?})",
                                 pointer.hash(),
                                 key
                             );
+                            return Ok(ReadResult::NotFound);
                         }
                     },
                     None => {
@@ -117,11 +118,12 @@ where
                             current = next;
                         }
                         None => {
-                            panic!(
+                            warn!(
                                 "No trie value at key: {:?} (reading from key: {:?})",
                                 pointer.hash(),
                                 key
                             );
+                            return Ok(ReadResult::NotFound);
                         }
                     }
                 } else {
@@ -192,11 +194,12 @@ where
                 let next = match store.get(txn, pointer.hash())? {
                     Some(next) => next,
                     None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from key: {:?})",
+                        warn!(
+                            "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
-                            key
+                            path
                         );
+                        return Ok(ReadResult::NotFound);
                     }
                 };
                 depth += 1;
@@ -216,11 +219,12 @@ where
                 let next = match store.get(txn, pointer.hash())? {
                     Some(next) => next,
                     None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from key: {:?})",
+                        warn!(
+                            "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
-                            key
+                            path
                         );
+                        return Ok(ReadResult::NotFound);
                     }
                 };
                 depth += affix.len();
@@ -453,11 +457,12 @@ where
                         acc.push((index, Trie::Node { pointer_block }))
                     }
                     None => {
-                        panic!(
+                        warn!(
                             "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
                             path
                         );
+                        return Ok(ReadResult::NotFound);
                     }
                 }
             }
@@ -477,11 +482,12 @@ where
                         acc.push((index, Trie::Extension { affix, pointer }))
                     }
                     None => {
-                        panic!(
+                        warn!(
                             "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
                             path
                         );
+                        return Ok(ReadResult::NotFound);
                     }
                 }
             }
