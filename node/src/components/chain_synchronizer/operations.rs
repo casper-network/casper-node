@@ -162,11 +162,16 @@ where
                 debug!("no highest block header found in storage, no trusted header configured");
                 return Ok(None);
             }
-            (Some(config_header), Some(highest_header)) => {
-                if config_header.height() > highest_header.height() {
+            (Some(config_header), Some(stored_header)) => {
+                if config_header.height() > stored_header.height() {
                     config_header
                 } else {
-                    highest_header
+                    info!(
+                        %config_header,
+                        %stored_header,
+                        "using stored block that is more recent than configured trusted hash"
+                    );
+                    stored_header
                 }
             }
         };
