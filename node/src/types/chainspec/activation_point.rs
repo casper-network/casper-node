@@ -52,6 +52,14 @@ impl ActivationPoint {
             ActivationPoint::Genesis(timestamp) => Some(*timestamp),
         }
     }
+
+    /// Returns true if `self` is `Genesis`.
+    pub(crate) fn is_genesis(&self) -> bool {
+        match self {
+            ActivationPoint::EraId(_) => false,
+            ActivationPoint::Genesis(_) => true,
+        }
+    }
 }
 
 impl Display for ActivationPoint {

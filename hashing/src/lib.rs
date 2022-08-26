@@ -38,6 +38,7 @@ pub use chunk_with_proof::ChunkWithProof;
 pub use error::{
     ChunkWithProofVerificationError, Error, MerkleConstructionError, MerkleVerificationError,
 };
+pub use indexed_merkle_proof::IndexedMerkleProof;
 
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]

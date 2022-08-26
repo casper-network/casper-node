@@ -31,9 +31,9 @@ use crate::{
             error::{Error, FetchBlockHeadersBatchError, FetchTrieError},
             Config, Metrics, ProgressHolder,
         },
-        consensus::{self, error::FinalitySignatureError},
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
+        linear_chain::{self, BlockSignatureError},
     },
     effect::{
         announcements::{
@@ -56,19 +56,6 @@ use crate::{
 
 const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
-
-/// The outcome of `run_fast_sync_task`.
-#[derive(Debug, Serialize)]
-pub(crate) enum FastSyncOutcome {
-    ShouldCommitGenesis,
-    ShouldCommitUpgrade {
-        switch_block_header_before_upgrade: BlockHeader,
-        is_emergency_upgrade: bool,
-    },
-    Synced {
-        highest_block_header: BlockHeader,
-    },
-}
 
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
@@ -128,7 +115,7 @@ where
         config: &'a Config,
         metrics: &'a Metrics,
         progress: &'a ProgressHolder,
-    ) -> Result<Option<ChainSyncContext<'a, REv>>, Error> {
+    ) -> Result<ChainSyncContext<'a, REv>, Error> {
         debug_assert!(progress.is_fast_sync());
         let locally_available_block_range_on_start = effect_builder
             .get_available_block_range_from_storage()
@@ -146,22 +133,50 @@ where
             trie_fetch_limit: Semaphore::new(config.max_parallel_trie_fetches()),
         };
 
-        let trusted_block_header = match config.trusted_hash() {
-            Some(trusted_hash) => {
-                *fetch_and_store_initial_trusted_block_header(&ctx, metrics, trusted_hash).await?
+        // The config may contain the hash of a block that is known to be on the correct chain. We
+        // Also assume that all blocks in storage are correct. Fast sync will use whichever is more
+        // recent as a trusted starting point.
+        let maybe_stored_header = effect_builder.get_highest_block_header_from_storage().await;
+        let maybe_config_header = if let Some(trusted_hash) = config.trusted_hash() {
+            Some(*fetch_and_store_initial_trusted_block_header(&ctx, metrics, trusted_hash).await?)
+        } else {
+            None
+        };
+        let trusted_block_header = match (maybe_config_header, maybe_stored_header) {
+            (Some(config_header), None) => config_header,
+            (None, Some(stored_header)) => stored_header,
+            (None, None) => {
+                debug!("no highest block header found in storage, no trusted header configured");
+                return Err(Error::NoBlocksInStorage);
             }
-            None => match effect_builder.get_highest_block_header_from_storage().await {
-                Some(block_header) => block_header,
-                None => {
-                    debug!("no highest block header found in storage");
-                    return Ok(None);
+            (Some(config_header), Some(stored_header)) => {
+                if config_header.height() > stored_header.height() {
+                    config_header
+                } else {
+                    if let Some(stored_header_at_same_height) = effect_builder
+                        .get_block_header_at_height_from_storage(config_header.height(), false)
+                        .await
+                    {
+                        if stored_header_at_same_height != config_header {
+                            return Err(Error::TrustedHeaderOnDifferentFork {
+                                config_header: Box::new(config_header),
+                                stored_header_at_same_height: Box::new(
+                                    stored_header_at_same_height,
+                                ),
+                            });
+                        }
+                    }
+                    info!(
+                        %config_header,
+                        %stored_header,
+                        "using stored block that is more recent than configured trusted hash"
+                    );
+                    stored_header
                 }
-            },
+            }
         };
 
-        if trusted_block_header.protocol_version() != config.protocol_version()
-            && !config.is_last_block_before_activation(&trusted_block_header)
-        {
+        if trusted_block_header.protocol_version() != config.protocol_version() {
             return Err(Error::TrustedHeaderTooEarly {
                 trusted_header: Box::new(trusted_block_header),
                 current_protocol_version: config.protocol_version(),
@@ -171,7 +186,7 @@ where
 
         ctx.trusted_block_header = Some(Arc::new(trusted_block_header));
 
-        Ok(Some(ctx))
+        Ok(ctx)
     }
 }
 
@@ -237,11 +252,6 @@ impl<'a, REv> ChainSyncContext<'a, REv> {
         self.trusted_block_header
             .as_ref()
             .expect("trusted block header not initialized")
-    }
-
-    fn trusted_block_is_last_before_activation(&self) -> bool {
-        self.config
-            .is_last_block_before_activation(self.trusted_block_header())
     }
 
     /// Removes known bad peers from a given peer list.
@@ -676,7 +686,7 @@ impl KeyBlockInfo {
 trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
     fn header(&self) -> &BlockHeader;
 
-    fn finality_signatures(&self) -> &BlockSignatures;
+    fn block_signatures(&self) -> &BlockSignatures;
 
     async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
     where
@@ -689,8 +699,8 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
         self.block.header()
     }
 
-    fn finality_signatures(&self) -> &BlockSignatures {
-        &self.finality_signatures
+    fn block_signatures(&self) -> &BlockSignatures {
+        &self.block_signatures
     }
 
     async fn store_block_or_header<REv>(&self, effect_builder: EffectBuilder<REv>)
@@ -708,7 +718,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
         &self.block_header
     }
 
-    fn finality_signatures(&self) -> &BlockSignatures {
+    fn block_signatures(&self) -> &BlockSignatures {
         &self.block_signatures
     }
 
@@ -852,17 +862,35 @@ where
                     );
                 }
 
-                if let Err(error) = consensus::check_sufficient_finality_signatures(
-                    key_block_info.validator_weights(),
-                    ctx.config.finality_threshold_fraction(),
-                    Some(item.finality_signatures()),
-                ) {
-                    warn!(?error, ?peer, "insufficient finality signatures from peer");
+                if item.block_signatures().proofs.is_empty() {
+                    warn!(?peer, ?item, "no block signatures from peer");
                     ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
-                if let Err(error) = item.finality_signatures().verify() {
+                match linear_chain::check_sufficient_block_signatures(
+                    key_block_info.validator_weights(),
+                    ctx.config.finality_threshold_fraction(),
+                    Some(item.block_signatures()),
+                ) {
+                    Err(error @ BlockSignatureError::InsufficientWeightForFinality { .. }) => {
+                        info!(?error, ?peer, "insufficient block signatures from peer");
+                        continue;
+                    }
+                    Err(error @ BlockSignatureError::BogusValidator { .. }) => {
+                        warn!(?error, ?peer, "bogus validator block signature from peer");
+                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        continue;
+                    }
+                    // TODO - make this an error condition once we start using
+                    // `get_minimal_set_of_signatures`.
+                    Err(BlockSignatureError::TooManySignatures { .. }) => {
+                        debug!(?peer, "too many block signatures");
+                    }
+                    Ok(_) => (),
+                }
+
+                if let Err(error) = item.block_signatures().verify() {
                     warn!(
                         ?error,
                         ?peer,
@@ -874,7 +902,7 @@ where
 
                 // Store the block or header itself, and the finality signatures.
                 item.store_block_or_header(*ctx.effect_builder).await;
-                let sigs = item.finality_signatures().clone();
+                let sigs = item.block_signatures().clone();
                 ctx.effect_builder.put_signatures_to_storage(sigs).await;
 
                 break Some(item);
@@ -1337,7 +1365,8 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<ChainSynchronizerAnnouncement>,
+        + From<ChainSynchronizerAnnouncement>
+        + Send,
 {
     info!("starting chain sync to genesis");
     let _metric = ScopeTimer::new(&metrics.chain_sync_to_genesis_total_duration_seconds);
@@ -1463,7 +1492,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + Send,
 {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
     info!("syncing blocks and deploys and state since Genesis");
@@ -1505,7 +1535,8 @@ where
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
-        + From<MarkBlockCompletedRequest>,
+        + From<MarkBlockCompletedRequest>
+        + Send,
 {
     let trusted_block_height = ctx.trusted_block_header().height();
     loop {
@@ -1603,9 +1634,9 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> Result<(), FinalitySignatureError> {
+    ) -> Result<(), BlockSignatureError> {
         are_signatures_sufficient_for_sync_to_genesis(
-            consensus::check_sufficient_finality_signatures(
+            linear_chain::check_sufficient_block_signatures(
                 validator_weights,
                 finality_threshold_fraction,
                 self.0.as_ref(),
@@ -1617,9 +1648,9 @@ impl BlockSignaturesCollector {
         &self,
         validator_weights: &BTreeMap<PublicKey, U512>,
         finality_threshold_fraction: Ratio<u64>,
-    ) -> Result<(), FinalitySignatureError> {
+    ) -> Result<(), BlockSignatureError> {
         are_signatures_sufficient_for_sync_to_genesis(
-            consensus::check_sufficient_finality_signatures_with_quorum_formula(
+            linear_chain::check_sufficient_block_signatures_with_quorum_formula(
                 validator_weights,
                 finality_threshold_fraction,
                 self.0.as_ref(),
@@ -1645,16 +1676,20 @@ impl BlockSignaturesCollector {
         ctx: &ChainSyncContext<'_, REv>,
     ) -> Result<HandleSignaturesResult, Error>
     where
-        REv: From<StorageRequest> + From<BlocklistAnnouncement>,
+        REv: From<StorageRequest>
+            + From<BlocklistAnnouncement>
+            + From<ContractRuntimeRequest>
+            + Send,
     {
         if signatures.proofs.is_empty() {
             return Ok(HandleSignaturesResult::ContinueFetching);
         }
 
         let (era_for_validators_retrieval, validator_weights) =
-            era_validator_weights_for_block(block_header, ctx).await?;
+            linear_chain::era_validator_weights_for_block(block_header, *ctx.effect_builder)
+                .await?;
 
-        if let Err(err) = consensus::validate_finality_signatures(&signatures, &validator_weights) {
+        if let Err(err) = linear_chain::validate_block_signatures(&signatures, &validator_weights) {
             warn!(
                 ?peer,
                 ?err,
@@ -1673,10 +1708,9 @@ impl BlockSignaturesCollector {
             .is_ok()
         {
             debug!(
-                block_header_hash =
-                    ?block_header.hash(),
+                block_header_hash = %block_header.hash(),
                 height = block_header.height(),
-                ?era_for_validators_retrieval,
+                %era_for_validators_retrieval,
                 "fetched sufficient finality signatures"
             );
             Ok(HandleSignaturesResult::HaveSufficient)
@@ -1686,34 +1720,8 @@ impl BlockSignaturesCollector {
     }
 }
 
-/// Reads the validator weights that should be used to check the finality signatures for the given
-/// block.
-async fn era_validator_weights_for_block<'a, REv>(
-    block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<(EraId, BTreeMap<PublicKey, U512>), Error>
-where
-    REv: From<StorageRequest>,
-{
-    let era_for_validators_retrieval = get_era_id_for_validators_retrieval(&block_header.era_id());
-    let switch_block_of_previous_era = ctx
-        .effect_builder
-        .get_switch_block_header_at_era_id_from_storage(era_for_validators_retrieval)
-        .await
-        .ok_or(Error::NoSwitchBlockForEra {
-            era_id: era_for_validators_retrieval,
-        })?;
-    let validator_weights = switch_block_of_previous_era
-        .next_era_validator_weights()
-        .ok_or(Error::MissingNextEraValidators {
-            height: switch_block_of_previous_era.height(),
-            era_id: era_for_validators_retrieval,
-        })?;
-    Ok((era_for_validators_retrieval, validator_weights.clone()))
-}
-
-// Fetches the finality signatures from the given peer. In case of timeout, it'll
-// retry up to `retries` times. Other errors interrupt the process immediately.
+/// Fetches the finality signatures from the given peer. In case of timeout, it'll retry up to
+/// `retries` times. Other errors interrupt the process immediately.
 async fn fetch_finality_signatures_with_retry<REv>(
     block_hash: BlockHash,
     peer: NodeId,
@@ -1749,7 +1757,9 @@ where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
         + From<FetcherRequest<BlockSignatures>>
-        + From<BlocklistAnnouncement>,
+        + From<BlocklistAnnouncement>
+        + From<ContractRuntimeRequest>
+        + Send,
 {
     let start = Timestamp::now();
     let peer_list = get_filtered_fully_connected_peers(ctx).await;
@@ -1812,7 +1822,8 @@ where
     // default quorum fraction. However, in the "sync to genesis" process, we can consider
     // finality signatures as valid when their total weight is at least
     // `finality_threshold_fraction` of the total validator weights.
-    let (_, validator_weights) = era_validator_weights_for_block(&block_header, ctx).await?;
+    let (_, validator_weights) =
+        linear_chain::era_validator_weights_for_block(&block_header, *ctx.effect_builder).await?;
     sig_collector.check_if_sufficient_for_sync_to_genesis(
         &validator_weights,
         ctx.config.finality_threshold_fraction(),
@@ -1832,10 +1843,10 @@ where
 /// interpreted as Ok, so we're not hit by the anti-spam mechanism (i.e.: a mechanism that protects
 /// against peers that send too many finality signatures during normal chain operation).
 fn are_signatures_sufficient_for_sync_to_genesis(
-    result: Result<(), FinalitySignatureError>,
-) -> Result<(), FinalitySignatureError> {
+    result: Result<(), BlockSignatureError>,
+) -> Result<(), BlockSignatureError> {
     match result {
-        Err(err) if !matches!(err, FinalitySignatureError::TooManySignatures { .. }) => Err(err),
+        Err(err) if !matches!(err, BlockSignatureError::TooManySignatures { .. }) => Err(err),
         Err(_) | Ok(_) => Ok(()),
     }
 }
@@ -1859,19 +1870,13 @@ async fn finalize_finality_signature_fetch<REv>(
     }
 }
 
-/// Returns the EraId whose switch block should be used to obtain validator weights.
-fn get_era_id_for_validators_retrieval(era_id: &EraId) -> EraId {
-    // TODO: This function needs to handle upgrades with changes to the validator set.
-    era_id.saturating_sub(1)
-}
-
 /// Runs the initial chain synchronization task ("fast sync").
 pub(super) async fn run_fast_sync_task<REv>(
     effect_builder: EffectBuilder<REv>,
     config: Config,
     metrics: Metrics,
     progress: ProgressHolder,
-) -> Result<FastSyncOutcome, Error>
+) -> Result<BlockHeader, Error>
 where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
@@ -1894,25 +1899,16 @@ where
     progress.start();
 
     let ctx =
-        match ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics, &progress)
-            .await?
-        {
-            Some(ctx) => ctx,
-            None => return Ok(FastSyncOutcome::ShouldCommitGenesis),
-        };
+        ChainSyncContext::new_for_fast_sync(&effect_builder, &config, &metrics, &progress).await?;
     verify_trusted_block_header(&ctx)?;
 
     // We should have at least one block header in storage now as a result of calling
-    // `ChainSyncContext::new`.
+    // `ChainSyncContext::new_for_fast_sync`.
     let mut highest_block_header =
         match effect_builder.get_highest_block_header_from_storage().await {
             Some(block_header) => block_header,
             None => return Err(Error::NoHighestBlockHeader),
         };
-
-    if let Some(outcome) = prepare_for_upgrade_if_needed(&ctx, &highest_block_header).await? {
-        return Ok(outcome);
-    }
 
     let (highest_synced_block_header, highest_synced_key_block_info) = fast_sync(&ctx).await?;
 
@@ -1946,9 +1942,7 @@ where
         "finished initial chain sync",
     );
 
-    Ok(FastSyncOutcome::Synced {
-        highest_block_header,
-    })
+    Ok(highest_block_header)
 }
 
 async fn fetch_and_store_initial_trusted_block_header<REv>(
@@ -1997,73 +1991,6 @@ fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(
     };
 
     Ok(())
-}
-
-/// Returns `Ok(Some(FastSyncOutcome::ShouldCommitUpgrade))` if we should commit an upgrade before
-/// syncing further, or `Ok(None)` if not.
-///
-/// If this returns `Ok(Some...)`, we sync the trie store in preparation for running commit_upgrade.
-async fn prepare_for_upgrade_if_needed<REv>(
-    ctx: &ChainSyncContext<'_, REv>,
-    highest_block_header: &BlockHeader,
-) -> Result<Option<FastSyncOutcome>, Error>
-where
-    REv: From<NetworkInfoRequest>
-        + From<BlocklistAnnouncement>
-        + From<ContractRuntimeRequest>
-        + From<FetcherRequest<BlockHeaderWithMetadata>>
-        + From<FetcherRequest<TrieOrChunk>>
-        + From<FetcherRequest<BlockHeader>>
-        + From<StorageRequest>
-        + Send,
-{
-    // If the trusted block is the last switch block before an upgrade, and we haven't already run
-    // the upgrade:
-    // 1. Get the trusted era validators from this last switch block
-    // 2. Try to get the next block by height; if there is `None` then,
-    // 3. Sync the trie store
-    if !ctx.trusted_block_is_last_before_activation()
-        || highest_block_header.protocol_version() >= ctx.config.protocol_version()
-    {
-        return Ok(None);
-    }
-    let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-
-    if is_current_era(
-        ctx.trusted_block_header(),
-        &trusted_key_block_info,
-        ctx.config,
-    ) {
-        info!(
-            era = ctx.trusted_block_header().era_id().value(),
-            height = ctx.trusted_block_header().height(),
-            timestamp = %ctx.trusted_block_header().timestamp(),
-            "in current era, so synchronizing trie store before committing upgrade",
-        );
-    } else {
-        let fetch_and_store_next_result = fetch_and_store_next::<_, BlockHeaderWithMetadata>(
-            ctx.trusted_block_header(),
-            &trusted_key_block_info,
-            ctx,
-        )
-        .await?;
-
-        if fetch_and_store_next_result.is_some() {
-            return Ok(None);
-        }
-        info!("synchronizing trie store before committing upgrade");
-    }
-
-    ctx.progress.start_fetching_tries_for_upgrade(
-        ctx.trusted_block_header().height(),
-        *ctx.trusted_block_header().state_root_hash(),
-    );
-    sync_trie_store(ctx.trusted_block_header(), ctx).await?;
-    info!("finished synchronizing before committing upgrade");
-    Ok(Some(FastSyncOutcome::ShouldCommitUpgrade {
-        switch_block_header_before_upgrade: ctx.trusted_block_header().clone(),
-        is_emergency_upgrade: false,
-    }))
 }
 
 async fn retry_execution_with_approvals_from_peer<REv>(
@@ -2458,35 +2385,12 @@ mod tests {
     }
 
     #[test]
-    fn gets_correct_era_id_for_validators_retrieval() {
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(0))
-        );
-
-        assert_eq!(
-            EraId::from(0),
-            get_era_id_for_validators_retrieval(&EraId::from(1))
-        );
-
-        assert_eq!(
-            EraId::from(1),
-            get_era_id_for_validators_retrieval(&EraId::from(2))
-        );
-
-        assert_eq!(
-            EraId::from(999),
-            get_era_id_for_validators_retrieval(&EraId::from(1000))
-        );
-    }
-
-    #[test]
     fn validates_signatures_sufficiency_for_sync_to_genesis() {
         let consensus_verdict = Ok(());
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
         let mut rng = TestRng::new();
-        let consensus_verdict = Err(FinalitySignatureError::TooManySignatures {
+        let consensus_verdict = Err(BlockSignatureError::TooManySignatures {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2495,11 +2399,11 @@ mod tests {
             signature_weight: Box::new(U512::from(0u16)),
             weight_minus_minimum: Box::new(U512::from(0u16)),
             total_validator_weight: Box::new(U512::from(0u16)),
-            finality_threshold_fraction: Ratio::new_raw(1, 2),
+            fault_tolerance_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_ok());
 
-        let consensus_verdict = Err(FinalitySignatureError::InsufficientWeightForFinality {
+        let consensus_verdict = Err(BlockSignatureError::InsufficientWeightForFinality {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Some(Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
@@ -2507,11 +2411,11 @@ mod tests {
             ))),
             signature_weight: Some(Box::new(U512::from(0u16))),
             total_validator_weight: Box::new(U512::from(0u16)),
-            finality_threshold_fraction: Ratio::new_raw(1, 2),
+            fault_tolerance_fraction: Ratio::new_raw(1, 2),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
 
-        let consensus_verdict = Err(FinalitySignatureError::BogusValidator {
+        let consensus_verdict = Err(BlockSignatureError::BogusValidator {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
