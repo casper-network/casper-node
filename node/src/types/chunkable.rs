@@ -13,9 +13,9 @@ pub trait Chunkable {
     ///
     /// Returnes a [`Cow`] instance in case the resulting bytes are the same as input and we don't
     /// want to reinitialize. This also helps with a case where returning a vector of bytes
-    /// would require instantiating a `Vec<u8>` locally (see [`casper_types::bytesrepr::ToBytes`]) but can't be
-    /// returned as reference. Alternative encoding would be to consume `Self` and return `Vec<u8>`
-    /// but that may do it unnecessarily if `Self` would be to used again.
+    /// would require instantiating a `Vec<u8>` locally (see [`casper_types::bytesrepr::ToBytes`])
+    /// but can't be returned as reference. Alternative encoding would be to consume `Self` and
+    /// return `Vec<u8>` but that may do it unnecessarily if `Self` would be to used again.
     fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error>;
 }
 
