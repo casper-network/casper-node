@@ -217,7 +217,7 @@ where
                 synchronizer.metrics.clone(),
                 progress,
             )
-            .event(Event::SyncToGenesisResult);
+            .event(|result| Event::SyncToGenesisResult(Box::new(result)));
 
             return Ok((synchronizer, effects));
         }
@@ -294,9 +294,9 @@ where
             Event::SyncToGenesisResult(result) => {
                 // TODO[RC]: When all fetch operations are unified, rely on the single
                 // `Error::AttemptsExhausted` variant.
-                if matches!(result, Err(Error::AttemptsExhausted))
-                    | matches!(result, Err(Error::FetchHeadersBatch(ref err)) if matches!(err, FetchBlockHeadersBatchError::AttemptsExhausted))
-                    | matches!(result, Err(Error::FetchTrie(err)) if matches!(err, FetchTrieError::AttemptsExhausted))
+                if matches!(*result, Err(Error::AttemptsExhausted))
+                    | matches!(*result, Err(Error::FetchHeadersBatch(ref err)) if matches!(err, FetchBlockHeadersBatchError::AttemptsExhausted))
+                    | matches!(*result, Err(Error::FetchTrie(err)) if matches!(err, FetchTrieError::AttemptsExhausted))
                 {
                     error!("sync to genesis failed due to fetch retries exhaustion; shutting down");
                     fatal!(
