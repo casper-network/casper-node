@@ -487,6 +487,7 @@ where
                 );
                 ctx.mark_bad_peer(peer);
             }
+            Err(FetcherError::Rejected { .. }) => todo!(),
             Err(FetcherError::TimedOut { .. }) => {
                 warn!(
                     ?id,
@@ -1627,6 +1628,8 @@ where
         ctx.progress
             .start_fetching_block_signatures_for_sync_forward(block_height);
         fetch_and_store_finality_signatures_by_block_header(block_header, ctx).await?;
+        ctx.effect_builder.mark_block_completed(block_height).await;
+        ctx.metrics.chain_sync_blocks_synced.inc();
         ctx.progress
             .finish_syncing_block_for_sync_forward(block_height);
     }

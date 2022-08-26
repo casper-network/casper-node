@@ -65,6 +65,7 @@ use crate::{
 };
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
+const RECENT_ERA_COUNT: u64 = 7;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -267,6 +268,7 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
+            RECENT_ERA_COUNT,
         )
         .unwrap();
 
@@ -415,14 +417,23 @@ impl reactor::Reactor for Reactor {
             ),
             Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
                 NetResponse::Deploy(ref serialized_item) => {
-                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                    let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
                         serialized_item,
                     ) {
-                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                        Ok(FetchResponse::Fetched(deploy)) => Box::new(deploy),
+                        Ok(FetchResponse::NotFound(deploy_hash)) => {
                             return fatal!(
                                 effect_builder,
                                 "peer did not have deploy with hash {}: {}",
+                                deploy_hash,
+                                sender,
+                            )
+                            .ignore();
+                        }
+                        Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                            return fatal!(
+                                effect_builder,
+                                "peer refused to provide deploy with hash {}: {}",
                                 deploy_hash,
                                 sender,
                             )

@@ -418,6 +418,7 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
+            chainspec.core_config.unbonding_delay,
         )
         .unwrap();
 

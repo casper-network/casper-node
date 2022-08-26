@@ -17,7 +17,7 @@ use tracing::error;
 use crate::{
     components::{
         consensus,
-        fetcher::FetchedOrNotFound,
+        fetcher::FetchResponse,
         gossiper,
         small_network::{
             EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload, ValidatorSets,
@@ -233,7 +233,7 @@ impl Message {
     }
 
     pub(crate) fn new_get_response<T: FetcherItem>(
-        item: &FetchedOrNotFound<T, T::Id>,
+        item: &FetchResponse<T, T::Id>,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {
             tag: T::TAG,
@@ -242,7 +242,7 @@ impl Message {
     }
 
     pub(crate) fn new_get_response_for_gossiper<T: GossiperItem>(
-        item: &FetchedOrNotFound<T, T::Id>,
+        item: &FetchResponse<T, T::Id>,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {
             tag: T::TAG,

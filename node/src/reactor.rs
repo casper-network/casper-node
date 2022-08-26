@@ -61,7 +61,7 @@ use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 use crate::{
-    components::{deploy_acceptor, fetcher, fetcher::FetchedOrNotFound},
+    components::{deploy_acceptor, fetcher, fetcher::FetchResponse},
     effect::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
         incoming::NetResponse,
@@ -976,34 +976,43 @@ where
         NetResponse::Deploy(ref serialized_item) => {
             // Incoming Deploys should be routed to the `DeployAcceptor` rather than directly to the
             // `DeployFetcher`.
-            let event = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
-                serialized_item,
-            ) {
-                Ok(FetchedOrNotFound::Fetched(deploy)) => {
-                    <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
-                        deploy: Box::new(deploy),
-                        source: Source::Peer(sender),
-                        maybe_responder: None,
-                    })
-                }
-                Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                    info!(%sender, ?deploy_hash, "peer did not have deploy",);
-                    <R as Reactor>::Event::from(fetcher::Event::<Deploy>::AbsentRemotely {
-                        id: deploy_hash,
-                        peer: sender,
-                    })
-                }
-                Err(error) => {
-                    warn!(
-                        %sender,
-                        %error,
-                        "received a deploy item we couldn't parse, banning peer",
-                    );
-                    return effect_builder
-                        .announce_disconnect_from_peer(sender)
-                        .ignore();
-                }
-            };
+            let event =
+                match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(serialized_item) {
+                    Ok(FetchResponse::Fetched(deploy)) => {
+                        <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
+                            deploy: Box::new(deploy),
+                            source: Source::Peer(sender),
+                            maybe_responder: None,
+                        })
+                    }
+                    Ok(FetchResponse::NotFound(deploy_hash)) => {
+                        info!(%sender, ?deploy_hash, "peer did not have deploy",);
+                        <R as Reactor>::Event::from(fetcher::Event::<Deploy>::AbsentRemotely {
+                            id: deploy_hash,
+                            peer: sender,
+                        })
+                    }
+                    Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                        warn!(
+                            %sender,
+                            ?deploy_hash,
+                            "peer refused to provide deploy, banning peer"
+                        );
+                        return effect_builder
+                            .announce_disconnect_from_peer(sender)
+                            .ignore();
+                    }
+                    Err(error) => {
+                        warn!(
+                            %sender,
+                            %error,
+                            "received a deploy item we couldn't parse, banning peer",
+                        );
+                        return effect_builder
+                            .announce_disconnect_from_peer(sender)
+                            .ignore();
+                    }
+                };
             <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
         }
         NetResponse::FinalizedApprovals(ref serialized_item) => {

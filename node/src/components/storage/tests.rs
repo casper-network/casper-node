@@ -30,6 +30,8 @@ use crate::{
     utils::WithDir,
 };
 
+const RECENT_ERA_COUNT: u64 = 7;
+
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
 
@@ -59,6 +61,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
+        RECENT_ERA_COUNT,
     )
     .expect("could not create storage component fixture")
 }
@@ -80,6 +83,7 @@ fn storage_fixture_with_hard_reset(
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
+        RECENT_ERA_COUNT,
     )
     .expect("could not create storage component fixture")
 }
@@ -1056,6 +1060,7 @@ fn should_create_subdir_named_after_network() {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
+        RECENT_ERA_COUNT,
     )
     .unwrap();
 

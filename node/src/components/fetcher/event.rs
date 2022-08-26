@@ -7,7 +7,7 @@ use tracing::error;
 
 use super::FetcherItem;
 use crate::{
-    components::fetcher::FetchedOrNotFound,
+    components::fetcher::FetchResponse,
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
     types::{Deploy, NodeId},
     utils::Source,
@@ -20,6 +20,9 @@ where
 {
     #[error("Could not fetch item with id {id:?} from peer {peer:?}")]
     Absent { id: T::Id, peer: NodeId },
+
+    #[error("Peer {peer:?} rejected fetch request for item with id {id:?}")]
+    Rejected { id: T::Id, peer: NodeId },
 
     #[error("Timed out getting item with id {id:?} from peer {peer:?}")]
     TimedOut { id: T::Id, peer: NodeId },
@@ -71,9 +74,11 @@ pub(crate) enum Event<T: FetcherItem> {
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
-    RejectedRemotely { id: T::Id, source: Source },
+    GotInvalidRemotely { id: T::Id, source: Source },
     /// An item was not available on the remote peer.
     AbsentRemotely { id: T::Id, peer: NodeId },
+    /// An item was available on the remote peer, but it chose to not provide it.
+    RejectedRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
     TimeoutPeer { id: T::Id, peer: NodeId },
 }
@@ -83,12 +88,13 @@ impl<T: FetcherItem> Event<T> {
         peer: NodeId,
         serialized_item: &[u8],
     ) -> Option<Self> {
-        match bincode::deserialize::<FetchedOrNotFound<T, T::Id>>(serialized_item) {
-            Ok(FetchedOrNotFound::Fetched(item)) => Some(Event::GotRemotely {
+        match bincode::deserialize::<FetchResponse<T, T::Id>>(serialized_item) {
+            Ok(FetchResponse::Fetched(item)) => Some(Event::GotRemotely {
                 item: Box::new(item),
                 source: Source::Peer(peer),
             }),
-            Ok(FetchedOrNotFound::NotFound(id)) => Some(Event::AbsentRemotely { id, peer }),
+            Ok(FetchResponse::NotFound(id)) => Some(Event::AbsentRemotely { id, peer }),
+            Ok(FetchResponse::NotProvided(id)) => Some(Event::RejectedRemotely { id, peer }),
             Err(error) => {
                 error!("failed to decode {:?} from {}: {:?}", T::TAG, peer, error);
                 None
@@ -115,7 +121,7 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
                 }
             }
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
-                Event::RejectedRemotely {
+                Event::GotInvalidRemotely {
                     id: *Deploy::id(&deploy),
                     source,
                 }
@@ -140,8 +146,8 @@ impl<T: FetcherItem> Display for Event<T> {
             Event::GotRemotely { item, source } => {
                 write!(formatter, "got {} from {}", item.id(), source)
             }
-            Event::RejectedRemotely { id, source } => {
-                write!(formatter, "other component rejected {} from {}", id, source)
+            Event::GotInvalidRemotely { id, source } => {
+                write!(formatter, "invalid item {} from {}", id, source)
             }
             Event::TimeoutPeer { id, peer } => write!(
                 formatter,
@@ -149,7 +155,14 @@ impl<T: FetcherItem> Display for Event<T> {
                 id, peer
             ),
             Event::AbsentRemotely { id, peer } => {
-                write!(formatter, "Item {} was not available on {}", id, peer)
+                write!(formatter, "item {} was not available on {}", id, peer)
+            }
+            Event::RejectedRemotely { id, peer } => {
+                write!(
+                    formatter,
+                    "request to fetch item {} was rejected by {}",
+                    id, peer
+                )
             }
         }
     }

@@ -61,7 +61,7 @@ pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 use self::operations::execute_only;
 
-use super::fetcher::FetchedOrNotFound;
+use super::fetcher::FetchResponse;
 
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
 #[derive(Debug, Error, From)]
@@ -249,15 +249,15 @@ impl ContractRuntime {
     where
         REv: From<NetworkRequest<Message>> + Send,
     {
-        let fetched_or_not_found = match self.get_trie(serialized_id) {
-            Ok(fetched_or_not_found) => fetched_or_not_found,
+        let fetch_response = match self.get_trie(serialized_id) {
+            Ok(fetch_response) => fetch_response,
             Err(error) => {
                 debug!("failed to get trie: {}", error);
                 return Effects::new();
             }
         };
 
-        match Message::new_get_response(&fetched_or_not_found) {
+        match Message::new_get_response(&fetch_response) {
             Ok(message) => effect_builder.send_message(sender, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);
@@ -275,8 +275,8 @@ impl ContractRuntime {
             ..
         }: TrieDemand,
     ) -> Effects<Event> {
-        let fetched_or_not_found = match self.get_trie(serialized_id) {
-            Ok(fetched_or_not_found) => fetched_or_not_found,
+        let fetch_response = match self.get_trie(serialized_id) {
+            Ok(fetch_response) => fetch_response,
             Err(error) => {
                 // Something is wrong in our trie store, but be courteous and still send a reply.
                 debug!("failed to get trie: {}", error);
@@ -284,7 +284,7 @@ impl ContractRuntime {
             }
         };
 
-        match Message::new_get_response(&fetched_or_not_found) {
+        match Message::new_get_response(&fetch_response) {
             Ok(message) => auto_closing_responder.respond(message).ignore(),
             Err(error) => {
                 // This should never happen, but if it does, we let the peer know we cannot help.
@@ -848,12 +848,12 @@ impl ContractRuntime {
     pub(crate) fn get_trie(
         &self,
         serialized_id: &[u8],
-    ) -> Result<FetchedOrNotFound<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
+    ) -> Result<FetchResponse<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
         trace!(?serialized_id, "get_trie");
 
         let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
         let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
-        Ok(FetchedOrNotFound::from_opt(id, maybe_trie))
+        Ok(FetchResponse::from_opt(id, maybe_trie))
     }
 
     fn do_get_trie(

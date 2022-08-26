@@ -45,7 +45,6 @@ pub(crate) trait ReactorEventT<T>:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<BlocklistAnnouncement>
-    // Won't be needed when we implement "get block by height" feature in storage.
     + Send
     + 'static
 where
@@ -70,31 +69,35 @@ where
 
 /// Message to be returned by a peer. Indicates if the item could be fetched or not.
 #[derive(Serialize, Deserialize)]
-pub enum FetchedOrNotFound<T, Id> {
+pub enum FetchResponse<T, Id> {
+    /// The requested item.
     Fetched(T),
+    /// The sender does not have the requested item available.
     NotFound(Id),
+    /// The sender chose to not provide the requested item.
+    NotProvided(Id),
 }
 
-impl<T, Id> FetchedOrNotFound<T, Id> {
+impl<T, Id> FetchResponse<T, Id> {
     /// Constructs a fetched or not found from an option and an id.
     pub(crate) fn from_opt(id: Id, item: Option<T>) -> Self {
         match item {
-            Some(item) => FetchedOrNotFound::Fetched(item),
-            None => FetchedOrNotFound::NotFound(id),
+            Some(item) => FetchResponse::Fetched(item),
+            None => FetchResponse::NotFound(id),
         }
     }
 
-    /// Returns whether this reponse is a positive (fetched / "found") one.
+    /// Returns whether this response is a positive (fetched / "found") one.
     pub(crate) fn was_found(&self) -> bool {
-        matches!(self, FetchedOrNotFound::Fetched(_))
+        matches!(self, FetchResponse::Fetched(_))
     }
 }
 
-impl<T, Id> FetchedOrNotFound<T, Id>
+impl<T, Id> FetchResponse<T, Id>
 where
     Self: Serialize,
 {
-    /// The canonical serialization for the inner encoding of the `FetchedOrNotFound` response (see
+    /// The canonical serialization for the inner encoding of the `FetchResponse` response (see
     /// [`Message::GetResponse`]).
     pub(crate) fn to_serialized(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
@@ -192,8 +195,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
         effects
     }
 
-    /// Responds to all responders corresponding to an item/peer with a result. Result could be an
-    /// item or a timeout.
+    /// Responds to all responders corresponding to a specific item-peer combination with a result.
     fn send_response_from_peer(
         &mut self,
         id: T::Id,
@@ -234,6 +236,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
             }
             Err(
                 error @ FetcherError::Absent { .. }
+                | error @ FetcherError::Rejected { .. }
                 | error @ FetcherError::CouldNotConstructGetRequest { .. },
             ) => {
                 // For all other error variants we can safely respond with failure as there's no
@@ -746,27 +749,26 @@ where
                 }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer, responder),
             },
-            Event::GotRemotely { item, source } => {
-                match source {
-                    Source::Peer(peer) => {
-                        self.metrics().found_on_peer.inc();
-                        if let Err(err) = item.validate() {
-                            warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
-                            effect_builder.announce_disconnect_from_peer(peer).ignore()
-                        } else {
-                            self.signal(item.id(), Ok(*item), peer)
-                        }
-                    }
-                    Source::Client | Source::Ourself => {
-                        // TODO - we could possibly also handle this case
-                        Effects::new()
+            Event::GotRemotely { item, source } => match source {
+                Source::Peer(peer) => {
+                    self.metrics().found_on_peer.inc();
+                    if let Err(err) = item.validate() {
+                        warn!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
+                        effect_builder.announce_disconnect_from_peer(peer).ignore()
+                    } else {
+                        self.signal(item.id(), Ok(*item), peer)
                     }
                 }
-            }
-            Event::RejectedRemotely { .. } => Effects::new(),
+                Source::Client | Source::Ourself => Effects::new(),
+            },
+            Event::GotInvalidRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
                 trace!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
                 self.signal(id.clone(), Err(FetcherError::Absent { id, peer }), peer)
+            }
+            Event::RejectedRemotely { id, peer } => {
+                trace!(TAG=%T::TAG, %id, %peer, "peer rejected fetch request");
+                self.signal(id.clone(), Err(FetcherError::Rejected { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
                 self.signal(id.clone(), Err(FetcherError::TimedOut { id, peer }), peer)

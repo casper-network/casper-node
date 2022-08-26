@@ -79,6 +79,7 @@ reactor!(Reactor {
             chainspec_loader.hard_reset_to_start_of_era(),
             chainspec_loader.chainspec().protocol_config.version,
             &chainspec_loader.chainspec().network_config.name,
+            chainspec_loader.chainspec().core_config.unbonding_delay,
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(
@@ -147,14 +148,23 @@ impl Reactor {
     ) -> Effects<ReactorEvent> {
         match response.message {
             NetResponse::Deploy(ref serialized_item) => {
-                let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
                     serialized_item,
                 ) {
-                    Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                    Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                    Ok(FetchResponse::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchResponse::NotFound(deploy_hash)) => {
                         return fatal!(
                             effect_builder,
                             "peer did not have deploy with hash {}: {}",
+                            deploy_hash,
+                            response.sender,
+                        )
+                        .ignore();
+                    }
+                    Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                        return fatal!(
+                            effect_builder,
+                            "peer refused to provide deploy with hash {}: {}",
                             deploy_hash,
                             response.sender,
                         )

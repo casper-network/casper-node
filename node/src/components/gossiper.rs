@@ -19,7 +19,7 @@ use prometheus::Registry;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{fetcher::FetchedOrNotFound, Component},
+    components::{fetcher::FetchResponse, Component},
     effect::{
         announcements::GossiperAnnouncement,
         incoming::GossiperIncoming,
@@ -510,7 +510,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        match NodeMessage::new_get_response_for_gossiper(&FetchedOrNotFound::Fetched(item)) {
+        match NodeMessage::new_get_response_for_gossiper(&FetchResponse::Fetched(item)) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);

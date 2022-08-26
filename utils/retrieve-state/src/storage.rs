@@ -24,6 +24,8 @@ use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
 
+const RECENT_ERA_COUNT: u64 = 7;
+
 /// Gets many deploys by hash.
 pub fn get_many_deploys_by_hash(
     storage: &Storage,
@@ -136,6 +138,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         None,
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
+        RECENT_ERA_COUNT,
     )?)
 }
 

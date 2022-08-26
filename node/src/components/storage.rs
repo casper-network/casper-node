@@ -71,7 +71,7 @@ use casper_types::{
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
 use crate::{
-    components::{fetcher::FetchedOrNotFound, Component},
+    components::{fetcher::FetchResponse, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{MarkBlockCompletedRequest, NetworkRequest, StateStoreRequest},
@@ -185,6 +185,10 @@ pub struct Storage {
     ///
     /// Keyed by serialized item ID, contains the serialized item.
     serialized_item_pool: ObjectPool<Box<[u8]>>,
+    /// The number of eras relative to the highest block's era which are considered as recent for
+    /// the purpose of deciding how to respond to a
+    /// `NetRequest::BlockHeaderAndFinalitySignaturesByHeight`.
+    recent_era_count: u64,
 }
 
 /// A storage component event.
@@ -278,6 +282,7 @@ impl Storage {
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
+        recent_era_count: u64,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -420,6 +425,7 @@ impl Storage {
             completed_blocks: Default::default(),
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
+            recent_era_count,
         };
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
@@ -552,13 +558,13 @@ impl Storage {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::FinalizedApprovals(ref serialized_id) => {
@@ -577,25 +583,25 @@ impl Storage {
                             FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
                         )
                     });
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::Block(ref serialized_id) => {
                 let id = decode_item_id::<Block>(serialized_id)?;
                 let opt_item = self.read_block(&id).map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::FinalitySignature(ref serialized_id) => {
@@ -614,13 +620,13 @@ impl Storage {
                         });
                     }
                 }
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::GossipedAddress(_) => Err(GetRequestError::GossipedAddressNotGettable),
@@ -629,13 +635,13 @@ impl Storage {
                 let opt_item = self
                     .read_block_and_metadata_by_height(item_id)
                     .map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    item_id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::BlockHeaderByHash(ref serialized_id) => {
@@ -643,13 +649,13 @@ impl Storage {
                 let opt_item = self
                     .read_block_header_by_hash(&item_id)
                     .map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    item_id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_id) => {
@@ -658,12 +664,35 @@ impl Storage {
                     .read_block_header_and_metadata_by_height(item_id)
                     .map_err(FatalStorageError::from)?;
 
+                let fetch_response = match opt_item {
+                    Some(item) => {
+                        let highest_header = {
+                            let mut txn =
+                                self.env.begin_ro_txn().map_err(FatalStorageError::from)?;
+                            self.get_highest_block_header(&mut txn)?.ok_or_else(|| {
+                                error!("should have highest header as at least one header stored");
+                                GetRequestError::FailedToGetHighestBlockHeader
+                            })?
+                        };
+                        if item
+                            .block_header
+                            .era_id()
+                            .saturating_add(self.recent_era_count)
+                            > highest_header.era_id()
+                        {
+                            FetchResponse::Fetched(item)
+                        } else {
+                            FetchResponse::NotProvided(item_id)
+                        }
+                    }
+                    None => FetchResponse::NotFound(item_id),
+                };
+
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    item_id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::BlockAndDeploys(ref serialized_id) => {
@@ -671,39 +700,37 @@ impl Storage {
                 let opt_item = self
                     .read_block_and_deploys_by_hash(item_id)
                     .map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    item_id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::BlockHeadersBatch(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockHeadersBatch>(serialized_id)?;
-
                 let opt_item = self.read_block_headers_batch(&item_id)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    item_id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
             NetRequest::FinalitySignatures(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
-
                 let opt_item = self.read_block_signatures(&item_id)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
                     serialized_id,
-                    item_id,
-                    opt_item,
+                    fetch_response,
                 )?)
             }
         }
@@ -1820,32 +1847,30 @@ impl Storage {
         Ok(BlockHeadersBatch::from_vec(headers, block_header_ids))
     }
 
-    /// Creates a serialized representation of a `FetchedOrNotFound` and the resulting message.
+    /// Creates a serialized representation of a `FetchResponse` and the resulting message.
     ///
-    /// If the given item is `Some`, returns a serialization of `FetchedOrNotFound::Fetched`. If
+    /// If the given item is `Some`, returns a serialization of `FetchResponse::Fetched`. If
     /// enabled, the given serialization is also added to the in-memory pool.
     ///
     /// If the given item is `None`, returns a non-pooled serialization of
-    /// `FetchedOrNotFound::NotFound`.
+    /// `FetchResponse::NotFound`.
     fn update_pool_and_send<REv, T>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
         serialized_id: &[u8],
-        id: T::Id,
-        opt_item: Option<T>,
+        fetch_response: FetchResponse<T, T::Id>,
     ) -> Result<Effects<Event>, FatalStorageError>
     where
         REv: From<NetworkRequest<Message>> + Send,
         T: FetcherItem,
     {
-        let fetched_or_not_found = FetchedOrNotFound::from_opt(id, opt_item);
-        let serialized = fetched_or_not_found
+        let serialized = fetch_response
             .to_serialized()
             .map_err(FatalStorageError::StoredItemSerializationFailure)?;
         let shared: Arc<[u8]> = serialized.into();
 
-        if self.enable_mem_deduplication && fetched_or_not_found.was_found() {
+        if self.enable_mem_deduplication && fetch_response.was_found() {
             self.serialized_item_pool
                 .put(serialized_id.into(), Arc::downgrade(&shared));
         }
