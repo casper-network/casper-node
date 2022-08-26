@@ -448,7 +448,7 @@ async fn fetch_from_peers<REv, T>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Option<Result<FetchedData<T>, FetchWithRetryError<T>>>
 where
-    T: Item + CanUseSyncingNodes + 'static,
+    T: Item + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     for peer in new_peer_list {
