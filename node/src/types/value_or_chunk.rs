@@ -50,15 +50,20 @@ impl<V> ValueOrChunk<V> {
     where
         V: Chunkable,
     {
-        let bytes = Chunkable::as_bytes(&data)
-            .map_err(|error| ChunkingError::SerializationError(format!("{:?}", error)))?;
+        let bytes = Chunkable::as_bytes(&data).map_err(|error| {
+            ChunkingError::SerializationError(format!(
+                "failed to chunk {:?}: {:?}",
+                std::any::type_name::<V>(),
+                error
+            ))
+        })?;
         // NOTE: Cannot accept the chunk size bytes as an argument without changing the
         // IndexedMerkleProof. The chunk size there is hardcoded and will be used when
         // determining the chunk.
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
             Ok(ValueOrChunk::Value(data))
         } else {
-            let chunk_with_proof = ChunkWithProof::new(bytes, chunk_index)
+            let chunk_with_proof = ChunkWithProof::new(&bytes, chunk_index)
                 .map_err(ChunkingError::MerkleConstruction)?;
             Ok(ValueOrChunk::ChunkWithProof(chunk_with_proof))
         }
