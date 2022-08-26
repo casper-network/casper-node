@@ -217,7 +217,7 @@ where
                 synchronizer.metrics.clone(),
                 progress,
             )
-            .event(Event::SyncResultToGenesisResult);
+            .event(Event::SyncToGenesisResult);
 
             return Ok((synchronizer, effects));
         }
@@ -291,7 +291,7 @@ where
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::SyncResultToGenesisResult(result) => {
+            Event::SyncToGenesisResult(result) => {
                 // TODO[RC]: When all fetch operations are unified, rely on the single
                 // `Error::AttemptsExhausted` variant.
                 if matches!(result, Err(Error::AttemptsExhausted))

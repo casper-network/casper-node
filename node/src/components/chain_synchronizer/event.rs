@@ -10,7 +10,7 @@ use crate::{effect::requests::NodeStateRequest, types::BlockHeader};
 #[allow(clippy::enum_variant_names)]
 pub(crate) enum Event {
     /// The result of running the fast sync task.
-    SyncResultToGenesisResult(Result<(), Error>),
+    SyncToGenesisResult(Result<(), Error>),
     /// The result of running the fast sync task.
     FastSyncResult {
         result: Box<Result<BlockHeader, Error>>,
@@ -26,7 +26,7 @@ impl Display for Event {
             Event::FastSyncResult { result } => {
                 write!(formatter, "fast sync result: {:?}", result)
             }
-            Event::SyncResultToGenesisResult(result) => {
+            Event::SyncToGenesisResult(result) => {
                 write!(formatter, "sync to genesis result: {:?}", result)
             }
             Event::GetNodeState(_) => write!(formatter, "get node state"),
