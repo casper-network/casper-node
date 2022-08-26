@@ -423,7 +423,7 @@ where
         }
 
         if let Some(value) = fetch_from_peers(new_peer_list, id, ctx).await {
-            return value;
+            return value.map_err(Into::into);
         }
 
         total_attempts += 1;
@@ -431,6 +431,12 @@ where
             attempts_after_bootstrapped += 1;
         }
         if attempts_after_bootstrapped >= ctx.config.max_sync_fetch_attempts() {
+            error!(
+                total_attempts,
+                attempts_after_bootstrapped,
+                ?id,
+                "fetch attempts exhausted"
+            );
             return Err(FetchWithRetryError::AttemptsExhausted {
                 id,
                 total_attempts,
@@ -446,7 +452,7 @@ async fn fetch_from_peers<REv, T>(
     new_peer_list: Vec<NodeId>,
     id: <T as Item>::Id,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Option<Result<FetchedData<T>, FetchWithRetryError<T>>>
+) -> Option<Result<FetchedData<T>, FetcherError<T>>>
 where
     T: Item + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
@@ -491,7 +497,7 @@ where
                 ctx.mark_bad_peer(peer);
             }
             Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => {
-                return Some(Err(error.into()))
+                return Some(Err(error))
             }
         }
     }
@@ -510,30 +516,16 @@ async fn fetch_trie_with_retries<REv>(
 where
     REv: From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest>,
 {
-    let result = fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await;
-    let trie_or_chunk = match result {
-        Ok(FetchedData::FromStorage { .. }) => {
-            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
-        }
-        Ok(FetchedData::FromPeer {
-            item: trie_or_chunk,
-            ..
-        }) => *trie_or_chunk,
-        Err(FetchWithRetryError::AttemptsExhausted {
-            id,
-            total_attempts,
-            attempts_after_bootstrapped,
-        }) => {
-            error!(
-                total_attempts,
-                attempts_after_bootstrapped,
-                ?id,
-                "fetch attempts exhausted"
-            );
-            return Err(FetchTrieError::AttemptsExhausted);
-        }
-        Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
-    };
+    let trie_or_chunk =
+        match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
+            FetchedData::FromStorage { .. } => {
+                return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
+            }
+            FetchedData::FromPeer {
+                item: trie_or_chunk,
+                ..
+            } => *trie_or_chunk,
+        };
 
     let chunk_with_proof = match trie_or_chunk {
         TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
@@ -552,11 +544,11 @@ where
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await {
-                Ok(FetchedData::FromStorage { .. }) => {
+            match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
+                FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
-                Ok(FetchedData::FromPeer { item, .. }) => match *item {
+                FetchedData::FromPeer { item, .. } => match *item {
                     TrieOrChunk::Trie(_) => Err(
                         FetchTrieError::TrieBeingFetchedByChunksSomehowFetchWholeFromPeer {
                             digest: id,
@@ -568,20 +560,6 @@ where
                         Ok((index, chunk))
                     }
                 },
-                Err(FetchWithRetryError::AttemptsExhausted {
-                    id,
-                    total_attempts,
-                    attempts_after_bootstrapped,
-                }) => {
-                    error!(
-                        total_attempts,
-                        attempts_after_bootstrapped,
-                        ?id,
-                        "fetch attempts exhausted"
-                    );
-                    Err(FetchTrieError::AttemptsExhausted)
-                }
-                Err(FetchWithRetryError::FetcherError(err)) => Err(err.into()),
             }
         })
         // Do not try to fetch all of the trie chunks at once; only fetch at most
@@ -637,30 +615,16 @@ where
         return Ok(Box::new(stored_block_header));
     }
 
-    match fetch_with_retries::<_, BlockHeader>(ctx, block_hash).await {
-        Ok(FetchedData::FromStorage { item: block_header }) => Ok(block_header),
-        Ok(FetchedData::FromPeer {
+    match fetch_with_retries::<_, BlockHeader>(ctx, block_hash).await? {
+        FetchedData::FromStorage { item: block_header } => Ok(block_header),
+        FetchedData::FromPeer {
             item: block_header, ..
-        }) => {
+        } => {
             ctx.effect_builder
                 .put_block_header_to_storage(block_header.clone())
                 .await;
             Ok(block_header)
         }
-        Err(FetchWithRetryError::AttemptsExhausted {
-            id,
-            total_attempts,
-            attempts_after_bootstrapped,
-        }) => {
-            error!(
-                total_attempts,
-                attempts_after_bootstrapped,
-                ?id,
-                "fetch attempts exhausted"
-            );
-            Err(Error::AttemptsExhausted)
-        }
-        Err(FetchWithRetryError::FetcherError(err)) => Err(err.into()),
     }
 }
 
@@ -684,16 +648,17 @@ where
         return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
     }
 
-    let fetched_deploy = fetch_with_retries::<_, Deploy>(ctx, deploy_or_transfer_hash).await?;
-    Ok(match fetched_deploy {
-        FetchedData::FromStorage { item: deploy } => deploy,
-        FetchedData::FromPeer { item: deploy, .. } => {
-            ctx.effect_builder
-                .put_deploy_to_storage(deploy.clone())
-                .await;
-            deploy
-        }
-    })
+    Ok(
+        match fetch_with_retries::<_, Deploy>(ctx, deploy_or_transfer_hash).await? {
+            FetchedData::FromStorage { item: deploy } => deploy,
+            FetchedData::FromPeer { item: deploy, .. } => {
+                ctx.effect_builder
+                    .put_deploy_to_storage(deploy.clone())
+                    .await;
+                deploy
+            }
+        },
+    )
 }
 
 /// Fetches finalized approvals for a deploy.
@@ -1064,8 +1029,7 @@ async fn fetch_and_store_block_by_hash<REv>(
 where
     REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
 {
-    let fetched_block = fetch_with_retries::<_, Block>(ctx, block_hash).await?;
-    match fetched_block {
+    match fetch_with_retries::<_, Block>(ctx, block_hash).await? {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
             ctx.effect_builder.put_block_to_storage(block.clone()).await;
@@ -1083,8 +1047,7 @@ where
     REv: From<NetworkInfoRequest> + From<FetcherRequest<BlockAndDeploys>> + From<StorageRequest>,
 {
     let start = Timestamp::now();
-    let fetched_block = fetch_with_retries::<_, BlockAndDeploys>(ctx, block_hash).await?;
-    let res = match fetched_block {
+    let res = match fetch_with_retries::<_, BlockAndDeploys>(ctx, block_hash).await? {
         FetchedData::FromStorage {
             item: block_and_deploys,
             ..
@@ -1395,23 +1358,9 @@ where
         < ctx.config.deploy_max_ttl()
         && current_header.height() != 0
     {
-        match fetch_and_store_block_by_hash(*current_header.parent_hash(), ctx).await {
-            Ok(header) => current_header = header.take_header(),
-            Err(FetchWithRetryError::AttemptsExhausted {
-                id,
-                total_attempts,
-                attempts_after_bootstrapped,
-            }) => {
-                error!(
-                    total_attempts,
-                    attempts_after_bootstrapped,
-                    ?id,
-                    "fetch attempts exhausted"
-                );
-                return Err(Error::AttemptsExhausted);
-            }
-            Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
-        }
+        current_header = fetch_and_store_block_by_hash(*current_header.parent_hash(), ctx)
+            .await?
+            .take_header();
     }
     Ok(())
 }
@@ -1546,14 +1495,14 @@ where
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
 
     loop {
-        match fetch_with_retries::<_, BlockHeadersBatch>(ctx, batch_id).await {
-            Ok(FetchedData::FromStorage { item }) => {
+        match fetch_with_retries::<_, BlockHeadersBatch>(ctx, batch_id).await? {
+            FetchedData::FromStorage { item } => {
                 return item
                     .lowest()
                     .cloned()
                     .ok_or(FetchBlockHeadersBatchError::EmptyBatchFromStorage)
             }
-            Ok(FetchedData::FromPeer { item, peer }) => {
+            FetchedData::FromPeer { item, peer } => {
                 match BlockHeadersBatch::validate(&*item, &batch_id, lowest_trusted_block_header) {
                     Ok(new_lowest) => {
                         info!(?batch_id, ?peer, "received valid batch of headers");
@@ -1573,20 +1522,6 @@ where
                     }
                 }
             }
-            Err(FetchWithRetryError::AttemptsExhausted {
-                id,
-                total_attempts,
-                attempts_after_bootstrapped,
-            }) => {
-                error!(
-                    total_attempts,
-                    attempts_after_bootstrapped,
-                    ?id,
-                    "fetch attempts exhausted"
-                );
-                return Err(FetchBlockHeadersBatchError::AttemptsExhausted);
-            }
-            Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
         }
     }
 }
@@ -1676,41 +1611,18 @@ where
         }
         ctx.progress
             .start_syncing_block_for_sync_forward(block_height);
-        match fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await {
-            Ok(fetched_block) => {
-                debug_assert_eq!(block_header, *fetched_block.block.header());
-                trace!(?block_hash, "downloaded block and deploys");
-                // We want to download the trie only when we know we have the block.
-                ctx.progress.start_fetching_tries_for_sync_forward(
-                    block_height,
-                    *block_header.state_root_hash(),
-                );
-                if let Err(error) = sync_trie_store(&block_header, ctx).await {
-                    error!(?error, ?block_hash, "failed to download trie");
-                    return Err(error);
-                }
-                ctx.effect_builder.mark_block_completed(block_height).await;
-                ctx.metrics.chain_sync_blocks_synced.inc();
-            }
-            Err(err) => match err {
-                FetchWithRetryError::AttemptsExhausted {
-                    id,
-                    total_attempts,
-                    attempts_after_bootstrapped,
-                } => {
-                    error!(
-                        total_attempts,
-                        attempts_after_bootstrapped,
-                        ?id,
-                        "fetch attempts exhausted"
-                    );
-                    return Err(Error::AttemptsExhausted);
-                }
-                FetchWithRetryError::FetcherError(_) => {
-                    error!(?err, ?block_hash, "failed to download block, retrying");
-                }
-            },
+        let fetched_block = fetch_and_store_block_with_deploys_by_hash(block_hash, ctx).await?;
+        debug_assert_eq!(block_header, *fetched_block.block.header());
+        trace!(?block_hash, "downloaded block and deploys");
+        // We want to download the trie only when we know we have the block.
+        ctx.progress
+            .start_fetching_tries_for_sync_forward(block_height, *block_header.state_root_hash());
+        if let Err(error) = sync_trie_store(&block_header, ctx).await {
+            error!(?error, ?block_hash, "failed to download trie");
+            return Err(error);
         }
+        ctx.effect_builder.mark_block_completed(block_height).await;
+        ctx.metrics.chain_sync_blocks_synced.inc();
 
         ctx.progress
             .start_fetching_block_signatures_for_sync_forward(block_height);
@@ -2316,26 +2228,9 @@ where
         .map(|(index, hash)| async move { (index, fetch_and_store_deploy(hash, ctx).await) })
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
     while let Some((index, result)) = stream.next().await {
-        match result {
-            Ok(deploy) => {
-                trace!("fetched {:?}", deploy);
-                indexed_deploys.push((index, *deploy));
-            }
-            Err(FetchWithRetryError::AttemptsExhausted {
-                id,
-                total_attempts,
-                attempts_after_bootstrapped,
-            }) => {
-                error!(
-                    total_attempts,
-                    attempts_after_bootstrapped,
-                    ?id,
-                    "fetch attempts exhausted"
-                );
-                return Err(Error::AttemptsExhausted);
-            }
-            Err(FetchWithRetryError::FetcherError(err)) => return Err(err.into()),
-        }
+        let deploy = result?;
+        trace!("fetched {:?}", deploy);
+        indexed_deploys.push((index, *deploy));
     }
 
     indexed_deploys.sort();
