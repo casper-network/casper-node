@@ -113,9 +113,7 @@ where
             metrics.clone(),
             progress.clone(),
         )
-        .event(|result| Event::FastSyncResult {
-            result: Box::new(result),
-        });
+        .event(|result| Event::FastSyncResult(Box::new(result)));
 
         let synchronizer = ChainSynchronizer {
             config,
@@ -308,9 +306,7 @@ where
                     Effects::new()
                 }
             }
-            Event::FastSyncResult { result } => {
-                self.handle_fast_sync_result(effect_builder, *result)
-            }
+            Event::FastSyncResult(result) => self.handle_fast_sync_result(effect_builder, *result),
             Event::GetNodeState(request) => self.handle_get_node_state_request(request),
         }
     }
