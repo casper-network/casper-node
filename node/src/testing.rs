@@ -20,6 +20,7 @@ use std::{
 };
 
 use anyhow::Context;
+use casper_types::testing::TestRng;
 use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
@@ -37,7 +38,6 @@ use crate::{
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
-pub(crate) use test_rng::TestRng;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.

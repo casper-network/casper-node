@@ -409,7 +409,7 @@ where
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret = match self.transfer_from_purse_to_account(
+                let ret = match self.transfer_from_purse_to_account_hash(
                     source_purse,
                     account_hash,
                     amount,
@@ -460,16 +460,28 @@ where
                         id_size,
                     ],
                 )?;
-                let ret = self.transfer_from_purse_to_purse(
-                    source_ptr,
-                    source_size,
-                    target_ptr,
-                    target_size,
-                    amount_ptr,
-                    amount_size,
-                    id_ptr,
-                    id_size,
-                )?;
+
+                let source: URef = {
+                    let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let target: URef = {
+                    let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let amount: U512 = {
+                    let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let id: Option<u64> = {
+                    let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let ret = self.transfer_from_purse_to_purse(source, target, amount, id)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
@@ -1047,6 +1059,29 @@ where
                 )?;
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::EnableContractVersion => {
+                // args(0) = pointer to package hash in wasm memory
+                // args(1) = size of package hash in wasm memory
+                // args(2) = pointer to contract hash in wasm memory
+                // args(3) = size of contract hash in wasm memory
+                let (package_key_ptr, package_key_size, contract_hash_ptr, contract_hash_size) =
+                    Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.enable_contract_version,
+                    [
+                        package_key_ptr,
+                        package_key_size,
+                        contract_hash_ptr,
+                        contract_hash_size,
+                    ],
+                )?;
+                let contract_package_hash = self.t_from_mem(package_key_ptr, package_key_size)?;
+                let contract_hash = self.t_from_mem(contract_hash_ptr, contract_hash_size)?;
+
+                let result = self.enable_contract_version(contract_package_hash, contract_hash)?;
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
         }
     }

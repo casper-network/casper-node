@@ -12,9 +12,9 @@ use casper_types::{
 
 use super::error::GlobalStateUpdateLoadError;
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::utils::{self, Loadable};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";
 

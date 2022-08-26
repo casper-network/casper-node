@@ -147,6 +147,7 @@ impl Drop for ScopedInstrumenter {
             FunctionIndex::DictionaryGetFuncIndex => "host_dictionary_get",
             FunctionIndex::DictionaryPutFuncIndex => "host_dictionary_put",
             FunctionIndex::LoadCallStack => "host_load_call_stack",
+            FunctionIndex::EnableContractVersion => "host_enable_contract_version",
         };
 
         let mut properties = mem::take(&mut self.properties);

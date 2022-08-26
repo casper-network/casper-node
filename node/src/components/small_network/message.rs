@@ -15,7 +15,7 @@ use crate::crypto;
 #[cfg(test)]
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 use super::counting_format::ConnectionId;
 

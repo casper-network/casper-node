@@ -26,8 +26,6 @@ use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
 use casper_hashing::Digest;
-#[cfg(test)]
-use casper_types::bytesrepr::Bytes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
@@ -36,12 +34,12 @@ use casper_types::{
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{
     components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
     rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::DisplayIter,
 };
+#[cfg(test)]
+use casper_types::{bytesrepr::Bytes, testing::TestRng};
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {
@@ -721,6 +719,11 @@ impl Deploy {
     /// Returns the `Approval`s for this deploy.
     pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
+    }
+
+    /// Replaces the set of approvals attached to this deploy.
+    pub fn replace_approvals(&mut self, approvals: BTreeSet<Approval>) {
+        self.approvals = approvals;
     }
 
     /// Returns the hash of this deploy wrapped in `DeployOrTransferHash`.

@@ -14,7 +14,7 @@ use casper_types::{
 };
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
 pub struct ValidatorConfig {

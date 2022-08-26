@@ -11,9 +11,9 @@ use untrusted::Input;
 
 use casper_types::{AsymmetricType, PublicKey, SecretKey, ED25519_TAG, SECP256K1_TAG, SYSTEM_TAG};
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{crypto::Error, utils};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 // See https://tools.ietf.org/html/rfc8410#section-10.3
 const ED25519_OBJECT_IDENTIFIER: [u8; 3] = [43, 101, 112];

@@ -13,7 +13,7 @@ use casper_types::{
 use casper_types::{SecretKey, U512};
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 use super::ValidatorConfig;
 

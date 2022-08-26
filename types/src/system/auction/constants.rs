@@ -1,4 +1,4 @@
-use crate::system::auction::EraId;
+use crate::EraId;
 
 use super::DelegationRate;
 

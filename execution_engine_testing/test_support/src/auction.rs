@@ -6,8 +6,11 @@ use tempfile::TempDir;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, EngineState,
-            ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+            self,
+            engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+            genesis::{ExecConfigBuilder, GenesisValidator},
+            run_genesis_request::RunGenesisRequest,
+            EngineState, ExecuteRequest, GenesisAccount, RewardItem,
         },
         execution,
     },
@@ -303,19 +306,20 @@ fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
 ) -> RunGenesisRequest {
-    let exec_config = {
-        ExecConfig::new(
-            genesis_accounts,
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            validator_slots,
-            DEFAULT_AUCTION_DELAY,
-            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-            DEFAULT_ROUND_SEIGNIORAGE_RATE,
-            DEFAULT_UNBONDING_DELAY,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        )
-    };
+    let exec_config = ExecConfigBuilder::default()
+        .with_accounts(genesis_accounts)
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(validator_slots)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(DEFAULT_REFUND_HANDLING)
+        .with_fee_handling(DEFAULT_FEE_HANDLING)
+        .build();
+
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,

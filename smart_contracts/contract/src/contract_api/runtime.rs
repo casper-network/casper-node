@@ -131,7 +131,12 @@ fn deserialize_contract_result<T: CLTyped + FromBytes>(bytes_written: usize) -> 
     bytesrepr::deserialize(serialized_result).unwrap_or_revert()
 }
 
-fn get_named_arg_size(name: &str) -> Option<usize> {
+/// Returns size in bytes of a given named argument passed to the host for the current module
+/// invocation.
+///
+/// This will return either Some with the size of argument if present, or None if given argument is
+/// not passed.
+pub fn get_named_arg_size(name: &str) -> Option<usize> {
     let mut arg_size: usize = 0;
     let ret = unsafe {
         ext_ffi::casper_get_named_arg_size(

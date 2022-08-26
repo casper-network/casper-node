@@ -65,6 +65,8 @@ pub(crate) struct ProtocolConfig {
     pub(crate) genesis_timestamp: Option<Timestamp>,
     /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
     pub(crate) chainspec_hash: Digest,
+    /// Compute rewards.
+    pub(crate) compute_rewards: bool,
 }
 
 impl From<&Chainspec> for ProtocolConfig {
@@ -82,6 +84,7 @@ impl From<&Chainspec> for ProtocolConfig {
                 .activation_point
                 .genesis_timestamp(),
             chainspec_hash: chainspec.hash(),
+            compute_rewards: chainspec.core_config.compute_rewards,
         }
     }
 }

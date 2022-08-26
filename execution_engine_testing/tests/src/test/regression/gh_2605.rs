@@ -5,23 +5,18 @@ use regex::Regex;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_MAX_ASSOCIATED_KEYS,
-    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_MAX_STORED_VALUE_SIZE,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{
-            engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
-            EngineConfig, Error, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        },
+        engine_state::{EngineConfig, EngineConfigBuilder, Error, UpgradeConfig},
         execution,
     },
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT},
     },
     storage::trie::Trie,
@@ -296,16 +291,9 @@ fn setup(custom_upgrade_request: Setup) -> (InMemoryWasmTestBuilder, ProtocolVer
 
 fn make_engine_config(max_memory: u32) -> EngineConfig {
     let wasm_config = make_wasm_config(max_memory);
-    EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        wasm_config,
-        SystemConfig::default(),
-    )
+    EngineConfigBuilder::default()
+        .with_wasm_config(wasm_config)
+        .build()
 }
 
 fn make_wasm_config(max_memory: u32) -> WasmConfig {

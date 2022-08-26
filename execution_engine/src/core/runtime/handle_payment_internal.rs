@@ -1,12 +1,21 @@
+use std::collections::BTreeSet;
+
 use casper_types::{
-    account::AccountHash,
-    system::handle_payment::{Error, HandlePayment, MintProvider, RuntimeProvider},
-    BlockTime, Key, Phase, StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, Key, Phase,
+    StoredValue, TransferredTo, URef, U512,
 };
 
 use crate::{
-    core::{execution, runtime::Runtime},
+    core::{
+        engine_state::engine_config::{FeeHandling, RefundHandling},
+        execution,
+        runtime::Runtime,
+    },
     storage::global_state::StateReader,
+    system::handle_payment::{
+        mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+        storage_provider::StorageProvider, HandlePayment,
+    },
 };
 
 impl From<execution::Error> for Option<Error> {
@@ -34,7 +43,7 @@ where
         target: AccountHash,
         amount: U512,
     ) -> Result<TransferredTo, Error> {
-        match self.transfer_from_purse_to_account(source, target, amount, None) {
+        match self.transfer_from_purse_to_account_hash(source, target, amount, None) {
             Ok(Ok(transferred_to)) => Ok(transferred_to),
             Ok(Err(_mint_error)) => Err(Error::Transfer),
             Err(exec_error) => Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer)),
@@ -50,7 +59,7 @@ where
         let mint_contract_key = match self.get_mint_contract() {
             Ok(mint_hash) => mint_hash,
             Err(exec_error) => {
-                return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))
+                return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
             }
         };
         match self.mint_transfer(mint_contract_key, None, source, target, amount, None) {
@@ -63,6 +72,20 @@ where
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         self.get_balance(purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
+    }
+
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        let mint_contract_key = match self.get_mint_contract() {
+            Ok(mint_hash) => mint_hash,
+            Err(exec_error) => {
+                return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
+            }
+        };
+        if let Err(exec_error) = self.mint_reduce_total_supply(mint_contract_key, amount) {
+            Err(<Option<Error>>::from(exec_error).unwrap_or(Error::ReduceTotalSupply))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -98,6 +121,32 @@ where
 
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
+    }
+
+    fn refund_handling(&self) -> &RefundHandling {
+        self.config.refund_handling()
+    }
+
+    fn fee_handling(&self) -> FeeHandling {
+        self.config.fee_handling()
+    }
+
+    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
+        self.config.administrative_accounts()
+    }
+}
+
+impl<'a, R> StorageProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    fn write_balance(&mut self, purse_uref: URef, amount: U512) -> Result<(), Error> {
+        let cl_amount = CLValue::from_t(amount).map_err(|_| Error::Storage)?;
+        self.context
+            .metered_write_gs_unsafe(Key::Balance(purse_uref.addr()), cl_amount)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+        Ok(())
     }
 }
 

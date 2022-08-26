@@ -23,14 +23,16 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::Digest;
-#[cfg(test)]
-use casper_types::system::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
+#[cfg(test)]
+use casper_types::{system::auction::BLOCK_REWARD, testing::TestRng};
 
 use super::{Item, Tag, Timestamp};
+#[cfg(test)]
+use crate::crypto::generate_ed25519_keypair;
 use crate::{
     components::consensus,
     crypto::{self, AsymmetricKeyExt},
@@ -42,8 +44,6 @@ use crate::{
     },
     utils::DisplayIter,
 };
-#[cfg(test)]
-use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -2058,9 +2058,7 @@ impl Display for FinalitySignature {
 mod tests {
     use std::rc::Rc;
 
-    use casper_types::bytesrepr;
-
-    use crate::testing::TestRng;
+    use casper_types::{bytesrepr, testing::TestRng};
 
     use super::*;
 

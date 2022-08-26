@@ -16,7 +16,7 @@ use casper_types::{
 
 use super::{ActivationPoint, GlobalStateUpdate};
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {

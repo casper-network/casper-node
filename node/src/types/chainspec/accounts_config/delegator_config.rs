@@ -12,7 +12,7 @@ use casper_types::{
 use casper_types::{SecretKey, U512};
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 #[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct DelegatorConfig {

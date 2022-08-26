@@ -8,7 +8,7 @@ use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
 
-use casper_types::ProtocolVersion;
+use casper_types::{testing::TestRng, ProtocolVersion};
 
 use super::*;
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
     testing,
     testing::{
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor, TestRng,
+        ConditionCheckReactor,
     },
     types::{Deploy, DeployHash, NodeId},
     utils::{WithDir, RESOURCES_PATH},

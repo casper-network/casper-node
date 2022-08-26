@@ -1,7 +1,13 @@
 //! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
 
 #![cfg_attr(
-    not(any(feature = "json-schema", feature = "datasize", feature = "gens", test)),
+    not(any(
+        feature = "json-schema",
+        feature = "datasize",
+        feature = "gens",
+        feature = "testing",
+        test
+    )),
     no_std
 )]
 #![doc(html_root_url = "https://docs.rs/casper-types/1.5.0")]
@@ -43,6 +49,8 @@ mod semver;
 mod stored_value;
 pub mod system;
 mod tagged;
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
 mod transfer;
 mod transfer_result;
 mod uint;

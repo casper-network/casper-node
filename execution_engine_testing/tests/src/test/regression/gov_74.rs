@@ -2,21 +2,14 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{
-            engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
-            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        },
+        engine_state::{EngineConfigBuilder, Error},
         execution::Error as ExecError,
     },
-    shared::{
-        wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
-        wasm_prep::DEFAULT_MAX_PARAMETER_COUNT,
-    },
+    shared::{wasm_config::WasmConfig, wasm_prep::DEFAULT_MAX_PARAMETER_COUNT},
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
 
@@ -102,22 +95,9 @@ fn should_observe_stack_height_limit() {
 
     {
         // We need to perform an upgrade to be able to observe new max wasm stack height.
-        let new_engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MAX_STORED_VALUE_SIZE,
-            DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            WasmConfig::new(
-                DEFAULT_WASM_MAX_MEMORY,
-                NEW_WASM_STACK_HEIGHT,
-                Default::default(),
-                Default::default(),
-                Default::default(),
-            ),
-            Default::default(),
-        );
+        let new_engine_config = EngineConfigBuilder::default()
+            .with_wasm_max_stack_height(NEW_WASM_STACK_HEIGHT)
+            .build();
 
         let mut upgrade_request = UpgradeRequestBuilder::new()
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
@@ -125,7 +105,8 @@ fn should_observe_stack_height_limit() {
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
-        builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+        builder
+            .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
     }
 
     // This runs out of the interpreter stack limit.

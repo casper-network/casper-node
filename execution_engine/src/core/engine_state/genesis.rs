@@ -2,6 +2,7 @@
 use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use rand::{
@@ -11,6 +12,8 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
+#[cfg(any(test, feature = "test-support"))]
+use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -23,7 +26,7 @@ use casper_types::{
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment,
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
@@ -43,10 +46,33 @@ use crate::{
     storage::global_state::StateProvider,
 };
 
+use super::engine_config::{
+    FeeHandling, RefundHandling, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+};
+
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 /// Type alias for the system contract registry.
 pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
+
+/// Default number of validator slots.
+pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
+/// Default auction delay.
+pub const DEFAULT_AUCTION_DELAY: u64 = 3;
+/// Default lock-in period of 90 days
+pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
+/// Default number of eras that need to pass to be able to withdraw unbonded funds.
+pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
+/// Default round seigniorage rate represented as a fractional number.
+///
+/// Annual issuance: 2%
+/// Minimum round exponent: 14
+/// Ticks per year: 31536000000
+///
+/// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
+/// Default genesis timestamp in milliseconds.
+pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
@@ -72,6 +98,7 @@ enum GenesisAccountTag {
     System = 0,
     Account = 1,
     Delegator = 2,
+    Administrator = 3,
 }
 
 /// Represents details about genesis account's validator status.
@@ -137,6 +164,77 @@ impl Distribution<GenesisValidator> for Standard {
     }
 }
 
+/// Special account in the system that is useful only for some private chains.
+#[derive(DataSize, Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct AdministratorAccount {
+    public_key: PublicKey,
+    balance: Motes,
+}
+
+impl AdministratorAccount {
+    /// Creates new special account.
+    pub fn new(public_key: PublicKey, balance: Motes) -> Self {
+        Self {
+            public_key,
+            balance,
+        }
+    }
+
+    /// Gets a reference to the administrator account's public key.
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl AdministratorAccount {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let public_key = {
+            let secret_key_bytes: [u8; 32] = rng.gen();
+            let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes).unwrap();
+            PublicKey::from(&secret_key)
+        };
+        Self {
+            public_key,
+            balance: Motes::new(rng.gen()),
+        }
+    }
+}
+
+impl ToBytes for AdministratorAccount {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let AdministratorAccount {
+            public_key,
+            balance,
+        } = self;
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(public_key.to_bytes()?);
+        buffer.extend(balance.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        let AdministratorAccount {
+            public_key,
+            balance,
+        } = self;
+        public_key.serialized_length() + balance.serialized_length()
+    }
+}
+
+impl FromBytes for AdministratorAccount {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (public_key, remainder) = FromBytes::from_bytes(bytes)?;
+        let (balance, remainder) = FromBytes::from_bytes(remainder)?;
+        let administrator_account = AdministratorAccount {
+            public_key,
+            balance,
+        };
+        Ok((administrator_account, remainder))
+    }
+}
+
 /// This enum represents possible states of a genesis account.
 #[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GenesisAccount {
@@ -166,6 +264,16 @@ pub enum GenesisAccount {
         /// Delegated amount for given `validator_public_key`.
         delegated_amount: Motes,
     },
+    /// An administrative account in the genesis process.
+    ///
+    /// This variant makes sense for some private chains.
+    Administrator(AdministratorAccount),
+}
+
+impl From<AdministratorAccount> for GenesisAccount {
+    fn from(v: AdministratorAccount) -> Self {
+        Self::Administrator(v)
+    }
 }
 
 impl GenesisAccount {
@@ -211,6 +319,9 @@ impl GenesisAccount {
                 delegator_public_key,
                 ..
             } => delegator_public_key.clone(),
+            GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
+                public_key.clone()
+            }
         }
     }
 
@@ -223,6 +334,9 @@ impl GenesisAccount {
                 delegator_public_key,
                 ..
             } => delegator_public_key.to_account_hash(),
+            GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
+                public_key.to_account_hash()
+            }
         }
     }
 
@@ -232,6 +346,7 @@ impl GenesisAccount {
             GenesisAccount::System => Motes::zero(),
             GenesisAccount::Account { balance, .. } => *balance,
             GenesisAccount::Delegator { balance, .. } => *balance,
+            GenesisAccount::Administrator(AdministratorAccount { balance, .. }) => *balance,
         }
     }
 
@@ -252,6 +367,14 @@ impl GenesisAccount {
             GenesisAccount::Delegator {
                 delegated_amount, ..
             } => *delegated_amount,
+            GenesisAccount::Administrator(AdministratorAccount {
+                public_key: _,
+                balance: _,
+            }) => {
+                // This is defaulted to zero because administrator accounts are filtered out before
+                // validator set is created at the genesis.
+                Motes::zero()
+            }
         }
     }
 
@@ -269,6 +392,9 @@ impl GenesisAccount {
             | GenesisAccount::Delegator { .. } => {
                 // This value represents a delegation rate in invalid state that system is supposed
                 // to reject if used.
+                DelegationRate::max_value()
+            }
+            GenesisAccount::Administrator(AdministratorAccount { .. }) => {
                 DelegationRate::max_value()
             }
         }
@@ -289,7 +415,8 @@ impl GenesisAccount {
             | GenesisAccount::Account {
                 validator: None, ..
             }
-            | GenesisAccount::Delegator { .. } => false,
+            | GenesisAccount::Delegator { .. }
+            | GenesisAccount::Administrator(AdministratorAccount { .. }) => false,
         }
     }
 
@@ -324,6 +451,15 @@ impl GenesisAccount {
                 delegated_amount,
             )),
             _ => None,
+        }
+    }
+
+    /// Gets the administrator account variant.
+    fn as_administrator_account(&self) -> Option<&AdministratorAccount> {
+        if let Self::Administrator(v) = self {
+            Some(v)
+        } else {
+            None
         }
     }
 }
@@ -370,6 +506,10 @@ impl ToBytes for GenesisAccount {
                 buffer.extend(balance.value().to_bytes()?);
                 buffer.extend(delegated_amount.value().to_bytes()?);
             }
+            GenesisAccount::Administrator(administrator_account) => {
+                buffer.push(GenesisAccountTag::Administrator as u8);
+                buffer.extend(administrator_account.to_bytes()?);
+            }
         }
         Ok(buffer)
     }
@@ -398,6 +538,9 @@ impl ToBytes for GenesisAccount {
                     + balance.value().serialized_length()
                     + delegated_amount.value().serialized_length()
                     + TAG_LENGTH
+            }
+            GenesisAccount::Administrator(administrator_account) => {
+                administrator_account.serialized_length() + TAG_LENGTH
             }
         }
     }
@@ -429,6 +572,12 @@ impl FromBytes for GenesisAccount {
                     balance,
                     Motes::new(delegated_amount_value),
                 );
+                Ok((genesis_account, remainder))
+            }
+            tag if tag == GenesisAccountTag::Administrator as u8 => {
+                let (administrator_account, remainder) =
+                    AdministratorAccount::from_bytes(remainder)?;
+                let genesis_account = GenesisAccount::Administrator(administrator_account);
                 Ok((genesis_account, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -527,10 +676,19 @@ pub struct ExecConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
+    refund_handling: RefundHandling,
+    fee_handling: FeeHandling,
 }
 
 impl ExecConfig {
-    /// Creates new genesis configuration.
+    /// Creates a new genesis configuration.
+    ///
+    /// New code should use [`ExecConfigBuilder`] instead as some config options will otherwise be
+    /// defaulted.
+    #[deprecated(
+        since = "3.0.0",
+        note = "prefer to use ExecConfigBuilder to construct an ExecConfig"
+    )]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: Vec<GenesisAccount>,
@@ -553,6 +711,8 @@ impl ExecConfig {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            refund_handling: DEFAULT_REFUND_HANDLING,
+            fee_handling: DEFAULT_FEE_HANDLING,
         }
     }
 
@@ -568,8 +728,7 @@ impl ExecConfig {
 
     /// Returns all bonded genesis validators.
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
-        self.accounts
-            .iter()
+        self.accounts_iter()
             .filter(|&genesis_account| genesis_account.is_validator())
     }
 
@@ -585,6 +744,18 @@ impl ExecConfig {
     /// Returns all genesis accounts.
     pub fn accounts(&self) -> &[GenesisAccount] {
         self.accounts.as_slice()
+    }
+
+    /// Returns an iterator over all genesis accounts.
+    pub(crate) fn accounts_iter(&self) -> impl Iterator<Item = &GenesisAccount> {
+        self.accounts.iter()
+    }
+
+    /// Returns an iterator over all administrative accounts.
+    pub(crate) fn administrative_accounts(&self) -> impl Iterator<Item = &AdministratorAccount> {
+        self.accounts
+            .iter()
+            .filter_map(GenesisAccount::as_administrator_account)
     }
 
     /// Adds new genesis account to the config.
@@ -648,6 +819,16 @@ impl Distribution<ExecConfig> for Standard {
 
         let genesis_timestamp_millis = rng.gen();
 
+        let refund_handling = RefundHandling::Refund {
+            refund_ratio: Ratio::new_raw(rng.gen_range(0..=100), 100),
+        };
+
+        let fee_handling = if rng.gen() {
+            FeeHandling::Accumulate
+        } else {
+            FeeHandling::PayToProposer
+        };
+
         ExecConfig {
             accounts,
             wasm_config,
@@ -658,6 +839,123 @@ impl Distribution<ExecConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            refund_handling,
+            fee_handling,
+        }
+    }
+}
+
+/// A builder for an [`ExecConfig`].
+///
+/// Any field that isn't specified will be defaulted.  See [the module docs](index.html) for the set
+/// of default values.
+#[derive(Default, Debug)]
+pub struct ExecConfigBuilder {
+    accounts: Option<Vec<GenesisAccount>>,
+    wasm_config: Option<WasmConfig>,
+    system_config: Option<SystemConfig>,
+    validator_slots: Option<u32>,
+    auction_delay: Option<u64>,
+    locked_funds_period_millis: Option<u64>,
+    round_seigniorage_rate: Option<Ratio<u64>>,
+    unbonding_delay: Option<u64>,
+    genesis_timestamp_millis: Option<u64>,
+    refund_handling: Option<RefundHandling>,
+    fee_handling: Option<FeeHandling>,
+}
+
+impl ExecConfigBuilder {
+    /// Creates a new `ExecConfig` builder.
+    pub fn new() -> Self {
+        ExecConfigBuilder::default()
+    }
+
+    /// Sets the genesis accounts.
+    pub fn with_accounts(mut self, accounts: Vec<GenesisAccount>) -> Self {
+        self.accounts = Some(accounts);
+        self
+    }
+
+    /// Sets the Wasm config options.
+    pub fn with_wasm_config(mut self, wasm_config: WasmConfig) -> Self {
+        self.wasm_config = Some(wasm_config);
+        self
+    }
+
+    /// Sets the system config options.
+    pub fn with_system_config(mut self, system_config: SystemConfig) -> Self {
+        self.system_config = Some(system_config);
+        self
+    }
+
+    /// Sets the validator slots config option.
+    pub fn with_validator_slots(mut self, validator_slots: u32) -> Self {
+        self.validator_slots = Some(validator_slots);
+        self
+    }
+
+    /// Sets the auction delay config option.
+    pub fn with_auction_delay(mut self, auction_delay: u64) -> Self {
+        self.auction_delay = Some(auction_delay);
+        self
+    }
+
+    /// Sets the locked funds period config option.
+    pub fn with_locked_funds_period_millis(mut self, locked_funds_period_millis: u64) -> Self {
+        self.locked_funds_period_millis = Some(locked_funds_period_millis);
+        self
+    }
+
+    /// Sets the round seigniorage rate config option.
+    pub fn with_round_seigniorage_rate(mut self, round_seigniorage_rate: Ratio<u64>) -> Self {
+        self.round_seigniorage_rate = Some(round_seigniorage_rate);
+        self
+    }
+
+    /// Sets the unbonding delay config option.
+    pub fn with_unbonding_delay(mut self, unbonding_delay: u64) -> Self {
+        self.unbonding_delay = Some(unbonding_delay);
+        self
+    }
+
+    /// Sets the genesis timestamp config option.
+    pub fn with_genesis_timestamp_millis(mut self, genesis_timestamp_millis: u64) -> Self {
+        self.genesis_timestamp_millis = Some(genesis_timestamp_millis);
+        self
+    }
+
+    /// Sets the refund handling config option.
+    pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
+        self.refund_handling = Some(refund_handling);
+        self
+    }
+
+    /// Sets the fee handling config option.
+    pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.fee_handling = Some(fee_handling);
+        self
+    }
+
+    /// Builds a new [`ExecConfig`] object.
+    pub fn build(self) -> ExecConfig {
+        ExecConfig {
+            accounts: self.accounts.unwrap_or_default(),
+            wasm_config: self.wasm_config.unwrap_or_default(),
+            system_config: self.system_config.unwrap_or_default(),
+            validator_slots: self.validator_slots.unwrap_or(DEFAULT_VALIDATOR_SLOTS),
+            auction_delay: self.auction_delay.unwrap_or(DEFAULT_AUCTION_DELAY),
+            locked_funds_period_millis: self
+                .locked_funds_period_millis
+                .unwrap_or(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS),
+            round_seigniorage_rate: self
+                .round_seigniorage_rate
+                .unwrap_or(DEFAULT_ROUND_SEIGNIORAGE_RATE),
+            unbonding_delay: self.unbonding_delay.unwrap_or(DEFAULT_UNBONDING_DELAY),
+            genesis_timestamp_millis: self
+                .genesis_timestamp_millis
+                .unwrap_or(DEFAULT_GENESIS_TIMESTAMP_MILLIS),
+            refund_handling: self.refund_handling.unwrap_or(DEFAULT_REFUND_HANDLING),
+            fee_handling: self.fee_handling.unwrap_or(DEFAULT_FEE_HANDLING),
         }
     }
 }
@@ -721,6 +1019,10 @@ pub enum GenesisError {
         /// Number of validator slots specified.
         validator_slots: u32,
     },
+    /// Duplicated administrator entry.
+    ///
+    /// This error can occur only on some private chains.
+    DuplicatedAdministratorEntry,
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -756,21 +1058,6 @@ where
             let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
             Rc::new(RefCell::new(generator))
         };
-
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
-        };
-
-        let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account) };
-
-        let _ = tracking_copy
-            .borrow_mut()
-            .write(key, value, engine_config.max_stored_value_size());
 
         GenesisInstaller {
             protocol_version,
@@ -835,6 +1122,7 @@ where
                 round_seigniorage_rate_uref.into(),
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
+
             named_keys
         };
 
@@ -866,13 +1154,25 @@ where
         Ok(total_supply_uref.into())
     }
 
-    fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
-        let handle_payment_payment_purse = self.create_purse(U512::zero())?;
-
+    fn create_handle_payment(
+        &self,
+        payment_purse_uref: URef,
+    ) -> Result<ContractHash, GenesisError> {
         let named_keys = {
             let mut named_keys = NamedKeys::new();
-            let named_key = Key::URef(handle_payment_payment_purse);
-            named_keys.insert(handle_payment::PAYMENT_PURSE_KEY.to_string(), named_key);
+            named_keys.insert(
+                handle_payment::PAYMENT_PURSE_KEY.to_string(),
+                payment_purse_uref.into(),
+            );
+
+            // This purse is used only in FeeHandling::Accumulate setting.
+            let rewards_purse_uref = self.create_purse(U512::zero())?;
+
+            named_keys.insert(
+                ACCUMULATION_PURSE_KEY.to_string(),
+                rewards_purse_uref.into(),
+            );
+
             named_keys
         };
 
@@ -908,7 +1208,7 @@ where
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
         // Make sure all delegators have corresponding genesis validator entries
-        for (validator_public_key, delegator_public_key, _balance, delegated_amount) in
+        for (validator_public_key, delegator_public_key, _, delegated_amount) in
             genesis_delegators.iter()
         {
             if delegated_amount.is_zero() {
@@ -970,7 +1270,7 @@ where
                         validator_public_key,
                         delegator_public_key,
                         _delegator_balance,
-                        &delegator_delegated_amount,
+                        delegator_delegated_amount,
                     ) in genesis_delegators.iter()
                     {
                         if (*validator_public_key).clone() == public_key.clone() {
@@ -1167,37 +1467,60 @@ where
         Ok(standard_payment_hash)
     }
 
-    fn create_accounts(&self, total_supply_key: Key) -> Result<(), GenesisError> {
+    pub(crate) fn create_accounts(
+        &self,
+        total_supply_key: Key,
+        payment_purse_uref: URef,
+    ) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().to_vec();
+            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts_iter().cloned().collect();
             let system_account = GenesisAccount::system();
-            ret.push(system_account); // todo load bearing remove or not? probably dont need anymore
+            ret.push(system_account);
             ret
         };
 
+        let mut administrative_accounts = self.exec_config.administrative_accounts().peekable();
+
+        if administrative_accounts.peek().is_some()
+            && administrative_accounts
+                .duplicates_by(|admin| &admin.public_key)
+                .next()
+                .is_some()
+        {
+            // Ensure no duplicate administrator accounts are specified as this might raise errors
+            // during genesis process when administrator accounts are added to associated keys.
+            return Err(GenesisError::DuplicatedAdministratorEntry);
+        }
+
         let mut total_supply = U512::zero();
 
-        for account in accounts {
+        for account in accounts.iter() {
             let account_hash = account.account_hash();
-            let main_purse = self.create_purse(account.balance().value())?;
+            let main_purse = match account {
+                GenesisAccount::System
+                    if self.exec_config.administrative_accounts().next().is_some() =>
+                {
+                    payment_purse_uref
+                }
+                _ => self.create_purse(account.balance().value())?,
+            };
+            total_supply += account.balance().value();
 
             let key = Key::Account(account_hash);
-            let stored_value = StoredValue::Account(Account::create(
-                account_hash,
-                Default::default(),
-                main_purse,
-            ));
 
+            let account = {
+                let named_keys = NamedKeys::default();
+                Account::create(account_hash, named_keys, main_purse)
+            };
+            let stored_value = StoredValue::Account(account);
             let _ = self.tracking_copy.borrow_mut().write(
                 key,
                 stored_value,
                 self.engine_config.max_stored_value_size(),
             );
-
-            total_supply += account.balance().value();
         }
 
-        let _ = self.tracking_copy.borrow_mut().write(
+        self.tracking_copy.borrow_mut().write(
             total_supply_key,
             StoredValue::CLValue(
                 CLValue::from_t(total_supply)
@@ -1342,14 +1665,16 @@ where
         // Create mint
         let total_supply_key = self.create_mint()?;
 
+        let payment_purse_uref = self.create_purse(U512::zero())?;
+
         // Create all genesis accounts
-        self.create_accounts(total_supply_key)?;
+        self.create_accounts(total_supply_key, payment_purse_uref)?;
 
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
 
         // Create handle payment
-        self.create_handle_payment()?;
+        self.create_handle_payment(payment_purse_uref)?;
 
         // Create standard payment
         self.create_standard_payment()?;
@@ -1378,7 +1703,7 @@ mod tests {
     }
 
     #[test]
-    fn account_bytesrepr_roundtrip() {
+    fn genesis_account_bytesrepr_roundtrip() {
         let mut rng = rand::thread_rng();
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
@@ -1417,5 +1742,12 @@ mod tests {
         );
 
         bytesrepr::test_serialization_roundtrip(&genesis_account);
+    }
+
+    #[test]
+    fn administrator_account_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let administrator_account = AdministratorAccount::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&administrator_account);
     }
 }
