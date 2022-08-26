@@ -14,7 +14,10 @@ use tracing::{debug, error, info};
 use casper_execution_engine::storage::trie::TrieOrChunk;
 
 use crate::{
-    components::Component,
+    components::{
+        chain_synchronizer::error::{FetchBlockHeadersBatchError, FetchTrieError},
+        Component,
+    },
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
@@ -110,9 +113,7 @@ where
             metrics.clone(),
             progress.clone(),
         )
-        .event(|result| Event::FastSyncResult {
-            result: Box::new(result),
-        });
+        .event(|result| Event::FastSyncResult(Box::new(result)));
 
         let synchronizer = ChainSynchronizer {
             config,
@@ -214,7 +215,7 @@ where
                 synchronizer.metrics.clone(),
                 progress,
             )
-            .ignore();
+            .event(|result| Event::SyncToGenesisResult(Box::new(result)));
 
             return Ok((synchronizer, effects));
         }
@@ -288,9 +289,24 @@ where
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::FastSyncResult { result } => {
-                self.handle_fast_sync_result(effect_builder, *result)
+            Event::SyncToGenesisResult(result) => {
+                // TODO[RC]: When all fetch operations are unified, rely on the single
+                // `Error::AttemptsExhausted` variant.
+                if matches!(*result, Err(Error::AttemptsExhausted))
+                    | matches!(*result, Err(Error::FetchHeadersBatch(ref err)) if matches!(err, FetchBlockHeadersBatchError::AttemptsExhausted))
+                    | matches!(*result, Err(Error::FetchTrie(err)) if matches!(err, FetchTrieError::AttemptsExhausted))
+                {
+                    error!("sync to genesis failed due to fetch retries exhaustion; shutting down");
+                    fatal!(
+                        effect_builder,
+                        "sync to genesis failed due to fetch retries exhaustion; please retry",
+                    )
+                    .ignore()
+                } else {
+                    Effects::new()
+                }
             }
+            Event::FastSyncResult(result) => self.handle_fast_sync_result(effect_builder, *result),
             Event::GetNodeState(request) => self.handle_get_node_state_request(request),
         }
     }

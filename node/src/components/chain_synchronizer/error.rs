@@ -18,9 +18,11 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, Item,
     },
 };
+
+use super::operations::FetchWithRetryError;
 
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
@@ -174,6 +176,9 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         AcquireError,
     ),
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
 }
 
 #[derive(Error, Debug)]
@@ -195,6 +200,50 @@ pub(crate) enum FetchTrieError {
          by a peer somehow. Trie digest: {digest:?}"
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
+}
+
+impl<T> From<FetchWithRetryError<T>> for FetchTrieError
+where
+    FetchTrieError: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => FetchTrieError::AttemptsExhausted,
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
+}
+
+impl<T> From<FetchWithRetryError<T>> for FetchBlockHeadersBatchError
+where
+    FetchBlockHeadersBatchError: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => {
+                FetchBlockHeadersBatchError::AttemptsExhausted
+            }
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
+}
+
+impl<T> From<FetchWithRetryError<T>> for Error
+where
+    Error: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => Error::AttemptsExhausted,
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -205,4 +254,7 @@ pub(crate) enum FetchBlockHeadersBatchError {
 
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
 }
