@@ -47,6 +47,19 @@ pub(crate) enum Error {
         activation_point: EraId,
     },
 
+    #[error("no blocks have been found in storage (should provide recent trusted hash)")]
+    NoBlocksInStorage,
+
+    #[error(
+        "configured trusted block is different from the stored block at the same height \
+         configured block header: {config_header:?}, \
+         stored block header: {stored_header_at_same_height:?}"
+    )]
+    TrustedHeaderOnDifferentFork {
+        config_header: Box<BlockHeader>,
+        stored_header_at_same_height: Box<BlockHeader>,
+    },
+
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
          {block_header_with_future_version:?}"
