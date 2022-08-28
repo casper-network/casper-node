@@ -26,8 +26,8 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals,
+        DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -373,12 +373,12 @@ impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
     }
 }
 
-impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId> {
+impl ItemFetcher<DeployFinalizedApprovals> for Fetcher<DeployFinalizedApprovals> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<FinalizedApprovalsWithId>>>>
+    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<DeployFinalizedApprovals>>>>
     {
         &mut self.responders
     }
@@ -392,13 +392,13 @@ impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId>
     }
 
     /// Gets the finalized approvals for a deploy from the storage component.
-    fn get_from_storage<REv: ReactorEventT<FinalizedApprovalsWithId>>(
+    fn get_from_storage<REv: ReactorEventT<DeployFinalizedApprovals>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         id: DeployHash,
         peer: NodeId,
-        responder: FetchResponder<FinalizedApprovalsWithId>,
-    ) -> Effects<Event<FinalizedApprovalsWithId>> {
+        responder: FetchResponder<DeployFinalizedApprovals>,
+    ) -> Effects<Event<DeployFinalizedApprovals>> {
         effect_builder
             .get_deploys_from_storage(vec![id])
             .event(move |mut results| Event::GetFromStorageResult {
@@ -406,7 +406,7 @@ impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId>
                 peer,
                 maybe_item: Box::new(results.pop().expect("can only contain one result").map(
                     |deploy| {
-                        FinalizedApprovalsWithId::new(
+                        DeployFinalizedApprovals::new(
                             id,
                             FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
                         )

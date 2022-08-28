@@ -291,6 +291,8 @@ pub(crate) enum MessageKind {
     Consensus,
     /// Deploys being gossiped.
     DeployGossip,
+    /// Blocks being gossiped.
+    BlockGossip,
     /// Addresses being gossiped.
     AddressGossip,
     /// Deploys being transferred directly (via requests).
@@ -311,6 +313,7 @@ impl Display for MessageKind {
             MessageKind::Protocol => f.write_str("protocol"),
             MessageKind::Consensus => f.write_str("consensus"),
             MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),
             MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
             MessageKind::FinalizedApprovalsTransfer => f.write_str("finalized_approvals_transfer"),

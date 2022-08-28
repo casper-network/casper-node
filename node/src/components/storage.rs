@@ -83,8 +83,9 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals, Item,
+        NodeId,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -561,7 +562,7 @@ impl Storage {
                 )?)
             }
             NetRequest::FinalizedApprovals(ref serialized_id) => {
-                let id = decode_item_id::<FinalizedApprovalsWithId>(serialized_id)?;
+                let id = decode_item_id::<DeployFinalizedApprovals>(serialized_id)?;
                 let opt_item = self
                     .env
                     .begin_ro_txn()
@@ -571,7 +572,7 @@ impl Storage {
                             .map_err(FatalStorageError::from)
                     })?
                     .map(|deploy| {
-                        FinalizedApprovalsWithId::new(
+                        DeployFinalizedApprovals::new(
                             id,
                             FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
                         )

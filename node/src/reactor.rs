@@ -69,7 +69,7 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, ExitCode,
         Item, NodeId,
     },
     unregister_metric,
@@ -961,7 +961,7 @@ fn handle_get_response<R>(
 where
     R: Reactor,
     <R as Reactor>::Event: From<deploy_acceptor::Event>
-        + From<fetcher::Event<FinalizedApprovalsWithId>>
+        + From<fetcher::Event<DeployFinalizedApprovals>>
         + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockWithMetadata>>
         + From<fetcher::Event<BlockHeader>>
@@ -1007,7 +1007,7 @@ where
             <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
         }
         NetResponse::FinalizedApprovals(ref serialized_item) => {
-            handle_fetch_response::<R, FinalizedApprovalsWithId>(
+            handle_fetch_response::<R, DeployFinalizedApprovals>(
                 reactor,
                 effect_builder,
                 rng,
@@ -1016,6 +1016,7 @@ where
             )
         }
         NetResponse::Block(ref serialized_item) => {
+            todo!();
             handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
         }
         NetResponse::GossipedAddress(_) => {

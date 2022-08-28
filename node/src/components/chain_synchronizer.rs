@@ -32,7 +32,7 @@ use crate::{
     storage::StorageRequest,
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
+        BlockSignatures, BlockWithMetadata, Chainspec, Deploy, DeployFinalizedApprovals,
         NodeConfig, NodeState,
     },
     NodeRng, SmallNetworkConfig,
@@ -86,7 +86,7 @@ where
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
         + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<DeployFinalizedApprovals>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<ControlAnnouncement>
@@ -271,7 +271,7 @@ where
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
         + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<DeployFinalizedApprovals>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<ControlAnnouncement>

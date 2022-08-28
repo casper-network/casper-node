@@ -809,10 +809,8 @@ impl ContractRuntime {
         let current_era_id = block.header().era_id();
 
         let block_height = block.height();
-        effect_builder
-            .announce_new_linear_chain_block(block, execution_results)
-            .await;
 
+        // Make sure storage is able to do its work before we declare success.
         effect_builder.mark_block_completed(block_height).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
@@ -828,6 +826,10 @@ impl ContractRuntime {
                 .announce_upcoming_era_validators(current_era_id, upcoming_era_validators)
                 .await;
         }
+
+        effect_builder
+            .announce_new_linear_chain_block(block, execution_results)
+            .await;
 
         // If the child is already finalized, start execution.
         let next_block = {

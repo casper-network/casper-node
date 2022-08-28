@@ -85,6 +85,16 @@ impl Display for MetricsRequest {
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<String>>();
 const_assert!(_NETWORK_EVENT_SIZE < 89);
 
+// #[derive(Debug, Serialize)]
+// pub(crate) enum Excluded {
+//     Empty,
+//     Explicit(HashSet<NodeId>),
+//     ActiveValidators {
+//         era_id: EraId,
+//         peer_set: HashSet<NodeId>,
+//     },
+// }
+
 /// A networking request.
 #[derive(Debug, Serialize)]
 #[must_use]
@@ -121,6 +131,8 @@ pub(crate) enum NetworkRequest<P> {
         /// Node IDs of nodes to exclude from gossiping to.
         #[serde(skip_serializing)]
         exclude: HashSet<NodeId>,
+        // ///
+        // gossip_to_validators: bool,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<HashSet<NodeId>>,
@@ -225,7 +237,7 @@ impl Display for NetworkInfoRequest {
 
 /// A gossip request.
 ///
-/// This request usually initiates gossiping process of the specifed item. Note that the gossiper
+/// This request usually initiates gossiping process of the specified item. Note that the gossiper
 /// will fetch the item itself, so only the ID is needed.
 ///
 /// The responder will be called as soon as the gossiper has initiated the process.

@@ -1066,10 +1066,17 @@ where
                         upcoming = upcoming_validators.len(),
                         "updating active and upcoming validators"
                     );
+
+                    let upcoming_era_validator_set: BTreeMap<EraId, HashSet<PublicKey>> =
+                        upcoming_era_validators
+                            .into_iter()
+                            .map(|(era_id, validator)| (era_id, validator.into_keys().collect()))
+                            .collect();
+
                     self.incoming_limiter
-                        .update_validators(active_validators.clone(), upcoming_validators.clone());
+                        .update_validators(upcoming_era_validator_set.clone());
                     self.outgoing_limiter
-                        .update_validators(active_validators, upcoming_validators);
+                        .update_validators(upcoming_era_validator_set);
                 }
 
                 Effects::new()

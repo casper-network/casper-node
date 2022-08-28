@@ -7,14 +7,15 @@ mod message;
 mod metrics;
 mod tests;
 
-use datasize::DataSize;
-use prometheus::Registry;
 use std::{
     collections::HashSet,
     convert::Infallible,
     fmt::{self, Debug, Formatter},
     time::Duration,
 };
+
+use datasize::DataSize;
+use prometheus::Registry;
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message as NodeMessage,
-    types::{Deploy, DeployHash, DeployWithFinalizedApprovals, Item, NodeId},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, Item, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -87,6 +88,28 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
             };
             Event::GetFromHolderResult {
                 item_id: deploy_hash,
+                requester: sender,
+                result: Box::new(result),
+            }
+        })
+}
+
+/// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
+/// constructing a `Gossiper<Block>`.
+pub(crate) fn get_block_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
+    effect_builder: EffectBuilder<REv>,
+    block_hash: BlockHash,
+    sender: NodeId,
+) -> Effects<Event<Block>> {
+    effect_builder
+        .get_block_from_storage(block_hash)
+        .event(move |results| {
+            let result = match results {
+                Some(block) => Ok(block),
+                None => Err(String::from("block not found")),
+            };
+            Event::GetFromHolderResult {
+                item_id: block_hash,
                 requester: sender,
                 result: Box::new(result),
             }

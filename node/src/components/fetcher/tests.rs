@@ -119,8 +119,9 @@ reactor!(Reactor {
         NetRequestIncoming -> [storage];
         NetResponseIncoming -> [fn handle_net_response];
 
-        // There is no deploy gossiping going on.
+        // There is no deploy or block gossiping going on.
         GossiperIncoming<Deploy> -> [!];
+        GossiperIncoming<Block> -> [!];
 
         // We are using an in-memory network, so we do not expect any gossiping of addresses.
         GossiperIncoming<GossipedAddress> -> [!];

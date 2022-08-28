@@ -72,8 +72,8 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, ExitCode,
+        FinalitySignature,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -117,6 +117,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
     #[from]
+    BlockGossiper(#[serde(skip_serializing)] gossiper::Event<Block>),
+    #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
     #[from]
     BlockValidator(#[serde(skip_serializing)] block_validator::Event),
@@ -139,7 +141,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
     #[from]
-    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
+    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<DeployFinalizedApprovals>),
     #[from]
     BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
     #[from]
@@ -172,7 +174,7 @@ pub(crate) enum ParticipatingEvent {
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
     #[from]
     FinalizedApprovalsFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
+        #[serde(skip_serializing)] FetcherRequest<DeployFinalizedApprovals>,
     ),
     #[from]
     BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
@@ -211,6 +213,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
+    BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
+    #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
@@ -224,6 +228,8 @@ pub(crate) enum ParticipatingEvent {
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    #[from]
+    BlockGossiperIncoming(GossiperIncoming<Block>),
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
@@ -274,6 +280,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
             ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
             ParticipatingEvent::DeployGossiper(_) => "DeployGossiper",
+            ParticipatingEvent::BlockGossiper(_) => "BlockGossiper",
             ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
@@ -331,6 +338,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
             ParticipatingEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             ParticipatingEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            ParticipatingEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
             ParticipatingEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             ParticipatingEvent::NetRequestIncoming(_) => "NetRequestIncoming",
             ParticipatingEvent::NetResponseIncoming(_) => "NetResponseIncoming",
@@ -340,6 +348,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
             ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
+            ParticipatingEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
         }
     }
 }
@@ -364,6 +373,12 @@ impl From<NetworkRequest<consensus::ConsensusMessage>> for ParticipatingEvent {
 
 impl From<NetworkRequest<gossiper::Message<Deploy>>> for ParticipatingEvent {
     fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
+        ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<Block>>> for ParticipatingEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Block>>) -> Self {
         ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -399,6 +414,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             ParticipatingEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             ParticipatingEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            ParticipatingEvent::BlockGossiper(event) => write!(f, "block gossiper: {}", event),
             ParticipatingEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             ParticipatingEvent::ContractRuntimeRequest(event) => {
                 write!(f, "contract runtime request: {:?}", event)
@@ -505,6 +521,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
             }
+            ParticipatingEvent::BlockGossiperAnnouncement(ann) => {
+                write!(f, "block gossiper announcement: {}", ann)
+            }
             ParticipatingEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -525,6 +544,7 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::BlockGossiperIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
@@ -587,6 +607,7 @@ pub(crate) struct Reactor {
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
+    block_gossiper: Gossiper<Block, ParticipatingEvent>,
     block_proposer: BlockProposer,
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent,
@@ -597,7 +618,7 @@ pub(crate) struct Reactor {
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
-    finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
+    finalized_approvals_fetcher: Fetcher<DeployFinalizedApprovals>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     diagnostics_port: DiagnosticsPort,
@@ -806,6 +827,12 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, ParticipatingEvent>,
             registry,
         )?;
+        let block_gossiper = Gossiper::new_for_partial_items(
+            "block_gossiper",
+            config.gossip,
+            gossiper::get_block_from_storage::<Block, ParticipatingEvent>,
+            registry,
+        )?;
 
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
@@ -915,6 +942,7 @@ impl reactor::Reactor for Reactor {
                 deploy_acceptor,
                 deploy_fetcher,
                 deploy_gossiper,
+                block_gossiper,
                 block_proposer,
                 block_validator,
                 linear_chain,
@@ -990,6 +1018,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockGossiper(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockGossiper,
+                self.block_gossiper.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::AddressGossiper(event) => reactor::wrap_effects(
                 ParticipatingEvent::AddressGossiper,
@@ -1343,6 +1375,15 @@ impl reactor::Reactor for Reactor {
                 // self.dispatch_event(effect_builder, rng, reactor_event)
                 Effects::new()
             }
+            ParticipatingEvent::BlockGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(gossiped_block_id),
+            ) => {
+                error!(%gossiped_block_id, "gossiper should not announce new block");
+                Effects::new()
+            }
+            ParticipatingEvent::BlockGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(_gossiped_block_id),
+            ) => Effects::new(),
             ParticipatingEvent::AddressGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_address),
             ) => {
@@ -1365,11 +1406,21 @@ impl reactor::Reactor for Reactor {
                         header: Box::new(block.header().clone()),
                         header_hash: *block.hash(),
                     });
+                let reactor_block_gossiper_event =
+                    ParticipatingEvent::BlockGossiper(gossiper::Event::ItemReceived {
+                        item_id: *block.hash(),
+                        source: Source::Ourself,
+                    });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    reactor_block_gossiper_event,
+                ));
 
                 effects
             }
@@ -1431,6 +1482,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::DeployGossiper,
                 self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            ParticipatingEvent::BlockGossiperIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::BlockGossiper,
+                self.block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(

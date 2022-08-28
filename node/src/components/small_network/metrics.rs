@@ -26,6 +26,7 @@ pub(super) struct Metrics {
     pub(super) out_count_consensus: IntCounter,
     /// Count of outgoing messages with deploy gossiper payload.
     pub(super) out_count_deploy_gossip: IntCounter,
+    pub(super) out_count_block_gossip: IntCounter,
     /// Count of outgoing messages with address gossiper payload.
     pub(super) out_count_address_gossip: IntCounter,
     /// Count of outgoing messages with deploy request/response payload.
@@ -45,6 +46,7 @@ pub(super) struct Metrics {
     pub(super) out_bytes_consensus: IntCounter,
     /// Volume in bytes of outgoing messages with deploy gossiper payload.
     pub(super) out_bytes_deploy_gossip: IntCounter,
+    pub(super) out_bytes_block_gossip: IntCounter,
     /// Volume in bytes of outgoing messages with address gossiper payload.
     pub(super) out_bytes_address_gossip: IntCounter,
     /// Volume in bytes of outgoing messages with deploy request/response payload.
@@ -75,6 +77,7 @@ pub(super) struct Metrics {
     pub(super) in_bytes_consensus: IntCounter,
     /// Volume in bytes of incoming messages with deploy gossiper payload.
     pub(super) in_bytes_deploy_gossip: IntCounter,
+    pub(super) in_bytes_block_gossip: IntCounter,
     /// Volume in bytes of incoming messages with address gossiper payload.
     pub(super) in_bytes_address_gossip: IntCounter,
     /// Volume in bytes of incoming messages with deploy request/response payload.
@@ -94,6 +97,7 @@ pub(super) struct Metrics {
     pub(super) in_count_consensus: IntCounter,
     /// Count of incoming messages with deploy gossiper payload.
     pub(super) in_count_deploy_gossip: IntCounter,
+    pub(super) in_count_block_gossip: IntCounter,
     /// Count of incoming messages with address gossiper payload.
     pub(super) in_count_address_gossip: IntCounter,
     /// Count of incoming messages with deploy request/response payload.
@@ -150,6 +154,10 @@ impl Metrics {
             "net_out_count_deploy_gossip",
             "count of outgoing messages with deploy gossiper payload",
         )?;
+        let out_count_block_gossip = IntCounter::new(
+            "net_out_count_block_gossip",
+            "count of outgoing messages with block gossiper payload",
+        )?;
         let out_count_address_gossip = IntCounter::new(
             "net_out_count_address_gossip",
             "count of outgoing messages with address gossiper payload",
@@ -186,6 +194,10 @@ impl Metrics {
         let out_bytes_deploy_gossip = IntCounter::new(
             "net_out_bytes_deploy_gossip",
             "volume in bytes of outgoing messages with deploy gossiper payload",
+        )?;
+        let out_bytes_block_gossip = IntCounter::new(
+            "net_out_bytes_block_gossip",
+            "volume in bytes of outgoing messages with block gossiper payload",
         )?;
         let out_bytes_address_gossip = IntCounter::new(
             "net_out_bytes_address_gossip",
@@ -245,6 +257,10 @@ impl Metrics {
             "net_in_count_deploy_gossip",
             "count of incoming messages with deploy gossiper payload",
         )?;
+        let in_count_block_gossip = IntCounter::new(
+            "net_in_count_block_gossip",
+            "count of incoming messages with block gossiper payload",
+        )?;
         let in_count_address_gossip = IntCounter::new(
             "net_in_count_address_gossip",
             "count of incoming messages with address gossiper payload",
@@ -281,6 +297,10 @@ impl Metrics {
         let in_bytes_deploy_gossip = IntCounter::new(
             "net_in_bytes_deploy_gossip",
             "volume in bytes of incoming messages with deploy gossiper payload",
+        )?;
+        let in_bytes_block_gossip = IntCounter::new(
+            "net_in_bytes_block_gossip",
+            "volume in bytes of incoming messages with block gossiper payload",
         )?;
         let in_bytes_address_gossip = IntCounter::new(
             "net_in_bytes_address_gossip",
@@ -334,6 +354,7 @@ impl Metrics {
         registry.register(Box::new(out_count_protocol.clone()))?;
         registry.register(Box::new(out_count_consensus.clone()))?;
         registry.register(Box::new(out_count_deploy_gossip.clone()))?;
+        registry.register(Box::new(out_count_block_gossip.clone()))?;
         registry.register(Box::new(out_count_address_gossip.clone()))?;
         registry.register(Box::new(out_count_deploy_transfer.clone()))?;
         registry.register(Box::new(out_count_finalized_approvals_transfer.clone()))?;
@@ -344,6 +365,7 @@ impl Metrics {
         registry.register(Box::new(out_bytes_protocol.clone()))?;
         registry.register(Box::new(out_bytes_consensus.clone()))?;
         registry.register(Box::new(out_bytes_deploy_gossip.clone()))?;
+        registry.register(Box::new(out_bytes_block_gossip.clone()))?;
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
         registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
         registry.register(Box::new(out_bytes_finalized_approvals_transfer.clone()))?;
@@ -360,6 +382,7 @@ impl Metrics {
         registry.register(Box::new(in_count_protocol.clone()))?;
         registry.register(Box::new(in_count_consensus.clone()))?;
         registry.register(Box::new(in_count_deploy_gossip.clone()))?;
+        registry.register(Box::new(in_count_block_gossip.clone()))?;
         registry.register(Box::new(in_count_address_gossip.clone()))?;
         registry.register(Box::new(in_count_deploy_transfer.clone()))?;
         registry.register(Box::new(in_count_finalized_approvals_transfer.clone()))?;
@@ -370,6 +393,7 @@ impl Metrics {
         registry.register(Box::new(in_bytes_protocol.clone()))?;
         registry.register(Box::new(in_bytes_consensus.clone()))?;
         registry.register(Box::new(in_bytes_deploy_gossip.clone()))?;
+        registry.register(Box::new(in_bytes_block_gossip.clone()))?;
         registry.register(Box::new(in_bytes_address_gossip.clone()))?;
         registry.register(Box::new(in_bytes_deploy_transfer.clone()))?;
         registry.register(Box::new(in_bytes_finalized_approvals_transfer.clone()))?;
@@ -392,6 +416,7 @@ impl Metrics {
             out_count_protocol,
             out_count_consensus,
             out_count_deploy_gossip,
+            out_count_block_gossip,
             out_count_address_gossip,
             out_count_deploy_transfer,
             out_count_finalized_approvals_transfer,
@@ -401,6 +426,7 @@ impl Metrics {
             out_bytes_protocol,
             out_bytes_consensus,
             out_bytes_deploy_gossip,
+            out_bytes_block_gossip,
             out_bytes_address_gossip,
             out_bytes_deploy_transfer,
             out_bytes_finalized_approvals_transfer,
@@ -415,6 +441,7 @@ impl Metrics {
             in_count_protocol,
             in_count_consensus,
             in_count_deploy_gossip,
+            in_count_block_gossip,
             in_count_address_gossip,
             in_count_deploy_transfer,
             in_count_finalized_approvals_transfer,
@@ -424,6 +451,7 @@ impl Metrics {
             in_bytes_protocol,
             in_bytes_consensus,
             in_bytes_deploy_gossip,
+            in_bytes_block_gossip,
             in_bytes_address_gossip,
             in_bytes_deploy_transfer,
             in_bytes_finalized_approvals_transfer,
@@ -453,6 +481,10 @@ impl Metrics {
                 MessageKind::DeployGossip => {
                     metrics.out_bytes_deploy_gossip.inc_by(size);
                     metrics.out_count_deploy_gossip.inc();
+                }
+                MessageKind::BlockGossip => {
+                    metrics.out_bytes_block_gossip.inc_by(size);
+                    metrics.out_count_block_gossip.inc()
                 }
                 MessageKind::AddressGossip => {
                     metrics.out_bytes_address_gossip.inc_by(size);
@@ -499,6 +531,10 @@ impl Metrics {
                 MessageKind::DeployGossip => {
                     metrics.in_bytes_deploy_gossip.inc_by(size);
                     metrics.in_count_deploy_gossip.inc();
+                }
+                MessageKind::BlockGossip => {
+                    metrics.in_bytes_block_gossip.inc_by(size);
+                    metrics.in_count_block_gossip.inc();
                 }
                 MessageKind::AddressGossip => {
                     metrics.in_bytes_address_gossip.inc_by(size);
@@ -571,6 +607,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_count_protocol);
         unregister_metric!(self.registry, self.out_count_consensus);
         unregister_metric!(self.registry, self.out_count_deploy_gossip);
+        unregister_metric!(self.registry, self.out_count_block_gossip);
         unregister_metric!(self.registry, self.out_count_address_gossip);
         unregister_metric!(self.registry, self.out_count_deploy_transfer);
         unregister_metric!(self.registry, self.out_count_finalized_approvals_transfer);
@@ -581,6 +618,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_bytes_protocol);
         unregister_metric!(self.registry, self.out_bytes_consensus);
         unregister_metric!(self.registry, self.out_bytes_deploy_gossip);
+        unregister_metric!(self.registry, self.out_bytes_block_gossip);
         unregister_metric!(self.registry, self.out_bytes_address_gossip);
         unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
         unregister_metric!(self.registry, self.out_bytes_finalized_approvals_transfer);
@@ -597,6 +635,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.in_count_protocol);
         unregister_metric!(self.registry, self.in_count_consensus);
         unregister_metric!(self.registry, self.in_count_deploy_gossip);
+        unregister_metric!(self.registry, self.in_count_block_gossip);
         unregister_metric!(self.registry, self.in_count_address_gossip);
         unregister_metric!(self.registry, self.in_count_deploy_transfer);
         unregister_metric!(self.registry, self.in_count_finalized_approvals_transfer);
@@ -607,6 +646,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.in_bytes_protocol);
         unregister_metric!(self.registry, self.in_bytes_consensus);
         unregister_metric!(self.registry, self.in_bytes_deploy_gossip);
+        unregister_metric!(self.registry, self.in_bytes_block_gossip);
         unregister_metric!(self.registry, self.in_bytes_address_gossip);
         unregister_metric!(self.registry, self.in_bytes_deploy_transfer);
         unregister_metric!(self.registry, self.in_bytes_finalized_approvals_transfer);

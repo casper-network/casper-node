@@ -79,6 +79,8 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
+    BlockGossiper(super::Event<Block>),
+    #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
     StorageRequest(StorageRequest),
@@ -93,6 +95,8 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
+    BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
+    #[from]
     ContractRuntime(contract_runtime::Event),
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
@@ -100,6 +104,8 @@ enum Event {
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    #[from]
+    BlockGossiperIncoming(GossiperIncoming<Block>),
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
@@ -140,6 +146,12 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
     }
 }
 
+impl From<NetworkRequest<Message<Block>>> for Event {
+    fn from(request: NetworkRequest<Message<Block>>) -> Self {
+        Event::NetworkRequest(request.map_payload(NodeMessage::from))
+    }
+}
+
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
         unimplemented!("not implemented for gossiper tests")
@@ -159,6 +171,7 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
+            Event::BlockGossiper(event) => write!(formatter, "block gossiper: {}", event),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::MarkBlockCompletedRequest(req) => {
                 write!(formatter, "mark block completed: {}", req)
@@ -175,11 +188,15 @@ impl Display for Event {
             Event::DeployGossiperAnnouncement(ann) => {
                 write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
+            Event::BlockGossiperAnnouncement(ann) => {
+                write!(formatter, "block-gossiper announcement: {}", ann)
+            }
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
             Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::BlockGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::AddressGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
@@ -203,6 +220,7 @@ struct Reactor {
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
+    block_gossiper: Gossiper<Block, Event>,
     contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
@@ -256,7 +274,13 @@ impl reactor::Reactor for Reactor {
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
-            get_deploy_from_storage,
+            get_deploy_from_storage::<Deploy, Event>,
+            registry,
+        )?;
+        let block_gossiper = Gossiper::new_for_partial_items(
+            "block_gossiper",
+            config,
+            get_block_from_storage::<Block, Event>,
             registry,
         )?;
 
@@ -265,6 +289,7 @@ impl reactor::Reactor for Reactor {
             storage,
             fake_deploy_acceptor,
             deploy_gossiper,
+            block_gossiper,
             contract_runtime,
             _storage_tempdir: storage_tempdir,
         };
@@ -294,6 +319,10 @@ impl reactor::Reactor for Reactor {
                 Event::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
+            ),
+            Event::BlockGossiper(event) => reactor::wrap_effects(
+                Event::BlockGossiper,
+                self.block_gossiper.handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::Network,
@@ -340,6 +369,10 @@ impl reactor::Reactor for Reactor {
                 // We do not care about deploy gossiper announcements in the gossiper test.
                 Effects::new()
             }
+            Event::BlockGossiperAnnouncement(_ann) => {
+                // We do not care about block gossiper announcements in the gossiper test.
+                Effects::new()
+            }
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
@@ -357,6 +390,11 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            Event::BlockGossiperIncoming(incoming) => reactor::wrap_effects(
+                Event::BlockGossiper,
+                self.block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             Event::NetRequestIncoming(incoming) => reactor::wrap_effects(

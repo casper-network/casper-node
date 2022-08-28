@@ -49,7 +49,7 @@ impl PendingSignatures {
         }
     }
 
-    // Checks if we have already enqueued that finality signature.
+    /// Checks if we have already enqueued that finality signature.
     pub(super) fn has_finality_signature(
         &self,
         creator: &PublicKey,
@@ -114,23 +114,24 @@ impl PendingSignatures {
     }
 
     /// Marks pending finality signature as created by a bonded validator.
+    ///
     /// Returns whether there was a signature from the `public_key` for `block_hash` in the
     /// collection.
     pub(super) fn mark_bonded(&mut self, public_key: PublicKey, block_hash: BlockHash) -> bool {
-        self.mark_bonded_helper(public_key, block_hash).is_some()
-    }
-
-    fn mark_bonded_helper(&mut self, public_key: PublicKey, block_hash: BlockHash) -> Option<()> {
         match self.pending_finality_signatures.entry(public_key.clone()) {
             Entry::Occupied(mut validator_sigs) => {
-                let sig = validator_sigs.get_mut().get(&block_hash)?;
-                let bonded_status = VerificationStatus::Bonded(sig.value().clone());
-                validator_sigs.get_mut().insert(block_hash, bonded_status);
-                Some(())
+                match validator_sigs.get_mut().get(&block_hash) {
+                    Some(sig) => {
+                        let bonded_status = VerificationStatus::Bonded(sig.value().clone());
+                        validator_sigs.get_mut().insert(block_hash, bonded_status);
+                        true
+                    }
+                    None => false,
+                }
             }
             Entry::Vacant(_) => {
                 warn!(?public_key, ?block_hash, "no signature from validator");
-                None
+                false
             }
         }
     }

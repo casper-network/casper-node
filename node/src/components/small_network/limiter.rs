@@ -4,21 +4,73 @@
 //! by making each user request an allowance first.
 
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
-use casper_types::PublicKey;
 use prometheus::Counter;
 use tokio::sync::Mutex;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
+
+use casper_types::{EraId, PublicKey};
 
 use crate::types::NodeId;
 
 /// Amount of resource allowed to buffer in `ClassBasedLimiter`.
 const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
+
+/// Sets of validators used to classify traffic.
+///
+/// Normally the validator map will contain 3 eras worth of entries: the era just completed, the
+/// currently-active era, and the era after that.
+#[derive(Debug, Default)]
+pub(super) struct ValidatorSets {
+    active_era: EraId,
+    validators: BTreeMap<EraId, HashSet<PublicKey>>,
+}
+
+impl ValidatorSets {
+    fn insert(&mut self, mut upcoming_era_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
+        let lowest_era_id = self.active_era;
+
+        self.active_era = upcoming_era_validators
+            .keys()
+            .next()
+            .copied()
+            .unwrap_or_else(|| {
+                error!("upcoming era validators should not be empty");
+                EraId::new(0)
+            });
+
+        self.validators.retain(|era_id, _| *era_id == lowest_era_id);
+        self.validators.append(&mut upcoming_era_validators);
+    }
+
+    fn is_active_validator(&self, era_id: EraId, public_key: &PublicKey) -> Option<bool> {
+        if self.active_era != era_id {
+            return Some(false);
+        }
+        self.validators
+            .get(&era_id)
+            .map(|validators| validators.contains(public_key))
+    }
+
+    fn is_validator(&self, public_key: &PublicKey) -> bool {
+        self.validators
+            .values()
+            .flatten()
+            .any(|validator| validator == public_key)
+    }
+
+    fn active_validators(&self, era_id: EraId) -> Option<&HashSet<PublicKey>> {
+        if self.active_era != era_id {
+            return None;
+        }
+        self.validators.get(&era_id)
+    }
+}
 
 /// A limiter.
 ///
@@ -33,11 +85,7 @@ pub(super) trait Limiter: Send + Sync {
     ) -> Box<dyn LimiterHandle>;
 
     /// Update the validator sets.
-    fn update_validators(
-        &self,
-        active_validators: HashSet<PublicKey>,
-        upcoming_validators: HashSet<PublicKey>,
-    );
+    fn update_validators(&self, validators: BTreeMap<EraId, HashSet<PublicKey>>);
 }
 
 /// A per-peer handle for a limiter.
@@ -65,12 +113,7 @@ impl Limiter for Unlimited {
         Box::new(UnlimitedHandle)
     }
 
-    fn update_validators(
-        &self,
-        _active_validators: HashSet<PublicKey>,
-        _upcoming_validators: HashSet<PublicKey>,
-    ) {
-    }
+    fn update_validators(&self, _validators: BTreeMap<EraId, HashSet<PublicKey>>) {}
 }
 
 #[async_trait]
@@ -130,22 +173,11 @@ impl ClassBasedLimiterData {
     }
 }
 
-/// Sets of validators used to classify traffic.
-#[derive(Debug, Default)]
-struct ValidatorSets {
-    /// The new set of validators active in the current era.
-    active_validators: HashSet<PublicKey>,
-    /// The new set of validators in future eras.
-    upcoming_validators: HashSet<PublicKey>,
-}
-
 /// Peer class for the `ClassBasedLimiter`.
 enum PeerClass {
-    /// Active validators.
-    ActiveValidator,
-    /// Upcoming validators that are not active yet.
-    UpcomingValidator,
-    /// Unclassified/low-priority peers.
+    /// A validator.
+    Validator,
+    /// Unclassified/low-priority peer.
     Bulk,
 }
 
@@ -197,20 +229,11 @@ impl Limiter for ClassBasedLimiter {
         })
     }
 
-    fn update_validators(
-        &self,
-        active_validators: HashSet<PublicKey>,
-        upcoming_validators: HashSet<PublicKey>,
-    ) {
+    fn update_validators(&self, new_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
         match self.data.validator_sets.write() {
             Ok(mut validators) => {
-                debug!(
-                    ?active_validators,
-                    ?upcoming_validators,
-                    "updating resources classes"
-                );
-                validators.active_validators = active_validators;
-                validators.upcoming_validators = upcoming_validators;
+                debug!(?new_validators, "updating resources classes");
+                validators.insert(new_validators)
             }
             Err(_) => {
                 debug!("could not update validator data set of limiter, lock poisoned");
@@ -225,9 +248,7 @@ impl LimiterHandle for ClassBasedHandle {
         // As a first step, determine the peer class by checking if our id is in the validator set.
         let peer_class = match self.data.validator_sets.read() {
             Ok(validators) => {
-                if validators.active_validators.is_empty()
-                    && validators.upcoming_validators.is_empty()
-                {
+                if validators.validators.is_empty() {
                     // It is likely that we have not been initialized, thus no node is getting the
                     // reserved resources. In this case, do not limit at all.
                     trace!("empty set of validators, not limiting resources at all");
@@ -236,10 +257,8 @@ impl LimiterHandle for ClassBasedHandle {
                 }
 
                 if let Some(ref validator_id) = self.consumer_id.validator_id {
-                    if validators.active_validators.contains(validator_id) {
-                        PeerClass::ActiveValidator
-                    } else if validators.upcoming_validators.contains(validator_id) {
-                        PeerClass::UpcomingValidator
+                    if validators.is_validator(validator_id) {
+                        PeerClass::Validator
                     } else {
                         PeerClass::Bulk
                     }
@@ -254,7 +273,7 @@ impl LimiterHandle for ClassBasedHandle {
         };
 
         match peer_class {
-            PeerClass::ActiveValidator | PeerClass::UpcomingValidator => {
+            PeerClass::Validator => {
                 // No limit imposed on validators.
                 return;
             }
@@ -309,10 +328,15 @@ impl LimiterHandle for ClassBasedHandle {
 }
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, time::Duration};
+    use std::{
+        collections::{BTreeMap, HashSet},
+        time::Duration,
+    };
 
     use prometheus::Counter;
     use tokio::time::Instant;
+
+    use casper_types::EraId;
 
     use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
     use crate::testing::init_logging;
@@ -352,7 +376,9 @@ mod tests {
 
         let mut active_validators = HashSet::new();
         active_validators.insert(validator_id.clone());
-        limiter.update_validators(active_validators, HashSet::new());
+        let mut validator_set = BTreeMap::new();
+        validator_set.insert(EraId::new(1), active_validators);
+        limiter.update_validators(validator_set);
 
         let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
 
@@ -376,7 +402,9 @@ mod tests {
         // the limiter in case there are no active validators.
         let mut active_validators = HashSet::new();
         active_validators.insert(PublicKey::random(&mut rng));
-        limiter.update_validators(active_validators, HashSet::new());
+        let mut validator_set = BTreeMap::new();
+        validator_set.insert(EraId::new(1), active_validators);
+        limiter.update_validators(validator_set);
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
@@ -416,7 +444,9 @@ mod tests {
         // the limiter in case there are no active validators.
         let mut active_validators = HashSet::new();
         active_validators.insert(PublicKey::random(&mut rng));
-        limiter.update_validators(active_validators, HashSet::new());
+        let mut validator_set = BTreeMap::new();
+        validator_set.insert(EraId::new(1), active_validators);
+        limiter.update_validators(validator_set);
 
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
@@ -465,7 +495,7 @@ mod tests {
         let wait_metric = new_wait_time_sec();
         let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
 
-        limiter.update_validators(HashSet::new(), HashSet::new());
+        limiter.update_validators(BTreeMap::new());
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
@@ -509,7 +539,9 @@ mod tests {
 
         let mut active_validators = HashSet::new();
         active_validators.insert(validator_id.clone());
-        limiter.update_validators(active_validators, HashSet::new());
+        let mut validator_set = BTreeMap::new();
+        validator_set.insert(EraId::new(1), active_validators);
+        limiter.update_validators(validator_set);
 
         let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
         let validator_handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
