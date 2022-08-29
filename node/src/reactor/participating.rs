@@ -119,6 +119,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlockGossiper(#[serde(skip_serializing)] gossiper::Event<Block>),
     #[from]
+    FinalitySignatureGossiper(#[serde(skip_serializing)] gossiper::Event<FinalitySignature>),
+    #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
     #[from]
     BlockValidator(#[serde(skip_serializing)] block_validator::Event),
@@ -195,6 +197,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     #[from]
+    BeginFinalitySignatureGossipRequest(BeginGossipRequest<FinalitySignature>),
+    #[from]
     StateStoreRequest(StateStoreRequest),
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
@@ -215,6 +219,10 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
     #[from]
+    FinalitySignatureGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
+    ),
+    #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
@@ -230,6 +238,8 @@ pub(crate) enum ParticipatingEvent {
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
     BlockGossiperIncoming(GossiperIncoming<Block>),
+    #[from]
+    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
@@ -281,6 +291,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
             ParticipatingEvent::DeployGossiper(_) => "DeployGossiper",
             ParticipatingEvent::BlockGossiper(_) => "BlockGossiper",
+            ParticipatingEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
@@ -336,9 +347,15 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            ParticipatingEvent::BeginFinalitySignatureGossipRequest(_) => {
+                "BeginFinalitySignatureGossipRequest"
+            }
             ParticipatingEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             ParticipatingEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             ParticipatingEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
+            ParticipatingEvent::FinalitySignatureGossiperIncoming(_) => {
+                "FinalitySignatureGossiperIncoming"
+            }
             ParticipatingEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             ParticipatingEvent::NetRequestIncoming(_) => "NetRequestIncoming",
             ParticipatingEvent::NetResponseIncoming(_) => "NetResponseIncoming",
@@ -349,6 +366,9 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
             ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
             ParticipatingEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
+            ParticipatingEvent::FinalitySignatureGossiperAnnouncement(_) => {
+                "FinalitySignatureGossiperAnnouncement"
+            }
         }
     }
 }
@@ -379,6 +399,12 @@ impl From<NetworkRequest<gossiper::Message<Deploy>>> for ParticipatingEvent {
 
 impl From<NetworkRequest<gossiper::Message<Block>>> for ParticipatingEvent {
     fn from(request: NetworkRequest<gossiper::Message<Block>>) -> Self {
+        ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<FinalitySignature>>> for ParticipatingEvent {
+    fn from(request: NetworkRequest<gossiper::Message<FinalitySignature>>) -> Self {
         ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -415,6 +441,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             ParticipatingEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             ParticipatingEvent::BlockGossiper(event) => write!(f, "block gossiper: {}", event),
+            ParticipatingEvent::FinalitySignatureGossiper(event) => {
+                write!(f, "block signature gossiper: {}", event)
+            }
             ParticipatingEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             ParticipatingEvent::ContractRuntimeRequest(event) => {
                 write!(f, "contract runtime request: {:?}", event)
@@ -495,6 +524,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
+            ParticipatingEvent::BeginFinalitySignatureGossipRequest(request) => {
+                write!(f, "begin block signature gossip request: {}", request)
+            }
             ParticipatingEvent::BlockProposerRequest(req) => {
                 write!(f, "block proposer request: {}", req)
             }
@@ -524,6 +556,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlockGossiperAnnouncement(ann) => {
                 write!(f, "block gossiper announcement: {}", ann)
             }
+            ParticipatingEvent::FinalitySignatureGossiperAnnouncement(ann) => {
+                write!(f, "block signature gossiper announcement: {}", ann)
+            }
             ParticipatingEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -545,6 +580,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::BlockGossiperIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
@@ -608,6 +644,7 @@ pub(crate) struct Reactor {
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
     block_gossiper: Gossiper<Block, ParticipatingEvent>,
+    finality_signature_gossiper: Gossiper<FinalitySignature, ParticipatingEvent>,
     block_proposer: BlockProposer,
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent,
@@ -833,6 +870,11 @@ impl reactor::Reactor for Reactor {
             gossiper::get_block_from_storage::<Block, ParticipatingEvent>,
             registry,
         )?;
+        let finality_signature_gossiper = Gossiper::new_for_complete_items(
+            "finality_signature_gossiper",
+            config.gossip,
+            registry,
+        )?;
 
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
@@ -943,6 +985,7 @@ impl reactor::Reactor for Reactor {
                 deploy_fetcher,
                 deploy_gossiper,
                 block_gossiper,
+                finality_signature_gossiper,
                 block_proposer,
                 block_validator,
                 linear_chain,
@@ -1022,6 +1065,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockGossiper(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockGossiper,
                 self.block_gossiper.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
+                ParticipatingEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper
+                    .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::AddressGossiper(event) => reactor::wrap_effects(
                 ParticipatingEvent::AddressGossiper,
@@ -1194,6 +1242,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::AddressGossiper,
                 self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::BeginFinalitySignatureGossipRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
             ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
@@ -1384,6 +1437,15 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockGossiperAnnouncement(
                 GossiperAnnouncement::FinishedGossiping(_gossiped_block_id),
             ) => Effects::new(),
+            ParticipatingEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
+            ) => {
+                error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
+                Effects::new()
+            }
+            ParticipatingEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
+            ) => Effects::new(),
             ParticipatingEvent::AddressGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_address),
             ) => {
@@ -1489,6 +1551,16 @@ impl reactor::Reactor for Reactor {
                 self.block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            ParticipatingEvent::FinalitySignatureGossiperIncoming(incoming) => {
+                reactor::wrap_effects(
+                    ParticipatingEvent::FinalitySignatureGossiper,
+                    self.finality_signature_gossiper.handle_event(
+                        effect_builder,
+                        rng,
+                        incoming.into(),
+                    ),
+                )
+            }
             ParticipatingEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::AddressGossiper,
                 self.address_gossiper

@@ -151,7 +151,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
         // Capture responder for later signalling.
         let responders = self.responders();
         responders
-            .entry(id)
+            .entry(id.clone())
             .or_default()
             .entry(peer)
             .or_default()
@@ -172,7 +172,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
                     peer, error
                 );
                 self.signal(
-                    id,
+                    id.clone(),
                     Err(FetcherError::CouldNotConstructGetRequest { id, peer }),
                     peer,
                 )
@@ -766,10 +766,10 @@ where
             Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
                 trace!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
-                self.signal(id, Err(FetcherError::Absent { id, peer }), peer)
+                self.signal(id.clone(), Err(FetcherError::Absent { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
-                self.signal(id, Err(FetcherError::TimedOut { id, peer }), peer)
+                self.signal(id.clone(), Err(FetcherError::TimedOut { id, peer }), peer)
             }
         }
     }

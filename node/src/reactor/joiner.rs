@@ -69,6 +69,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, ExitCode,
+        FinalitySignature,
     },
     utils::WithDir,
     NodeRng,
@@ -130,6 +131,8 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockGossiper(#[serde(skip_serializing)] gossiper::Event<Block>),
     #[from]
+    FinalitySignatureGossiper(#[serde(skip_serializing)] gossiper::Event<FinalitySignature>),
+    #[from]
     StorageRequest(StorageRequest),
     #[from]
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
@@ -164,6 +167,8 @@ pub(crate) enum JoinerEvent {
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     #[from]
+    BeginFinalitySignatureGossipRequest(BeginGossipRequest<FinalitySignature>),
+    #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
@@ -180,6 +185,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
     #[from]
+    FinalitySignatureGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
+    ),
+    #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
@@ -193,6 +202,8 @@ pub(crate) enum JoinerEvent {
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
     BlockGossiperIncoming(GossiperIncoming<Block>),
+    #[from]
+    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
@@ -276,9 +287,15 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::StorageRequest(_) => "StorageRequest",
             JoinerEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            JoinerEvent::BeginFinalitySignatureGossipRequest(_) => {
+                "BeginFinalitySignatureGossipRequest"
+            }
             JoinerEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             JoinerEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             JoinerEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
+            JoinerEvent::FinalitySignatureGossiperIncoming(_) => {
+                "FinalitySignatureGossiperIncoming"
+            }
             JoinerEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             JoinerEvent::NetRequestIncoming(_) => "NetRequestIncoming",
             JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
@@ -289,8 +306,12 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             JoinerEvent::DeployGossiper(_) => "DeployGossiper",
             JoinerEvent::BlockGossiper(_) => "BlockGossiper",
+            JoinerEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             JoinerEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
+            JoinerEvent::FinalitySignatureGossiperAnnouncement(_) => {
+                "FinalitySignatureGossiperAnnouncement"
+            }
             JoinerEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
             JoinerEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
             JoinerEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
@@ -322,6 +343,14 @@ impl From<NetworkRequest<gossiper::Message<Deploy>>> for JoinerEvent {
 
 impl From<NetworkRequest<gossiper::Message<Block>>> for JoinerEvent {
     fn from(request: NetworkRequest<gossiper::Message<Block>>) -> Self {
+        JoinerEvent::SmallNetwork(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<FinalitySignature>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<FinalitySignature>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
@@ -371,6 +400,9 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
+            }
+            JoinerEvent::BeginFinalitySignatureGossipRequest(request) => {
+                write!(f, "begin block signature gossip request: {}", request)
             }
             JoinerEvent::TrieOrChunkFetcherRequest(request) => {
                 write!(f, "trie or chunk fetcher request: {}", request)
@@ -429,6 +461,9 @@ impl Display for JoinerEvent {
             JoinerEvent::ConsensusMessageIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::DeployGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::BlockGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::FinalitySignatureGossiperIncoming(inner) => {
+                write!(f, "incoming: {}", inner)
+            }
             JoinerEvent::AddressGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::NetRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
@@ -444,11 +479,17 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             JoinerEvent::BlockGossiper(event) => write!(f, "block gossiper: {}", event),
+            JoinerEvent::FinalitySignatureGossiper(event) => {
+                write!(f, "block signature gossiper: {}", event)
+            }
             JoinerEvent::DeployGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
             }
             JoinerEvent::BlockGossiperAnnouncement(ann) => {
                 write!(f, "block gossiper announcement: {}", ann)
+            }
+            JoinerEvent::FinalitySignatureGossiperAnnouncement(ann) => {
+                write!(f, "finality signature gossiper announcement: {}", ann)
             }
             JoinerEvent::BlockAndDeploysFetcher(event) => {
                 write!(f, "block and deploys fetcher: {}", event)
@@ -512,6 +553,7 @@ pub(crate) struct Reactor {
     node_startup_instant: Instant,
     deploy_gossiper: Gossiper<Deploy, JoinerEvent>,
     block_gossiper: Gossiper<Block, JoinerEvent>,
+    finality_signature_gossiper: Gossiper<FinalitySignature, JoinerEvent>,
 }
 
 impl reactor::Reactor for Reactor {
@@ -635,6 +677,11 @@ impl reactor::Reactor for Reactor {
             gossiper::get_block_from_storage::<Block, JoinerEvent>,
             registry,
         )?;
+        let finality_signature_gossiper = Gossiper::new_for_complete_items(
+            "finality_signature_gossiper",
+            config.gossip,
+            registry,
+        )?;
 
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
@@ -671,6 +718,7 @@ impl reactor::Reactor for Reactor {
                 diagnostics_port,
                 deploy_gossiper,
                 block_gossiper,
+                finality_signature_gossiper,
             },
             effects,
         ))
@@ -810,6 +858,11 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            JoinerEvent::BeginFinalitySignatureGossipRequest(req) => reactor::wrap_effects(
+                JoinerEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
             JoinerEvent::BlockByHeightFetcherRequest(request) => self.dispatch_event(
@@ -976,6 +1029,11 @@ impl reactor::Reactor for Reactor {
                 self.block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            JoinerEvent::FinalitySignatureGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -1029,6 +1087,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::BlockGossiper,
                 self.block_gossiper.handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
+                JoinerEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
@@ -1041,6 +1104,12 @@ impl reactor::Reactor for Reactor {
                 error!(%gossiped_block_id, "gossiper should not announce new block");
                 Effects::new()
             }
+            JoinerEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
+            ) => {
+                error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
+                Effects::new()
+            }
             JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_deploy_id,
             )) => {
@@ -1050,6 +1119,9 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_id,
             )) => Effects::new(),
+            JoinerEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
+            ) => Effects::new(),
             JoinerEvent::BlockHeadersBatchFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,

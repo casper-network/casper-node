@@ -1030,6 +1030,17 @@ where
                 .announce_disconnect_from_peer(sender)
                 .ignore()
         }
+        NetResponse::FinalitySignature(_) => {
+            // The item trait is used for both fetchers and gossiped things, but this kind of
+            // item is never fetched, only gossiped.
+            warn!(
+                ?sender,
+                "gossiped finality signatures are never fetched, banning peer",
+            );
+            effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore()
+        }
         NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
             handle_fetch_response::<R, BlockWithMetadata>(
                 reactor,

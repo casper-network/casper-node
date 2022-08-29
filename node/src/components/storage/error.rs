@@ -171,4 +171,7 @@ pub(super) enum GetRequestError {
     /// Received a get request for a gossiped address, which is unanswerable.
     #[error("received a request for a gossiped address")]
     GossipedAddressNotGettable,
+    /// Received a get request for a gossiped finality signature, which is unanswerable.
+    #[error("received a request for a gossiped finality signature")]
+    GossipedFinalitySignatureNotGettable,
 }

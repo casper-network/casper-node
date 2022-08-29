@@ -598,6 +598,9 @@ impl Storage {
                     opt_item,
                 )?)
             }
+            NetRequest::FinalitySignature(_) => {
+                Err(GetRequestError::GossipedFinalitySignatureNotGettable)
+            }
             NetRequest::GossipedAddress(_) => Err(GetRequestError::GossipedAddressNotGettable),
             NetRequest::BlockAndMetadataByHeight(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockWithMetadata>(serialized_id)?;

@@ -200,7 +200,7 @@ impl<T> GossipTable<T> {
     }
 }
 
-impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
+impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     /// Returns a new `GossipTable` using the provided configuration.
     pub(crate) fn new(config: Config) -> Self {
         let holders_limit = (100 * usize::from(config.infection_target()))
@@ -245,7 +245,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         update(&mut state);
         let is_new = true;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
-        let _ = self.current.insert(*data_id, state);
+        let _ = self.current.insert(data_id.clone(), state);
         debug!(item=%data_id, %action, "gossiping new item should begin");
         action
     }
@@ -285,7 +285,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         update(&mut state);
         let is_new = true;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
-        let _ = self.current.insert(*data_id, state);
+        let _ = self.current.insert(data_id.clone(), state);
         debug!(item=%data_id, %action, "gossiping new item should begin");
         action
     }
@@ -412,7 +412,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             }
             let is_new = !state.held_by_us;
             let action = state.action(self.infection_target, self.holders_limit, is_new);
-            let _ = self.current.insert(*data_id, state);
+            let _ = self.current.insert(data_id.clone(), state);
             debug!(item=%data_id, %action, "assuming peer response did not timeout");
             return action;
         }
@@ -449,14 +449,14 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         }
         let is_new = false;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
-        let _ = self.current.insert(*data_id, state);
+        let _ = self.current.insert(data_id.clone(), state);
         Some(action)
     }
 
     fn insert_to_finished(&mut self, data_id: &T) {
         let timeout = Instant::now() + self.finished_entry_duration;
-        let _ = self.finished.insert(*data_id);
-        self.timeouts.push(timeout, *data_id);
+        let _ = self.finished.insert(data_id.clone());
+        self.timeouts.push(timeout, data_id.clone());
     }
 
     /// Retains only those finished entries which still haven't timed out.

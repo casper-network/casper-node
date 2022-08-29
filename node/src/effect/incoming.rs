@@ -90,6 +90,9 @@ pub(crate) enum NetRequest {
     FinalizedApprovals(Vec<u8>),
     /// Request for a block.
     Block(Vec<u8>),
+    /// Request for a gossiped finality signature.
+    // TODO: Move this out of `NetRequest` into its own type, it is never valid.
+    FinalitySignature(Vec<u8>),
     /// Request for a gossiped public listening address.
     // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     GossipedAddress(Vec<u8>),
@@ -113,6 +116,9 @@ impl Display for NetRequest {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
             NetRequest::FinalizedApprovals(_) => f.write_str("request for finalized approvals"),
             NetRequest::Block(_) => f.write_str("request for block"),
+            NetRequest::FinalitySignature(_) => {
+                f.write_str("request for gossiped finality signature")
+            }
             NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
             NetRequest::BlockAndMetadataByHeight(_) => {
                 f.write_str("request for block and metadata by height")
@@ -139,6 +145,7 @@ impl NetRequest {
             NetRequest::Deploy(ref id) => id,
             NetRequest::FinalizedApprovals(ref id) => id,
             NetRequest::Block(ref id) => id,
+            NetRequest::FinalitySignature(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
             NetRequest::BlockAndMetadataByHeight(ref id) => id,
             NetRequest::BlockHeaderByHash(ref id) => id,
@@ -160,6 +167,7 @@ impl NetRequest {
             NetRequest::Deploy(_) => Tag::Deploy,
             NetRequest::FinalizedApprovals(_) => Tag::FinalizedApprovals,
             NetRequest::Block(_) => Tag::Block,
+            NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
             NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
             NetRequest::BlockAndMetadataByHeight(_) => Tag::BlockAndMetadataByHeight,
             NetRequest::BlockHeaderByHash(_) => Tag::BlockHeaderByHash,
@@ -206,6 +214,8 @@ pub(crate) enum NetResponse {
     BlockAndDeploys(Arc<[u8]>),
     /// Response of a block headers batch.
     BlockHeadersBatch(Arc<[u8]>),
+    /// Response of single finality signature.
+    FinalitySignature(Arc<[u8]>),
     /// Response of finality signatures.
     FinalitySignatures(Arc<[u8]>),
 }
@@ -227,6 +237,7 @@ impl Display for NetResponse {
             NetResponse::Deploy(_) => f.write_str("response, deploy"),
             NetResponse::FinalizedApprovals(_) => f.write_str("response, finalized approvals"),
             NetResponse::Block(_) => f.write_str("response, block"),
+            NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),
             NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
             NetResponse::BlockAndMetadataByHeight(_) => {
                 f.write_str("response, block and metadata by height")

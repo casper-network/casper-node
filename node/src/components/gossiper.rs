@@ -232,7 +232,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         count: usize,
         exclude_peers: HashSet<NodeId>,
     ) -> Effects<Event<T>> {
-        let message = Message::Gossip(item_id);
+        let message = Message::Gossip(item_id.clone());
         effect_builder
             .gossip_message(message, count, exclude_peers)
             .event(move |peers| Event::GossipedTo {
@@ -265,15 +265,23 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 .table
                 .reduce_in_flight_count(&item_id, requested_count - peers.len())
         {
-            effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
+            effects.extend(
+                effect_builder
+                    .announce_finished_gossiping(item_id.clone())
+                    .ignore(),
+            );
         }
 
         // Set timeouts to check later that the specified peers all responded.
         for peer in peers {
+            let item_id = item_id.clone();
             effects.extend(
                 effect_builder
                     .set_timeout(self.gossip_timeout)
-                    .event(move |_| Event::CheckGossipTimeout { item_id, peer }),
+                    .event(move |_| Event::CheckGossipTimeout {
+                        item_id,
+                        peer,
+                    }),
             )
         }
 
@@ -378,7 +386,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 // Gossip the item ID.
                 let mut effects = self.gossip(
                     effect_builder,
-                    item_id,
+                    item_id.clone(),
                     should_gossip.count,
                     should_gossip.exclude_peers,
                 );
@@ -388,14 +396,14 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                     debug!(item=%item_id, "announcing new complete gossip item received");
                     effects.extend(
                         effect_builder
-                            .announce_complete_item_received_via_gossip(item_id)
+                            .announce_complete_item_received_via_gossip(item_id.clone())
                             .ignore(),
                     );
                 }
 
                 // Send a response to the sender indicating whether we already hold the item.
                 let reply = Message::GossipResponse {
-                    item_id,
+                    item_id: item_id.clone(),
                     is_already_held: should_gossip.is_already_held,
                 };
                 effects.extend(effect_builder.send_message(sender, reply).ignore());
@@ -406,7 +414,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 // Send a response to the sender indicating we want the full item from them, and set
                 // a timeout for this response.
                 let reply = Message::GossipResponse {
-                    item_id,
+                    item_id: item_id.clone(),
                     is_already_held: false,
                 };
                 let mut effects = effect_builder.send_message(sender, reply).ignore();
@@ -425,7 +433,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             | GossipAction::AnnounceFinished => {
                 // Send a response to the sender indicating we already hold the item.
                 let reply = Message::GossipResponse {
-                    item_id,
+                    item_id: item_id.clone(),
                     is_already_held: true,
                 };
                 let mut effects = effect_builder.send_message(sender, reply).ignore();
@@ -454,7 +462,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             if !T::ID_IS_COMPLETE_ITEM {
                 // `sender` doesn't hold the full item; get the item from the component responsible
                 // for holding it, then send it to `sender`.
-                effects.extend((self.get_from_holder)(effect_builder, item_id, sender));
+                effects.extend((self.get_from_holder)(
+                    effect_builder,
+                    item_id.clone(),
+                    sender,
+                ));
             }
             self.table.we_infected(&item_id, sender)
         };

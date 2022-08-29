@@ -422,7 +422,7 @@ where
             );
         }
 
-        if let Some(value) = fetch_from_peers(new_peer_list, id, ctx).await {
+        if let Some(value) = fetch_from_peers(new_peer_list, id.clone(), ctx).await {
             return value.map_err(Into::into);
         }
 
@@ -464,7 +464,7 @@ where
             id,
             peer
         );
-        match ctx.effect_builder.fetch::<T>(id, peer).await {
+        match ctx.effect_builder.fetch::<T>(id.clone(), peer).await {
             Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                 trace!(
                     "did not get {:?} with id {:?} from {:?}, got from storage instead",

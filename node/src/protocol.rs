@@ -41,6 +41,8 @@ pub(crate) enum Message {
     /// Block gossiper component message.
     #[from]
     BlockGossiper(gossiper::Message<Block>),
+    #[from]
+    FinalitySignatureGossiper(gossiper::Message<FinalitySignature>),
     /// Address gossiper component message.
     #[from]
     AddressGossiper(gossiper::Message<GossipedAddress>),
@@ -70,12 +72,15 @@ impl Payload for Message {
             Message::Consensus(_) => MessageKind::Consensus,
             Message::DeployGossiper(_) => MessageKind::DeployGossip,
             Message::BlockGossiper(_) => MessageKind::BlockGossip,
+            Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
                 match tag {
                     Tag::Deploy => MessageKind::DeployTransfer,
                     Tag::FinalizedApprovals => MessageKind::FinalizedApprovalsTransfer,
                     Tag::Block => MessageKind::BlockTransfer,
+                    // This is a weird message, which we should not encounter here?
+                    Tag::FinalitySignature => MessageKind::Other,
                     // This is a weird message, which we should not encounter here?
                     Tag::GossipedAddress => MessageKind::Other,
                     Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
@@ -98,6 +103,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::DeployGossiper(_) => false,
             Message::BlockGossiper(_) => false,
+            Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
             Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
             Message::GetRequest { .. } => false,
@@ -112,11 +118,13 @@ impl Payload for Message {
             Message::Consensus(_) => weights.consensus,
             Message::DeployGossiper(_) => weights.gossip,
             Message::BlockGossiper(_) => weights.gossip,
+            Message::FinalitySignatureGossiper(_) => weights.gossip,
             Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_requests,
                 Tag::FinalizedApprovals => weights.finalized_approvals_requests,
                 Tag::Block => weights.block_requests,
+                Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
                 Tag::BlockAndMetadataByHeight => weights.block_requests,
                 Tag::BlockHeaderByHash => weights.block_requests,
@@ -130,6 +138,7 @@ impl Payload for Message {
                 Tag::Deploy => weights.deploy_responses,
                 Tag::FinalizedApprovals => weights.finalized_approvals_responses,
                 Tag::Block => weights.block_responses,
+                Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
                 Tag::BlockAndMetadataByHeight => weights.block_responses,
                 Tag::BlockHeaderByHash => weights.block_responses,
@@ -148,6 +157,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::DeployGossiper(_) => false,
             Message::BlockGossiper(_) => false,
+            Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
             // Trie requests can deadlock between syncing nodes.
             Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
@@ -193,6 +203,10 @@ impl Debug for Message {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
             Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
             Message::BlockGossiper(bg) => f.debug_tuple("BlockGossiper").field(&bg).finish(),
+            Message::FinalitySignatureGossiper(sig) => f
+                .debug_tuple("FinalitySignatureGossiper")
+                .field(&sig)
+                .finish(),
             Message::AddressGossiper(ga) => f.debug_tuple("AddressGossiper").field(&ga).finish(),
             Message::GetRequest { tag, serialized_id } => f
                 .debug_struct("GetRequest")
@@ -220,6 +234,9 @@ impl Display for Message {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
             Message::BlockGossiper(block) => write!(f, "BlockGossiper::{}", block),
+            Message::FinalitySignatureGossiper(sig) => {
+                write!(f, "FinalitySignatureGossiper::{}", sig)
+            }
             Message::AddressGossiper(gossiped_address) => {
                 write!(f, "AddressGossiper::({})", gossiped_address)
             }
@@ -242,6 +259,7 @@ where
     REv: From<ConsensusMessageIncoming>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<Block>>
+        + From<GossiperIncoming<FinalitySignature>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
@@ -257,6 +275,9 @@ where
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
             Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::BlockGossiper(message) => GossiperIncoming { sender, message }.into(),
+            Message::FinalitySignatureGossiper(message) => {
+                GossiperIncoming { sender, message }.into()
+            }
             Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::GetRequest { tag, serialized_id } => match tag {
                 Tag::Deploy => NetRequestIncoming {
@@ -309,6 +330,11 @@ where
                     message: NetRequest::BlockHeadersBatch(serialized_id),
                 }
                 .into(),
+                Tag::FinalitySignature => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::FinalitySignature(serialized_id),
+                }
+                .into(),
                 Tag::FinalitySignaturesByHash => NetRequestIncoming {
                     sender,
                     message: NetRequest::FinalitySignatures(serialized_id),
@@ -332,6 +358,11 @@ where
                 Tag::Block => NetResponseIncoming {
                     sender,
                     message: NetResponse::Block(serialized_item),
+                }
+                .into(),
+                Tag::FinalitySignature => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::FinalitySignature(serialized_item),
                 }
                 .into(),
                 Tag::GossipedAddress => NetResponseIncoming {

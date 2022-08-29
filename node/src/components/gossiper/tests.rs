@@ -59,7 +59,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::{Deploy, NodeId},
+    types::{Deploy, FinalitySignature, NodeId},
     utils::WithDir,
     NodeRng,
 };
@@ -97,6 +97,10 @@ enum Event {
     #[from]
     BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
     #[from]
+    FinalitySignatureGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
+    ),
+    #[from]
     ContractRuntime(contract_runtime::Event),
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
@@ -106,6 +110,8 @@ enum Event {
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
     BlockGossiperIncoming(GossiperIncoming<Block>),
+    #[from]
+    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
@@ -191,12 +197,22 @@ impl Display for Event {
             Event::BlockGossiperAnnouncement(ann) => {
                 write!(formatter, "block-gossiper announcement: {}", ann)
             }
+            Event::FinalitySignatureGossiperAnnouncement(ann) => {
+                write!(
+                    formatter,
+                    "finality-signature-gossiper announcement: {}",
+                    ann
+                )
+            }
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
             Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::BlockGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::FinalitySignatureGossiperIncoming(inner) => {
+                write!(formatter, "incoming: {}", inner)
+            }
             Event::AddressGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
@@ -365,14 +381,9 @@ impl reactor::Reactor for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
-            Event::DeployGossiperAnnouncement(_ann) => {
-                // We do not care about deploy gossiper announcements in the gossiper test.
-                Effects::new()
-            }
-            Event::BlockGossiperAnnouncement(_ann) => {
-                // We do not care about block gossiper announcements in the gossiper test.
-                Effects::new()
-            }
+            Event::DeployGossiperAnnouncement(_ann) => Effects::new(),
+            Event::BlockGossiperAnnouncement(_ann) => Effects::new(),
+            Event::FinalitySignatureGossiperAnnouncement(_ann) => Effects::new(),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
@@ -442,6 +453,7 @@ impl reactor::Reactor for Reactor {
                 }
                 other @ (NetResponse::FinalizedApprovals(_)
                 | NetResponse::Block(_)
+                | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndMetadataByHeight(_)
                 | NetResponse::BlockAndDeploys(_)
@@ -454,6 +466,7 @@ impl reactor::Reactor for Reactor {
             },
             other @ (Event::ConsensusMessageIncoming(_)
             | Event::FinalitySignatureIncoming(_)
+            | Event::FinalitySignatureGossiperIncoming(_)
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)

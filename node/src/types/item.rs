@@ -51,6 +51,8 @@ pub enum Tag {
     BlockAndDeploysByHash,
     /// A batch of block headers requested by their lower and upper height indices.
     BlockHeaderBatch,
+    /// A single block signature for a block.
+    FinalitySignature,
     /// Finality signatures for a block requested by the block's hash.
     FinalitySignaturesByHash,
 }
@@ -62,7 +64,7 @@ pub(crate) trait Item:
     Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
 {
     /// The type of ID of the item.
-    type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
+    type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug;
     /// The tag representing the type of the item.
