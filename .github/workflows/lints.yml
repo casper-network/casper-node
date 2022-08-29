@@ -38,7 +38,7 @@ jobs:
 
       - name: Get stable from rust-toolchain.toml
         id: stable-toolchain
-        run: echo "::set-output name=version::$(grep -Eo '[0-9]+\.[0-9]+\.?[0-9]*' rust-toolchain.toml)"
+        run: echo "::set-output name=version::$(sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)"
 
       - name: Install Toolchain - Stable
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #tag v1.0.7
