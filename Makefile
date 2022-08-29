@@ -4,7 +4,7 @@ RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
-PINNED_STABLE  := $(shell grep -Eo '[0-9]+\.[0-9]+\.?[0-9]*' rust-toolchain.toml)
+PINNED_STABLE  := $(shell sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)
 
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
