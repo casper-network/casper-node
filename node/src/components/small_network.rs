@@ -49,7 +49,7 @@ use std::{
     result,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock, Weak,
+        Arc, Weak,
     },
     time::{Duration, Instant},
 };
@@ -89,7 +89,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
-    limiter::Limiter,
+    limiter::{Limiter, ValidatorSets},
     message::ConsensusKeyPair,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
@@ -141,64 +141,6 @@ impl<P> Display for OutgoingHandle<P> {
     }
 }
 
-/// Sets of validators used to classify traffic.
-///
-/// Normally the validator map will contain 3 eras worth of entries: the era just completed, the
-/// currently-active era, and the era after that.
-#[derive(Clone, Debug, Default)]
-pub(super) struct ValidatorSets {
-    active_era: EraId,
-    validators: BTreeMap<EraId, HashSet<PublicKey>>,
-}
-
-impl ValidatorSets {
-    fn insert(&mut self, mut upcoming_era_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
-        let lowest_era_id = self.active_era;
-
-        self.active_era = upcoming_era_validators
-            .keys()
-            .next()
-            .copied()
-            .unwrap_or_else(|| {
-                error!("upcoming era validators should not be empty");
-                EraId::new(0)
-            });
-
-        self.validators.retain(|era_id, _| *era_id == lowest_era_id);
-        self.validators.append(&mut upcoming_era_validators);
-    }
-
-    fn is_active_validator(&self, era_id: EraId, public_key: &PublicKey) -> Option<bool> {
-        if self.active_era != era_id {
-            return Some(false);
-        }
-        self.validators
-            .get(&era_id)
-            .map(|validators| validators.contains(public_key))
-    }
-
-    fn is_validator(&self, public_key: &PublicKey) -> bool {
-        self.validators
-            .values()
-            .flatten()
-            .any(|validator| validator == public_key)
-    }
-
-    fn is_not_always_validator(&self, public_key: &PublicKey) -> bool {
-        self.validators
-            .values()
-            .flatten()
-            .any(|validator| validator != public_key)
-    }
-
-    fn active_validators(&self, era_id: EraId) -> Option<&HashSet<PublicKey>> {
-        if self.active_era != era_id {
-            return None;
-        }
-        self.validators.get(&era_id)
-    }
-}
-
 #[derive(DataSize)]
 pub(crate) struct SmallNetwork<REv, P>
 where
@@ -218,8 +160,11 @@ where
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
-    /// Set of active and upcoming validators.
-    validator_sets: Arc<RwLock<ValidatorSets>>,
+    /// A mapping from node IDs to public keys of validators to which we have an outgoing
+    /// connection.
+    connected_validators: HashMap<NodeId, PublicKey>,
+    /// The set of all validators (regardless of whether we're connected or not) for a set of eras.
+    validators_by_era: ValidatorSets,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -247,13 +192,13 @@ where
 
     /// The outgoing bandwidth limiter.
     #[data_size(skip)]
-    outgoing_limiter: Box<dyn Limiter>,
+    outgoing_limiter: Limiter,
 
     /// The limiter for incoming resource usage.
     ///
     /// This is not incoming bandwidth but an independent resource estimate.
     #[data_size(skip)]
-    incoming_limiter: Box<dyn Limiter>,
+    incoming_limiter: Limiter,
 
     /// The era that is considered the active era by the small network component.
     active_era: EraId,
@@ -300,28 +245,15 @@ where
 
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
-        let validator_sets = Arc::new(RwLock::new(ValidatorSets::default()));
+        let outgoing_limiter = Limiter::new(
+            cfg.max_outgoing_byte_rate_non_validators,
+            net_metrics.accumulated_outgoing_limiter_delay.clone(),
+        );
 
-        let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
-            Box::new(limiter::Unlimited)
-        } else {
-            Box::new(limiter::ClassBasedLimiter::new(
-                cfg.max_outgoing_byte_rate_non_validators,
-                net_metrics.accumulated_outgoing_limiter_delay.clone(),
-                Arc::clone(&validator_sets),
-            ))
-        };
-
-        let incoming_limiter: Box<dyn Limiter> =
-            if cfg.max_incoming_message_rate_non_validators == 0 {
-                Box::new(limiter::Unlimited)
-            } else {
-                Box::new(limiter::ClassBasedLimiter::new(
-                    cfg.max_incoming_message_rate_non_validators,
-                    net_metrics.accumulated_incoming_limiter_delay.clone(),
-                    Arc::clone(&validator_sets),
-                ))
-            };
+        let incoming_limiter = Limiter::new(
+            cfg.max_incoming_message_rate_non_validators,
+            net_metrics.accumulated_incoming_limiter_delay.clone(),
+        );
 
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
@@ -412,6 +344,8 @@ where
             outgoing_manager,
             connection_symmetries: HashMap::new(),
             syncing_nodes: HashSet::new(),
+            connected_validators: HashMap::new(),
+            validators_by_era: ValidatorSets::new(),
             shutdown_sender: Some(server_shutdown_sender),
             close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
@@ -419,7 +353,6 @@ where
             net_metrics,
             outgoing_limiter,
             incoming_limiter,
-            validator_sets,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
         };
@@ -452,19 +385,6 @@ where
         Ok((component, effects))
     }
 
-    /// Update the validator sets.
-    fn update_validators(&self, new_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
-        match self.validator_sets.write() {
-            Ok(mut validators) => {
-                debug!(?new_validators, "updating resources classes");
-                validators.insert(new_validators)
-            }
-            Err(_) => {
-                debug!("could not update validator data set of limiter, lock poisoned");
-            }
-        }
-    }
-
     fn close_incoming_connections(&mut self) {
         info!("disconnecting incoming connections");
         let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
@@ -474,10 +394,15 @@ where
 
     /// Queues a message to be sent to validator nodes in the given era.
     fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
-        // TODO[RC]: Select correct peers here based on `era_id`
         self.net_metrics.broadcast_requests.inc();
-        for peer_id in self.outgoing_manager.connected_peers() {
-            self.send_message(peer_id, msg.clone(), None);
+        for (peer_id, public_key) in self.connected_validators.iter() {
+            match self
+                .validators_by_era
+                .is_validator_in_era(era_id, public_key)
+            {
+                Some(true) => self.send_message(*peer_id, msg.clone(), None),
+                Some(false) | None => (),
+            }
         }
     }
 
@@ -490,17 +415,27 @@ where
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
-        // TODO[RC]: Select correct peers here based on `gossip_target`
         let peer_ids = self
             .outgoing_manager
             .connected_peers()
-            .filter(|peer_id| match gossip_target {
-                GossipTarget::NonValidators(era_id) => {
-                    !self.validator_sets.is_active_validator(era_id, peer_id)
+            .filter(|peer_id| {
+                if exclude.contains(peer_id) {
+                    return false;
                 }
-                GossipTarget::All => true,
+                let era = match gossip_target {
+                    GossipTarget::NonValidators(era_id) => era_id,
+                    GossipTarget::All => return true,
+                };
+                let validators_for_era = match self.validators_by_era.validators_for_era(era) {
+                    Some(validators) => validators,
+                    None => return true, // If we don't know the era, include the peer.
+                };
+                // If the peer isn't a validator, include it.
+                match self.connected_validators.get(peer_id) {
+                    Some(public_key) => !validators_for_era.contains(public_key),
+                    None => true,
+                }
             })
-            .filter(|peer_id| !exclude.contains(peer_id))
             .choose_multiple(rng, count);
 
         if peer_ids.len() != count {
@@ -762,6 +697,8 @@ where
                         .into_iter(),
                 );
 
+                // TODO - should remove from self.connected_validators?
+
                 self.process_dial_requests(requests)
             }
             OutgoingConnection::Loopback { peer_addr } => {
@@ -805,6 +742,12 @@ where
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
 
+                if let Some(public_key) = peer_consensus_public_key.as_ref() {
+                    let _ = self
+                        .connected_validators
+                        .insert(peer_id, public_key.clone());
+                }
+
                 effects.extend(
                     tasks::message_sender(
                         receiver,
@@ -838,6 +781,8 @@ where
             .entry(peer_id)
             .or_default()
             .unmark_outgoing(Instant::now());
+
+        let _ = self.connected_validators.remove(&peer_id);
 
         self.process_dial_requests(requests)
     }
@@ -1167,12 +1112,12 @@ where
                             .map(|(era_id, validator)| (era_id, validator.into_keys().collect()))
                             .collect();
 
-                    self.update_validators(upcoming_era_validator_set);
-
-                    // self.incoming_limiter
-                    //     .update_validators(upcoming_era_validator_set.clone());
-                    // self.outgoing_limiter
-                    //     .update_validators(upcoming_era_validator_set);
+                    self.validators_by_era
+                        .insert(upcoming_era_validator_set.clone());
+                    self.incoming_limiter
+                        .update_validators(upcoming_era_validator_set.clone());
+                    self.outgoing_limiter
+                        .update_validators(upcoming_era_validator_set);
                 }
 
                 Effects::new()

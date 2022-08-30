@@ -4,12 +4,11 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
 use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
@@ -23,7 +22,7 @@ use super::{
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        small_network::{SmallNetworkIdentity, ValidatorSets},
+        small_network::SmallNetworkIdentity,
         Component,
     },
     effect::{
@@ -519,19 +518,4 @@ async fn ensure_peers_metric_is_correct() {
 
         net.finalize().await;
     }
-}
-
-#[test]
-fn returns_is_not_always_validator() {
-    let mut validator_sets = ValidatorSets::default();
-    let mut rng = crate::new_rng();
-
-    let mut upcoming_era_validators = BTreeMap::new();
-    upcoming_era_validators.insert(EraId::from(0), HashSet::new());
-    upcoming_era_validators.insert(EraId::from(1), HashSet::new());
-    upcoming_era_validators.insert(EraId::from(2), HashSet::new());
-    validator_sets.insert(upcoming_era_validators);
-
-    let validator_key = PublicKey::random(&mut rng);
-    let result = validator_sets.is_not_always_validator(&validator_key);
 }

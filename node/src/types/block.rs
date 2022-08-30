@@ -36,17 +36,15 @@ use crate::{
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
-        error::{BlockCreationError, BlockValidationError},
-        Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, JsonBlock,
-        JsonBlockHeader,
+        error::{
+            BlockCreationError, BlockHeaderWithMetadataValidationError,
+            BlockHeadersBatchValidationError, BlockValidationError,
+            BlockWithMetadataValidationError,
+        },
+        Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, FetcherItem,
+        GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag,
     },
     utils::DisplayIter,
-};
-
-use super::{GossipItem, Item, Tag};
-use crate::types::error::{
-    BlockHeaderWithMetadataValidationError, BlockHeadersBatchValidationError,
-    BlockWithMetadataValidationError,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
@@ -995,15 +993,19 @@ impl Display for BlockHeaderWithMetadata {
 
 impl Item for BlockHeaderWithMetadata {
     type Id = u64;
-    type ValidationError = BlockHeaderWithMetadataValidationError;
-    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
-    }
+    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
 
     fn id(&self) -> Self::Id {
         self.block_header.height()
+    }
+}
+
+impl FetcherItem for BlockHeaderWithMetadata {
+    type ValidationError = BlockHeaderWithMetadataValidationError;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
     }
 }
 
@@ -1173,21 +1175,7 @@ impl Display for BlockHeadersBatch {
 impl Item for BlockHeadersBatch {
     type Id = BlockHeadersBatchId;
 
-    type ValidationError = BlockHeadersBatchValidationError;
-
     const TAG: Tag = Tag::BlockHeaderBatch;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        if self.inner().is_empty() {
-            return Err(BlockHeadersBatchValidationError::BatchEmpty);
-        }
-
-        if !BlockHeadersBatch::is_continuous_and_descending(self.inner()) {
-            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
-        }
-
-        Ok(())
-    }
 
     fn id(&self) -> Self::Id {
         let upper_batch_height = self.0.first().map(|h| h.height());
@@ -1205,6 +1193,22 @@ impl Item for BlockHeadersBatch {
             upper_batch_height.unwrap_or_default(),
             lower_batch_height.unwrap_or_default(),
         )
+    }
+}
+
+impl FetcherItem for BlockHeadersBatch {
+    type ValidationError = BlockHeadersBatchValidationError;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        if self.inner().is_empty() {
+            return Err(BlockHeadersBatchValidationError::BatchEmpty);
+        }
+
+        if !BlockHeadersBatch::is_continuous_and_descending(self.inner()) {
+            return Err(BlockHeadersBatchValidationError::BatchNotContinuous);
+        }
+
+        Ok(())
     }
 }
 
@@ -1355,15 +1359,18 @@ impl Display for BlockSignatures {
 
 impl Item for BlockSignatures {
     type Id = BlockHash;
-    type ValidationError = crypto::Error;
     const TAG: Tag = Tag::FinalitySignaturesByHash;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
 
     fn id(&self) -> Self::Id {
         self.block_hash
+    }
+}
+
+impl FetcherItem for BlockSignatures {
+    type ValidationError = crypto::Error;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        self.verify()
     }
 }
 
@@ -1631,29 +1638,24 @@ impl FromBytes for Block {
 
 impl Item for Block {
     type Id = BlockHash;
-    type ValidationError = BlockValidationError;
 
     const TAG: Tag = Tag::Block;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
 
     fn id(&self) -> Self::Id {
         *self.hash()
     }
 }
 
-impl GossipItem for Block {
-    type Id = BlockHash;
+impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
 
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const TAG: Tag = Tag::Block;
-
-    fn id(&self) -> Self::Id {
-        *self.hash()
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        self.verify()
     }
+}
+
+impl GossiperItem for Block {
+    const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::NonValidators(self.header.era_id)
@@ -1704,18 +1706,21 @@ fn validate_block_header_and_signature_hash(
 
 impl Item for BlockWithMetadata {
     type Id = u64;
-    type ValidationError = BlockWithMetadataValidationError;
 
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
+
+    fn id(&self) -> Self::Id {
+        self.block.height()
+    }
+}
+
+impl FetcherItem for BlockWithMetadata {
+    type ValidationError = BlockWithMetadataValidationError;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
         validate_block_header_and_signature_hash(self.block.header(), &self.block_signatures)?;
         Ok(())
-    }
-
-    fn id(&self) -> Self::Id {
-        self.block.height()
     }
 }
 
@@ -1737,9 +1742,15 @@ impl Display for BlockAndDeploys {
 impl Item for BlockAndDeploys {
     type Id = BlockHash;
 
-    type ValidationError = BlockValidationError;
-
     const TAG: Tag = Tag::BlockAndDeploysByHash;
+
+    fn id(&self) -> Self::Id {
+        *self.block.hash()
+    }
+}
+
+impl FetcherItem for BlockAndDeploys {
+    type ValidationError = BlockValidationError;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
@@ -1783,10 +1794,6 @@ impl Item for BlockAndDeploys {
         }
 
         Ok(())
-    }
-
-    fn id(&self) -> Self::Id {
-        *self.block.hash()
     }
 }
 
@@ -2139,15 +2146,17 @@ impl Display for FinalitySignature {
     }
 }
 
-impl GossipItem for FinalitySignature {
+impl Item for FinalitySignature {
     type Id = FinalitySignature;
-    type ValidationError = crypto::Error;
-    const ID_IS_COMPLETE_ITEM: bool = true;
     const TAG: Tag = Tag::FinalitySignature;
 
     fn id(&self) -> Self::Id {
         self.clone()
     }
+}
+
+impl GossiperItem for FinalitySignature {
+    const ID_IS_COMPLETE_ITEM: bool = true;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::NonValidators(self.era_id)
@@ -2724,7 +2733,7 @@ mod tests {
     fn block_headers_batch_item_validate() {
         let empty_batch = BlockHeadersBatch::new(vec![]);
         assert_eq!(
-            Item::validate(&empty_batch),
+            FetcherItem::validate(&empty_batch),
             Err(BlockHeadersBatchValidationError::BatchEmpty)
         );
 
@@ -2741,7 +2750,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            Item::validate(&BlockHeadersBatch::new(invalid_batch.clone()),),
+            FetcherItem::validate(&BlockHeadersBatch::new(invalid_batch.clone()),),
             Err(BlockHeadersBatchValidationError::BatchNotContinuous)
         );
 
@@ -2752,13 +2761,13 @@ mod tests {
         };
 
         assert_eq!(
-            Item::validate(&BlockHeadersBatch::new(valid_batch.clone()),),
+            FetcherItem::validate(&BlockHeadersBatch::new(valid_batch.clone()),),
             Ok(())
         );
 
         let single_el_valid = vec![valid_batch[0].clone()];
         assert_eq!(
-            Item::validate(&BlockHeadersBatch::new(single_el_valid),),
+            FetcherItem::validate(&BlockHeadersBatch::new(single_el_valid),),
             Ok(())
         );
     }

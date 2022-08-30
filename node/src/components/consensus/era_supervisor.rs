@@ -47,7 +47,7 @@ use crate::{
     effect::{
         announcements::ControlAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder, GossipTarget,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
     types::{

@@ -149,8 +149,8 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossipItem, Item, NodeId, NodeState,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -821,8 +821,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
-    pub(crate) async fn announce_complete_item_received_via_gossip<T: GossipItem>(self, item: T::Id)
-    where
+    pub(crate) async fn announce_complete_item_received_via_gossip<T: GossiperItem>(
+        self,
+        item: T::Id,
+    ) where
         REv: From<GossiperAnnouncement<T>>,
     {
         assert!(
@@ -892,7 +894,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_finished_gossiping<T>(self, item_id: T::Id)
     where
         REv: From<GossiperAnnouncement<T>>,
-        T: GossipItem,
+        T: GossiperItem,
     {
         self.event_queue
             .schedule(
@@ -990,7 +992,7 @@ impl<REv> EffectBuilder<REv> {
     /// Begins gossiping an item.
     pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source)
     where
-        T: GossipItem,
+        T: GossiperItem,
         REv: From<BeginGossipRequest<T>>,
     {
         self.make_request(
@@ -1514,7 +1516,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn fetch<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
     where
         REv: From<FetcherRequest<T>>,
-        T: Item + 'static,
+        T: FetcherItem + 'static,
     {
         self.make_request(
             |responder| FetcherRequest {

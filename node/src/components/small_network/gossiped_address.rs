@@ -1,5 +1,4 @@
 use std::{
-    convert::Infallible,
     fmt::{self, Display, Formatter},
     net::SocketAddr,
 };
@@ -9,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     effect::GossipTarget,
-    types::{GossipItem, Tag},
+    types::{GossiperItem, Item, Tag},
 };
 
 /// Used to gossip our public listening address to peers.
@@ -30,15 +29,17 @@ impl Display for GossipedAddress {
     }
 }
 
-impl GossipItem for GossipedAddress {
+impl Item for GossipedAddress {
     type Id = GossipedAddress;
-    type ValidationError = Infallible;
-    const ID_IS_COMPLETE_ITEM: bool = true;
     const TAG: Tag = Tag::GossipedAddress;
 
     fn id(&self) -> Self::Id {
         *self
     }
+}
+
+impl GossiperItem for GossipedAddress {
+    const ID_IS_COMPLETE_ITEM: bool = true;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::All

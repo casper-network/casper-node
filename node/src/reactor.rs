@@ -70,7 +70,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, ExitCode,
-        Item, NodeId,
+        FetcherItem, NodeId,
     },
     unregister_metric,
     utils::{
@@ -930,7 +930,7 @@ fn handle_fetch_response<R, I>(
     serialized_item: &[u8],
 ) -> Effects<<R as Reactor>::Event>
 where
-    I: Item,
+    I: FetcherItem,
     R: Reactor,
     <R as Reactor>::Event: From<fetcher::Event<I>> + From<BlocklistAnnouncement>,
 {

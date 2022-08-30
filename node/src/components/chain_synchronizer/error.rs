@@ -18,7 +18,7 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, DeployFinalizedApprovals, Item,
+        BlockWithMetadata, Deploy, DeployFinalizedApprovals, FetcherItem,
     },
 };
 
@@ -208,7 +208,7 @@ pub(crate) enum FetchTrieError {
 impl<T> From<FetchWithRetryError<T>> for FetchTrieError
 where
     FetchTrieError: From<FetcherError<T>>,
-    T: Item,
+    T: FetcherItem,
 {
     fn from(err: FetchWithRetryError<T>) -> Self {
         match err {
@@ -221,7 +221,7 @@ where
 impl<T> From<FetchWithRetryError<T>> for FetchBlockHeadersBatchError
 where
     FetchBlockHeadersBatchError: From<FetcherError<T>>,
-    T: Item,
+    T: FetcherItem,
 {
     fn from(err: FetchWithRetryError<T>) -> Self {
         match err {
@@ -236,7 +236,7 @@ where
 impl<T> From<FetchWithRetryError<T>> for Error
 where
     Error: From<FetcherError<T>>,
-    T: Item,
+    T: FetcherItem,
 {
     fn from(err: FetchWithRetryError<T>) -> Self {
         match err {

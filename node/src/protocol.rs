@@ -26,7 +26,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, Deploy, FinalitySignature, GossipItem, Item, NodeId, Tag},
+    types::{Block, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
 };
 
 /// Reactor message.
@@ -169,14 +169,14 @@ impl Payload for Message {
 }
 
 impl Message {
-    pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, bincode::Error> {
+    pub(crate) fn new_get_request<T: FetcherItem>(id: &T::Id) -> Result<Self, bincode::Error> {
         Ok(Message::GetRequest {
             tag: T::TAG,
             serialized_id: bincode::serialize(id)?,
         })
     }
 
-    pub(crate) fn new_get_request_for_gossiper<T: GossipItem>(
+    pub(crate) fn new_get_request_for_gossiper<T: GossiperItem>(
         id: &T::Id,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetRequest {
@@ -185,7 +185,7 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_response<T: Item>(
+    pub(crate) fn new_get_response<T: FetcherItem>(
         item: &FetchedOrNotFound<T, T::Id>,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {
@@ -194,7 +194,7 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_response_for_gossiper<T: GossipItem>(
+    pub(crate) fn new_get_response_for_gossiper<T: GossiperItem>(
         item: &FetchedOrNotFound<T, T::Id>,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {

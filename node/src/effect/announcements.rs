@@ -20,8 +20,8 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, GossipItem,
-        Item, NodeId,
+        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, GossiperItem,
+        NodeId,
     },
     utils::Source,
 };
@@ -241,7 +241,7 @@ impl Display for BlocklistAnnouncement {
 
 /// A Gossiper announcement.
 #[derive(Debug)]
-pub(crate) enum GossiperAnnouncement<T: GossipItem> {
+pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
     /// A new item has been received, where the item's ID is the complete item.
     NewCompleteItem(T::Id),
 
@@ -249,7 +249,7 @@ pub(crate) enum GossiperAnnouncement<T: GossipItem> {
     FinishedGossiping(T::Id),
 }
 
-impl<T: GossipItem> Display for GossiperAnnouncement<T> {
+impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),

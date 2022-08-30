@@ -8,13 +8,13 @@ use serde::Serialize;
 
 use crate::{
     effect::{incoming::GossiperIncoming, requests::BeginGossipRequest},
-    types::{GossipItem, NodeId},
+    types::{GossiperItem, NodeId},
     utils::{DisplayIter, Source},
 };
 
 /// `Gossiper` events.
 #[derive(Debug, From, Serialize)]
-pub(crate) enum Event<T: GossipItem> {
+pub(crate) enum Event<T: GossiperItem> {
     /// A request to gossip an item has been made.
     #[from]
     BeginGossipRequest(BeginGossipRequest<T>),
@@ -44,7 +44,7 @@ pub(crate) enum Event<T: GossipItem> {
     },
 }
 
-impl<T: GossipItem> Display for Event<T> {
+impl<T: GossiperItem> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::BeginGossipRequest(BeginGossipRequest {

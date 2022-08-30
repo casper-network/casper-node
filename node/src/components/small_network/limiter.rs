@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use async_trait::async_trait;
+use datasize::DataSize;
 use prometheus::Counter;
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
@@ -18,73 +18,135 @@ use casper_types::{EraId, PublicKey};
 
 use crate::types::NodeId;
 
-use super::ValidatorSets;
-
-/// Amount of resource allowed to buffer in `ClassBasedLimiter`.
+/// Amount of resource allowed to buffer in `Limiter`.
 const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
 
-/// A limiter.
+/// Sets of validators used to classify traffic.
 ///
-/// Any consumer of a specific resource is expected to call `create_handle` for every peer and use
-/// the returned handle to request a access to a resource.
-pub(super) trait Limiter: Send + Sync {
-    /// Create a handle for a connection using the given peer and optional validator id.
-    fn create_handle(
-        &self,
-        peer_id: NodeId,
-        validator_id: Option<PublicKey>,
-    ) -> Box<dyn LimiterHandle>;
+/// Normally the validator map will contain 3 eras worth of entries: the era just completed, the
+/// currently-active era, and the era after that.
+#[derive(Clone, Debug, Default, DataSize)]
+pub(super) struct ValidatorSets {
+    active_era: EraId,
+    validators: BTreeMap<EraId, HashSet<PublicKey>>,
 }
 
-/// A per-peer handle for a limiter.
-#[async_trait]
-pub(super) trait LimiterHandle: Send + Sync {
-    /// Waits until the requestor is allocated `amount` additional resources.
-    async fn request_allowance(&self, amount: u32);
-}
-
-/// An unlimited "limiter".
-///
-/// Does not restrict resources in any way (`request_allowance` returns immediately).
-#[derive(Debug)]
-pub(super) struct Unlimited;
-
-/// Handle for `Unlimited`.
-struct UnlimitedHandle;
-
-impl Limiter for Unlimited {
-    fn create_handle(
-        &self,
-        _peer_id: NodeId,
-        _validator_id: Option<PublicKey>,
-    ) -> Box<dyn LimiterHandle> {
-        Box::new(UnlimitedHandle)
+impl ValidatorSets {
+    pub(super) fn new() -> Self {
+        Self::default()
     }
-}
 
-#[async_trait]
-impl LimiterHandle for UnlimitedHandle {
-    async fn request_allowance(&self, _amount: u32) {
-        // No limit.
+    pub(super) fn insert(
+        &mut self,
+        mut upcoming_era_validators: BTreeMap<EraId, HashSet<PublicKey>>,
+    ) {
+        let lowest_era_id = self.active_era;
+
+        self.active_era = upcoming_era_validators
+            .keys()
+            .next()
+            .copied()
+            .unwrap_or_else(|| {
+                error!("upcoming era validators should not be empty");
+                EraId::new(0)
+            });
+
+        self.validators.retain(|era_id, _| *era_id == lowest_era_id);
+        self.validators.append(&mut upcoming_era_validators);
     }
+
+    pub(super) fn is_validator_in_era(&self, era: EraId, public_key: &PublicKey) -> Option<bool> {
+        self.validators
+            .get(&era)
+            .map(|validators| validators.contains(public_key))
+    }
+
+    pub(super) fn validators_for_era(&self, era: EraId) -> Option<&HashSet<PublicKey>> {
+        self.validators.get(&era)
+    }
+
+    // fn is_active_validator(&self, era_id: EraId, public_key: &PublicKey) -> Option<bool> {
+    //     if self.active_era != era_id {
+    //         return Some(false);
+    //     }
+    //     self.validators
+    //         .get(&era_id)
+    //         .map(|validators| validators.contains(public_key))
+    // }
+
+    fn is_validator(&self, public_key: &PublicKey) -> bool {
+        self.validators
+            .values()
+            .flatten()
+            .any(|validator| validator == public_key)
+    }
+
+    // fn active_validators(&self, era_id: EraId) -> Option<&HashSet<PublicKey>> {
+    //     if self.active_era != era_id {
+    //         return None;
+    //     }
+    //     self.validators.get(&era_id)
+    // }
 }
 
 /// A limiter dividing resources into two classes based on their validator status.
 ///
+/// Any consumer of a specific resource is expected to call `create_handle` for every peer and use
+/// the returned handle to request a access to a resource.
+///
 /// Imposes a limit on non-validator resources while not limiting active validator resources at all.
 #[derive(Debug)]
-pub(super) struct ClassBasedLimiter {
+pub(super) struct Limiter {
     /// Shared data across all handles.
-    data: Arc<ClassBasedLimiterData>,
+    data: Arc<LimiterData>,
+}
+
+impl Limiter {
+    /// Creates a new class based limiter.
+    ///
+    /// Starts the background worker task as well.
+    pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+        Limiter {
+            data: Arc::new(LimiterData::new(resources_per_second, wait_time_sec)),
+        }
+    }
+
+    /// Create a handle for a connection using the given peer and optional validator id.
+    pub(super) fn create_handle(
+        &self,
+        peer_id: NodeId,
+        validator_id: Option<PublicKey>,
+    ) -> LimiterHandle {
+        LimiterHandle {
+            data: self.data.clone(),
+            consumer_id: ConsumerId {
+                peer_id,
+                validator_id,
+            },
+        }
+    }
+
+    /// Update the validator sets.
+    pub(super) fn update_validators(&self, new_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
+        match self.data.validator_sets.write() {
+            Ok(mut validators) => {
+                debug!(?new_validators, "updating resources classes");
+                validators.insert(new_validators)
+            }
+            Err(_) => {
+                error!("could not update validator data set of limiter, lock poisoned");
+            }
+        }
+    }
 }
 
 /// The limiter's state.
 #[derive(Debug)]
-struct ClassBasedLimiterData {
+struct LimiterData {
     /// Number of resource units to allow for non-validators per second.
     resources_per_second: u32,
     /// Set of active and upcoming validators.
-    validator_sets: Arc<RwLock<ValidatorSets>>,
+    validator_sets: RwLock<ValidatorSets>,
     /// Information about available resources.
     resources: Mutex<ResourceData>,
     /// Total time spent waiting.
@@ -102,18 +164,14 @@ struct ResourceData {
     last_refill: Instant,
 }
 
-impl ClassBasedLimiterData {
+impl LimiterData {
     /// Creates a new set of class based limiter data.
     ///
     /// Initial resources will be initialized to 0, with the last refill set to the current time.
-    fn new(
-        resources_per_second: u32,
-        wait_time_sec: Counter,
-        validator_sets: Arc<RwLock<ValidatorSets>>,
-    ) -> Self {
-        ClassBasedLimiterData {
+    fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+        LimiterData {
             resources_per_second,
-            validator_sets,
+            validator_sets: Default::default(),
             resources: Mutex::new(ResourceData {
                 available: 0,
                 last_refill: Instant::now(),
@@ -123,7 +181,7 @@ impl ClassBasedLimiterData {
     }
 }
 
-/// Peer class for the `ClassBasedLimiter`.
+/// Peer class for the `Limiter`.
 enum PeerClass {
     /// A validator.
     Validator,
@@ -131,63 +189,18 @@ enum PeerClass {
     Bulk,
 }
 
-/// Handle for `ClassBasedLimiter`.
+/// A per-peer handle for `Limiter`.
 #[derive(Debug)]
-struct ClassBasedHandle {
+pub(super) struct LimiterHandle {
     /// Data shared between handles and limiter.
-    data: Arc<ClassBasedLimiterData>,
+    data: Arc<LimiterData>,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
 }
 
-/// An identity for a consumer.
-#[derive(Debug)]
-struct ConsumerId {
-    /// The peer's ID.
-    #[allow(dead_code)]
-    peer_id: NodeId,
-    /// The remote node's `validator_id`.
-    validator_id: Option<PublicKey>,
-}
-
-impl ClassBasedLimiter {
-    /// Creates a new class based limiter.
-    ///
-    /// Starts the background worker task as well.
-    pub(super) fn new(
-        resources_per_second: u32,
-        wait_time_sec: Counter,
-        validator_sets: Arc<RwLock<ValidatorSets>>,
-    ) -> Self {
-        ClassBasedLimiter {
-            data: Arc::new(ClassBasedLimiterData::new(
-                resources_per_second,
-                wait_time_sec,
-                validator_sets,
-            )),
-        }
-    }
-}
-
-impl Limiter for ClassBasedLimiter {
-    fn create_handle(
-        &self,
-        peer_id: NodeId,
-        validator_id: Option<PublicKey>,
-    ) -> Box<dyn LimiterHandle> {
-        Box::new(ClassBasedHandle {
-            data: self.data.clone(),
-            consumer_id: ConsumerId {
-                peer_id,
-                validator_id,
-            },
-        })
-    }
-}
-
-#[async_trait]
-impl LimiterHandle for ClassBasedHandle {
-    async fn request_allowance(&self, amount: u32) {
+impl LimiterHandle {
+    /// Waits until the requester is allocated `amount` additional resources.
+    pub(super) async fn request_allowance(&self, amount: u32) {
         // As a first step, determine the peer class by checking if our id is in the validator set.
         let peer_class = match self.data.validator_sets.read() {
             Ok(validators) => {
@@ -218,7 +231,6 @@ impl LimiterHandle for ClassBasedHandle {
         match peer_class {
             PeerClass::Validator => {
                 // No limit imposed on validators.
-                return;
             }
             PeerClass::Bulk => {
                 let max_stored_resource = ((self.data.resources_per_second as f64)
@@ -269,6 +281,17 @@ impl LimiterHandle for ClassBasedHandle {
         }
     }
 }
+
+/// An identity for a consumer.
+#[derive(Debug)]
+struct ConsumerId {
+    /// The peer's ID.
+    #[allow(dead_code)]
+    peer_id: NodeId,
+    /// The remote node's `validator_id`.
+    validator_id: Option<PublicKey>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -281,7 +304,7 @@ mod tests {
 
     use casper_types::EraId;
 
-    use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
+    use super::{Limiter, NodeId, PublicKey};
     use crate::testing::init_logging;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
@@ -295,19 +318,20 @@ mod tests {
 
     #[tokio::test]
     async fn unlimited_limiter_is_unlimited() {
-        let mut rng = crate::new_rng();
-
-        let unlimited = Unlimited;
-
-        let handle = unlimited.create_handle(NodeId::random(&mut rng), None);
-
-        let start = Instant::now();
-        handle.request_allowance(0).await;
-        handle.request_allowance(u32::MAX).await;
-        handle.request_allowance(1).await;
-        let end = Instant::now();
-
-        assert!(end - start < SHORT_TIME);
+        // let mut rng = crate::new_rng();
+        //
+        // let unlimited = Unlimited;
+        //
+        // let handle = unlimited.create_handle(NodeId::random(&mut rng), None);
+        //
+        // let start = Instant::now();
+        // handle.request_allowance(0).await;
+        // handle.request_allowance(u32::MAX).await;
+        // handle.request_allowance(1).await;
+        // let end = Instant::now();
+        //
+        // assert!(end - start < SHORT_TIME);
+        panic!("ensure behaviour of setting limit to 0 is maintained");
     }
 
     #[tokio::test]
@@ -315,7 +339,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
+        let limiter = Limiter::new(1_000, new_wait_time_sec());
 
         let mut active_validators = HashSet::new();
         active_validators.insert(validator_id.clone());
@@ -339,7 +363,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
+        let limiter = Limiter::new(1_000, new_wait_time_sec());
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
@@ -379,7 +403,7 @@ mod tests {
 
         let validator_id = PublicKey::random(&mut rng);
         let wait_metric = new_wait_time_sec();
-        let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
+        let limiter = Limiter::new(1_000, wait_metric.clone());
 
         let start = Instant::now();
 
@@ -436,7 +460,7 @@ mod tests {
 
         let validator_id = PublicKey::random(&mut rng);
         let wait_metric = new_wait_time_sec();
-        let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
+        let limiter = Limiter::new(1_000, wait_metric.clone());
 
         limiter.update_validators(BTreeMap::new());
 
@@ -478,7 +502,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
+        let limiter = Limiter::new(1_000, new_wait_time_sec());
 
         let mut active_validators = HashSet::new();
         active_validators.insert(validator_id.clone());

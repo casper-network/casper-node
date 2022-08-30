@@ -40,12 +40,14 @@ use casper_types::{
     U512,
 };
 
-use super::{BlockHash, BlockHashAndHeight, GossipItem, Item, Tag};
 use crate::{
     components::block_proposer::DeployInfo,
     effect::GossipTarget,
     rpcs::docs::DocExample,
-    types::chainspec::DeployConfig,
+    types::{
+        chainspec::DeployConfig, BlockHash, BlockHashAndHeight, FetcherItem, GossiperItem, Item,
+        Tag,
+    },
     utils::{ds, DisplayIter},
 };
 
@@ -680,9 +682,16 @@ pub struct FinalizedApprovalsVerificationError {
 
 impl Item for DeployFinalizedApprovals {
     type Id = DeployHash;
-    type ValidationError = FinalizedApprovalsVerificationError;
 
     const TAG: Tag = Tag::FinalizedApprovals;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
+impl FetcherItem for DeployFinalizedApprovals {
+    type ValidationError = FinalizedApprovalsVerificationError;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         for approval in &self.approvals.0 {
@@ -694,10 +703,6 @@ impl Item for DeployFinalizedApprovals {
             })?;
         }
         Ok(())
-    }
-
-    fn id(&self) -> Self::Id {
-        self.id
     }
 }
 
@@ -1603,30 +1608,25 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 
 impl Item for Deploy {
     type Id = DeployHash;
-    type ValidationError = DeployConfigurationFailure;
 
     const TAG: Tag = Tag::Deploy;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        // TODO: Validate approvals later, and only if the approvers are actually authorized!
-        validate_deploy(self)
-    }
 
     fn id(&self) -> Self::Id {
         *self.id()
     }
 }
 
-impl GossipItem for Deploy {
-    type Id = DeployHash;
+impl FetcherItem for Deploy {
     type ValidationError = DeployConfigurationFailure;
 
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const TAG: Tag = Tag::Deploy;
-
-    fn id(&self) -> Self::Id {
-        *self.id()
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        // TODO: Validate approvals later, and only if the approvers are actually authorized!
+        validate_deploy(self)
     }
+}
+
+impl GossiperItem for Deploy {
+    const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::All

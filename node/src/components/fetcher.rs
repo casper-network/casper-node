@@ -27,7 +27,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals,
-        DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals, Item, NodeId,
+        DeployHash, DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -49,14 +49,14 @@ pub(crate) trait ReactorEventT<T>:
     + Send
     + 'static
 where
-    T: Item + 'static,
+    T: FetcherItem + 'static,
     <T as Item>::Id: 'static,
 {
 }
 
 impl<REv, T> ReactorEventT<T> for REv
 where
-    T: Item + 'static,
+    T: FetcherItem + 'static,
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<Message>>
@@ -101,7 +101,7 @@ where
     }
 }
 
-pub(crate) trait ItemFetcher<T: Item + 'static> {
+pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
     /// Indicator on whether it is safe to respond to all of our responders. For example, [Deploy]s
     /// and [BlockHeader]s are safe because their [Item::id] is all that is needed for
     /// authentication. But other structures have _finality signatures_ or have substructures that
@@ -270,7 +270,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
 #[derive(DataSize, Debug)]
 pub(crate) struct Fetcher<T>
 where
-    T: Item + 'static,
+    T: FetcherItem + 'static,
 {
     get_from_peer_timeout: Duration,
     #[data_size(skip)]
@@ -280,7 +280,7 @@ where
     metrics: Metrics,
 }
 
-impl<T: Item> Fetcher<T> {
+impl<T: FetcherItem> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: Config,
@@ -713,7 +713,7 @@ impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
 impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
-    T: Item + 'static,
+    T: FetcherItem + 'static,
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
@@ -794,7 +794,7 @@ impl<'a> FetcherBuilder<'a> {
         }
     }
 
-    pub(crate) fn build<T: Item + 'static>(
+    pub(crate) fn build<T: FetcherItem + 'static>(
         &self,
         name: &str,
     ) -> Result<Fetcher<T>, prometheus::Error> {

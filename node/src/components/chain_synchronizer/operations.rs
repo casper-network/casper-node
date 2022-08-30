@@ -49,8 +49,8 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId,
+        BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, FetcherItem,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -377,7 +377,7 @@ where
 #[derive(Error, Debug)]
 pub(crate) enum FetchWithRetryError<T>
 where
-    T: Item,
+    T: FetcherItem,
 {
     #[error(
         "Fetch attempts exhausted for item with id {id:?}. Total attempts: {total_attempts}, \
@@ -402,7 +402,7 @@ async fn fetch_with_retries<REv, T>(
     id: T::Id,
 ) -> Result<FetchedData<T>, FetchWithRetryError<T>>
 where
-    T: Item + CanUseSyncingNodes + 'static,
+    T: FetcherItem + CanUseSyncingNodes + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     let mut total_attempts = 0;
@@ -454,7 +454,7 @@ async fn fetch_from_peers<REv, T>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Option<Result<FetchedData<T>, FetcherError<T>>>
 where
-    T: Item + 'static,
+    T: FetcherItem + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     for peer in new_peer_list {
@@ -738,7 +738,7 @@ impl KeyBlockInfo {
 }
 
 #[async_trait]
-trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
+trait BlockOrHeaderWithMetadata: FetcherItem<Id = u64> + 'static {
     fn header(&self) -> &BlockHeader;
 
     fn block_signatures(&self) -> &BlockSignatures;

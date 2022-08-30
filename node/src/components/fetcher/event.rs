@@ -5,7 +5,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::error;
 
-use super::Item;
+use super::FetcherItem;
 use crate::{
     components::fetcher::FetchedOrNotFound,
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
@@ -16,7 +16,7 @@ use crate::{
 #[derive(Clone, Debug, Error, PartialEq, Eq, Serialize)]
 pub(crate) enum FetcherError<T>
 where
-    T: Item,
+    T: FetcherItem,
 {
     #[error("Could not fetch item with id {id:?} from peer {peer:?}")]
     Absent { id: T::Id, peer: NodeId },
@@ -55,7 +55,7 @@ pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
-pub(crate) enum Event<T: Item> {
+pub(crate) enum Event<T: FetcherItem> {
     /// The initiating event to fetch an item by its id.
     Fetch(FetcherRequest<T>),
     /// The result of the `Fetcher` getting a item from the storage component.  If the
@@ -78,7 +78,7 @@ pub(crate) enum Event<T: Item> {
     TimeoutPeer { id: T::Id, peer: NodeId },
 }
 
-impl<T: Item> Event<T> {
+impl<T: FetcherItem> Event<T> {
     pub(crate) fn from_get_response_serialized_item(
         peer: NodeId,
         serialized_item: &[u8],
@@ -97,7 +97,7 @@ impl<T: Item> Event<T> {
     }
 }
 
-impl<T: Item> From<FetcherRequest<T>> for Event<T> {
+impl<T: FetcherItem> From<FetcherRequest<T>> for Event<T> {
     fn from(fetcher_request: FetcherRequest<T>) -> Self {
         Event::Fetch(fetcher_request)
     }
@@ -124,7 +124,7 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
     }
 }
 
-impl<T: Item> Display for Event<T> {
+impl<T: FetcherItem> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Fetch(FetcherRequest { id, .. }) => {

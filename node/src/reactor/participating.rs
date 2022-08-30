@@ -65,7 +65,7 @@ use crate::{
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects, GossipTarget,
+        EffectBuilder, EffectExt, Effects,
     },
     fatal,
     protocol::Message,

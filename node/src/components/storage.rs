@@ -84,8 +84,8 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
         BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals, Item,
-        NodeId,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalizedApprovals, Item, NodeId,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1815,7 +1815,7 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError>
     where
         REv: From<NetworkRequest<Message>> + Send,
-        T: Item,
+        T: FetcherItem,
     {
         let fetched_or_not_found = FetchedOrNotFound::from_opt(id, opt_item);
         let serialized = fetched_or_not_found
@@ -1858,7 +1858,7 @@ impl Storage {
 /// Decodes an item's ID, typically from an incoming request.
 fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
 where
-    T: Item,
+    T: FetcherItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }

@@ -51,8 +51,8 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, GossipItem, Item, NodeId, NodeState, StatusFeed,
+        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -259,7 +259,7 @@ impl Display for NetworkInfoRequest {
 #[must_use]
 pub(crate) struct BeginGossipRequest<T>
 where
-    T: GossipItem,
+    T: GossiperItem,
 {
     /// The ID of the item received.
     pub(crate) item_id: T::Id,
@@ -271,7 +271,7 @@ where
 
 impl<T> Display for BeginGossipRequest<T>
 where
-    T: GossipItem,
+    T: GossiperItem,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "begin gossip of {} from {}", self.item_id, self.source)
@@ -1163,7 +1163,7 @@ impl Display for ContractRuntimeRequest {
 #[must_use]
 pub(crate) struct FetcherRequest<T>
 where
-    T: Item,
+    T: FetcherItem,
 {
     /// The ID of the item to be retrieved.
     pub(crate) id: T::Id,
@@ -1173,7 +1173,7 @@ where
     pub(crate) responder: Responder<FetchResult<T>>,
 }
 
-impl<T: Item> Display for FetcherRequest<T> {
+impl<T: FetcherItem> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
     }

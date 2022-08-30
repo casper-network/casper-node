@@ -4,7 +4,6 @@ use std::{
     hash::Hash,
 };
 
-use casper_types::EraId;
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -61,21 +60,15 @@ pub enum Tag {
     FinalitySignaturesByHash,
 }
 
-/// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
-/// furthermore allows generic network messages to include this type due to the provision of the
-/// type-identifying `TAG`.
+/// A trait unifying the common pieces of the `FetcherItem` and `GossiperItem` traits.
 pub(crate) trait Item:
     Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
 {
     /// The type of ID of the item.
     type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
-    /// The error type returned when validating to get the ID of the item.
-    type ValidationError: std::error::Error + Debug;
+
     /// The tag representing the type of the item.
     const TAG: Tag;
-
-    /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;
@@ -84,23 +77,23 @@ pub(crate) trait Item:
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
 /// furthermore allows generic network messages to include this type due to the provision of the
 /// type-identifying `TAG`.
-pub(crate) trait GossipItem:
-    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
-{
-    /// The type of ID of the item.
-    type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
+pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug;
+
+    /// Checks cryptographic validity of the item, and returns an error if invalid.
+    fn validate(&self) -> Result<(), Self::ValidationError>;
+}
+
+/// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
+/// furthermore allows generic network messages to include this type due to the provision of the
+/// type-identifying `TAG`.
+pub(crate) trait GossiperItem: Item {
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
-    /// The tag representing the type of the item.
-    const TAG: Tag;
 
     /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
     fn target(&self) -> GossipTarget;
-
-    /// The ID of the specific item.
-    fn id(&self) -> Self::Id;
 }
 
 /// Error type simply conveying that chunk validation failed.
@@ -110,15 +103,7 @@ pub(crate) struct ChunkValidationError;
 
 impl Item for TrieOrChunk {
     type Id = TrieOrChunkId;
-    type ValidationError = ChunkWithProofVerificationError;
     const TAG: Tag = Tag::TrieOrChunk;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        match self {
-            TrieOrChunk::Trie(_) => Ok(()),
-            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
-        }
-    }
 
     fn id(&self) -> Self::Id {
         match self {
@@ -131,16 +116,30 @@ impl Item for TrieOrChunk {
     }
 }
 
-impl Item for BlockHeader {
-    type Id = BlockHash;
-    type ValidationError = Infallible;
-    const TAG: Tag = Tag::BlockHeaderByHash;
+impl FetcherItem for TrieOrChunk {
+    type ValidationError = ChunkWithProofVerificationError;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
-        Ok(())
+        match self {
+            TrieOrChunk::Trie(_) => Ok(()),
+            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
+        }
     }
+}
+
+impl Item for BlockHeader {
+    type Id = BlockHash;
+    const TAG: Tag = Tag::BlockHeaderByHash;
 
     fn id(&self) -> Self::Id {
         self.hash()
+    }
+}
+
+impl FetcherItem for BlockHeader {
+    type ValidationError = Infallible;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        Ok(())
     }
 }
