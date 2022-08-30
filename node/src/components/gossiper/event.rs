@@ -6,16 +6,15 @@ use std::{
 use derive_more::From;
 use serde::Serialize;
 
-use super::Item;
 use crate::{
     effect::{incoming::GossiperIncoming, requests::BeginGossipRequest},
-    types::NodeId,
+    types::{GossipItem, NodeId},
     utils::{DisplayIter, Source},
 };
 
 /// `Gossiper` events.
 #[derive(Debug, From, Serialize)]
-pub(crate) enum Event<T: Item> {
+pub(crate) enum Event<T: GossipItem> {
     /// A request to gossip an item has been made.
     #[from]
     BeginGossipRequest(BeginGossipRequest<T>),
@@ -45,7 +44,7 @@ pub(crate) enum Event<T: Item> {
     },
 }
 
-impl<T: Item> Display for Event<T> {
+impl<T: GossipItem> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::BeginGossipRequest(BeginGossipRequest {

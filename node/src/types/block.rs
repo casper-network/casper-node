@@ -43,7 +43,7 @@ use crate::{
     utils::DisplayIter,
 };
 
-use super::{Item, Tag};
+use super::{GossipItem, Item, Tag};
 use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockHeadersBatchValidationError,
     BlockWithMetadataValidationError,
@@ -1654,6 +1654,23 @@ impl Item for Block {
     }
 }
 
+impl GossipItem for Block {
+    type Id = BlockHash;
+    type ValidationError = BlockValidationError;
+
+    const TAG: Tag = Tag::Block;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+
+    fn id(&self) -> Self::Id {
+        *self.hash()
+    }
+}
+
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BlockWithMetadata {
@@ -2140,7 +2157,7 @@ impl Display for FinalitySignature {
     }
 }
 
-impl Item for FinalitySignature {
+impl GossipItem for FinalitySignature {
     type Id = FinalitySignature;
     type ValidationError = crypto::Error;
     const TAG: Tag = Tag::FinalitySignature;

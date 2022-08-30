@@ -84,6 +84,30 @@ pub(crate) trait Item:
     fn id(&self) -> Self::Id;
 }
 
+/// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
+/// furthermore allows generic network messages to include this type due to the provision of the
+/// type-identifying `TAG`.
+pub(crate) trait GossipItem:
+    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
+{
+    /// The type of ID of the item.
+    type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
+    /// The error type returned when validating to get the ID of the item.
+    type ValidationError: std::error::Error + Debug;
+    /// The tag representing the type of the item.
+    const TAG: Tag;
+    /// Whether the item's ID _is_ the complete item or not.
+    const ID_IS_COMPLETE_ITEM: bool;
+    /// The type of peers that should receive the gossip message.
+    const GOSSIP_TARGET: GossipTarget;
+
+    /// Checks cryptographic validity of the item, and returns an error if invalid.
+    fn validate(&self) -> Result<(), Self::ValidationError>;
+
+    /// The ID of the specific item.
+    fn id(&self) -> Self::Id;
+}
+
 /// Error type simply conveying that chunk validation failed.
 #[derive(Debug, Error)]
 #[error("Chunk validation failed")]

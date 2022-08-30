@@ -150,7 +150,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossipItem, Item, NodeId, NodeState,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -815,7 +815,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
-    pub(crate) async fn announce_complete_item_received_via_gossip<T: Item>(self, item: T::Id)
+    pub(crate) async fn announce_complete_item_received_via_gossip<T: GossipItem>(self, item: T::Id)
     where
         REv: From<GossiperAnnouncement<T>>,
     {
@@ -886,7 +886,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_finished_gossiping<T>(self, item_id: T::Id)
     where
         REv: From<GossiperAnnouncement<T>>,
-        T: Item,
+        T: GossipItem,
     {
         self.event_queue
             .schedule(
@@ -984,7 +984,7 @@ impl<REv> EffectBuilder<REv> {
     /// Begins gossiping an item.
     pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source)
     where
-        T: Item,
+        T: GossipItem,
         REv: From<BeginGossipRequest<T>>,
     {
         self.make_request(

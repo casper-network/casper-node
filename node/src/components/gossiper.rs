@@ -27,7 +27,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     protocol::Message as NodeMessage,
-    types::{Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, Item, NodeId},
+    types::{
+        Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, GossipItem, NodeId,
+    },
     utils::Source,
     NodeRng,
 };
@@ -48,15 +50,15 @@ pub(crate) trait ReactorEventT<T>:
     + Send
     + 'static
 where
-    T: Item + 'static,
-    <T as Item>::Id: 'static,
+    T: GossipItem + 'static,
+    <T as GossipItem>::Id: 'static,
 {
 }
 
 impl<REv, T> ReactorEventT<T> for REv
 where
-    T: Item + 'static,
-    <T as Item>::Id: 'static,
+    T: GossipItem + 'static,
+    <T as GossipItem>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<Message<T>>>
         + From<NetworkRequest<NodeMessage>>
@@ -69,7 +71,7 @@ where
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
 /// constructing a `Gossiper<Deploy>`.
-pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
+pub(crate) fn get_deploy_from_storage<T: GossipItem + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
     deploy_hash: DeployHash,
     sender: NodeId,
@@ -96,7 +98,7 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
 /// constructing a `Gossiper<Block>`.
-pub(crate) fn get_block_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
+pub(crate) fn get_block_from_storage<T: GossipItem + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
     block_hash: BlockHash,
     sender: NodeId,
@@ -121,7 +123,7 @@ pub(crate) fn get_block_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
 #[derive(DataSize)]
 pub(crate) struct Gossiper<T, REv>
 where
-    T: Item + 'static,
+    T: GossipItem + 'static,
     REv: ReactorEventT<T>,
 {
     table: GossipTable<T::Id>,
@@ -134,7 +136,7 @@ where
     metrics: Metrics,
 }
 
-impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
+impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == false`, i.e.
     /// where the gossip messages themselves don't contain the actual data being gossiped, they
     /// contain just the identifiers.
@@ -554,7 +556,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
 impl<T, REv> Component<REv> for Gossiper<T, REv>
 where
-    T: Item + 'static,
+    T: GossipItem + 'static,
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
@@ -612,7 +614,7 @@ where
     }
 }
 
-impl<T: Item + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> {
+impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
             .debug_struct("Gossiper")

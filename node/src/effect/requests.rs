@@ -52,7 +52,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
+        FinalizedBlock, GossipItem, Item, NodeId, NodeState, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -253,7 +253,7 @@ impl Display for NetworkInfoRequest {
 #[must_use]
 pub(crate) struct BeginGossipRequest<T>
 where
-    T: Item,
+    T: GossipItem,
 {
     /// The ID of the item received.
     pub(crate) item_id: T::Id,
@@ -265,7 +265,7 @@ where
 
 impl<T> Display for BeginGossipRequest<T>
 where
-    T: Item,
+    T: GossipItem,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "begin gossip of {} from {}", self.item_id, self.source)

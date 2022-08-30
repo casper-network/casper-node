@@ -40,7 +40,7 @@ use casper_types::{
     U512,
 };
 
-use super::{BlockHash, BlockHashAndHeight, Item, Tag};
+use super::{BlockHash, BlockHashAndHeight, GossipItem, Item, Tag};
 use crate::{
     components::block_proposer::DeployInfo,
     effect::GossipTarget,
@@ -1604,6 +1604,24 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 }
 
 impl Item for Deploy {
+    type Id = DeployHash;
+    type ValidationError = DeployConfigurationFailure;
+
+    const TAG: Tag = Tag::Deploy;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        // TODO: Validate approvals later, and only if the approvers are actually authorized!
+        validate_deploy(self)
+    }
+
+    fn id(&self) -> Self::Id {
+        *self.id()
+    }
+}
+
+impl GossipItem for Deploy {
     type Id = DeployHash;
     type ValidationError = DeployConfigurationFailure;
 
