@@ -73,6 +73,7 @@ function build_from_settings_file() {
 function dev_branch_settings() {
     local PATH_TO_STAGE=${1}
     local STARTING_VERSION=${2}
+    local STARTING_VERSION=${2}
     local INCREMENT
     local RC_VERSION
 
@@ -83,6 +84,12 @@ function dev_branch_settings() {
 
     RC_VERSION=$(echo "$RC_VERSION" | sed 's/\./\_/g')
     INCREMENT=$(echo "$INCREMENT" | sed 's/\./\_/g')
+
+    # check if a version to start at was given
+    if [ ! -z $STARTING_VERSION ]; then
+        # overwrite start version
+        RC_VERSION=$(echo "$STARTING_VERSION" | sed 's/\./\_/g')
+    fi
 
     # check if a version to start at was given
     if [ ! -z $STARTING_VERSION ]; then

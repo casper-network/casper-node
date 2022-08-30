@@ -2,18 +2,11 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    core::engine_state::{EngineConfig, EngineConfigBuilder, UpgradeConfig},
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         system_config::{mint_costs::MintCosts, SystemConfig},
@@ -159,7 +152,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -285,9 +278,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder
-        .upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request)
-        .expect_upgrade_success();
+    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -412,7 +403,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -542,7 +533,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -668,7 +659,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         *builder.get_engine_state().config().system_config(),
     );
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -754,16 +745,10 @@ fn make_engine_config(
         *old_system_config.handle_payment_costs(),
         *old_system_config.standard_payment_costs(),
     );
-    EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        new_wasm_config,
-        new_system_config,
-    )
+    EngineConfigBuilder::default()
+        .with_wasm_config(new_wasm_config)
+        .with_system_config(new_system_config)
+        .build()
 }
 
 fn make_wasm_config(

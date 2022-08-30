@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "1.4.6" # when updating, also update 'html_root_url' in lib.rs
+version = "1.4.8" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
@@ -20,7 +20,7 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-execution-engine = { version = "2.0.0", path = "../execution_engine" }
+casper-execution-engine = { version = "2.0.1", path = "../execution_engine" }
 casper-hashing = { version = "1.4.3", path = "../hashing" }
 casper-json-rpc = { version = "0.1.0", path = "../json_rpc" }
 casper-node-macros = { version = "1.4.3", path = "../node_macros" }
@@ -95,6 +95,7 @@ vergen = { version = "7", default-features = false, features = ["git"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
+casper-execution-engine = { path = "../execution_engine", features = ["test-support"] }
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"

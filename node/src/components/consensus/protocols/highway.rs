@@ -176,10 +176,17 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
+        let block_reward = if chainspec.core_config.compute_rewards {
+            BLOCK_REWARD
+        } else {
+            // Set the block reward parameter to 0 so Highway can skip the computation.
+            0
+        };
+
         let params = Params::new(
             seed,
-            BLOCK_REWARD,
-            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
+            block_reward,
+            (highway_config.reduced_reward_multiplier * block_reward).to_integer(),
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,

@@ -11,7 +11,10 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 2.2.0
+
+### Added
+* Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
 
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.

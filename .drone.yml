@@ -94,6 +94,9 @@ trigger:
     include:
     - pull_request
     - push
+    include:
+    - pull_request
+    - push
     exclude:
     - tag
     - cron
@@ -112,6 +115,22 @@ environment:
 
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: cachepot_aws_ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: cachepot_aws_sk
+
+steps:
+- name: setup
+  <<: *buildenv
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -159,6 +178,8 @@ trigger:
   - trying
   - staging
   event:
+    include:
+    - push
     include:
     - push
     exclude:

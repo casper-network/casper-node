@@ -1,6 +1,7 @@
 use casper_types::{
+    account::Account,
     system::{handle_payment, mint},
-    ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
+    ApiError, Key, RuntimeArgs, StoredValue, TransferredTo, URef, U512,
 };
 
 use crate::{
@@ -44,18 +45,16 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn transfer_purse_to_purse(
+    fn transfer_purse_to_account(
         &mut self,
         source: URef,
-        target: URef,
+        target_account: &Account,
         amount: U512,
     ) -> Result<(), ApiError> {
-        let mint_contract_hash = self
-            .get_mint_contract()
-            .map_err(|_| ApiError::MissingSystemContractHash)?;
-        match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
-            Ok(Ok(_)) => Ok(()),
-            Ok(Err(mint_error)) => Err(mint_error.into()),
+        match Runtime::transfer_from_purse_to_account(self, source, target_account, amount, None) {
+            Ok(Ok(TransferredTo::ExistingAccount)) => Ok(()),
+            Ok(Ok(TransferredTo::NewAccount)) => Ok(()),
+            Ok(Err(error)) => Err(error),
             Err(exec_error) => {
                 let maybe_api_error: Option<ApiError> = exec_error.into();
                 Err(maybe_api_error.unwrap_or(ApiError::Transfer))

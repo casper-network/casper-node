@@ -1,6 +1,6 @@
 [package]
 name = "casper-execution-engine"
-version = "2.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "2.0.1" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
 edition = "2018"
 description = "CasperLabs execution engine crates."
@@ -27,6 +27,7 @@ linked-hash-map = "0.5.3"
 lmdb = "0.8"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
 num = { version = "0.4.0", default-features = false }
+num_cpus = "1"
 num-derive = "0.3.0"
 num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"

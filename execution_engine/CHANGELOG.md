@@ -11,19 +11,17 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 2.0.1
 
-### Added
-* Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
-* Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the hashes for `accounts.toml` and `global_state.toml`.
-* Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+### Security
+* Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
+* Implement checks before preprocessing Wasm to avoid references to undeclared functions or globals.
+
+
+## 2.0.0
 
 ### Changed
-* Fix some integer casts.
-* Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
-* Lift the temporary limit of the size of individual values stored in global state.
-* Lift the temporary limit of the global maximum delegator capacity.
-* Providing incorrect Wasm for execution will cause the default 2.5CSPR to be charged.
+* Change contract runtime to allow caching global state changes during execution of a single block, also avoiding writing interstitial data to global state.
 
 
 

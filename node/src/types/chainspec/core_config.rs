@@ -1,17 +1,22 @@
+use std::collections::BTreeSet;
+
+use tracing::error;
+
+use casper_execution_engine::core::engine_state::engine_config::{FeeHandling, RefundHandling};
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey, TimeDiff,
+};
+
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    TimeDiff,
-};
-
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {
@@ -39,6 +44,39 @@ pub struct CoreConfig {
     pub(crate) minimum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
+    /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
+    /// `false`. Setting up this option makes sense only for private chains where validator set
+    /// rotation is unnecessary.
+    pub(crate) allow_auction_bids: bool,
+    /// Allows unrestricted transfers between users.
+    pub(crate) allow_unrestricted_transfers: bool,
+    /// If set to false then consensus doesn't compute rewards and always uses 0.
+    pub(crate) compute_rewards: bool,
+    /// Administrative accounts are valid option for for a private chain only.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub(crate) administrators: BTreeSet<PublicKey>,
+    /// Refund handling.
+    #[data_size(skip)]
+    pub(crate) refund_handling: RefundHandling,
+    /// Fee handling.
+    pub(crate) fee_handling: FeeHandling,
+}
+
+impl CoreConfig {
+    /// Checks whether the values set in the config make sense and returns `false` if they don't.
+    pub(super) fn is_valid(&self) -> bool {
+        let refund_ratio = match &self.refund_handling {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                refund_ratio
+            }
+        };
+        if *refund_ratio > Ratio::new(1, 1) {
+            error!(%refund_ratio, "refund_ratio is not in the range [0, 1]");
+            return false;
+        }
+
+        true
+    }
 }
 
 #[cfg(test)]
@@ -60,6 +98,23 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
+        let allow_auction_bids = rng.gen();
+        let allow_unrestricted_transfers = rng.gen();
+        let compute_rewards = rng.gen();
+        let administrators = (0..rng.gen_range(0..=10u32))
+            .map(|_| PublicKey::random(rng))
+            .collect();
+        let refund_handling = {
+            let numer = rng.gen_range(0..=100);
+            let refund_ratio = Ratio::new(numer, 100);
+            RefundHandling::Refund { refund_ratio }
+        };
+
+        let fee_handling = if rng.gen() {
+            FeeHandling::PayToProposer
+        } else {
+            FeeHandling::Accumulate
+        };
 
         CoreConfig {
             era_duration,
@@ -74,6 +129,12 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
+            compute_rewards,
+            administrators,
+            refund_handling,
+            fee_handling,
         }
     }
 }
@@ -93,6 +154,12 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
+        buffer.extend(self.allow_auction_bids.to_bytes()?);
+        buffer.extend(self.allow_unrestricted_transfers.to_bytes()?);
+        buffer.extend(self.compute_rewards.to_bytes()?);
+        buffer.extend(self.administrators.to_bytes()?);
+        buffer.extend(self.refund_handling.to_bytes()?);
+        buffer.extend(self.fee_handling.to_bytes()?);
         Ok(buffer)
     }
 
@@ -102,13 +169,19 @@ impl ToBytes for CoreConfig {
             + self.validator_slots.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
-            + self.vesting_schedule_period.serialized_length()
             + self.unbonding_delay.serialized_length()
             + self.round_seigniorage_rate.serialized_length()
+            + self.vesting_schedule_period.serialized_length()
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.strict_argument_checking.serialized_length()
+            + self.allow_auction_bids.serialized_length()
+            + self.allow_unrestricted_transfers.serialized_length()
+            + self.compute_rewards.serialized_length()
+            + self.administrators.serialized_length()
+            + self.refund_handling.serialized_length()
+            + self.fee_handling.serialized_length()
     }
 }
 
@@ -126,6 +199,12 @@ impl FromBytes for CoreConfig {
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
+        let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
+        let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
+        let (administrators, remainder) = FromBytes::from_bytes(remainder)?;
+        let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -139,6 +218,12 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
+            compute_rewards,
+            administrators,
+            refund_handling,
+            fee_handling,
         };
         Ok((config, remainder))
     }

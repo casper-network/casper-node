@@ -11,8 +11,8 @@ use core::{
 
 use num_integer::Integer;
 use num_traits::{
-    AsPrimitive, Bounded, CheckedMul, CheckedSub, Num, One, Unsigned, WrappingAdd, WrappingSub,
-    Zero,
+    AsPrimitive, Bounded, CheckedAdd, CheckedMul, CheckedSub, Num, One, Unsigned, WrappingAdd,
+    WrappingSub, Zero,
 };
 use rand::{
     distributions::{Distribution, Standard},
@@ -264,6 +264,12 @@ macro_rules! impl_traits_for_uint {
         impl CheckedSub for $type {
             fn checked_sub(&self, v: &$type) -> Option<$type> {
                 $type::checked_sub(*self, *v)
+            }
+        }
+
+        impl CheckedAdd for $type {
+            fn checked_add(&self, v: &$type) -> Option<$type> {
+                $type::checked_add(*self, *v)
             }
         }
 

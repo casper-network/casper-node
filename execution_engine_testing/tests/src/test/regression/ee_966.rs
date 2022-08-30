@@ -4,26 +4,18 @@ use parity_wasm::builder;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error, ExecuteRequest, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        },
+        engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
         execution::Error as ExecError,
     },
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
@@ -280,18 +272,11 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        *DOUBLED_WASM_MEMORY_LIMIT,
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT)
+        .build();
 
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request);
 
     //
     // Now this request is working as the maximum memory limit is doubled.

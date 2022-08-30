@@ -9,6 +9,7 @@ maximum_net_message_size = 23_068_672
 
 [core]
 era_duration = '3minutes'
+refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 minimum_era_height = 9
 validator_slots = 5
 auction_delay = 3
@@ -19,6 +20,11 @@ unbonding_delay = 14
 max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
+fee_handling = { type = 'pay_to_proposer' }
+allow_auction_bids = true
+compute_rewards = true
+allow_unrestricted_transfers = true
+administrators = []
 strict_argument_checking = false
 
 [highway]
@@ -110,6 +116,7 @@ transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3, 4, 5, 6] }
 update_associated_key = { cost = 139, arguments = [0, 1, 2] }
 write = { cost = 140,  arguments = [0, 1, 0, 2] }
 write_local = { cost = 141, arguments = [0, 1, 2, 3] }
+enable_contract_version = { cost = 142, arguments = [0, 1, 2, 3] }
 
 [system_costs]
 wasmless_transfer_cost = 100_000_000

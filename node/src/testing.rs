@@ -24,7 +24,6 @@ use std::{
 
 use anyhow::Context;
 use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
-use casper_types::testing::TestRng;
 use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
@@ -34,7 +33,7 @@ use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{testing::TestRng, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,

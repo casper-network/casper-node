@@ -691,6 +691,16 @@ impl reactor::Reactor for Reactor {
                     JoinerEvent::DeployGossiper(event),
                 ));
 
+                let event = gossiper::Event::ItemReceived {
+                    item_id: *deploy.id(),
+                    source: source.clone(),
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    JoinerEvent::DeployGossiper(event),
+                ));
+
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
                     source,
