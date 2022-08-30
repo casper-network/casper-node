@@ -42,7 +42,7 @@ use crate::{
     utils::DisplayIter,
 };
 
-use super::{Item, Tag, ValueOrChunk};
+use super::{Chunkable, Item, Tag, ValueOrChunk};
 use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockHeadersBatchValidationError,
     BlockWithMetadataValidationError,
@@ -1962,7 +1962,7 @@ impl Item for BlockEffectsOrChunk {
             },
             BlockEffectsOrChunk::BlockEffects(value) => match value {
                 ValueOrChunk::Value(execution_results) => BlockEffectsOrChunkId::new(
-                    Digest::hash_into_chunks_if_necessary(&execution_results).unwrap(),
+                    Chunkable::hash(&execution_results).expect("hashing to succeed."), //TODO
                 ),
                 ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
                     BlockEffectsOrChunkId::BlockEffectsOrChunkId {

@@ -26,7 +26,7 @@ use crate::{
             BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
-    types::{error::BlockCreationError, Block, Deploy, DeployHeader, FinalizedBlock},
+    types::{error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
@@ -406,16 +406,12 @@ where
 /// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
 /// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
 fn compute_execution_results_root_hash<'a>(
-    results: &mut impl Iterator<Item = &'a ExecutionResult>,
+    results: &impl Iterator<Item = &'a ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
-    let execution_results_bytes = results
-        .cloned()
-        .collect::<Vec<_>>()
-        .to_bytes()
-        .map_err(BlockCreationError::BytesRepr)?;
-    Ok(Digest::hash_into_chunks_if_necessary(
-        &execution_results_bytes,
-    ))
+    let execution_results: Vec<ExecutionResult> = results.cloned().collect::<Vec<_>>();
+    (&execution_results)
+        .hash()
+        .map_err(BlockCreationError::BytesRepr)
 }
 
 /// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
