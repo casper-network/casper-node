@@ -1622,11 +1622,14 @@ impl GossipItem for Deploy {
     type ValidationError = DeployConfigurationFailure;
 
     const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
     const TAG: Tag = Tag::Deploy;
 
     fn id(&self) -> Self::Id {
         *self.id()
+    }
+
+    fn target(&self) -> GossipTarget {
+        GossipTarget::All
     }
 }
 

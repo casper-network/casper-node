@@ -34,11 +34,14 @@ impl GossipItem for GossipedAddress {
     type Id = GossipedAddress;
     type ValidationError = Infallible;
     const ID_IS_COMPLETE_ITEM: bool = true;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
     const TAG: Tag = Tag::GossipedAddress;
 
     fn id(&self) -> Self::Id {
         *self
+    }
+
+    fn target(&self) -> GossipTarget {
+        GossipTarget::All
     }
 }
 

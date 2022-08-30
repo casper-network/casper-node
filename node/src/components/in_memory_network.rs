@@ -555,6 +555,7 @@ where
             NetworkRequest::ValidatorBroadcast {
                 payload,
                 auto_closing_responder,
+                era_id: _,
             } => {
                 if let Ok(guard) = self.nodes.read() {
                     for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
@@ -571,6 +572,7 @@ where
                 count,
                 exclude,
                 auto_closing_responder,
+                gossip_target,
             } => {
                 if let Ok(guard) = self.nodes.read() {
                     let chosen: HashSet<_> = guard

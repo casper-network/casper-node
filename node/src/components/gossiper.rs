@@ -211,7 +211,8 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 self.gossip(
                     effect_builder,
                     item_id,
-                    T::GOSSIP_TARGET,
+                    // :one-tear:
+                    should_gossip.target,
                     should_gossip.count,
                     should_gossip.exclude_peers,
                 )
@@ -300,7 +301,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::ShouldGossip(should_gossip) => self.gossip(
                 effect_builder,
                 item_id,
-                T::GOSSIP_TARGET,
+                should_gossip.target,
                 should_gossip.count,
                 should_gossip.exclude_peers,
             ),
@@ -330,7 +331,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::ShouldGossip(should_gossip) => self.gossip(
                 effect_builder,
                 item_id,
-                T::GOSSIP_TARGET,
+                should_gossip.target,
                 should_gossip.count,
                 should_gossip.exclude_peers,
             ),
@@ -390,7 +391,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 let mut effects = self.gossip(
                     effect_builder,
                     item_id.clone(),
-                    T::GOSSIP_TARGET,
+                    should_gossip.target,
                     should_gossip.count,
                     should_gossip.exclude_peers,
                 );
@@ -479,7 +480,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::ShouldGossip(should_gossip) => effects.extend(self.gossip(
                 effect_builder,
                 item_id,
-                T::GOSSIP_TARGET,
+                should_gossip.target,
                 should_gossip.count,
                 should_gossip.exclude_peers,
             )),

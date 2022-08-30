@@ -13,7 +13,7 @@ use fake_instant::FakeClock as Instant;
 use tracing::{debug, error, warn};
 
 use super::Config;
-use crate::{types::NodeId, utils::DisplayIter};
+use crate::{effect::GossipTarget, types::NodeId, utils::DisplayIter};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum GossipAction {
@@ -58,6 +58,8 @@ pub(crate) struct ShouldGossip {
     pub(crate) exclude_peers: HashSet<NodeId>,
     /// Whether we already held the full data or not.
     pub(crate) is_already_held: bool,
+    /// Who to gossip this to.
+    pub(crate) target: GossipTarget,
 }
 
 impl Display for ShouldGossip {
@@ -93,6 +95,8 @@ pub(crate) struct State {
     infected_by_us: HashSet<NodeId>,
     /// The count of in-flight gossip messages sent by us for this data.
     in_flight_count: usize,
+    /// The relevant target for this data.
+    target: GossipTarget,
 }
 
 impl State {
@@ -119,6 +123,7 @@ impl State {
                 self.in_flight_count += count;
                 return GossipAction::ShouldGossip(ShouldGossip {
                     count,
+                    target: self.target,
                     exclude_peers: self.holders.clone(),
                     is_already_held: !is_new,
                 });
@@ -591,6 +596,7 @@ mod tests {
         let action = gossip_table.new_complete_data(&data_id, None);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
+            target: GossipTarget::All,
             exclude_peers: HashSet::new(),
             is_already_held: false,
         });
@@ -608,6 +614,7 @@ mod tests {
         let action = gossip_table.already_infected(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..2].iter().cloned().collect(),
             is_already_held: true,
         });
@@ -637,6 +644,7 @@ mod tests {
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..1].iter().cloned().collect(),
             is_already_held: false,
         });
@@ -668,6 +676,7 @@ mod tests {
         let action = gossip_table.we_infected(&data_id, node_ids[limit - 1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..limit].iter().cloned().collect(),
             is_already_held: true,
         });
@@ -780,6 +789,7 @@ mod tests {
             let action = gossip_table.already_infected(&data_id, *node_id);
             let expected = GossipAction::ShouldGossip(ShouldGossip {
                 count: 1,
+                target: GossipTarget::All,
                 exclude_peers: node_ids[..(index + 1)].iter().cloned().collect(),
                 is_already_held: true,
             });
@@ -791,6 +801,7 @@ mod tests {
         let action = gossip_table.already_infected(&data_id, node_ids[0]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..limit].iter().cloned().collect(),
             is_already_held: true,
         });
@@ -826,6 +837,7 @@ mod tests {
         let action = gossip_table.already_infected(&data_id, node_ids[holders_limit]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..(holders_limit + 1)].iter().cloned().collect(),
             is_already_held: true,
         });
@@ -853,6 +865,7 @@ mod tests {
         let action = gossip_table.check_timeout(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..=1].iter().cloned().collect(),
             is_already_held: true,
         });

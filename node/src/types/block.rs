@@ -1649,11 +1649,14 @@ impl GossipItem for Block {
     type ValidationError = BlockValidationError;
 
     const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
     const TAG: Tag = Tag::Block;
 
     fn id(&self) -> Self::Id {
         *self.hash()
+    }
+
+    fn target(&self) -> GossipTarget {
+        GossipTarget::NonValidators(self.header.era_id)
     }
 }
 
@@ -2140,11 +2143,14 @@ impl GossipItem for FinalitySignature {
     type Id = FinalitySignature;
     type ValidationError = crypto::Error;
     const ID_IS_COMPLETE_ITEM: bool = true;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
     const TAG: Tag = Tag::FinalitySignature;
 
     fn id(&self) -> Self::Id {
         self.clone()
+    }
+
+    fn target(&self) -> GossipTarget {
+        GossipTarget::NonValidators(self.era_id)
     }
 }
 

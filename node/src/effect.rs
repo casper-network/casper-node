@@ -186,12 +186,18 @@ pub(crate) type Effects<Ev> = Multiple<Effect<Ev>>;
 pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
 /// The type of peers that should receive the gossip message.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq, Hash, Copy, Clone, DataSize)]
 pub(crate) enum GossipTarget {
-    /// Peers which are not validators in all of the eras known to small network.
-    NonValidators,
+    /// Peers which are not validators in the given era.
+    NonValidators(EraId),
     /// All peers.
     All,
+}
+
+impl Default for GossipTarget {
+    fn default() -> Self {
+        GossipTarget::All
+    }
 }
 
 /// A responder satisfying a request.

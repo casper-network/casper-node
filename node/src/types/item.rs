@@ -93,13 +93,11 @@ pub(crate) trait GossipItem:
     type ValidationError: std::error::Error + Debug;
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
-    /// The type of peers that should receive the gossip message.
-    const GOSSIP_TARGET: GossipTarget;
     /// The tag representing the type of the item.
     const TAG: Tag;
 
     /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
-    fn era_id(&self) -> Option<EraId>;
+    fn target(&self) -> GossipTarget;
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;

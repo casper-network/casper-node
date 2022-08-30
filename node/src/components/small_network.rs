@@ -495,7 +495,9 @@ where
             .outgoing_manager
             .connected_peers()
             .filter(|peer_id| match gossip_target {
-                GossipTarget::NonValidators => todo!(), //self.validator_sets.is_not_always_validator(peer_id),
+                GossipTarget::NonValidators(era_id) => {
+                    !self.validator_sets.is_active_validator(era_id, peer_id)
+                }
                 GossipTarget::All => true,
             })
             .filter(|peer_id| !exclude.contains(peer_id))

@@ -84,7 +84,13 @@ impl Display for MetricsRequest {
 }
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<String>>();
-const_assert!(_NETWORK_EVENT_SIZE < 89);
+//const_assert!(_NETWORK_EVENT_SIZE < 92);
+
+#[test]
+fn poop() {
+    eprintln!("{}", mem::size_of::<NetworkRequest<String>>());
+    panic!("poop is a bad name");
+}
 
 // #[derive(Debug, Serialize)]
 // pub(crate) enum Excluded {
