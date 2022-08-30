@@ -24,7 +24,7 @@ use crate::{
         announcements::GossiperAnnouncement,
         incoming::GossiperIncoming,
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, TargetPeers,
     },
     protocol::Message as NodeMessage,
     types::{Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, Item, NodeId},
@@ -278,10 +278,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             effects.extend(
                 effect_builder
                     .set_timeout(self.gossip_timeout)
-                    .event(move |_| Event::CheckGossipTimeout {
-                        item_id,
-                        peer,
-                    }),
+                    .event(move |_| Event::CheckGossipTimeout { item_id, peer }),
             )
         }
 

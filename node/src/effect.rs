@@ -185,6 +185,14 @@ pub(crate) type Effects<Ev> = Multiple<Effect<Ev>>;
 /// the same size as an empty vec, which is two pointers.
 pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
+// TODO[RC]: Add docs.
+#[derive(Debug, Serialize)]
+pub(crate) enum TargetPeers {
+    Validators(EraId),
+    NonValidators(EraId),
+    All,
+}
+
 /// A responder satisfying a request.
 #[must_use]
 #[derive(DataSize)]
@@ -696,16 +704,15 @@ impl<REv> EffectBuilder<REv> {
         .await;
     }
 
-    /// Broadcasts a network message.
-    ///
-    /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub(crate) async fn broadcast_message<P>(self, payload: P)
+    /// Broadcasts a network message to validator peers in the given era.
+    pub(crate) async fn broadcast_message_to_validators<P>(self, payload: P, era_id: EraId)
     where
         REv: From<NetworkRequest<P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::Broadcast {
+            |responder| NetworkRequest::ValidatorBroadcast {
                 payload: Box::new(payload),
+                era_id,
                 auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,

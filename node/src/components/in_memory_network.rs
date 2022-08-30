@@ -552,7 +552,7 @@ where
 
                 auto_closing_responder.respond(()).ignore()
             }
-            NetworkRequest::Broadcast {
+            NetworkRequest::ValidatorBroadcast {
                 payload,
                 auto_closing_responder,
             } => {

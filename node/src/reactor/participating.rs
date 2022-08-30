@@ -65,7 +65,7 @@ use crate::{
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, TargetPeers,
     },
     fatal,
     protocol::Message,
@@ -798,7 +798,9 @@ impl reactor::Reactor for Reactor {
                                     .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
                                     .await;
                                 let message = Message::FinalitySignature(Box::new(signature));
-                                effect_builder.broadcast_message(message).await;
+                                effect_builder
+                                    .broadcast_message_to_validators(message, current_era_id)
+                                    .await;
                             }
                         }
                         .ignore(),

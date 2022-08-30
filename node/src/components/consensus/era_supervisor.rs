@@ -47,7 +47,7 @@ use crate::{
     effect::{
         announcements::ControlAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder, TargetPeers,
     },
     fatal,
     types::{
@@ -839,7 +839,9 @@ impl EraSupervisor {
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
                 // TODO: we'll want to gossip instead of broadcast here
-                effect_builder.broadcast_message(message.into()).ignore()
+                effect_builder
+                    .broadcast_message_to_validators(message.into(), era_id)
+                    .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };

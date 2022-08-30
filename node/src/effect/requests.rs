@@ -57,6 +57,7 @@ use crate::{
     utils::{DisplayIter, Source},
 };
 
+use super::TargetPeers;
 // Redirection for reactor macro.
 #[allow(unused_imports)]
 pub(crate) use super::diagnostics_port::DumpConsensusStateRequest;
@@ -112,12 +113,12 @@ pub(crate) enum NetworkRequest<P> {
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<()>,
     },
-    /// Send a message on the network to all peers.
-    /// Note: This request is deprecated and should be phased out, as not every network
-    ///       implementation is likely to implement broadcast support.
-    Broadcast {
+    /// Send a message on the network to validator peers in the given era.
+    ValidatorBroadcast {
         /// Message payload.
         payload: Box<P>,
+        /// Era whose validators are recipients.
+        era_id: EraId,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<()>,
@@ -159,11 +160,13 @@ impl<P> NetworkRequest<P> {
                 respond_after_queueing,
                 auto_closing_responder,
             },
-            NetworkRequest::Broadcast {
+            NetworkRequest::ValidatorBroadcast {
                 payload,
+                era_id,
                 auto_closing_responder,
-            } => NetworkRequest::Broadcast {
+            } => NetworkRequest::ValidatorBroadcast {
                 payload: Box::new(wrap_payload(*payload)),
+                era_id,
                 auto_closing_responder,
             },
             NetworkRequest::Gossip {
@@ -190,7 +193,7 @@ where
             NetworkRequest::SendMessage { dest, payload, .. } => {
                 write!(formatter, "send to {}: {}", dest, payload)
             }
-            NetworkRequest::Broadcast { payload, .. } => {
+            NetworkRequest::ValidatorBroadcast { payload, .. } => {
                 write!(formatter, "broadcast: {}", payload)
             }
             NetworkRequest::Gossip { payload, .. } => write!(formatter, "gossip: {}", payload),

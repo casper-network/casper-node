@@ -104,7 +104,7 @@ use crate::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
         },
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
-        AutoClosingResponder, EffectBuilder, EffectExt, Effects,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects, TargetPeers,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -393,8 +393,9 @@ where
         self.close_incoming_receiver = close_incoming_receiver;
     }
 
-    /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, msg: Arc<Message<P>>) {
+    /// Queues a message to be sent to validator nodes in the given era.
+    fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
+        // TODO[RC]: Select correct peers here
         self.net_metrics.broadcast_requests.inc();
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone(), None);
@@ -951,12 +952,16 @@ where
                             Effects::new()
                         }
                     }
-                    NetworkRequest::Broadcast {
+                    NetworkRequest::ValidatorBroadcast {
                         payload,
+                        era_id,
                         auto_closing_responder,
                     } => {
                         // We're given a message to broadcast.
-                        self.broadcast_message(Arc::new(Message::Payload(*payload)));
+                        self.broadcast_message_to_validators(
+                            Arc::new(Message::Payload(*payload)),
+                            era_id,
+                        );
                         auto_closing_responder.respond(()).ignore()
                     }
                     NetworkRequest::Gossip {

@@ -33,7 +33,7 @@ use crate::{
         requests::{
             ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, EffectResultExt, Effects,
+        EffectBuilder, EffectExt, EffectResultExt, Effects, TargetPeers,
     },
     protocol::Message,
     types::{ActivationPoint, BlockHeader},
@@ -112,8 +112,11 @@ where
             }
             .event(|block| Event::PutBlockResult { block }),
             Outcome::Gossip(fs) => {
+                let era_id = fs.era_id;
                 let message = Message::FinalitySignature(fs);
-                effect_builder.broadcast_message(message).ignore()
+                effect_builder
+                    .broadcast_message_to_validators(message, era_id)
+                    .ignore()
             }
             Outcome::AnnounceSignature(fs) => {
                 effect_builder.announce_finality_signature(fs).ignore()
@@ -167,6 +170,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::NewLinearChainBlock {
+                // executed
                 block,
                 execution_results,
             } => {

@@ -357,7 +357,7 @@ async fn run_equivocator_network() {
                 ParticipatingEvent::ConsensusMessageIncoming { .. } => {}
                 ParticipatingEvent::NetworkRequest(
                     NetworkRequest::SendMessage { payload, .. }
-                    | NetworkRequest::Broadcast { payload, .. }
+                    | NetworkRequest::ValidatorBroadcast { payload, .. }
                     | NetworkRequest::Gossip { payload, .. },
                 ) if matches!(**payload, Message::Consensus(_)) => {}
                 _ => return Either::Right(event),
