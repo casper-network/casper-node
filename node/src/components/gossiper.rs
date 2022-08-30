@@ -24,7 +24,7 @@ use crate::{
         announcements::GossiperAnnouncement,
         incoming::GossiperIncoming,
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, TargetPeers,
+        EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     protocol::Message as NodeMessage,
     types::{Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, Item, NodeId},
@@ -209,6 +209,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 self.gossip(
                     effect_builder,
                     item_id,
+                    T::GOSSIP_TARGET,
                     should_gossip.count,
                     should_gossip.exclude_peers,
                 )
@@ -229,12 +230,13 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
+        gossip_target: GossipTarget,
         count: usize,
         exclude_peers: HashSet<NodeId>,
     ) -> Effects<Event<T>> {
         let message = Message::Gossip(item_id.clone());
         effect_builder
-            .gossip_message(message, count, exclude_peers)
+            .gossip_message(message, gossip_target, count, exclude_peers)
             .event(move |peers| Event::GossipedTo {
                 item_id,
                 requested_count: count,
@@ -296,6 +298,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::ShouldGossip(should_gossip) => self.gossip(
                 effect_builder,
                 item_id,
+                T::GOSSIP_TARGET,
                 should_gossip.count,
                 should_gossip.exclude_peers,
             ),
@@ -325,6 +328,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::ShouldGossip(should_gossip) => self.gossip(
                 effect_builder,
                 item_id,
+                T::GOSSIP_TARGET,
                 should_gossip.count,
                 should_gossip.exclude_peers,
             ),
@@ -384,6 +388,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 let mut effects = self.gossip(
                     effect_builder,
                     item_id.clone(),
+                    T::GOSSIP_TARGET,
                     should_gossip.count,
                     should_gossip.exclude_peers,
                 );
@@ -472,6 +477,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::ShouldGossip(should_gossip) => effects.extend(self.gossip(
                 effect_builder,
                 item_id,
+                T::GOSSIP_TARGET,
                 should_gossip.count,
                 should_gossip.exclude_peers,
             )),

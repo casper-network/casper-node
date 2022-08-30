@@ -43,6 +43,7 @@ use casper_types::{
 use super::{BlockHash, BlockHashAndHeight, Item, Tag};
 use crate::{
     components::block_proposer::DeployInfo,
+    effect::GossipTarget,
     rpcs::docs::DocExample,
     types::chainspec::DeployConfig,
     utils::{ds, DisplayIter},
@@ -683,6 +684,7 @@ impl Item for DeployFinalizedApprovals {
 
     const TAG: Tag = Tag::FinalizedApprovals;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         for approval in &self.approvals.0 {
@@ -1607,6 +1609,7 @@ impl Item for Deploy {
 
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!

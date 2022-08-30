@@ -7,7 +7,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Item, Tag};
+use crate::{types::{Item, Tag}, effect::GossipTarget};
 
 /// Used to gossip our public listening address to peers.
 #[derive(
@@ -32,6 +32,7 @@ impl Item for GossipedAddress {
     type ValidationError = Infallible;
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         Ok(())

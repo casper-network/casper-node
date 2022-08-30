@@ -104,7 +104,7 @@ use crate::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
         },
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
-        AutoClosingResponder, EffectBuilder, EffectExt, Effects, TargetPeers,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -395,7 +395,7 @@ where
 
     /// Queues a message to be sent to validator nodes in the given era.
     fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
-        // TODO[RC]: Select correct peers here
+        // TODO[RC]: Select correct peers here based on `era_id`
         self.net_metrics.broadcast_requests.inc();
         for peer_id in self.outgoing_manager.connected_peers() {
             self.send_message(peer_id, msg.clone(), None);
@@ -407,9 +407,11 @@ where
         &self,
         rng: &mut NodeRng,
         msg: Arc<Message<P>>,
+        gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
+        // TODO[RC]: Select correct peers here based on `gossip_target`
         let peer_ids = self
             .outgoing_manager
             .connected_peers()
@@ -966,6 +968,7 @@ where
                     }
                     NetworkRequest::Gossip {
                         payload,
+                        gossip_target,
                         count,
                         exclude,
                         auto_closing_responder,
@@ -974,6 +977,7 @@ where
                         let sent_to = self.gossip_message(
                             rng,
                             Arc::new(Message::Payload(*payload)),
+                            gossip_target,
                             count,
                             exclude,
                         );

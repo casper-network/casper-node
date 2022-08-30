@@ -185,11 +185,12 @@ pub(crate) type Effects<Ev> = Multiple<Effect<Ev>>;
 /// the same size as an empty vec, which is two pointers.
 pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
-// TODO[RC]: Add docs.
+/// The type of peers that should receive the gossip message.
 #[derive(Debug, Serialize)]
-pub(crate) enum TargetPeers {
-    Validators(EraId),
-    NonValidators(EraId),
+pub(crate) enum GossipTarget {
+    /// Peers which are not validators in all of the eras known to small network.
+    NonValidators,
+    /// All peers.
     All,
 }
 
@@ -729,6 +730,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn gossip_message<P>(
         self,
         payload: P,
+        gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId>
@@ -739,6 +741,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| NetworkRequest::Gossip {
                 payload: Box::new(payload),
+                gossip_target,
                 count,
                 exclude,
                 auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),

@@ -12,7 +12,10 @@ use thiserror::Error;
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
 
-use crate::types::{BlockHash, BlockHeader};
+use crate::{
+    effect::GossipTarget,
+    types::{BlockHash, BlockHeader},
+};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -71,6 +74,8 @@ pub(crate) trait Item:
     const TAG: Tag;
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
+    /// The type of peers that should receive the gossip message.
+    const GOSSIP_TARGET: GossipTarget;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self) -> Result<(), Self::ValidationError>;
@@ -89,6 +94,7 @@ impl Item for TrieOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
     const TAG: Tag = Tag::TrieOrChunk;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         match self {
@@ -113,6 +119,7 @@ impl Item for BlockHeader {
     type ValidationError = Infallible;
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         Ok(())

@@ -33,7 +33,7 @@ use crate::{
         requests::{
             ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, EffectResultExt, Effects, TargetPeers,
+        EffectBuilder, EffectExt, EffectResultExt, Effects, GossipTarget,
     },
     protocol::Message,
     types::{ActivationPoint, BlockHeader},

@@ -57,7 +57,7 @@ use crate::{
     utils::{DisplayIter, Source},
 };
 
-use super::TargetPeers;
+use super::GossipTarget;
 // Redirection for reactor macro.
 #[allow(unused_imports)]
 pub(crate) use super::diagnostics_port::DumpConsensusStateRequest;
@@ -127,6 +127,8 @@ pub(crate) enum NetworkRequest<P> {
     Gossip {
         /// Payload to gossip.
         payload: Box<P>,
+        /// Type of peers that should receive the gossip message.
+        gossip_target: GossipTarget,
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
@@ -171,11 +173,13 @@ impl<P> NetworkRequest<P> {
             },
             NetworkRequest::Gossip {
                 payload,
+                gossip_target,
                 count,
                 exclude,
                 auto_closing_responder,
             } => NetworkRequest::Gossip {
                 payload: Box::new(wrap_payload(*payload)),
+                gossip_target,
                 count,
                 exclude,
                 auto_closing_responder,

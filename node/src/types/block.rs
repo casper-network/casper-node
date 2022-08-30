@@ -33,6 +33,7 @@ use tracing::{error, warn};
 
 use crate::{
     components::consensus,
+    effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockValidationError},
@@ -997,6 +998,7 @@ impl Item for BlockHeaderWithMetadata {
     type ValidationError = BlockHeaderWithMetadataValidationError;
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
@@ -1179,6 +1181,8 @@ impl Item for BlockHeadersBatch {
 
     const ID_IS_COMPLETE_ITEM: bool = false;
 
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
+
     fn validate(&self) -> Result<(), Self::ValidationError> {
         if self.inner().is_empty() {
             return Err(BlockHeadersBatchValidationError::BatchEmpty);
@@ -1360,6 +1364,7 @@ impl Item for BlockSignatures {
     type ValidationError = crypto::Error;
     const TAG: Tag = Tag::FinalitySignaturesByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.verify()
@@ -1638,6 +1643,7 @@ impl Item for Block {
 
     const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.verify()
@@ -1696,6 +1702,7 @@ impl Item for BlockWithMetadata {
 
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
@@ -1732,6 +1739,8 @@ impl Item for BlockAndDeploys {
 
     // false b/c we're not validating finality signatures.
     const ID_IS_COMPLETE_ITEM: bool = false;
+
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
@@ -2136,6 +2145,7 @@ impl Item for FinalitySignature {
     type ValidationError = crypto::Error;
     const TAG: Tag = Tag::FinalitySignature;
     const ID_IS_COMPLETE_ITEM: bool = true;
+    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.verify()
