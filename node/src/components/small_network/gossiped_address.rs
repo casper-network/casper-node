@@ -33,13 +33,9 @@ impl Display for GossipedAddress {
 impl GossipItem for GossipedAddress {
     type Id = GossipedAddress;
     type ValidationError = Infallible;
-    const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
     const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        Ok(())
-    }
+    const TAG: Tag = Tag::GossipedAddress;
 
     fn id(&self) -> Self::Id {
         *self

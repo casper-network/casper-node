@@ -683,8 +683,6 @@ impl Item for DeployFinalizedApprovals {
     type ValidationError = FinalizedApprovalsVerificationError;
 
     const TAG: Tag = Tag::FinalizedApprovals;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         for approval in &self.approvals.0 {
@@ -1608,8 +1606,6 @@ impl Item for Deploy {
     type ValidationError = DeployConfigurationFailure;
 
     const TAG: Tag = Tag::Deploy;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!
@@ -1625,14 +1621,9 @@ impl GossipItem for Deploy {
     type Id = DeployHash;
     type ValidationError = DeployConfigurationFailure;
 
-    const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
     const GOSSIP_TARGET: GossipTarget = GossipTarget::All;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        // TODO: Validate approvals later, and only if the approvers are actually authorized!
-        validate_deploy(self)
-    }
+    const TAG: Tag = Tag::Deploy;
 
     fn id(&self) -> Self::Id {
         *self.id()

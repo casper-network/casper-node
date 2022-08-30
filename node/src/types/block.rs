@@ -997,8 +997,6 @@ impl Item for BlockHeaderWithMetadata {
     type Id = u64;
     type ValidationError = BlockHeaderWithMetadataValidationError;
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
@@ -1178,10 +1176,6 @@ impl Item for BlockHeadersBatch {
     type ValidationError = BlockHeadersBatchValidationError;
 
     const TAG: Tag = Tag::BlockHeaderBatch;
-
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         if self.inner().is_empty() {
@@ -1363,8 +1357,6 @@ impl Item for BlockSignatures {
     type Id = BlockHash;
     type ValidationError = crypto::Error;
     const TAG: Tag = Tag::FinalitySignaturesByHash;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.verify()
@@ -1642,8 +1634,6 @@ impl Item for Block {
     type ValidationError = BlockValidationError;
 
     const TAG: Tag = Tag::Block;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.verify()
@@ -1658,13 +1648,9 @@ impl GossipItem for Block {
     type Id = BlockHash;
     type ValidationError = BlockValidationError;
 
-    const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
     const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
+    const TAG: Tag = Tag::Block;
 
     fn id(&self) -> Self::Id {
         *self.hash()
@@ -1718,8 +1704,6 @@ impl Item for BlockWithMetadata {
     type ValidationError = BlockWithMetadataValidationError;
 
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
@@ -1753,11 +1737,6 @@ impl Item for BlockAndDeploys {
     type ValidationError = BlockValidationError;
 
     const TAG: Tag = Tag::BlockAndDeploysByHash;
-
-    // false b/c we're not validating finality signatures.
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
@@ -2160,13 +2139,9 @@ impl Display for FinalitySignature {
 impl GossipItem for FinalitySignature {
     type Id = FinalitySignature;
     type ValidationError = crypto::Error;
-    const TAG: Tag = Tag::FinalitySignature;
     const ID_IS_COMPLETE_ITEM: bool = true;
     const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
+    const TAG: Tag = Tag::FinalitySignature;
 
     fn id(&self) -> Self::Id {
         self.clone()

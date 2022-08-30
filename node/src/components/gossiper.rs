@@ -339,7 +339,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 // The previous peer failed to provide the item, so we still need to get it.  Send
                 // a `GetRequest` to a different holder and set a timeout to check we got the
                 // response.
-                let request = match NodeMessage::new_get_request::<T>(&item_id) {
+                let request = match NodeMessage::new_get_request_for_gossiper::<T>(&item_id) {
                     Ok(request) => request,
                     Err(error) => {
                         error!("failed to create get-request: {}", error);
@@ -509,7 +509,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        match NodeMessage::new_get_response(&FetchedOrNotFound::Fetched(item)) {
+        match NodeMessage::new_get_response_for_gossiper(&FetchedOrNotFound::Fetched(item)) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);

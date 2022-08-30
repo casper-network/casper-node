@@ -4,6 +4,7 @@ use std::{
     hash::Hash,
 };
 
+use casper_types::EraId;
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -72,10 +73,6 @@ pub(crate) trait Item:
     type ValidationError: std::error::Error + Debug;
     /// The tag representing the type of the item.
     const TAG: Tag;
-    /// Whether the item's ID _is_ the complete item or not.
-    const ID_IS_COMPLETE_ITEM: bool;
-    /// The type of peers that should receive the gossip message.
-    const GOSSIP_TARGET: GossipTarget;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self) -> Result<(), Self::ValidationError>;
@@ -94,15 +91,15 @@ pub(crate) trait GossipItem:
     type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug;
-    /// The tag representing the type of the item.
-    const TAG: Tag;
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
     /// The type of peers that should receive the gossip message.
     const GOSSIP_TARGET: GossipTarget;
+    /// The tag representing the type of the item.
+    const TAG: Tag;
 
-    /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
+    /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
+    fn era_id(&self) -> Option<EraId>;
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;
@@ -117,8 +114,6 @@ impl Item for TrieOrChunk {
     type Id = TrieOrChunkId;
     type ValidationError = ChunkWithProofVerificationError;
     const TAG: Tag = Tag::TrieOrChunk;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         match self {
@@ -142,8 +137,6 @@ impl Item for BlockHeader {
     type Id = BlockHash;
     type ValidationError = Infallible;
     const TAG: Tag = Tag::BlockHeaderByHash;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const GOSSIP_TARGET: GossipTarget = GossipTarget::NonValidators;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         Ok(())
