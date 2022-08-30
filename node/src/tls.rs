@@ -38,11 +38,11 @@ use nid::Nid;
 use openssl::{
     asn1::{Asn1Integer, Asn1IntegerRef, Asn1Time},
     bn::{BigNum, BigNumContext},
-    ec,
+    ec::{self, EcKey},
     error::ErrorStack,
     hash::{DigestBytes, MessageDigest},
     nid,
-    pkey::{PKey, PKeyRef, Private},
+    pkey::{PKey, PKeyRef, Private, Public},
     sha,
     ssl::{SslAcceptor, SslConnector, SslContextBuilder, SslMethod, SslVerifyMode, SslVersion},
     x509::{X509Builder, X509Name, X509NameBuilder, X509NameRef, X509Ref, X509},
@@ -247,7 +247,7 @@ impl Eq for TlsCert {}
 
 /// Error during loading a x509 certificate.
 #[derive(Debug, Error, Serialize)]
-pub(crate) enum LoadCertError {
+pub enum LoadCertError {
     #[error("could not load certificate file: {0}")]
     ReadFile(
         #[serde(skip_serializing)]
@@ -481,6 +481,9 @@ pub(crate) fn validate_cert_with_authority(
     let authority_key = ca
         .public_key()
         .map_err(ValidationError::CannotReadCAPublicKey)?;
+
+    validate_cert_expiration_date(&cert)?;
+
     if !cert
         .verify(authority_key.as_ref())
         .map_err(ValidationError::FailedToValidateSignature)?
@@ -488,60 +491,8 @@ pub(crate) fn validate_cert_with_authority(
         return Err(ValidationError::WrongCertificateAuthority);
     }
 
-    // Check expiration times against current time.
-    let asn1_now = Asn1Time::from_unix(now()).map_err(ValidationError::TimeIssue)?;
-    if asn1_now
-        .compare(cert.not_before())
-        .map_err(ValidationError::TimeIssue)?
-        != Ordering::Greater
-    {
-        return Err(ValidationError::NotYetValid);
-    }
-
-    if asn1_now
-        .compare(cert.not_after())
-        .map_err(ValidationError::TimeIssue)?
-        != Ordering::Less
-    {
-        return Err(ValidationError::Expired);
-    }
-
     // Ensure that the key is using the correct curve parameters.
-    let public_key = cert
-        .public_key()
-        .map_err(ValidationError::CannotReadPublicKey)?;
-
-    let ec_key = public_key
-        .ec_key()
-        .map_err(ValidationError::CouldNotExtractEcKey)?;
-
-    // We now have a valid certificate and can extract the fingerprint.
-    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
-    let digest = &cert
-        .digest(Sha512::create_message_digest())
-        .map_err(ValidationError::InvalidFingerprint)?;
-    let cert_fingerprint = CertFingerprint(Sha512::from_openssl_digest(digest));
-
-    // Additionally we can calculate a fingerprint for the public key:
-    let mut big_num_context =
-        BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
-
-    let buf = ec_key
-        .public_key()
-        .to_bytes(
-            ec_key.group(),
-            ec::PointConversionForm::COMPRESSED,
-            &mut big_num_context,
-        )
-        .map_err(ValidationError::PublicKeyEncodingFailed)?;
-
-    let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
-
-    Ok(TlsCert {
-        x509: cert,
-        cert_fingerprint,
-        key_fingerprint,
-    })
+    tls_cert_from_x509(cert)
 }
 
 /// Checks that the cryptographic parameters on a certificate are correct and returns the
@@ -573,6 +524,90 @@ pub(crate) fn validate_self_signed_cert(cert: X509) -> Result<TlsCert, Validatio
     }
 
     // Check expiration times against current time.
+    validate_cert_expiration_date(&cert)?;
+
+    // Ensure that the key is using the correct curve parameters.
+    let (public_key, ec_key) = validate_cert_ec_key(&cert)?;
+    if ec_key.group().curve_name() != Some(SIGNATURE_CURVE) {
+        // The underlying curve is not the one we chose.
+        return Err(ValidationError::WrongCurve);
+    }
+
+    // Finally we can check the actual signature.
+    if !cert
+        .verify(&public_key)
+        .map_err(ValidationError::FailedToValidateSignature)?
+    {
+        return Err(ValidationError::InvalidSignature);
+    }
+
+    tls_cert_from_x509_and_key(cert, ec_key)
+}
+
+/// Creates a [`TlsCert`] instance from [`X509`] cert instance.
+///
+/// This function only ensures that the cert contains EC public key, and is suitable for quickly
+/// validating certs signed by CA.
+pub(crate) fn tls_cert_from_x509(cert: X509) -> Result<TlsCert, ValidationError> {
+    let (_public_key, ec_key) = validate_cert_ec_key(&cert)?;
+    tls_cert_from_x509_and_key(cert, ec_key)
+}
+
+fn tls_cert_from_x509_and_key(
+    cert: X509,
+    ec_key: EcKey<Public>,
+) -> Result<TlsCert, ValidationError> {
+    let cert_fingerprint = cert_fingerprint(&cert)?;
+    let key_fingerprint = key_fingerprint(ec_key)?;
+    Ok(TlsCert {
+        x509: cert,
+        cert_fingerprint,
+        key_fingerprint,
+    })
+}
+
+/// Calculate a fingerprint for the X509 certificate.
+pub(crate) fn cert_fingerprint(cert: &X509) -> Result<CertFingerprint, ValidationError> {
+    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+    let digest = &cert
+        .digest(Sha512::create_message_digest())
+        .map_err(ValidationError::InvalidFingerprint)?;
+    let cert_fingerprint = CertFingerprint(Sha512::from_openssl_digest(digest));
+    Ok(cert_fingerprint)
+}
+
+/// Calculate a fingerprint for the public EC key.
+pub(crate) fn key_fingerprint(ec_key: EcKey<Public>) -> Result<KeyFingerprint, ValidationError> {
+    let mut big_num_context =
+        BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
+    let buf = ec_key
+        .public_key()
+        .to_bytes(
+            ec::EcGroup::from_curve_name(SIGNATURE_CURVE)
+                .expect("broken constant SIGNATURE_CURVE")
+                .as_ref(),
+            ec::PointConversionForm::COMPRESSED,
+            &mut big_num_context,
+        )
+        .map_err(ValidationError::PublicKeyEncodingFailed)?;
+    let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
+    Ok(key_fingerprint)
+}
+
+/// Validate cert's public key, and it's EC key parameters.
+fn validate_cert_ec_key(cert: &X509) -> Result<(PKey<Public>, EcKey<Public>), ValidationError> {
+    let public_key = cert
+        .public_key()
+        .map_err(ValidationError::CannotReadPublicKey)?;
+    let ec_key = public_key
+        .ec_key()
+        .map_err(ValidationError::CouldNotExtractEcKey)?;
+    ec_key.check_key().map_err(ValidationError::KeyFailsCheck)?;
+    Ok((public_key, ec_key))
+}
+
+/// Check cert's expiration times against current time.
+fn validate_cert_expiration_date(cert: &X509) -> Result<(), ValidationError> {
     let asn1_now = Asn1Time::from_unix(now()).map_err(ValidationError::TimeIssue)?;
     if asn1_now
         .compare(cert.not_before())
@@ -590,58 +625,7 @@ pub(crate) fn validate_self_signed_cert(cert: X509) -> Result<TlsCert, Validatio
         return Err(ValidationError::Expired);
     }
 
-    // Ensure that the key is using the correct curve parameters.
-    let public_key = cert
-        .public_key()
-        .map_err(ValidationError::CannotReadPublicKey)?;
-
-    let ec_key = public_key
-        .ec_key()
-        .map_err(ValidationError::CouldNotExtractEcKey)?;
-
-    ec_key.check_key().map_err(ValidationError::KeyFailsCheck)?;
-    if ec_key.group().curve_name() != Some(SIGNATURE_CURVE) {
-        // The underlying curve is not the one we chose.
-        return Err(ValidationError::WrongCurve);
-    }
-
-    // Finally we can check the actual signature.
-    if !cert
-        .verify(&public_key)
-        .map_err(ValidationError::FailedToValidateSignature)?
-    {
-        return Err(ValidationError::InvalidSignature);
-    }
-
-    // We now have a valid certificate and can extract the fingerprint.
-    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
-    let digest = &cert
-        .digest(Sha512::create_message_digest())
-        .map_err(ValidationError::InvalidFingerprint)?;
-    let cert_fingerprint = CertFingerprint(Sha512::from_openssl_digest(digest));
-
-    // Additionally we can calculate a fingerprint for the public key:
-    let mut big_num_context =
-        BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
-
-    let buf = ec_key
-        .public_key()
-        .to_bytes(
-            ec::EcGroup::from_curve_name(SIGNATURE_CURVE)
-                .expect("broken constant SIGNATURE_CURVE")
-                .as_ref(),
-            ec::PointConversionForm::COMPRESSED,
-            &mut big_num_context,
-        )
-        .map_err(ValidationError::PublicKeyEncodingFailed)?;
-
-    let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
-
-    Ok(TlsCert {
-        x509: cert,
-        cert_fingerprint,
-        key_fingerprint,
-    })
+    Ok(())
 }
 
 /// Returns an OpenSSL compatible timestamp.
@@ -927,7 +911,7 @@ mod tests {
         builder
             .set_serial_number(mknum(1).unwrap().as_ref())
             .unwrap();
-        let issuer = mkname("US", "Casper Blockchain", "node-0").unwrap();
+        let issuer = mkname("US", "Casper Blockchain", "Casper Network").unwrap();
         builder.set_issuer_name(issuer.as_ref()).unwrap();
         builder.set_subject_name(issuer.as_ref()).unwrap();
         let ts = now();

@@ -206,7 +206,7 @@ where
     /// TLS certificate associated with this node's identity.
     pub(super) our_cert: Arc<TlsCert>,
     /// TLS certificate authority associated with this node's identity.
-    pub(super) our_ca: Option<Arc<X509>>,
+    pub(super) network_ca: Option<Arc<X509>>,
     /// Secret key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
@@ -235,7 +235,7 @@ where
 
 impl<REv> NetworkContext<REv> {
     pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
-        match &self.our_ca {
+        match &self.network_ca {
             Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
             None => tls::validate_self_signed_cert(peer_cert),
         }
