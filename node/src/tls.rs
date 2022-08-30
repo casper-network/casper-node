@@ -287,8 +287,6 @@ pub(crate) enum LoadSecretKeyError {
 
 pub(crate) fn load_secret_key<P: AsRef<Path>>(src: P) -> Result<PKey<Private>, LoadSecretKeyError> {
     let pem = read_file(src.as_ref()).map_err(LoadSecretKeyError::ReadFile)?;
-
-    // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
     PKey::private_key_from_pem(&pem).map_err(LoadSecretKeyError::PrivateKeyFromPem)
 }
 
