@@ -167,8 +167,6 @@ pub(crate) enum JoinerEvent {
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     #[from]
-    BeginFinalitySignatureGossipRequest(BeginGossipRequest<FinalitySignature>),
-    #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
@@ -287,9 +285,6 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::StorageRequest(_) => "StorageRequest",
             JoinerEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
-            JoinerEvent::BeginFinalitySignatureGossipRequest(_) => {
-                "BeginFinalitySignatureGossipRequest"
-            }
             JoinerEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             JoinerEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             JoinerEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
@@ -400,9 +395,6 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
-            }
-            JoinerEvent::BeginFinalitySignatureGossipRequest(request) => {
-                write!(f, "begin block signature gossip request: {}", request)
             }
             JoinerEvent::TrieOrChunkFetcherRequest(request) => {
                 write!(f, "trie or chunk fetcher request: {}", request)
@@ -858,11 +850,6 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
-            JoinerEvent::BeginFinalitySignatureGossipRequest(req) => reactor::wrap_effects(
-                JoinerEvent::FinalitySignatureGossiper,
-                self.finality_signature_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
             JoinerEvent::BlockByHeightFetcherRequest(request) => self.dispatch_event(

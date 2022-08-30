@@ -197,8 +197,6 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     #[from]
-    BeginFinalitySignatureGossipRequest(BeginGossipRequest<FinalitySignature>),
-    #[from]
     StateStoreRequest(StateStoreRequest),
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
@@ -347,9 +345,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
-            ParticipatingEvent::BeginFinalitySignatureGossipRequest(_) => {
-                "BeginFinalitySignatureGossipRequest"
-            }
             ParticipatingEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             ParticipatingEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             ParticipatingEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
@@ -523,9 +518,6 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
-            }
-            ParticipatingEvent::BeginFinalitySignatureGossipRequest(request) => {
-                write!(f, "begin block signature gossip request: {}", request)
             }
             ParticipatingEvent::BlockProposerRequest(req) => {
                 write!(f, "block proposer request: {}", req)
@@ -1244,11 +1236,6 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            ParticipatingEvent::BeginFinalitySignatureGossipRequest(req) => reactor::wrap_effects(
-                ParticipatingEvent::FinalitySignatureGossiper,
-                self.finality_signature_gossiper
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
             ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
@@ -1342,13 +1329,28 @@ impl reactor::Reactor for Reactor {
                         );
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
-                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        ParticipatingEvent::LinearChain(
-                            linear_chain::Event::FinalitySignatureReceived(fs, false),
-                        ),
-                    ),
+                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                        let reactor_finality_signatures_gossiper_event =
+                            ParticipatingEvent::FinalitySignatureGossiper(
+                                gossiper::Event::ItemReceived {
+                                    item_id: *fs.clone(),
+                                    source: Source::Ourself,
+                                },
+                            );
+                        let mut effects = self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            ParticipatingEvent::LinearChain(
+                                linear_chain::Event::FinalitySignatureReceived(fs, false),
+                            ),
+                        );
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            reactor_finality_signatures_gossiper_event,
+                        ));
+                        effects
+                    }
                     ConsensusAnnouncement::Fault {
                         era_id,
                         public_key,
