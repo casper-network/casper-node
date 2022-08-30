@@ -18,59 +18,10 @@ use casper_types::{EraId, PublicKey};
 
 use crate::types::NodeId;
 
+use super::ValidatorSets;
+
 /// Amount of resource allowed to buffer in `ClassBasedLimiter`.
 const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
-
-/// Sets of validators used to classify traffic.
-///
-/// Normally the validator map will contain 3 eras worth of entries: the era just completed, the
-/// currently-active era, and the era after that.
-#[derive(Debug, Default)]
-pub(super) struct ValidatorSets {
-    active_era: EraId,
-    validators: BTreeMap<EraId, HashSet<PublicKey>>,
-}
-
-impl ValidatorSets {
-    fn insert(&mut self, mut upcoming_era_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
-        let lowest_era_id = self.active_era;
-
-        self.active_era = upcoming_era_validators
-            .keys()
-            .next()
-            .copied()
-            .unwrap_or_else(|| {
-                error!("upcoming era validators should not be empty");
-                EraId::new(0)
-            });
-
-        self.validators.retain(|era_id, _| *era_id == lowest_era_id);
-        self.validators.append(&mut upcoming_era_validators);
-    }
-
-    fn is_active_validator(&self, era_id: EraId, public_key: &PublicKey) -> Option<bool> {
-        if self.active_era != era_id {
-            return Some(false);
-        }
-        self.validators
-            .get(&era_id)
-            .map(|validators| validators.contains(public_key))
-    }
-
-    fn is_validator(&self, public_key: &PublicKey) -> bool {
-        self.validators
-            .values()
-            .flatten()
-            .any(|validator| validator == public_key)
-    }
-
-    fn active_validators(&self, era_id: EraId) -> Option<&HashSet<PublicKey>> {
-        if self.active_era != era_id {
-            return None;
-        }
-        self.validators.get(&era_id)
-    }
-}
 
 /// A limiter.
 ///
@@ -83,9 +34,6 @@ pub(super) trait Limiter: Send + Sync {
         peer_id: NodeId,
         validator_id: Option<PublicKey>,
     ) -> Box<dyn LimiterHandle>;
-
-    /// Update the validator sets.
-    fn update_validators(&self, validators: BTreeMap<EraId, HashSet<PublicKey>>);
 }
 
 /// A per-peer handle for a limiter.
@@ -112,8 +60,6 @@ impl Limiter for Unlimited {
     ) -> Box<dyn LimiterHandle> {
         Box::new(UnlimitedHandle)
     }
-
-    fn update_validators(&self, _validators: BTreeMap<EraId, HashSet<PublicKey>>) {}
 }
 
 #[async_trait]
@@ -138,7 +84,7 @@ struct ClassBasedLimiterData {
     /// Number of resource units to allow for non-validators per second.
     resources_per_second: u32,
     /// Set of active and upcoming validators.
-    validator_sets: RwLock<ValidatorSets>,
+    validator_sets: Arc<RwLock<ValidatorSets>>,
     /// Information about available resources.
     resources: Mutex<ResourceData>,
     /// Total time spent waiting.
@@ -160,10 +106,14 @@ impl ClassBasedLimiterData {
     /// Creates a new set of class based limiter data.
     ///
     /// Initial resources will be initialized to 0, with the last refill set to the current time.
-    fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+    fn new(
+        resources_per_second: u32,
+        wait_time_sec: Counter,
+        validator_sets: Arc<RwLock<ValidatorSets>>,
+    ) -> Self {
         ClassBasedLimiterData {
             resources_per_second,
-            validator_sets: Default::default(),
+            validator_sets,
             resources: Mutex::new(ResourceData {
                 available: 0,
                 last_refill: Instant::now(),
@@ -204,11 +154,16 @@ impl ClassBasedLimiter {
     /// Creates a new class based limiter.
     ///
     /// Starts the background worker task as well.
-    pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+    pub(super) fn new(
+        resources_per_second: u32,
+        wait_time_sec: Counter,
+        validator_sets: Arc<RwLock<ValidatorSets>>,
+    ) -> Self {
         ClassBasedLimiter {
             data: Arc::new(ClassBasedLimiterData::new(
                 resources_per_second,
                 wait_time_sec,
+                validator_sets,
             )),
         }
     }
@@ -227,18 +182,6 @@ impl Limiter for ClassBasedLimiter {
                 validator_id,
             },
         })
-    }
-
-    fn update_validators(&self, new_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
-        match self.data.validator_sets.write() {
-            Ok(mut validators) => {
-                debug!(?new_validators, "updating resources classes");
-                validators.insert(new_validators)
-            }
-            Err(_) => {
-                debug!("could not update validator data set of limiter, lock poisoned");
-            }
-        }
     }
 }
 

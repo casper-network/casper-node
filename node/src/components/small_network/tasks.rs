@@ -8,7 +8,7 @@ use std::{
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Weak,
+        Arc, RwLock, Weak,
     },
     time::Duration,
 };
@@ -50,6 +50,7 @@ use super::{
     message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
     EstimatorWeights, Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
+    ValidatorSets,
 };
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, FromIncoming},
