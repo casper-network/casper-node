@@ -1201,6 +1201,19 @@ impl ToBytes for &str {
     }
 }
 
+impl<T> ToBytes for &T
+where
+    T: ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        (*self).to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        (*self).serialized_length()
+    }
+}
+
 impl<T> ToBytes for Ratio<T>
 where
     T: Clone + Integer + ToBytes,
