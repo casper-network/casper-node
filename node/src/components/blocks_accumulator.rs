@@ -47,11 +47,19 @@ impl AccumulatedBlock {
     }
 
     fn register_signature(&mut self, finality_signature: FinalitySignature) {
-        todo!();
+        // TODO: What to do when we receive multiple valid finality_signature from single public_key?
+        // TODO: What to do when we receive too many finality_signature from single peer?
+        self.signatures
+            .insert(finality_signature.public_key.clone(), finality_signature);
     }
 
     fn register_block(&mut self, block: Block) {
-        todo!();
+        if self.block.is_some() {
+            warn!(block_hash = %block.hash(), "received duplicate block");
+            return;
+        }
+
+        self.block = Some(block);
     }
 
     fn has_sufficient_signatures(&self) -> bool {
