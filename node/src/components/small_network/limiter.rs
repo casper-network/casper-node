@@ -250,7 +250,7 @@ impl LimiterHandle {
 
                         // Add appropriate amount of resources, capped at `max_stored_bytes`. We
                         // are still maintaining the lock here to avoid issues with other
-                        // low-priority requestors.
+                        // low-priority requesters.
                         resources.available += ((elapsed.as_nanos()
                             * self.data.resources_per_second as u128)
                             / 1_000_000_000) as i64;

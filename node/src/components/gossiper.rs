@@ -212,7 +212,6 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 self.gossip(
                     effect_builder,
                     item_id,
-                    // :one-tear:
                     should_gossip.target,
                     should_gossip.count,
                     should_gossip.exclude_peers,

@@ -46,6 +46,7 @@
 
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
+pub(crate) mod chain_accumulator;
 pub(crate) mod chain_synchronizer;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
