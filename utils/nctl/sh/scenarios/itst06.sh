@@ -7,7 +7,7 @@ set -e
 
 #######################################
 # Runs an integration tests that tries to simulate
-# transfers being sent to a node that falls over 
+# transfers being sent to a node that falls over
 # mid-stream.
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing.

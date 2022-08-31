@@ -1230,6 +1230,19 @@ where
     }
 }
 
+impl<T> ToBytes for &T
+where
+    T: ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        (*self).to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        (*self).serialized_length()
+    }
+}
+
 /// Serializes a slice of bytes with a length prefix.
 ///
 /// This function is serializing a slice of bytes with an addition of a 4 byte length prefix.
@@ -1327,6 +1340,25 @@ mod tests {
         let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
         let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
         assert_eq!(result.unwrap_err(), Error::Formatting);
+    }
+
+    #[test]
+    fn should_have_generic_tobytes_impl_for_borrowed_types() {
+        struct NonCopyable;
+
+        impl ToBytes for NonCopyable {
+            fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+                Ok(vec![1, 2, 3])
+            }
+
+            fn serialized_length(&self) -> usize {
+                3
+            }
+        }
+
+        assert_eq!((&NonCopyable).to_bytes().unwrap(), vec![1, 2, 3]);
+        assert_eq!((&NonCopyable).serialized_length(), 3);
+        assert_eq!((&NonCopyable).into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
     #[cfg(debug_assertions)]

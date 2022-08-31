@@ -80,6 +80,7 @@ function _main()
     local PROTOCOL_VERSION
     local COUNT_NODES
 
+
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     COUNT_NODES=$(get_count_of_nodes)
     PROTOCOL_VERSION=$(_get_protocol_version_of_next_upgrade "$PATH_TO_STAGE")

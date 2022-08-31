@@ -6,8 +6,10 @@ use tempfile::TempDir;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+            self,
+            genesis::{ExecConfigBuilder, GenesisValidator},
+            run_genesis_request::RunGenesisRequest,
+            ChainspecRegistry, EngineState, ExecuteRequest, GenesisAccount, RewardItem,
         },
         execution,
     },
@@ -28,10 +30,8 @@ use rand::Rng;
 use crate::{
     transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    SYSTEM_ADDR,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -326,19 +326,10 @@ fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
 ) -> RunGenesisRequest {
-    let exec_config = {
-        ExecConfig::new(
-            genesis_accounts,
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            validator_slots,
-            DEFAULT_AUCTION_DELAY,
-            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-            DEFAULT_ROUND_SEIGNIORAGE_RATE,
-            DEFAULT_UNBONDING_DELAY,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        )
-    };
+    let exec_config = ExecConfigBuilder::default()
+        .with_accounts(genesis_accounts)
+        .with_validator_slots(validator_slots)
+        .build();
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,

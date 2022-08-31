@@ -1,9 +1,11 @@
+mod admins;
 mod balances;
 mod generic;
 mod system_contract_registry;
 mod utils;
 mod validators;
 
+use admins::generate_admins;
 use clap::{crate_version, App, Arg, SubCommand};
 
 use crate::{
@@ -149,6 +151,39 @@ fn main() {
                         .help("The config file to be used for generating the update"),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("generate-admins")
+                .about("Generates entries to create new admin accounts on a private chain")
+                .arg(
+                    Arg::with_name("data_dir")
+                        .short("d")
+                        .long("data-dir")
+                        .value_name("PATH")
+                        .help("Data storage directory containing the global state database file")
+                        .takes_value(true)
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("hash")
+                        .short("s")
+                        .long("state-hash")
+                        .value_name("HEX_STRING")
+                        .help("The global state hash to be used as the base")
+                        .takes_value(true)
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("admin")
+                        .short("a")
+                        .long("admin")
+                        .value_name("PUBLIC_KEY,BALANCE")
+                        .help("A new admin account")
+                        .takes_value(true)
+                        .required(true)
+                        .multiple(true)
+                        .number_of_values(1),
+                ),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -157,6 +192,7 @@ fn main() {
         ("system-contract-registry", Some(sub_matches)) => {
             generate_system_contract_registry(sub_matches)
         }
+        ("generate-admins", Some(sub_matches)) => generate_admins(sub_matches),
         ("generic", Some(sub_matches)) => generate_generic_update(sub_matches),
         (subcommand, _) => {
             println!("Unknown subcommand: \"{}\"", subcommand);

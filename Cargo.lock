@@ -356,6 +356,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
 
 [[package]]
+name = "call-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
+
+[[package]]
 name = "casper-contract"
 version = "1.4.4"
 dependencies = [
@@ -704,7 +712,7 @@ dependencies = [
  "anyhow",
  "base16",
  "casper-types 1.5.0",
- "clap 3.2.16",
+ "clap 3.2.19",
  "derive_more",
  "hex",
  "serde",
@@ -756,9 +764,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.2.16"
+version = "3.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3dbbb6653e7c55cc8595ad3e1f7be8f32aba4eb7ff7f0fd1163d4f3d137c0a9"
+checksum = "68d43934757334b5c0519ff882e1ab9647ac0258b47c24c4f490d78e42697fd5"
 dependencies = [
  "atty",
  "bitflags",
@@ -773,9 +781,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.2.15"
+version = "3.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ba52acd3b0a5c33aeada5cdaa3267cdc7c594a98731d4268cdc1532f4264cb4"
+checksum = "ea0c8bce528c4be4da13ea6fead8965e95b6073585a2f05204bd8f4119f82a65"
 dependencies = [
  "heck 0.4.0",
  "proc-macro-error",
@@ -818,6 +826,22 @@ dependencies = [
 
 [[package]]
 name = "contract-context"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
+
+[[package]]
+name = "contract-funds"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
+
+[[package]]
+name = "contract-funds-call"
 version = "0.1.0"
 dependencies = [
  "casper-contract 1.4.4",
@@ -1281,6 +1305,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "disable-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
+
+[[package]]
 name = "do-nothing"
 version = "0.1.0"
 dependencies = [
@@ -1601,6 +1633,14 @@ dependencies = [
  "rand_core 0.5.1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "enable-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
 ]
 
 [[package]]
@@ -2775,6 +2815,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mint-transfer-proxy"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
+
+[[package]]
 name = "mio"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2883,6 +2931,14 @@ name = "new-named-uref"
 version = "0.1.0"
 dependencies = [
  "casper-contract 1.4.4",
+]
+
+[[package]]
+name = "non-standard-payment"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
 ]
 
 [[package]]
@@ -3113,9 +3169,9 @@ dependencies = [
 
 [[package]]
 name = "os_str_bytes"
-version = "6.2.0"
+version = "6.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "648001efe5d5c0102d8cea768e348da85d90af8ba91f0bea908f157951493cd4"
+checksum = "9ff7415e9ae3fff1225851df9e0d9e4e5479f947619774677a63572e55e80eff"
 
 [[package]]
 name = "output_vt100"
@@ -5063,6 +5119,14 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "update-associated-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract 1.4.4",
+ "casper-types 1.5.0",
+]
 
 [[package]]
 name = "url"

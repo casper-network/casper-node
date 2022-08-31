@@ -12,8 +12,7 @@ use crate::{
         runtime::stack,
     },
     shared::wasm_prep,
-    storage,
-    storage::global_state::CommitError,
+    storage::{self, global_state::CommitError},
 };
 
 /// Engine state errors.
@@ -83,6 +82,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    /// Failed to retrieve accumulation purse from handle payment system contract.
+    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
+    FailedToRetrieveAccumulationPurse,
     /// Failed to get the set of Key::Withdraw from global state.
     #[error("Failed to get withdraw keys")]
     FailedToGetWithdrawKeys,

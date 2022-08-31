@@ -909,10 +909,19 @@ impl EraSupervisor {
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
-                let report = terminal_block_data.map(|tbd| EraReport {
-                    rewards: tbd.rewards,
-                    equivocators: era.accusations(),
-                    inactive_validators: tbd.inactive_validators,
+                let compute_rewards = self.chainspec.core_config.compute_rewards;
+                let era_report = terminal_block_data.map(|mut tbd| {
+                    // If block rewards are disabled, zero them.
+                    if !compute_rewards {
+                        for reward in tbd.rewards.values_mut() {
+                            *reward = 0;
+                        }
+                    }
+                    EraReport {
+                        rewards: tbd.rewards,
+                        equivocators: era.accusations(),
+                        inactive_validators: tbd.inactive_validators,
+                    }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block
@@ -928,7 +937,7 @@ impl EraSupervisor {
                     .collect();
                 let finalized_block = FinalizedBlock::new(
                     proposed_block,
-                    report,
+                    era_report,
                     timestamp,
                     era_id,
                     era.start_height + relative_height,

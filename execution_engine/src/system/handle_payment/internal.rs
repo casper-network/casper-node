@@ -1,16 +1,21 @@
+use num::{CheckedMul, One};
+use num_rational::Ratio;
+use tracing::error;
+
 use casper_types::{
     account::AccountHash,
-    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
+    system::handle_payment::{Error, ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
 
-use super::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
-
-// A simplified representation of a refund percentage which is currently hardcoded to 0%.
-const REFUND_PERCENTAGE: U512 = U512::zero();
+use super::{
+    mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider,
+};
+use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 
 /// Returns the purse for accepting payment for transactions.
-pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
+pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
     match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(uref),
         Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
@@ -21,7 +26,10 @@ pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URe
 /// Sets the purse where refunds (excess funds not spent to pay for computation) will be sent.
 /// Note that if this function is never called, the default location is the main purse of the
 /// deployer's account.
-pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> Result<(), Error> {
+pub(crate) fn set_refund<R: RuntimeProvider>(
+    runtime_provider: &mut R,
+    purse: URef,
+) -> Result<(), Error> {
     if let Phase::Payment = runtime_provider.get_phase() {
         runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
         return Ok(());
@@ -30,7 +38,9 @@ pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> 
 }
 
 /// Returns the currently set refund purse.
-pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Option<URef>, Error> {
+pub(crate) fn get_refund_purse<R: RuntimeProvider>(
+    runtime_provider: &R,
+) -> Result<Option<URef>, Error> {
     match runtime_provider.get_key(REFUND_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(Some(uref)),
         Some(_) => Err(Error::RefundPurseKeyUnexpectedType),
@@ -38,13 +48,47 @@ pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Opti
     }
 }
 
-/// Transfers funds from the payment purse to the validator rewards purse, as well as to the
-/// refund purse, depending on how much was spent on the computation. This function maintains
-/// the invariant that the balance of the payment purse is zero at the beginning and end of each
-/// deploy and that the refund purse is unset at the beginning and end of each deploy.
-pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
+/// Returns tuple where 1st element is the refund, and 2nd element is the fee.
+fn calculate_refund_and_fee(
+    gas_spent: U512,
+    payment_purse_balance: U512,
+    refund_handling: &RefundHandling,
+) -> Result<(U512, U512), Error> {
+    let unspent = payment_purse_balance
+        .checked_sub(gas_spent)
+        .ok_or(Error::ArithmeticOverflow)?;
+
+    let refund_ratio = match refund_handling {
+        RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+            debug_assert!(
+                refund_ratio <= &Ratio::one(),
+                "refund ratio should be a proper fraction"
+            );
+            let (numer, denom) = (*refund_ratio).into();
+            Ratio::new_raw(U512::from(numer), U512::from(denom))
+        }
+    };
+
+    let refund = Ratio::from(unspent)
+        .checked_mul(&refund_ratio)
+        .ok_or(Error::ArithmeticOverflow)?
+        .to_integer();
+
+    let fee = payment_purse_balance
+        .checked_sub(refund)
+        .ok_or(Error::ArithmeticOverflow)?;
+
+    Ok((refund, fee))
+}
+
+/// Transfers funds from the payment purse to the proposer, accumulation purse or burns the amount
+/// depending on a [`FeeHandling`] configuration option. This function can also transfer funds to a
+/// refund purse, depending on how much was spent on the computation, or burns the refund. This code
+/// maintains the invariant that the balance of the payment purse is zero at the beginning and end
+/// of each deploy and that the refund purse is unset at the beginning and end of each deploy.
+pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
-    amount_spent: U512,
+    gas_spent: U512,
     account: AccountHash,
     target: URef,
 ) -> Result<(), Error> {
@@ -54,75 +98,106 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
     }
 
     let payment_purse = get_payment_purse(provider)?;
-    let total = match provider.balance(payment_purse)? {
+    let mut payment_amount = match provider.balance(payment_purse)? {
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
 
-    if total < amount_spent {
+    if payment_amount < gas_spent {
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    // User's part
-    let refund_amount = {
-        let refund_amount_raw = total
-            .checked_sub(amount_spent)
-            .ok_or(Error::ArithmeticOverflow)?;
-        // Currently refund percentage is zero and we expect no overflows.
-        // However, we put this check should the constant change in the future.
-        refund_amount_raw
-            .checked_mul(REFUND_PERCENTAGE)
-            .ok_or(Error::ArithmeticOverflow)?
-    };
+    let (refund, fee) =
+        calculate_refund_and_fee(gas_spent, payment_amount, provider.refund_handling())?;
 
-    // Validator reward
-    let validator_reward = total
-        .checked_sub(refund_amount)
-        .ok_or(Error::ArithmeticOverflow)?;
+    debug_assert_eq!(fee + refund, payment_amount);
 
-    // Makes sure both parts: for user, and for validator sums to the total amount in the
-    // payment's purse.
-    debug_assert_eq!(validator_reward + refund_amount, total);
+    // Give or burn the refund.
+    match provider.refund_handling() {
+        RefundHandling::Refund { .. } => {
+            let refund_purse = get_refund_purse(provider)?;
 
-    let refund_purse = get_refund_purse(provider)?;
+            if let Some(refund_purse) = refund_purse {
+                if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
+                    // Make sure we're not refunding into a payment purse to invalidate payment
+                    // code postconditions.
+                    return Err(Error::RefundPurseIsPaymentPurse);
+                }
+            }
 
-    if let Some(refund_purse) = refund_purse {
-        if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
-            // Make sure we're not refunding into a payment purse to invalidate payment code
-            // postconditions.
-            return Err(Error::RefundPurseIsPaymentPurse);
+            provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
+
+            if !refund.is_zero() {
+                match refund_purse {
+                    Some(refund_purse) => {
+                        // In case of failure to transfer to refund purse we fall back on the
+                        // account's main purse
+                        match provider.transfer_purse_to_purse(payment_purse, refund_purse, refund)
+                        {
+                            Ok(()) => {}
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    %refund,
+                                    %account,
+                                    "unable to transfer refund to a refund purse; refunding to account"
+                                );
+                                refund_to_account::<P>(provider, payment_purse, account, refund)?;
+                            }
+                        }
+                    }
+                    None => {
+                        refund_to_account::<P>(provider, payment_purse, account, refund)?;
+                    }
+                }
+            }
+        }
+
+        RefundHandling::Burn { .. } if !refund.is_zero() => {
+            // Fee-handling is set to `Burn`.  Deduct the refund from the payment purse and
+            // reduce the total supply (i.e. burn the refund).
+            payment_amount = payment_amount
+                .checked_sub(refund)
+                .ok_or(Error::ArithmeticOverflow)?;
+
+            provider.write_balance(payment_purse, payment_amount)?;
+            provider.reduce_total_supply(refund)?;
+        }
+
+        RefundHandling::Burn { .. } => {
+            // No refund to burn
         }
     }
 
-    provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
-
-    // pay target validator
-    provider
-        .transfer_purse_to_purse(payment_purse, target, validator_reward)
-        .map_err(|_| Error::FailedTransferToRewardsPurse)?;
-
-    if refund_amount.is_zero() {
-        return Ok(());
+    // Pay or burn the fee.
+    match provider.fee_handling() {
+        FeeHandling::PayToProposer | FeeHandling::Accumulate => {
+            // target purse is already resolved based on fee-handling config which is either a
+            // proposer or accumulation purse.
+            match provider.transfer_purse_to_purse(payment_purse, target, fee) {
+                Ok(()) => {}
+                Err(error) => {
+                    error!(%error, %fee, %target, "unable to transfer fee");
+                    return Err(Error::FailedTransferToRewardsPurse);
+                }
+            }
+        }
+        FeeHandling::Burn => {
+            debug_assert_eq!(
+                target,
+                URef::default(),
+                "Caller should pass a defaulted URef if the fees are burned"
+            );
+            // Fee-handling is set to `Burn`.  Deduct the fee from the payment purse, leaving it
+            // empty, and reduce the total supply (i.e. burn the fee).
+            provider.write_balance(payment_purse, U512::zero())?;
+            provider.reduce_total_supply(fee)?;
+        }
     }
-
-    // give refund
-    let refund_purse = match refund_purse {
-        Some(uref) => uref,
-        None => return refund_to_account::<P>(provider, payment_purse, account, refund_amount),
-    };
-
-    // in case of failure to transfer to refund purse we fall back on the account's main purse
-    if provider
-        .transfer_purse_to_purse(payment_purse, refund_purse, refund_amount)
-        .is_err()
-    {
-        return refund_to_account::<P>(provider, payment_purse, account, refund_amount);
-    }
-
     Ok(())
 }
 
-pub fn refund_to_account<M: MintProvider>(
+pub(crate) fn refund_to_account<M: MintProvider>(
     mint_provider: &mut M,
     payment_purse: URef,
     account: AccountHash,
@@ -130,6 +205,97 @@ pub fn refund_to_account<M: MintProvider>(
 ) -> Result<(), Error> {
     match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::FailedTransferToAccountPurse),
+        Err(error) => {
+            error!(%error, %amount, %account, "unable to process refund from payment purse to account");
+            Err(Error::FailedTransferToAccountPurse)
+        }
+    }
+}
+
+/// Gets an accumulation purse from the named keys.
+fn get_accumulation_purse<R: RuntimeProvider>(provider: &mut R) -> Result<URef, Error> {
+    match provider.get_key(ACCUMULATION_PURSE_KEY) {
+        Some(Key::URef(purse_uref)) => Ok(purse_uref),
+        Some(_key) => Err(Error::AccumulationPurseKeyUnexpectedType),
+        None => Err(Error::AccumulationPurseNotFound),
+    }
+}
+
+/// This function distributes the fees according to the fee handling config.
+pub(crate) fn distribute_accumulated_fees<P>(provider: &mut P) -> Result<(), Error>
+where
+    P: RuntimeProvider + MintProvider,
+{
+    if provider.get_caller() != PublicKey::System.to_account_hash() {
+        return Err(Error::SystemFunctionCalledByUserAccount);
+    }
+
+    // Distribute accumulation purse balance into all administrators
+    match provider.fee_handling() {
+        FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+        FeeHandling::Accumulate => {}
+    }
+
+    let administrative_accounts = provider.administrative_accounts().clone();
+    let accumulation_purse = get_accumulation_purse(provider)?;
+    let accumulated_balance = provider.balance(accumulation_purse)?.unwrap_or_default();
+    let reward_recipients = U512::from(administrative_accounts.len());
+
+    if let Some(reward_amount) = accumulated_balance.checked_div(reward_recipients) {
+        if reward_amount.is_zero() {
+            // There is zero tokens to be paid out which means we can exit early.
+            return Ok(());
+        }
+
+        for target in administrative_accounts {
+            provider.transfer_purse_to_account(accumulation_purse, target, reward_amount)?;
+        }
+    }
+
+    // Any dust amount left in the accumulation purse for the next round.
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_move_dust_to_reward() {
+        let refund_ratio = Ratio::new_raw(1, 3);
+        let refund = RefundHandling::Refund { refund_ratio };
+        test_refund_handling(&refund);
+
+        let burn = RefundHandling::Burn { refund_ratio };
+        test_refund_handling(&burn);
+    }
+
+    fn test_refund_handling(refund_handling: &RefundHandling) {
+        let purse_bal = U512::from(10u64);
+        let gas = U512::from(3u64);
+        let (a, b) = calculate_refund_and_fee(gas, purse_bal, refund_handling).unwrap();
+        assert_eq!(a, U512::from(2u64));
+        // (10 - 3) * 1/3 ~ 2.33 (.33 is dust)
+        assert_eq!(b, U512::from(8u64));
+        // 10 - 2 = 8
+    }
+
+    #[test]
+    fn should_account_refund_for_dust() {
+        let purse_bal = U512::from(9973u64);
+        let gas = U512::from(9161u64);
+
+        for percentage in 0..=100 {
+            let refund_ratio = Ratio::new_raw(percentage, 100);
+            let refund = RefundHandling::Refund { refund_ratio };
+
+            let (a, b) = calculate_refund_and_fee(gas, purse_bal, &refund).unwrap();
+
+            let a = Ratio::from(a);
+            let b = Ratio::from(b);
+
+            assert_eq!(a + b, Ratio::from(purse_bal));
+        }
     }
 }

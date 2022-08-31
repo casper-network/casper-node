@@ -9,17 +9,15 @@ use tempfile::TempDir;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROPOSER_PUBLIC_KEY,
+    DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator,
-        run_genesis_request::RunGenesisRequest, EngineConfig, ExecConfig, ExecuteRequest,
-        GenesisAccount, RewardItem,
+        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        genesis::{ExecConfigBuilder, GenesisValidator},
+        run_genesis_request::RunGenesisRequest,
+        EngineConfig, ExecuteRequest, GenesisAccount, RewardItem,
     },
     shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
 };
@@ -110,19 +108,11 @@ fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
 ) -> RunGenesisRequest {
-    let exec_config = {
-        ExecConfig::new(
-            genesis_accounts,
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            validator_slots,
-            DEFAULT_AUCTION_DELAY,
-            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-            DEFAULT_ROUND_SEIGNIORAGE_RATE,
-            DEFAULT_UNBONDING_DELAY,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        )
-    };
+    let exec_config = ExecConfigBuilder::default()
+        .with_accounts(genesis_accounts)
+        .with_validator_slots(validator_slots)
+        .build();
+
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,

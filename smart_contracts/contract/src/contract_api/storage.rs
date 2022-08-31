@@ -341,6 +341,30 @@ pub fn disable_contract_version(
     api_error::result_from(result)
 }
 
+/// Enable a version of a contract from the contract stored at the given hash.
+/// That version of the contract will no longer be callable by
+/// `call_versioned_contract`. Note that this contract must have been created by
+/// [`new_contract`] or [`create_contract_package_at_hash`] first.
+pub fn enable_contract_version(
+    contract_package_hash: ContractPackageHash,
+    contract_hash: ContractHash,
+) -> Result<(), ApiError> {
+    let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
+        contract_api::to_ptr(contract_package_hash);
+    let (contract_hash_ptr, contract_hash_size, _bytes2) = contract_api::to_ptr(contract_hash);
+
+    let result = unsafe {
+        ext_ffi::casper_enable_contract_version(
+            contract_package_hash_ptr,
+            contract_package_hash_size,
+            contract_hash_ptr,
+            contract_hash_size,
+        )
+    };
+
+    api_error::result_from(result)
+}
+
 /// Creates new [`URef`] that represents a seed for a dictionary partition of the global state and
 /// puts it under named keys.
 pub fn new_dictionary(dictionary_name: &str) -> Result<URef, ApiError> {

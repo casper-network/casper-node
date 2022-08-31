@@ -37,6 +37,7 @@ use super::SpeculativeExecutionState;
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<Metrics>>,

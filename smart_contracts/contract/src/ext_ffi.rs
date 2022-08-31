@@ -784,6 +784,21 @@ extern "C" {
         value_ptr: *const u8,
         value_size: usize,
     ) -> i32;
+    /// Enables contract in a contract package. Returns non-zero standard error for a failure,
+    /// otherwise a zero indicates success.
+    ///
+    /// # Arguments
+    ///
+    /// * `contract_package_hash_ptr` - pointer to serialized contract package hash.
+    /// * `contract_package_hash_size` - size of contract package hash in serialized form.
+    /// * `contract_hash_ptr` - pointer to serialized contract hash.
+    /// * `contract_hash_size` - size of contract hash in serialized form.
+    pub fn casper_enable_contract_version(
+        contract_package_hash_ptr: *const u8,
+        contract_package_hash_size: usize,
+        contract_hash_ptr: *const u8,
+        contract_hash_size: usize,
+    ) -> i32;
     /// Returns 32 pseudo random bytes.
     ///
     /// # Arguments

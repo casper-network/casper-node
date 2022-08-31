@@ -6,7 +6,7 @@ use lmdb::{
 };
 
 use crate::storage::{
-    error,
+    error::{self},
     transaction_source::{Readable, Transaction, TransactionSource, Writable},
     trie_store::lmdb::ScratchTrieStore,
     MAX_DBS,

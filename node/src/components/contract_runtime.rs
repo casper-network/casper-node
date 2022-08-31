@@ -7,7 +7,7 @@ mod operations;
 mod types;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Debug, Display, Formatter},
     path::Path,
     sync::{Arc, Mutex},
@@ -25,9 +25,11 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        GetEraValidatorsError, GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig,
-        UpgradeSuccess,
+        self,
+        engine_config::{FeeHandling, RefundHandling},
+        genesis::GenesisError,
+        ChainspecRegistry, EngineConfigBuilder, EngineState, GenesisSuccess, GetEraValidatorsError,
+        GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -38,7 +40,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, ProtocolVersion, PublicKey, Timestamp};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -616,6 +618,11 @@ impl ContractRuntime {
         strict_argument_checking: bool,
         vesting_schedule_period_millis: u64,
         registry: &Registry,
+        administrative_accounts: BTreeSet<PublicKey>,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -639,16 +646,22 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
-        let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            wasm_config,
-            system_config,
-        );
+
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(contract_runtime_config.max_query_depth())
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_wasm_config(wasm_config)
+            .with_strict_argument_checking(strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_system_config(system_config)
+            .with_administrative_accounts(administrative_accounts)
+            .with_allow_auction_bids(allow_auction_bids)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+            .with_refund_handling(refund_handling)
+            .with_fee_handling(fee_handling)
+            .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

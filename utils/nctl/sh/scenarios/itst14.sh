@@ -7,7 +7,7 @@ set -e
 
 #######################################
 # Runs an integration tests that tries to simulate
-# if a validator node can restart within single era 
+# if a validator node can restart within single era
 # and not equivocate.
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing.

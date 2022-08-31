@@ -22,7 +22,7 @@ use serde::Serialize;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
-    core::engine_state::genesis::ExecConfig,
+    core::engine_state::genesis::{ExecConfig, ExecConfigBuilder},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::{ChunkWithProof, Digest};
@@ -98,7 +98,9 @@ impl Chainspec {
             warn!("era duration is less than minimum era height * round length!");
         }
 
-        self.protocol_config.is_valid() && self.highway_config.is_valid()
+        self.protocol_config.is_valid()
+            && self.core_config.is_valid()
+            && self.highway_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -201,21 +203,24 @@ impl Loadable for (Chainspec, ChainspecRawBytes) {
 
 impl From<&Chainspec> for ExecConfig {
     fn from(chainspec: &Chainspec) -> Self {
-        ExecConfig::new(
-            chainspec.network_config.accounts_config.clone().into(),
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.validator_slots,
-            chainspec.core_config.auction_delay,
-            chainspec.core_config.locked_funds_period.millis(),
-            chainspec.core_config.round_seigniorage_rate,
-            chainspec.core_config.unbonding_delay,
-            chainspec
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .map_or(0, |timestamp| timestamp.millis()),
-        )
+        let genesis_timestamp_millis = chainspec
+            .protocol_config
+            .activation_point
+            .genesis_timestamp()
+            .map_or(0, |timestamp| timestamp.millis());
+        ExecConfigBuilder::default()
+            .with_accounts(chainspec.network_config.accounts_config.clone().into())
+            .with_wasm_config(chainspec.wasm_config)
+            .with_system_config(chainspec.system_costs_config)
+            .with_validator_slots(chainspec.core_config.validator_slots)
+            .with_auction_delay(chainspec.core_config.auction_delay)
+            .with_locked_funds_period_millis(chainspec.core_config.locked_funds_period.millis())
+            .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
+            .with_unbonding_delay(chainspec.core_config.unbonding_delay)
+            .with_genesis_timestamp_millis(genesis_timestamp_millis)
+            .with_refund_handling(chainspec.core_config.refund_handling)
+            .with_fee_handling(chainspec.core_config.fee_handling)
+            .build()
     }
 }
 
@@ -281,6 +286,7 @@ mod tests {
             remove_contract_user_group_urefs: HostFunction::new(131, [0, 1, 2, 3, 4, 5]),
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
+            enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {

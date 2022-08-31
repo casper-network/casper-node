@@ -34,7 +34,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## 1.5.0 - 2022-04-05
+# 1.5.0 - 2022-04-05
 
 ### Changed
 * Temporarily limit the size of individual values stored in global state.

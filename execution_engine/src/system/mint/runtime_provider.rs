@@ -1,8 +1,10 @@
 use casper_types::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
-    Key, Phase, URef, U512,
+    Key, Phase, StoredValue, URef, U512,
 };
+
+use crate::core::{engine_state::SystemContractRegistry, execution};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -11,6 +13,16 @@ pub trait RuntimeProvider {
 
     /// This method should return the immediate caller of the current context.
     fn get_immediate_caller(&self) -> Option<&CallStackElement>;
+
+    /// Get system contract registry.
+    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error>;
+
+    fn is_called_from_standard_payment(&self) -> bool;
+
+    fn read_account(
+        &mut self,
+        account_hash: &AccountHash,
+    ) -> Result<Option<StoredValue>, execution::Error>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;
@@ -29,4 +41,11 @@ pub trait RuntimeProvider {
 
     /// Returns main purse of the sender account.
     fn get_main_purse(&self) -> URef;
+
+    /// Returns `true` if the account hash belongs to an administrator account, otherwise `false`.
+    fn is_administrator(&self, account_hash: &AccountHash) -> bool;
+
+    /// Checks if users can perform unrestricted transfers. This option is valid only for private
+    /// chains.
+    fn allow_unrestricted_transfers(&self) -> bool;
 }

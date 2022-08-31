@@ -137,6 +137,10 @@ where
         crypto::blake2b(data)
     }
 
+    fn allow_auction_bids(&self) -> bool {
+        self.config.allow_auction_bids()
+    }
+
     fn vesting_schedule_period_millis(&self) -> u64 {
         self.config.vesting_schedule_period_millis()
     }
