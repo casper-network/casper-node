@@ -5,7 +5,7 @@ use casper_types::{AsymmetricType, PublicKey, U512};
 
 use crate::{
     generic::{
-        config::{AccountConfig, Config},
+        config::{AccountConfig, Config, ValidatorConfig},
         update_from_config,
     },
     utils::hash_from_str,
@@ -40,8 +40,12 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
 
                 AccountConfig {
                     public_key,
-                    stake: Some(stake),
                     balance: maybe_new_balance,
+                    validator: Some(ValidatorConfig {
+                        bonded_amount: stake,
+                        delegation_rate: 5,
+                        delegators: vec![],
+                    }),
                 }
             })
             .collect(),

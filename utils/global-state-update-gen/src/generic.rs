@@ -138,12 +138,15 @@ fn gen_snapshot_only_listed(
     let mut era_validators = BTreeMap::new();
     for account in accounts {
         // don't add validators with zero stake to the snapshot
-        let stake = match account.stake {
-            Some(stake) if stake != U512::zero() => stake,
+        let validator_cfg = match &account.validator {
+            Some(validator) if validator.bonded_amount != U512::zero() => validator,
             _ => continue,
         };
-        let seigniorage_recipient =
-            SeigniorageRecipient::new(stake, Default::default(), Default::default());
+        let seigniorage_recipient = SeigniorageRecipient::new(
+            validator_cfg.bonded_amount,
+            validator_cfg.delegation_rate,
+            validator_cfg.delegators_map(),
+        );
         let _ = era_validators.insert(account.public_key.clone(), seigniorage_recipient);
     }
     for era_id in starting_era_id.iter(count) {
@@ -161,15 +164,22 @@ fn gen_snapshot_from_old(
 ) -> SeigniorageRecipientsSnapshot {
     let stakes_map: BTreeMap<_, _> = accounts
         .iter()
-        .filter_map(|acc| acc.stake.map(|stake| (acc.public_key.clone(), stake)))
+        .filter_map(|acc| {
+            acc.validator
+                .as_ref()
+                .map(|validator| (acc.public_key.clone(), validator.clone()))
+        })
         .collect();
 
     for recipients in snapshot.values_mut() {
         recipients.retain(|public_key, recipient| match stakes_map.get(public_key) {
-            Some(stake) if *stake == U512::zero() => false,
-            Some(stake) => {
-                *recipient =
-                    SeigniorageRecipient::new(*stake, Default::default(), Default::default());
+            Some(validator) if validator.bonded_amount == U512::zero() => false,
+            Some(validator) => {
+                *recipient = SeigniorageRecipient::new(
+                    validator.bonded_amount,
+                    validator.delegation_rate,
+                    validator.delegators_map(),
+                );
                 true
             }
             None => true,

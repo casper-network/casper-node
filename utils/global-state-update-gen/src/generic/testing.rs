@@ -13,7 +13,7 @@ use casper_types::{
 };
 
 use super::{
-    config::{AccountConfig, Config, Transfer},
+    config::{AccountConfig, Config, Transfer, ValidatorConfig},
     get_update,
     state_reader::StateReader,
 };
@@ -275,8 +275,12 @@ fn should_change_one_validator() {
     let config = Config {
         accounts: vec![AccountConfig {
             public_key: validator3.clone(),
-            stake: Some(U512::from(104)),
             balance: Some(U512::from(100)),
+            validator: Some(ValidatorConfig {
+                bonded_amount: U512::from(104),
+                delegation_rate: 5,
+                delegators: vec![],
+            }),
         }],
         ..Default::default()
     };
@@ -348,8 +352,12 @@ fn should_change_only_stake_of_one_validator() {
     let config = Config {
         accounts: vec![AccountConfig {
             public_key: validator3.clone(),
-            stake: Some(U512::from(104)),
             balance: None,
+            validator: Some(ValidatorConfig {
+                bonded_amount: U512::from(104),
+                delegation_rate: 5,
+                delegators: vec![],
+            }),
         }],
         ..Default::default()
     };
@@ -411,8 +419,8 @@ fn should_change_only_balance_of_one_validator() {
     let config = Config {
         accounts: vec![AccountConfig {
             public_key: validator3.clone(),
-            stake: None,
             balance: Some(U512::from(100)),
+            validator: None,
         }],
         ..Default::default()
     };
@@ -460,8 +468,12 @@ fn should_replace_one_validator() {
     let config = Config {
         accounts: vec![AccountConfig {
             public_key: validator2.clone(),
-            stake: Some(U512::from(102)),
             balance: Some(U512::from(102)),
+            validator: Some(ValidatorConfig {
+                bonded_amount: U512::from(102),
+                delegation_rate: 5,
+                delegators: vec![],
+            }),
         }],
         only_listed_validators: true,
         ..Default::default()
