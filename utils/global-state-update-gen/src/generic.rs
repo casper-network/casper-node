@@ -195,6 +195,20 @@ fn gen_snapshot_from_old(
             }
             None => true,
         });
+
+        // add the validators that weren't present in the old snapshot
+        for (public_key, stake) in &stakes_map {
+            if recipients.contains_key(public_key) {
+                continue;
+            }
+
+            if *stake != U512::zero() {
+                recipients.insert(
+                    public_key.clone(),
+                    SeigniorageRecipient::new(*stake, Default::default(), Default::default()),
+                );
+            }
+        }
     }
 
     snapshot
