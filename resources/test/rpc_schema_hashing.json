@@ -3861,7 +3861,7 @@
               "result": {
                 "name": "query_balance_example_result",
                 "value": {
-                  "api_version": "1.4.6",
+                  "api_version": "1.4.8",
                   "balance": "123456"
                 }
               }
@@ -4156,7 +4156,7 @@
               "result": {
                 "name": "info_get_chainspec_example_result",
                 "value": {
-                  "api_version": "1.4.6",
+                  "api_version": "1.4.8",
                   "chainspec_bytes": {
                     "chainspec_bytes": "2a2a",
                     "maybe_genesis_accounts_bytes": null,
