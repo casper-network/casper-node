@@ -162,7 +162,7 @@ fn gen_snapshot_from_old(
     mut snapshot: SeigniorageRecipientsSnapshot,
     accounts: &[AccountConfig],
 ) -> SeigniorageRecipientsSnapshot {
-    let stakes_map: BTreeMap<_, _> = accounts
+    let validators_map: BTreeMap<_, _> = accounts
         .iter()
         .filter_map(|acc| {
             acc.validator
@@ -172,22 +172,42 @@ fn gen_snapshot_from_old(
         .collect();
 
     for recipients in snapshot.values_mut() {
-        recipients.retain(|public_key, recipient| match stakes_map.get(public_key) {
-            Some(validator) if validator.bonded_amount == U512::zero() => false,
-            Some(validator) => {
-                *recipient = SeigniorageRecipient::new(
-                    validator.bonded_amount,
-                    validator
-                        .delegation_rate
-                        .unwrap_or(*recipient.delegation_rate()),
-                    validator
-                        .delegators_map()
-                        .unwrap_or_else(|| recipient.delegator_stake().clone()),
-                );
-                true
+        recipients.retain(
+            |public_key, recipient| match validators_map.get(public_key) {
+                Some(validator) if validator.bonded_amount == U512::zero() => false,
+                Some(validator) => {
+                    *recipient = SeigniorageRecipient::new(
+                        validator.bonded_amount,
+                        validator
+                            .delegation_rate
+                            .unwrap_or(*recipient.delegation_rate()),
+                        validator
+                            .delegators_map()
+                            .unwrap_or_else(|| recipient.delegator_stake().clone()),
+                    );
+                    true
+                }
+                None => true,
+            },
+        );
+
+        // add the validators that weren't present in the old snapshot
+        for (public_key, validator) in &validators_map {
+            if recipients.contains_key(public_key) {
+                continue;
             }
-            None => true,
-        });
+
+            if validator.bonded_amount != U512::zero() {
+                recipients.insert(
+                    public_key.clone(),
+                    SeigniorageRecipient::new(
+                        validator.bonded_amount,
+                        validator.delegation_rate.unwrap_or_default(),
+                        validator.delegators_map().unwrap_or_default(),
+                    ),
+                );
+            }
+        }
     }
 
     snapshot
