@@ -43,8 +43,8 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
                     balance: maybe_new_balance,
                     validator: Some(ValidatorConfig {
                         bonded_amount: stake,
-                        delegation_rate: 5,
-                        delegators: vec![],
+                        delegation_rate: None,
+                        delegators: None,
                     }),
                 }
             })

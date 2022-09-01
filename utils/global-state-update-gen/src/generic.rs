@@ -144,8 +144,8 @@ fn gen_snapshot_only_listed(
         };
         let seigniorage_recipient = SeigniorageRecipient::new(
             validator_cfg.bonded_amount,
-            validator_cfg.delegation_rate,
-            validator_cfg.delegators_map(),
+            validator_cfg.delegation_rate.unwrap_or_default(),
+            validator_cfg.delegators_map().unwrap_or_default(),
         );
         let _ = era_validators.insert(account.public_key.clone(), seigniorage_recipient);
     }
@@ -177,8 +177,12 @@ fn gen_snapshot_from_old(
             Some(validator) => {
                 *recipient = SeigniorageRecipient::new(
                     validator.bonded_amount,
-                    validator.delegation_rate,
-                    validator.delegators_map(),
+                    validator
+                        .delegation_rate
+                        .unwrap_or(*recipient.delegation_rate()),
+                    validator
+                        .delegators_map()
+                        .unwrap_or_else(|| recipient.delegator_stake().clone()),
                 );
                 true
             }

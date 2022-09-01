@@ -31,16 +31,18 @@ pub struct AccountConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorConfig {
     pub bonded_amount: U512,
-    pub delegation_rate: u8,
-    pub delegators: Vec<DelegatorConfig>,
+    pub delegation_rate: Option<u8>,
+    pub delegators: Option<Vec<DelegatorConfig>>,
 }
 
 impl ValidatorConfig {
-    pub fn delegators_map(&self) -> BTreeMap<PublicKey, U512> {
-        self.delegators
-            .iter()
-            .map(|delegator| (delegator.public_key.clone(), delegator.delegated_amount))
-            .collect()
+    pub fn delegators_map(&self) -> Option<BTreeMap<PublicKey, U512>> {
+        self.delegators.as_ref().map(|delegators| {
+            delegators
+                .iter()
+                .map(|delegator| (delegator.public_key.clone(), delegator.delegated_amount))
+                .collect()
+        })
     }
 }
 

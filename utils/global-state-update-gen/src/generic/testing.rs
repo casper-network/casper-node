@@ -278,8 +278,8 @@ fn should_change_one_validator() {
             balance: Some(U512::from(100)),
             validator: Some(ValidatorConfig {
                 bonded_amount: U512::from(104),
-                delegation_rate: 5,
-                delegators: vec![],
+                delegation_rate: None,
+                delegators: None,
             }),
         }],
         ..Default::default()
@@ -355,8 +355,8 @@ fn should_change_only_stake_of_one_validator() {
             balance: None,
             validator: Some(ValidatorConfig {
                 bonded_amount: U512::from(104),
-                delegation_rate: 5,
-                delegators: vec![],
+                delegation_rate: None,
+                delegators: None,
             }),
         }],
         ..Default::default()
@@ -471,8 +471,8 @@ fn should_replace_one_validator() {
             balance: Some(U512::from(102)),
             validator: Some(ValidatorConfig {
                 bonded_amount: U512::from(102),
-                delegation_rate: 5,
-                delegators: vec![],
+                delegation_rate: None,
+                delegators: None,
             }),
         }],
         only_listed_validators: true,
