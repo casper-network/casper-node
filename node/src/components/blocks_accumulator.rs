@@ -5,44 +5,53 @@ use std::{
 
 use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
-use libc::remove;
+use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
 use crate::{
     components::Component,
     effect::{announcements::BlocklistAnnouncement, Effect, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, FinalitySignature, NodeId},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId},
     NodeRng,
 };
+
+use super::linear_chain::check_sufficient_block_signatures;
 
 #[derive(DataSize, Debug)]
 struct AccumulatedBlock {
     block_hash: BlockHash,
     block: Option<Block>,
-    era: EraId,
+    era_id: EraId,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
+    #[data_size(skip)]
+    fault_tolerance_fraction: Ratio<u64>,
 }
 
 impl AccumulatedBlock {
-    fn new_from_block_added(block: Block) -> Self {
+    fn new_from_block_added(block: Block, fault_tolerance_fraction: Ratio<u64>) -> Self {
         Self {
             block_hash: *block.hash(),
-            era: block.header().era_id(),
+            era_id: block.header().era_id(),
             block: Some(block),
             signatures: Default::default(),
+            fault_tolerance_fraction,
         }
     }
 
-    fn new_from_finality_signature(finality_signature: FinalitySignature) -> Self {
+    fn new_from_finality_signature(
+        finality_signature: FinalitySignature,
+        fault_tolerance_fraction: Ratio<u64>,
+    ) -> Self {
         let mut signatures = BTreeMap::new();
-        let era = finality_signature.era_id;
+        let era_id = finality_signature.era_id;
         let block_hash = finality_signature.block_hash;
         signatures.insert(finality_signature.public_key.clone(), finality_signature);
         Self {
             block_hash,
             block: None,
-            era,
+            era_id,
             signatures,
+            fault_tolerance_fraction,
         }
     }
 
@@ -63,7 +72,23 @@ impl AccumulatedBlock {
     }
 
     fn has_sufficient_signatures(&self) -> bool {
-        todo!()
+        let trusted_validator_weights = BTreeMap::new(); // TODO: Get proper weights here
+
+        // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid creating it
+        // from `BTreeMap<PublicKey, FinalitySignature>` on every call.
+        let mut block_signatures = BlockSignatures::new(self.block_hash, self.era_id);
+        self.signatures
+            .iter()
+            .for_each(|(public_key, finality_signature)| {
+                block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
+            });
+
+        check_sufficient_block_signatures(
+            &trusted_validator_weights,
+            self.fault_tolerance_fraction,
+            Some(&block_signatures),
+        )
+        .is_ok()
     }
 }
 
@@ -94,10 +119,16 @@ impl BlocksAccumulator {
             return Effects::new();
         }
 
+        // To be read from chainspec
+        let fault_tolerance_ratio = Ratio::new(1, 1);
+
         let block_hash = *block.hash();
         let has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
-                entry.insert(AccumulatedBlock::new_from_block_added(block));
+                entry.insert(AccumulatedBlock::new_from_block_added(
+                    block,
+                    fault_tolerance_ratio,
+                ));
                 false
             }
             Entry::Occupied(entry) => {
@@ -153,11 +184,15 @@ impl BlocksAccumulator {
             return Effects::new();
         }
 
+        // To be read from chainspec
+        let fault_tolerance_ratio: Ratio<u64> = Ratio::new(1, 1);
+
         let block_hash = finality_signature.block_hash;
         let has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(AccumulatedBlock::new_from_finality_signature(
                     finality_signature,
+                    fault_tolerance_ratio,
                 ));
                 false
             }
