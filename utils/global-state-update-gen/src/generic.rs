@@ -11,7 +11,7 @@ use std::{
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
-    system::auction::{Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
+    system::auction::{Bid, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
     CLValue, EraId, Key, PublicKey, StoredValue, U512,
 };
 
@@ -237,8 +237,7 @@ pub fn add_and_remove_bids<T: StateReader>(
     };
 
     for (pub_key, seigniorage_recipient) in new_snapshot.values().next().unwrap() {
-        let stake = *seigniorage_recipient.stake();
-        create_or_update_bid(state, pub_key, stake);
+        create_or_update_bid(state, pub_key, seigniorage_recipient);
     }
 
     // Refresh the bids - we modified them above.
@@ -246,6 +245,12 @@ pub fn add_and_remove_bids<T: StateReader>(
 
     for pub_key in to_unbid {
         if let Some(bid) = bids.get(&pub_key) {
+            for delegator in bid.delegators().values() {
+                // Burn the delegated funds of all the delegators.
+                // TBD: is that what should be happening when a validator is removed?
+                state.set_purse_balance(*delegator.bonding_purse(), U512::zero());
+            }
+
             let new_bid = Bid::empty(pub_key.clone(), *bid.bonding_purse());
             state.set_bid(pub_key.clone(), new_bid);
         }
@@ -284,24 +289,64 @@ fn find_large_bids<T: StateReader>(
 fn create_or_update_bid<T: StateReader>(
     state: &mut StateTracker<T>,
     pub_key: &PublicKey,
-    stake: U512,
+    recipient: &SeigniorageRecipient,
 ) {
     if state
         .get_bids()
         .get(pub_key)
         .and_then(|bid| bid.total_staked_amount().ok())
-        == Some(stake)
+        == recipient.total_stake()
     {
         // already staked the amount we need, nothing to do
         return;
     }
-    let new_bid = if let Some(bid) = state.get_bids().get(pub_key) {
-        Bid::unlocked(
+
+    let stake = *recipient.stake();
+    let new_bid = if let Some(old_bid) = state.get_bids().get(pub_key) {
+        let mut bid = Bid::unlocked(
             pub_key.clone(),
-            *bid.bonding_purse(),
+            *old_bid.bonding_purse(),
             stake,
-            Default::default(),
-        )
+            *recipient.delegation_rate(),
+        );
+
+        for (delegator_pub_key, delegator_stake) in recipient.delegator_stake() {
+            let delegator = if let Some(delegator) = old_bid.delegators().get(delegator_pub_key) {
+                Delegator::unlocked(
+                    delegator_pub_key.clone(),
+                    *delegator_stake,
+                    *delegator.bonding_purse(),
+                    pub_key.clone(),
+                )
+            } else {
+                let delegator_bonding_purse = state.create_purse(*delegator_stake);
+                Delegator::unlocked(
+                    delegator_pub_key.clone(),
+                    *delegator_stake,
+                    delegator_bonding_purse,
+                    pub_key.clone(),
+                )
+            };
+
+            bid.delegators_mut()
+                .insert(delegator_pub_key.clone(), delegator);
+        }
+
+        for (old_delegator_pub_key, old_delegator) in old_bid.delegators() {
+            if recipient
+                .delegator_stake()
+                .contains_key(old_delegator_pub_key)
+            {
+                continue;
+            }
+
+            let delegator_bonding_purse = *old_delegator.bonding_purse();
+
+            // TBD: should delegators that are forcibly undelegated lose their bonded balance?
+            state.set_purse_balance(delegator_bonding_purse, U512::zero());
+        }
+
+        bid
     } else {
         if stake == U512::zero() {
             // there was no bid for this key and it still is supposed to have zero amount staked -
@@ -309,7 +354,28 @@ fn create_or_update_bid<T: StateReader>(
             return;
         }
         let bonding_purse = state.create_purse(stake);
-        Bid::unlocked(pub_key.clone(), bonding_purse, stake, Default::default())
+        let mut bid = Bid::unlocked(
+            pub_key.clone(),
+            bonding_purse,
+            stake,
+            *recipient.delegation_rate(),
+        );
+
+        for (delegator_pub_key, delegator_stake) in recipient.delegator_stake() {
+            let delegator_bonding_purse = state.create_purse(*delegator_stake);
+            let delegator = Delegator::unlocked(
+                delegator_pub_key.clone(),
+                *delegator_stake,
+                delegator_bonding_purse,
+                pub_key.clone(),
+            );
+
+            bid.delegators_mut()
+                .insert(delegator_pub_key.clone(), delegator);
+        }
+
+        bid
     };
+
     state.set_bid(pub_key.clone(), new_bid);
 }
