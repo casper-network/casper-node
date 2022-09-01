@@ -932,8 +932,8 @@ where
                         info!(?error, ?peer, "insufficient block signatures from peer");
                         continue;
                     }
-                    Err(error @ BlockSignatureError::BogusValidator { .. }) => {
-                        warn!(?error, ?peer, "bogus validator block signature from peer");
+                    Err(error @ BlockSignatureError::BogusValidators { .. }) => {
+                        warn!(?error, ?peer, "bogus validators block signature from peer");
                         ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                         continue;
                     }
@@ -2443,13 +2443,13 @@ mod tests {
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
 
-        let consensus_verdict = Err(BlockSignatureError::BogusValidator {
+        let consensus_verdict = Err(BlockSignatureError::BogusValidators {
             trusted_validator_weights: BTreeMap::new(),
             block_signatures: Box::new(BlockSignatures::new(
                 BlockHash::random(&mut rng),
                 EraId::from(0),
             )),
-            bogus_validator_public_key: Box::new(PublicKey::random_ed25519(&mut rng)),
+            bogus_validators: Box::new(vec![PublicKey::random_ed25519(&mut rng)]),
         });
         assert!(are_signatures_sufficient_for_sync_to_genesis(consensus_verdict).is_err());
     }

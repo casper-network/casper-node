@@ -12,15 +12,21 @@ pub(crate) fn validate_block_signatures(
     signatures: &BlockSignatures,
     validator_weights: &BTreeMap<PublicKey, U512>,
 ) -> Result<(), BlockSignatureError> {
+    let mut bogus_validators = vec![];
     for (public_key, _) in signatures.proofs.iter() {
         if validator_weights.get(public_key).is_none() {
-            return Err(BlockSignatureError::BogusValidator {
-                trusted_validator_weights: validator_weights.clone(),
-                block_signatures: Box::new(signatures.clone()),
-                bogus_validator_public_key: Box::new(public_key.clone()),
-            });
+            bogus_validators.push(public_key.clone());
         }
     }
+
+    if !bogus_validators.is_empty() {
+        return Err(BlockSignatureError::BogusValidators {
+            trusted_validator_weights: validator_weights.clone(),
+            block_signatures: Box::new(signatures.clone()),
+            bogus_validators: Box::new(bogus_validators),
+        });
+    }
+
     Ok(())
 }
 
@@ -56,14 +62,12 @@ where
 
     match maybe_block_signatures {
         Some(block_signatures) => {
+            let mut bogus_validators = vec![];
             for (public_key, _) in block_signatures.proofs.iter() {
                 match trusted_validator_weights.get(public_key) {
                     None => {
-                        return Err(BlockSignatureError::BogusValidator {
-                            trusted_validator_weights: trusted_validator_weights.clone(),
-                            block_signatures: Box::new(block_signatures.clone()),
-                            bogus_validator_public_key: Box::new(public_key.clone()),
-                        });
+                        bogus_validators.push(public_key.clone());
+                        continue;
                     }
                     Some(validator_weight) => {
                         if minimum_weight.map_or(true, |min_w| *validator_weight < min_w) {
@@ -72,6 +76,13 @@ where
                         signature_weight += *validator_weight;
                     }
                 }
+            }
+            if !bogus_validators.is_empty() {
+                return Err(BlockSignatureError::BogusValidators {
+                    trusted_validator_weights: trusted_validator_weights.clone(),
+                    block_signatures: Box::new(block_signatures.clone()),
+                    bogus_validators: Box::new(bogus_validators),
+                });
             }
             let weight_minus_minimum = signature_weight - minimum_weight.unwrap_or_else(U512::zero);
 
@@ -286,11 +297,11 @@ mod tests {
         signatures.insert_proof(pub_key.clone(), *signatures.proofs.iter().next().unwrap().1);
         assert!(matches!(
             validate_block_signatures(&signatures, &weights),
-            Err(BlockSignatureError::BogusValidator {
+            Err(BlockSignatureError::BogusValidators {
                 trusted_validator_weights: _,
                 block_signatures,
-                bogus_validator_public_key
-            }) if *bogus_validator_public_key == pub_key && *block_signatures == signatures
+                bogus_validators
+            }) if bogus_validators[0] == pub_key && *block_signatures == signatures
         ));
     }
 
@@ -497,21 +508,34 @@ mod tests {
         );
         assert!(result.is_ok());
 
-        // Smuggle a bogus proof in.
-        let (_, pub_key) = crypto::generate_ed25519_keypair();
-        signatures.insert_proof(pub_key.clone(), *signatures.proofs.iter().next().unwrap().1);
+        // Smuggle bogus proofs in.
+        let (_, pub_key_1) = crypto::generate_ed25519_keypair();
+        signatures.insert_proof(
+            pub_key_1.clone(),
+            *signatures.proofs.iter().next().unwrap().1,
+        );
+        let (_, pub_key_2) = crypto::generate_ed25519_keypair();
+        signatures.insert_proof(
+            pub_key_2.clone(),
+            *signatures.proofs.iter().next().unwrap().1,
+        );
         let result = check_sufficient_block_signatures(
             &validator_weights,
             fault_tolerance_fraction,
             Some(&signatures),
         );
-        assert!(matches!(
-            result,
-            Err(BlockSignatureError::BogusValidator {
-                trusted_validator_weights: _,
-                block_signatures: _,
-                bogus_validator_public_key
-            })  if *bogus_validator_public_key == pub_key
-        ));
+        let error = result.unwrap_err();
+        if let BlockSignatureError::BogusValidators {
+            trusted_validator_weights: _,
+            block_signatures: _,
+            bogus_validators,
+        } = error
+        {
+            assert!(bogus_validators.contains(&pub_key_1));
+            assert!(bogus_validators.contains(&pub_key_2));
+            assert_eq!(bogus_validators.len(), 2);
+        } else {
+            panic!("unexpected err: {}", error);
+        }
     }
 }

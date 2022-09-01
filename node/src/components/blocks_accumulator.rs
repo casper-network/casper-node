@@ -15,7 +15,7 @@ use crate::{
     NodeRng,
 };
 
-use super::linear_chain::check_sufficient_block_signatures;
+use super::linear_chain::{check_sufficient_block_signatures, BlockSignatureError};
 
 #[derive(DataSize, Debug)]
 struct AccumulatedBlock {
@@ -25,6 +25,13 @@ struct AccumulatedBlock {
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
+}
+
+#[derive(Debug)]
+enum SignaturesFinality {
+    Sufficient,
+    NotSufficient,
+    BogusValidators(Vec<PublicKey>),
 }
 
 impl AccumulatedBlock {
@@ -71,7 +78,7 @@ impl AccumulatedBlock {
         self.block = Some(block);
     }
 
-    fn has_sufficient_signatures(&self) -> bool {
+    fn has_sufficient_signatures(&self) -> SignaturesFinality {
         let trusted_validator_weights = BTreeMap::new(); // TODO: Get proper weights here
 
         // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid creating it
@@ -83,12 +90,27 @@ impl AccumulatedBlock {
                 block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
             });
 
-        check_sufficient_block_signatures(
+        match check_sufficient_block_signatures(
             &trusted_validator_weights,
             self.fault_tolerance_fraction,
             Some(&block_signatures),
-        )
-        .is_ok()
+        ) {
+            Ok(_) => SignaturesFinality::Sufficient,
+            Err(err) => match err {
+                BlockSignatureError::BogusValidators {
+                    trusted_validator_weights,
+                    block_signatures,
+                    bogus_validators,
+                } => SignaturesFinality::BogusValidators(*bogus_validators),
+                BlockSignatureError::InsufficientWeightForFinality { .. } => {
+                    return SignaturesFinality::NotSufficient
+                }
+                BlockSignatureError::TooManySignatures { .. } => {
+                    // This error is returned only when the signatures are proven to be sufficient.
+                    SignaturesFinality::Sufficient
+                }
+            },
+        }
     }
 }
 
@@ -102,9 +124,19 @@ pub(crate) struct BlocksAccumulator {
     // pending_blocks: BTreeMap<u64, BTreeMap<NodeId, Block>>,
     // pending_signatures: BTreeMap<EraId, BTreeMap<BlockHash, BTreeSet<(NodeId, FinalitySignature)>>>,
     accumulated_blocks: BTreeMap<BlockHash, AccumulatedBlock>,
+
+    #[data_size(skip)]
+    fault_tolerance_fraction: Ratio<u64>,
 }
 
 impl BlocksAccumulator {
+    pub(crate) fn new(fault_tolerance_fraction: Ratio<u64>) -> Self {
+        Self {
+            accumulated_blocks: Default::default(),
+            fault_tolerance_fraction,
+        }
+    }
+
     fn handle_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -119,17 +151,14 @@ impl BlocksAccumulator {
             return Effects::new();
         }
 
-        // To be read from chainspec
-        let fault_tolerance_ratio = Ratio::new(1, 1);
-
         let block_hash = *block.hash();
         let has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(AccumulatedBlock::new_from_block_added(
                     block,
-                    fault_tolerance_ratio,
+                    self.fault_tolerance_fraction,
                 ));
-                false
+                SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
@@ -138,12 +167,18 @@ impl BlocksAccumulator {
             }
         };
 
-        if has_sufficient_signatures {
-            if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
-                return self.execute(effect_builder, &accumulated_block);
-            } else {
+        match has_sufficient_signatures {
+            SignaturesFinality::Sufficient => {
+                if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
+                    return self.execute(effect_builder, &accumulated_block);
+                }
+            }
+            SignaturesFinality::NotSufficient => {
                 error!(%block_hash, "expected to have block");
                 return Effects::new();
+            }
+            SignaturesFinality::BogusValidators(ref public_keys) => {
+                self.remove_bogus_signatures(&block_hash, public_keys)
             }
         }
 
@@ -184,17 +219,14 @@ impl BlocksAccumulator {
             return Effects::new();
         }
 
-        // To be read from chainspec
-        let fault_tolerance_ratio: Ratio<u64> = Ratio::new(1, 1);
-
         let block_hash = finality_signature.block_hash;
-        let has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
+        let mut has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(AccumulatedBlock::new_from_finality_signature(
                     finality_signature,
-                    fault_tolerance_ratio,
+                    self.fault_tolerance_fraction,
                 ));
-                false
+                SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
@@ -203,16 +235,34 @@ impl BlocksAccumulator {
             }
         };
 
-        if has_sufficient_signatures {
-            if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
-                return self.execute(effect_builder, &accumulated_block);
-            } else {
-                error!(%block_hash, "expected to have block");
-                return Effects::new();
+        for _ in 0..2 {
+            match has_sufficient_signatures {
+                SignaturesFinality::Sufficient => {
+                    if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
+                        return self.execute(effect_builder, &accumulated_block);
+                    }
+                    return Effects::new();
+                }
+                SignaturesFinality::NotSufficient => {
+                    error!(%block_hash, "expected to have block");
+                    return Effects::new();
+                }
+                SignaturesFinality::BogusValidators(ref public_keys) => {
+                    self.remove_bogus_signatures(&block_hash, public_keys);
+
+                    has_sufficient_signatures = self
+                        .accumulated_blocks
+                        .get(&block_hash)
+                        .map(|accumulated_block| accumulated_block.has_sufficient_signatures())
+                        .unwrap_or_else(|| {
+                            error!(%block_hash, "should have block");
+                            SignaturesFinality::BogusValidators(public_keys.clone())
+                        })
+                }
             }
         }
 
-        //            BlocksAccumulator::execute(effect_builder, accumulated_block);
+        error!(%block_hash, ?has_sufficient_signatures, "should have removed bogus validators");
 
         // TODO: Special care for a switch block?
 
@@ -248,6 +298,14 @@ impl BlocksAccumulator {
         REv: Send,
     {
         todo!()
+    }
+
+    fn remove_bogus_signatures(&mut self, block_hash: &BlockHash, bogus_validators: &[PublicKey]) {
+        if let Some(accumulated_block) = self.accumulated_blocks.get_mut(&block_hash) {
+            accumulated_block
+                .signatures
+                .retain(|public_key, _| !bogus_validators.contains(&public_key))
+        }
     }
 }
 

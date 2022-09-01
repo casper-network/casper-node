@@ -843,8 +843,8 @@ where
             info!(?error, "insufficient block signatures from storage");
             false
         }
-        Err(error @ BlockSignatureError::BogusValidator { .. }) => {
-            error!(?error, "bogus validator block signature from storage");
+        Err(error @ BlockSignatureError::BogusValidators { .. }) => {
+            error!(?error, "bogus validators block signature from storage");
             false
         }
         // TODO - make this an error condition once we start using `get_minimal_set_of_signatures`.

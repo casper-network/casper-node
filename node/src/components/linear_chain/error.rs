@@ -39,12 +39,12 @@ pub(crate) enum BlockSignatureError {
         "Block signatures contain bogus validator. \
          trusted validator weights: {trusted_validator_weights:?}, \
          block signatures: {block_signatures:?}, \
-         bogus validator public key: {bogus_validator_public_key:?}"
+         bogus validator public keys: {bogus_validators:?}"
     )]
-    BogusValidator {
+    BogusValidators {
         trusted_validator_weights: BTreeMap<PublicKey, U512>,
         block_signatures: Box<BlockSignatures>,
-        bogus_validator_public_key: Box<PublicKey>,
+        bogus_validators: Box<Vec<PublicKey>>,
     },
 
     #[error(
