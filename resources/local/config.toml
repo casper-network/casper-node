@@ -194,6 +194,15 @@ tarpit_chance = 0.2
 # How long peers remain blocked after they get blacklisted.
 blocklist_retain_duration = '1min'
 
+# Identity of a node
+#
+# When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
+# This option makes sense for some private chains where for security reasons joining new nodes is restricted.
+# [network.identity]
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
+# ca_certificate = "ca_cert.pem"
+
 # Weights for impact estimation of incoming messages, used in combination with
 # `max_incoming_message_rate_non_validators`.
 #
