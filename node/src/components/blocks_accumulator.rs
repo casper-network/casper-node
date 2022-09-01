@@ -1,12 +1,15 @@
+mod accumulated_block;
+
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     convert::Infallible,
 };
 
-use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
+
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::Component,
@@ -15,103 +18,13 @@ use crate::{
     NodeRng,
 };
 
-use super::linear_chain::{check_sufficient_block_signatures, BlockSignatureError};
-
-#[derive(DataSize, Debug)]
-struct AccumulatedBlock {
-    block_hash: BlockHash,
-    block: Option<Block>,
-    era_id: EraId,
-    signatures: BTreeMap<PublicKey, FinalitySignature>,
-    #[data_size(skip)]
-    fault_tolerance_fraction: Ratio<u64>,
-}
+use accumulated_block::AccumulatedBlock;
 
 #[derive(Debug)]
 enum SignaturesFinality {
     Sufficient,
     NotSufficient,
     BogusValidators(Vec<PublicKey>),
-}
-
-impl AccumulatedBlock {
-    fn new_from_block_added(block: Block, fault_tolerance_fraction: Ratio<u64>) -> Self {
-        Self {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            block: Some(block),
-            signatures: Default::default(),
-            fault_tolerance_fraction,
-        }
-    }
-
-    fn new_from_finality_signature(
-        finality_signature: FinalitySignature,
-        fault_tolerance_fraction: Ratio<u64>,
-    ) -> Self {
-        let mut signatures = BTreeMap::new();
-        let era_id = finality_signature.era_id;
-        let block_hash = finality_signature.block_hash;
-        signatures.insert(finality_signature.public_key.clone(), finality_signature);
-        Self {
-            block_hash,
-            block: None,
-            era_id,
-            signatures,
-            fault_tolerance_fraction,
-        }
-    }
-
-    fn register_signature(&mut self, finality_signature: FinalitySignature) {
-        // TODO: What to do when we receive multiple valid finality_signature from single public_key?
-        // TODO: What to do when we receive too many finality_signature from single peer?
-        self.signatures
-            .insert(finality_signature.public_key.clone(), finality_signature);
-    }
-
-    fn register_block(&mut self, block: Block) {
-        if self.block.is_some() {
-            warn!(block_hash = %block.hash(), "received duplicate block");
-            return;
-        }
-
-        self.block = Some(block);
-    }
-
-    fn has_sufficient_signatures(&self) -> SignaturesFinality {
-        let trusted_validator_weights = BTreeMap::new(); // TODO: Get proper weights here
-
-        // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid creating it
-        // from `BTreeMap<PublicKey, FinalitySignature>` on every call.
-        let mut block_signatures = BlockSignatures::new(self.block_hash, self.era_id);
-        self.signatures
-            .iter()
-            .for_each(|(public_key, finality_signature)| {
-                block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
-            });
-
-        match check_sufficient_block_signatures(
-            &trusted_validator_weights,
-            self.fault_tolerance_fraction,
-            Some(&block_signatures),
-        ) {
-            Ok(_) => SignaturesFinality::Sufficient,
-            Err(err) => match err {
-                BlockSignatureError::BogusValidators {
-                    trusted_validator_weights,
-                    block_signatures,
-                    bogus_validators,
-                } => SignaturesFinality::BogusValidators(*bogus_validators),
-                BlockSignatureError::InsufficientWeightForFinality { .. } => {
-                    return SignaturesFinality::NotSufficient
-                }
-                BlockSignatureError::TooManySignatures { .. } => {
-                    // This error is returned only when the signatures are proven to be sufficient.
-                    SignaturesFinality::Sufficient
-                }
-            },
-        }
-    }
 }
 
 /// A cache of pending blocks and finality signatures that executes and stores fully signed blocks.
@@ -121,10 +34,7 @@ impl AccumulatedBlock {
 /// onwards.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
-    // pending_blocks: BTreeMap<u64, BTreeMap<NodeId, Block>>,
-    // pending_signatures: BTreeMap<EraId, BTreeMap<BlockHash, BTreeSet<(NodeId, FinalitySignature)>>>,
     accumulated_blocks: BTreeMap<BlockHash, AccumulatedBlock>,
-
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
 }
@@ -147,23 +57,21 @@ impl BlocksAccumulator {
         REv: Send + From<BlocklistAnnouncement>,
     {
         if let Err(err) = block.verify() {
-            debug!(%err, "received invalid block");
+            warn!(%err, "received invalid block");
             return Effects::new();
         }
 
         let block_hash = *block.hash();
         let has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
-                entry.insert(AccumulatedBlock::new_from_block_added(
-                    block,
-                    self.fault_tolerance_fraction,
-                ));
+                entry.insert(AccumulatedBlock::new_from_block_added(block));
                 SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
                 accumulated_block.register_block(block);
-                accumulated_block.has_sufficient_signatures()
+                accumulated_block
+                    .has_sufficient_signatures(self.fault_tolerance_fraction, BTreeMap::new())
             }
         };
 
@@ -178,7 +86,7 @@ impl BlocksAccumulator {
                 return Effects::new();
             }
             SignaturesFinality::BogusValidators(ref public_keys) => {
-                self.remove_bogus_signatures(&block_hash, public_keys)
+                self.remove_signatures(&block_hash, public_keys)
             }
         }
 
@@ -212,26 +120,37 @@ impl BlocksAccumulator {
         sender: NodeId,
     ) -> Effects<Event>
     where
-        REv: Send,
+        REv: Send + From<BlocklistAnnouncement>,
     {
-        if let Err(err) = finality_signature.verify() {
-            debug!(%err, "received invalid finality signature");
-            return Effects::new();
+        // if let Err(error) = finality_signature.is_signer_in_era() {
+        //     warn!(%error, "received finality signature from a non-validator");
+        //     return effect_builder
+        //         .announce_disconnect_from_peer(sender)
+        //         .ignore();
+        // }
+
+        if let Err(error) = finality_signature.is_verified() {
+            warn!(%error, "received invalid finality signature");
+            return effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore();
         }
 
         let block_hash = finality_signature.block_hash;
+        // let validator_weights = self.validator_weights(finality_signature.era_id);
+        let validator_weights = BTreeMap::new();
         let mut has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(AccumulatedBlock::new_from_finality_signature(
                     finality_signature,
-                    self.fault_tolerance_fraction,
                 ));
                 SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
                 accumulated_block.register_signature(finality_signature);
-                accumulated_block.has_sufficient_signatures()
+                accumulated_block
+                    .has_sufficient_signatures(self.fault_tolerance_fraction, validator_weights)
             }
         };
 
@@ -241,19 +160,24 @@ impl BlocksAccumulator {
                     if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
                         return self.execute(effect_builder, &accumulated_block);
                     }
-                    return Effects::new();
-                }
-                SignaturesFinality::NotSufficient => {
                     error!(%block_hash, "expected to have block");
                     return Effects::new();
                 }
+                SignaturesFinality::NotSufficient => {
+                    return Effects::new();
+                }
                 SignaturesFinality::BogusValidators(ref public_keys) => {
-                    self.remove_bogus_signatures(&block_hash, public_keys);
+                    self.remove_signatures(&block_hash, public_keys);
 
                     has_sufficient_signatures = self
                         .accumulated_blocks
                         .get(&block_hash)
-                        .map(|accumulated_block| accumulated_block.has_sufficient_signatures())
+                        .map(|accumulated_block| {
+                            accumulated_block.has_sufficient_signatures(
+                                self.fault_tolerance_fraction,
+                                BTreeMap::new(),
+                            )
+                        })
                         .unwrap_or_else(|| {
                             error!(%block_hash, "should have block");
                             SignaturesFinality::BogusValidators(public_keys.clone())
@@ -300,11 +224,9 @@ impl BlocksAccumulator {
         todo!()
     }
 
-    fn remove_bogus_signatures(&mut self, block_hash: &BlockHash, bogus_validators: &[PublicKey]) {
+    fn remove_signatures(&mut self, block_hash: &BlockHash, signers: &[PublicKey]) {
         if let Some(accumulated_block) = self.accumulated_blocks.get_mut(&block_hash) {
-            accumulated_block
-                .signatures
-                .retain(|public_key, _| !bogus_validators.contains(&public_key))
+            accumulated_block.remove_signatures(signers);
         }
     }
 }
@@ -315,7 +237,7 @@ pub(crate) enum Event {
         block: Block,
         sender: NodeId,
     },
-    ReceivedFinalitySignature {
+    AcceptFinalitySignature {
         finality_signature: FinalitySignature,
         sender: NodeId,
     },
@@ -338,7 +260,7 @@ where
             Event::ReceivedBlock { block, sender } => {
                 self.handle_block(effect_builder, block, sender)
             }
-            Event::ReceivedFinalitySignature {
+            Event::AcceptFinalitySignature {
                 finality_signature,
                 sender,
             } => self.handle_finality_signature(effect_builder, finality_signature, sender),

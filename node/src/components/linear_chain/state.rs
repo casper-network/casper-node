@@ -162,7 +162,7 @@ impl LinearChain {
                 "finality signature is already known");
             return false;
         }
-        if let Err(err) = fs.verify() {
+        if let Err(err) = fs.is_verified() {
             warn!(%block_hash, %public_key, %err, "received invalid finality signature");
             return false;
         }
@@ -177,15 +177,9 @@ impl LinearChain {
 
     /// Removes finality signature from the pending collection.
     fn remove_from_pending_fs(&mut self, fs: &FinalitySignature) -> Option<Signature> {
-        let FinalitySignature {
-            block_hash,
-            era_id: _era_id,
-            signature: _signature,
-            public_key,
-        } = fs;
-        debug!(%block_hash, %public_key, "removing finality signature from pending collection");
+        debug!(%fs.block_hash, %fs.public_key, "removing finality signature from pending collection");
         self.pending_finality_signatures
-            .remove(public_key, block_hash)
+            .remove(&fs.public_key, &fs.block_hash)
     }
 
     /// Caches the signature.

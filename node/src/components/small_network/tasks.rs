@@ -53,7 +53,10 @@ use super::{
 };
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, FromIncoming},
-    effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
+    effect::{
+        announcements::BlocklistAnnouncement, requests::NetworkRequest, AutoClosingResponder,
+        EffectBuilder,
+    },
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -573,7 +576,11 @@ pub(super) async fn message_reader<REv, P>(
 ) -> io::Result<()>
 where
     P: DeserializeOwned + Send + Display + Payload,
-    REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
+    REv: From<Event<P>>
+        + FromIncoming<P>
+        + From<NetworkRequest<P>>
+        + From<BlocklistAnnouncement>
+        + Send,
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
@@ -585,6 +592,17 @@ where
                         trace!(%msg, "message received");
 
                         let effect_builder = EffectBuilder::new(context.event_queue);
+
+                        todo!("pass in validator sets");
+                        if msg.payload_is_malicious() {
+                            warn!(
+                                message_kind = ?msg,
+                                ?peer_id,
+                                "malicious payload received"
+                            );
+                            effect_builder.announce_disconnect_from_peer(peer_id).await;
+                            break;
+                        }
 
                         match msg.try_into_demand(effect_builder, peer_id) {
                             Ok((event, wait_for_response)) => {

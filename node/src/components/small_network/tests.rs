@@ -26,7 +26,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{ControlAnnouncement, GossiperAnnouncement},
+        announcements::{BlocklistAnnouncement, ControlAnnouncement, GossiperAnnouncement},
         incoming::GossiperIncoming,
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest,
@@ -62,6 +62,8 @@ enum Event {
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
     /// An incoming network message with an address gossiper protocol message.
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+    #[from]
+    BlocklistAnnouncement(BlocklistAnnouncement),
 }
 
 impl ReactorEvent for Event {
@@ -150,7 +152,7 @@ impl Display for Message {
 
 impl Payload for Message {
     #[inline]
-    fn classify(&self) -> MessageKind {
+    fn message_kind(&self) -> MessageKind {
         match self {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
         }
@@ -161,6 +163,10 @@ impl Payload for Message {
     }
 
     fn is_unsafe_for_syncing_peers(&self) -> bool {
+        false
+    }
+
+    fn is_malicious(&self) -> bool {
         false
     }
 }
@@ -255,6 +261,7 @@ impl Reactor for TestReactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            Event::BlocklistAnnouncement(_announcement) => Effects::new(),
         }
     }
 

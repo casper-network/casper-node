@@ -67,7 +67,7 @@ pub(crate) enum Message {
 
 impl Payload for Message {
     #[inline]
-    fn classify(&self) -> MessageKind {
+    fn message_kind(&self) -> MessageKind {
         match self {
             Message::Consensus(_) => MessageKind::Consensus,
             Message::DeployGossiper(_) => MessageKind::DeployGossip,
@@ -79,10 +79,6 @@ impl Payload for Message {
                     Tag::Deploy => MessageKind::DeployTransfer,
                     Tag::FinalizedApprovals => MessageKind::FinalizedApprovalsTransfer,
                     Tag::Block => MessageKind::BlockTransfer,
-                    // This is a weird message, which we should not encounter here?
-                    Tag::FinalitySignature => MessageKind::Other,
-                    // This is a weird message, which we should not encounter here?
-                    Tag::GossipedAddress => MessageKind::Other,
                     Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
@@ -90,6 +86,10 @@ impl Payload for Message {
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
+
+                    // The following tags should be unreachable.
+                    Tag::FinalitySignature => MessageKind::Other,
+                    Tag::GossipedAddress => MessageKind::Other,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -161,6 +161,26 @@ impl Payload for Message {
             Message::AddressGossiper(_) => false,
             // Trie requests can deadlock between syncing nodes.
             Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
+            Message::GetRequest { .. } => false,
+            Message::GetResponse { .. } => false,
+            Message::FinalitySignature(_) => false,
+        }
+    }
+
+    fn is_malicious(&self) -> bool {
+        match self {
+            Message::Consensus(_) => false,
+            Message::DeployGossiper(_) => false,
+            Message::BlockGossiper(_) => false,
+            Message::FinalitySignatureGossiper(gossiper::Message::Gossip(item_id))
+            | Message::FinalitySignatureGossiper(gossiper::Message::GossipResponse {
+                item_id,
+                ..
+            }) => {
+                // TODO - before checking crypto verification, check against validator sets
+                item_id.is_verified().is_err()
+            }
+            Message::AddressGossiper(_) => false,
             Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
             Message::FinalitySignature(_) => false,

@@ -5,15 +5,17 @@
 use std::iter;
 use std::{
     array::TryFromSliceError,
+    cmp::{Ord, Ordering, PartialOrd},
     collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
+    hash::{Hash, Hasher},
 };
 
 use datasize::DataSize;
 use derive_more::Into;
 use hex_fmt::HexList;
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use schemars::JsonSchema;
@@ -44,7 +46,7 @@ use crate::{
         Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, FetcherItem,
         GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag,
     },
-    utils::DisplayIter,
+    utils::{ds, DisplayIter},
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
@@ -1338,8 +1340,9 @@ impl BlockSignatures {
                 era_id: self.era_id,
                 signature: *signature,
                 public_key: public_key.clone(),
+                is_verified: OnceCell::new(),
             };
-            signature.verify()?;
+            signature.is_verified()?;
         }
         Ok(())
     }
@@ -2089,9 +2092,7 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
-#[derive(
-    Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq, Hash, JsonSchema, Ord, PartialOrd,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize, Eq, JsonSchema)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
@@ -2101,6 +2102,9 @@ pub struct FinalitySignature {
     pub signature: Signature,
     /// Public key of the signing validator.
     pub public_key: PublicKey,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    is_verified: OnceCell<Result<(), crypto::Error>>,
 }
 
 impl FinalitySignature {
@@ -2119,15 +2123,20 @@ impl FinalitySignature {
             era_id,
             signature,
             public_key,
+            is_verified: OnceCell::with_value(Ok(())),
         }
     }
 
     /// Verifies whether the signature is correct.
-    pub fn verify(&self) -> Result<(), crypto::Error> {
-        // NOTE: This needs to be in sync with the `new` constructor.
-        let mut bytes = self.block_hash.inner().into_vec();
-        bytes.extend_from_slice(&self.era_id.to_le_bytes());
-        crypto::verify(bytes, &self.signature, &self.public_key)
+    pub fn is_verified(&self) -> Result<(), crypto::Error> {
+        self.is_verified
+            .get_or_init(|| {
+                // NOTE: This needs to be in sync with the `new` constructor.
+                let mut bytes = self.block_hash.inner().into_vec();
+                bytes.extend_from_slice(&self.era_id.to_le_bytes());
+                crypto::verify(bytes, &self.signature, &self.public_key)
+            })
+            .clone()
     }
 
     /// Returns a random `FinalitySignature` for the provided `block_hash` and `era_id`.
@@ -2135,6 +2144,73 @@ impl FinalitySignature {
     pub fn random_for_block(block_hash: BlockHash, era_id: u64) -> Self {
         let (sec_key, pub_key) = generate_ed25519_keypair();
         FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)
+    }
+}
+
+impl Hash for FinalitySignature {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Ensure we initialize self.is_verified field.
+        let is_verified = self.is_verified().is_ok();
+        // Destructure to make sure we don't accidentally omit fields.
+        let FinalitySignature {
+            block_hash,
+            era_id,
+            signature,
+            public_key,
+            is_verified: _,
+        } = self;
+        block_hash.hash(state);
+        era_id.hash(state);
+        signature.hash(state);
+        public_key.hash(state);
+        is_verified.hash(state);
+    }
+}
+
+impl PartialEq for FinalitySignature {
+    fn eq(&self, other: &FinalitySignature) -> bool {
+        // Ensure we initialize self.is_verified field.
+        let is_verified = self.is_verified().is_ok();
+        // Destructure to make sure we don't accidentally omit fields.
+        let FinalitySignature {
+            block_hash,
+            era_id,
+            signature,
+            public_key,
+            is_verified: _,
+        } = self;
+        *block_hash == other.block_hash
+            && *era_id == other.era_id
+            && *signature == other.signature
+            && *public_key == other.public_key
+            && is_verified == other.is_verified().is_ok()
+    }
+}
+
+impl Ord for FinalitySignature {
+    fn cmp(&self, other: &FinalitySignature) -> Ordering {
+        // Ensure we initialize self.is_verified field.
+        let is_verified = self.is_verified().is_ok();
+        // Destructure to make sure we don't accidentally omit fields.
+        let FinalitySignature {
+            block_hash,
+            era_id,
+            signature,
+            public_key,
+            is_verified: _,
+        } = self;
+        block_hash
+            .cmp(&other.block_hash)
+            .then_with(|| era_id.cmp(&other.era_id))
+            .then_with(|| signature.cmp(&other.signature))
+            .then_with(|| public_key.cmp(&other.public_key))
+            .then_with(|| is_verified.cmp(&other.is_verified().is_ok()))
+    }
+}
+
+impl PartialOrd for FinalitySignature {
+    fn partial_cmp(&self, other: &FinalitySignature) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -2288,7 +2364,7 @@ mod tests {
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId::from(1);
         let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key.clone());
-        assert!(fs.verify().is_ok());
+        assert!(fs.is_verified().is_ok());
         let signature = fs.signature;
         // Verify that signature includes era id.
         let fs_manufactured = FinalitySignature {
@@ -2296,9 +2372,10 @@ mod tests {
             era_id: EraId::from(2),
             signature,
             public_key,
+            is_verified: OnceCell::new(),
         };
         // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
-        assert!(fs_manufactured.verify().is_err());
+        assert!(fs_manufactured.is_verified().is_err());
     }
 
     #[test]

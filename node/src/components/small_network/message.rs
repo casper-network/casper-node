@@ -55,7 +55,7 @@ impl<P: Payload> Message<P> {
     pub(super) fn classify(&self) -> MessageKind {
         match self {
             Message::Handshake { .. } => MessageKind::Protocol,
-            Message::Payload(payload) => payload.classify(),
+            Message::Payload(payload) => payload.message_kind(),
         }
     }
 
@@ -86,9 +86,17 @@ impl<P: Payload> Message<P> {
         }
     }
 
+    /// Returns `true` if the message is invalid and the peer should be blocklisted.
+    pub(super) fn payload_is_malicious(&self) -> bool {
+        match self {
+            Message::Handshake { .. } => false,
+            Message::Payload(payload) => payload.is_malicious(),
+        }
+    }
+
     /// Attempts to create a demand-event from this message.
     ///
-    /// Succeeds if the outer message contains a payload that can be converd into a demand.
+    /// Succeeds if the outer message contains a payload that can be converted into a demand.
     pub(super) fn try_into_demand<REv>(
         self,
         effect_builder: EffectBuilder<REv>,
@@ -100,7 +108,7 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => Err(self),
             Message::Payload(payload) => {
-                // Note: For now, the wrapping/unwrapp of the payload is a bit unfortunate here.
+                // Note: For now, the wrapping/unwrap of the payload is a bit unfortunate here.
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
                     .map_err(Message::Payload)
             }
@@ -335,7 +343,7 @@ pub(crate) trait Payload:
     Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
 {
     /// Classifies the payload based on its contents.
-    fn classify(&self) -> MessageKind;
+    fn message_kind(&self) -> MessageKind;
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
     fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
@@ -349,6 +357,9 @@ pub(crate) trait Payload:
     ///
     /// This functionality should be removed once multiplexed networking lands.
     fn is_unsafe_for_syncing_peers(&self) -> bool;
+
+    /// Returns `true` if the message is invalid and the peer should be blocklisted.
+    fn is_malicious(&self) -> bool;
 }
 
 /// Network message conversion support.

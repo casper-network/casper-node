@@ -89,7 +89,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
-    limiter::{Limiter, ValidatorSets},
+    limiter::Limiter,
     message::ConsensusKeyPair,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
@@ -160,12 +160,6 @@ where
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
-    /// A mapping from node IDs to public keys of validators to which we have an outgoing
-    /// connection.
-    connected_validators: HashMap<NodeId, PublicKey>,
-    /// The set of all validators (regardless of whether we're connected or not) for a set of eras.
-    validators_by_era: ValidatorSets,
-
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -211,7 +205,8 @@ where
         + From<Event<P>>
         + FromIncoming<P>
         + From<StorageRequest>
-        + From<NetworkRequest<P>>,
+        + From<NetworkRequest<P>>
+        + From<BlocklistAnnouncement>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -344,8 +339,6 @@ where
             outgoing_manager,
             connection_symmetries: HashMap::new(),
             syncing_nodes: HashSet::new(),
-            connected_validators: HashMap::new(),
-            validators_by_era: ValidatorSets::new(),
             shutdown_sender: Some(server_shutdown_sender),
             close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
@@ -395,12 +388,9 @@ where
     /// Queues a message to be sent to validator nodes in the given era.
     fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
         self.net_metrics.broadcast_requests.inc();
-        for (peer_id, public_key) in self.connected_validators.iter() {
-            match self
-                .validators_by_era
-                .is_validator_in_era(era_id, public_key)
-            {
-                Some(true) => self.send_message(*peer_id, msg.clone(), None),
+        for peer_id in self.outgoing_manager.connected_peers() {
+            match self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+                Some(true) => self.send_message(peer_id, msg.clone(), None),
                 Some(false) | None => (),
             }
         }
@@ -422,18 +412,16 @@ where
                 if exclude.contains(peer_id) {
                     return false;
                 }
-                let era = match gossip_target {
-                    GossipTarget::NonValidators(era_id) => era_id,
-                    GossipTarget::All => return true,
-                };
-                let validators_for_era = match self.validators_by_era.validators_for_era(era) {
-                    Some(validators) => validators,
-                    None => return true, // If we don't know the era, include the peer.
-                };
-                // If the peer isn't a validator, include it.
-                match self.connected_validators.get(peer_id) {
-                    Some(public_key) => !validators_for_era.contains(public_key),
-                    None => true,
+
+                match gossip_target {
+                    GossipTarget::All => true,
+                    GossipTarget::NonValidators(era_id) => {
+                        // If the peer isn't a validator, include it.
+                        match self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+                            Some(false) | None => true,
+                            Some(true) => false,
+                        }
+                    }
                 }
             })
             .choose_multiple(rng, count);
@@ -742,12 +730,6 @@ where
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
 
-                if let Some(public_key) = peer_consensus_public_key.as_ref() {
-                    let _ = self
-                        .connected_validators
-                        .insert(peer_id, public_key.clone());
-                }
-
                 effects.extend(
                     tasks::message_sender(
                         receiver,
@@ -782,7 +764,7 @@ where
             .or_default()
             .unmark_outgoing(Instant::now());
 
-        let _ = self.connected_validators.remove(&peer_id);
+        self.outgoing_limiter.remove_connected_validator(&peer_id);
 
         self.process_dial_requests(requests)
     }
@@ -826,7 +808,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: FromIncoming<P>,
+        REv: FromIncoming<P> + From<BlocklistAnnouncement>,
     {
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
@@ -926,7 +908,8 @@ where
         + From<BeginGossipRequest<GossipedAddress>>
         + FromIncoming<P>
         + From<StorageRequest>
-        + From<NetworkRequest<P>>,
+        + From<NetworkRequest<P>>
+        + From<BlocklistAnnouncement>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -1112,8 +1095,6 @@ where
                             .map(|(era_id, validator)| (era_id, validator.into_keys().collect()))
                             .collect();
 
-                    self.validators_by_era
-                        .insert(upcoming_era_validator_set.clone());
                     self.incoming_limiter
                         .update_validators(upcoming_era_validator_set.clone());
                     self.outgoing_limiter

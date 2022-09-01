@@ -4,7 +4,7 @@
 //! by making each user request an allowance first.
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -117,12 +117,55 @@ impl Limiter {
         peer_id: NodeId,
         validator_id: Option<PublicKey>,
     ) -> LimiterHandle {
+        if let Some(public_key) = validator_id.as_ref().cloned() {
+            match self.data.connected_validators.write() {
+                Ok(mut connected_validators) => {
+                    let _ = connected_validators.insert(peer_id, public_key);
+                }
+                Err(_) => {
+                    error!(
+                        "could not update connected validator data set of limiter, lock poisoned"
+                    );
+                }
+            }
+        }
         LimiterHandle {
             data: self.data.clone(),
             consumer_id: ConsumerId {
                 peer_id,
                 validator_id,
             },
+        }
+    }
+
+    pub(super) fn remove_connected_validator(&self, peer_id: &NodeId) {
+        match self.data.connected_validators.write() {
+            Ok(mut connected_validators) => {
+                let _ = connected_validators.remove(peer_id);
+            }
+            Err(_) => {
+                error!(
+                    "could not remove connected validator from data set of limiter, lock poisoned"
+                );
+            }
+        }
+    }
+
+    pub(super) fn is_validator_in_era(&self, era: EraId, peer_id: &NodeId) -> Option<bool> {
+        let public_key = match self.data.connected_validators.read() {
+            Ok(connected_validators) => connected_validators.get(peer_id)?.clone(),
+            Err(_) => {
+                error!("could not read from connected_validators of limiter, lock poisoned");
+                return None;
+            }
+        };
+
+        match self.data.validator_sets.read() {
+            Ok(validator_sets) => validator_sets.is_validator_in_era(era, &public_key),
+            Err(_) => {
+                error!("could not read from validator_sets of limiter, lock poisoned");
+                None
+            }
         }
     }
 
@@ -147,6 +190,9 @@ struct LimiterData {
     resources_per_second: u32,
     /// Set of active and upcoming validators.
     validator_sets: RwLock<ValidatorSets>,
+    /// A mapping from node IDs to public keys of validators to which we have an outgoing
+    /// connection.
+    connected_validators: RwLock<HashMap<NodeId, PublicKey>>,
     /// Information about available resources.
     resources: Mutex<ResourceData>,
     /// Total time spent waiting.
@@ -172,6 +218,7 @@ impl LimiterData {
         LimiterData {
             resources_per_second,
             validator_sets: Default::default(),
+            connected_validators: Default::default(),
             resources: Mutex::new(ResourceData {
                 available: 0,
                 last_refill: Instant::now(),
@@ -186,7 +233,7 @@ enum PeerClass {
     /// A validator.
     Validator,
     /// Unclassified/low-priority peer.
-    Bulk,
+    NonValidator,
 }
 
 /// A per-peer handle for `Limiter`.
@@ -216,10 +263,10 @@ impl LimiterHandle {
                     if validators.is_validator(validator_id) {
                         PeerClass::Validator
                     } else {
-                        PeerClass::Bulk
+                        PeerClass::NonValidator
                     }
                 } else {
-                    PeerClass::Bulk
+                    PeerClass::NonValidator
                 }
             }
             Err(_) => {
@@ -232,7 +279,7 @@ impl LimiterHandle {
             PeerClass::Validator => {
                 // No limit imposed on validators.
             }
-            PeerClass::Bulk => {
+            PeerClass::NonValidator => {
                 let max_stored_resource = ((self.data.resources_per_second as f64)
                     * STORED_BUFFER_SECS.as_secs_f64())
                     as u32;
