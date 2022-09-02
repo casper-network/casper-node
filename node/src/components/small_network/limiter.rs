@@ -29,7 +29,7 @@ const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
 #[derive(Clone, Debug, Default, DataSize)]
 pub(crate) struct ValidatorSets {
     active_era: EraId,
-    pub(crate) validators: BTreeMap<EraId, HashSet<PublicKey>>,
+    validators: BTreeMap<EraId, HashSet<PublicKey>>,
 }
 
 impl ValidatorSets {
@@ -88,6 +88,10 @@ impl ValidatorSets {
     //     }
     //     self.validators.get(&era_id)
     // }
+
+    pub(crate) fn validators(&self) -> &BTreeMap<EraId, HashSet<PublicKey>> {
+        &self.validators
+    }
 }
 
 /// A limiter dividing resources into two classes based on their validator status.
@@ -100,6 +104,8 @@ impl ValidatorSets {
 pub(super) struct Limiter {
     /// Shared data across all handles.
     data: Arc<LimiterData>,
+    /// Set of active and upcoming validators shared across all handles.
+    validator_sets: Arc<RwLock<ValidatorSets>>,
 }
 
 impl Limiter {
@@ -109,6 +115,7 @@ impl Limiter {
     pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
         Limiter {
             data: Arc::new(LimiterData::new(resources_per_second, wait_time_sec)),
+            validator_sets: Default::default(),
         }
     }
 
@@ -132,6 +139,7 @@ impl Limiter {
         }
         LimiterHandle {
             data: self.data.clone(),
+            validator_sets: self.validator_sets.clone(),
             consumer_id: ConsumerId {
                 peer_id,
                 validator_id,
@@ -161,7 +169,7 @@ impl Limiter {
             }
         };
 
-        match self.data.validator_sets.read() {
+        match self.validator_sets.read() {
             Ok(validator_sets) => validator_sets.is_validator_in_era(era, &public_key),
             Err(_) => {
                 error!("could not read from validator_sets of limiter, lock poisoned");
@@ -172,7 +180,7 @@ impl Limiter {
 
     /// Update the validator sets.
     pub(super) fn update_validators(&self, new_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
-        match self.data.validator_sets.write() {
+        match self.validator_sets.write() {
             Ok(mut validators) => {
                 debug!(?new_validators, "updating resources classes");
                 validators.insert(new_validators)
@@ -186,11 +194,9 @@ impl Limiter {
 
 /// The limiter's state.
 #[derive(Debug)]
-pub(crate) struct LimiterData {
+struct LimiterData {
     /// Number of resource units to allow for non-validators per second.
     resources_per_second: u32,
-    /// Set of active and upcoming validators.
-    pub(crate) validator_sets: RwLock<ValidatorSets>,
     /// A mapping from node IDs to public keys of validators to which we have an outgoing
     /// connection.
     connected_validators: RwLock<HashMap<NodeId, PublicKey>>,
@@ -218,7 +224,6 @@ impl LimiterData {
     fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
         LimiterData {
             resources_per_second,
-            validator_sets: Default::default(),
             connected_validators: Default::default(),
             resources: Mutex::new(ResourceData {
                 available: 0,
@@ -242,6 +247,8 @@ enum PeerClass {
 pub(super) struct LimiterHandle {
     /// Data shared between handles and limiter.
     data: Arc<LimiterData>,
+    /// Set of active and upcoming validators.
+    validator_sets: Arc<RwLock<ValidatorSets>>,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
 }
@@ -250,7 +257,7 @@ impl LimiterHandle {
     /// Waits until the requester is allocated `amount` additional resources.
     pub(super) async fn request_allowance(&self, amount: u32) {
         // As a first step, determine the peer class by checking if our id is in the validator set.
-        let peer_class = match self.data.validator_sets.read() {
+        let peer_class = match self.validator_sets.read() {
             Ok(validators) => {
                 if validators.validators.is_empty() {
                     // It is likely that we have not been initialized, thus no node is getting the
@@ -329,8 +336,8 @@ impl LimiterHandle {
         }
     }
 
-    pub(super) fn data(&self) -> Arc<LimiterData> {
-        Arc::clone(&self.data)
+    pub(super) fn validator_sets(&self) -> Arc<RwLock<ValidatorSets>> {
+        Arc::clone(&self.validator_sets)
     }
 }
 

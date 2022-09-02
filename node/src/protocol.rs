@@ -3,7 +3,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use casper_types::{EraId, PublicKey};
@@ -20,7 +20,7 @@ use crate::{
         fetcher::FetchedOrNotFound,
         gossiper,
         small_network::{
-            EstimatorWeights, FromIncoming, GossipedAddress, LimiterData, MessageKind, Payload,
+            EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload, ValidatorSets,
         },
     },
     effect::{
@@ -183,7 +183,7 @@ impl Payload for Message {
     }
 
     /// Checks the validity of the message.
-    fn is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity {
+    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
         match self {
             Message::Consensus(_) => Validity::Valid,
             Message::DeployGossiper(_) => Validity::Valid,
@@ -196,7 +196,7 @@ impl Payload for Message {
                 if item_id.is_verified().is_err() {
                     return Validity::Malicious;
                 }
-                if let Ok(validator_sets) = limiter_data.validator_sets.read() {
+                if let Ok(validator_sets) = validator_sets.read() {
                     match validator_sets.is_validator_in_era(item_id.era_id, &item_id.public_key) {
                         Some(false) => Validity::Malicious,
                         Some(true) => Validity::Valid,

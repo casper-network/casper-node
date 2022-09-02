@@ -24,7 +24,7 @@ use crate::{
 
 use super::{
     counting_format::ConnectionId,
-    limiter::{LimiterData, ValidatorSets},
+    limiter::{ValidatorSets},
 };
 
 /// The default protocol version to use in absence of one in the protocol version field.
@@ -95,10 +95,10 @@ impl<P: Payload> Message<P> {
     }
 
     /// Returns [Validity] of the message.
-    pub(super) fn payload_is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity {
+    pub(super) fn payload_is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
         match self {
             Message::Handshake { .. } => Validity::Valid,
-            Message::Payload(payload) => payload.is_valid(limiter_data),
+            Message::Payload(payload) => payload.is_valid(validator_sets),
         }
     }
 
@@ -367,7 +367,7 @@ pub(crate) trait Payload:
     fn is_unsafe_for_syncing_peers(&self) -> bool;
 
     /// Returns [Validity] of the message.
-    fn is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity;
+    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity;
 }
 
 /// Network message conversion support.

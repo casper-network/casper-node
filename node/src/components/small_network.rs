@@ -82,7 +82,7 @@ pub(crate) use self::{
     error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
-    limiter::{LimiterData, ValidatorSets},
+    limiter::ValidatorSets,
     message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use self::{

@@ -6,7 +6,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, limiter::LimiterData, Config, Event as SmallNetworkEvent, FromIncoming,
-    GossipedAddress, MessageKind, Payload, SmallNetwork,
+    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, FromIncoming, GossipedAddress,
+    MessageKind, Payload, SmallNetwork, ValidatorSets,
 };
 use crate::{
     components::{
@@ -168,7 +168,7 @@ impl Payload for Message {
         false
     }
 
-    fn is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity {
+    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
         Validity::Valid
     }
 }

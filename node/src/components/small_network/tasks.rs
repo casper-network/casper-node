@@ -594,7 +594,7 @@ where
 
                         let effect_builder = EffectBuilder::new(context.event_queue);
 
-                        match msg.payload_is_valid(limiter.data()) {
+                        match msg.payload_is_valid(limiter.validator_sets()) {
                             Validity::Valid => (),
                             Validity::NotValid => {
                                 warn!(
