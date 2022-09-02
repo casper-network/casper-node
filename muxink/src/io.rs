@@ -1,9 +1,9 @@
 //! Frame reading and writing
 //!
-//! Frame readers and writers are responsible for writing a [`Bytes`] frame to an [`AsyncWrite`]
-//! writer, or reading them from [`AsyncRead`] reader. While writing works for any value that
-//! implements the [`bytes::Buf`] trait, decoding requires an implementation of the [`FrameDecoder`]
-//! trait.
+//! Frame readers and writers are responsible for writing a [`bytes::Bytes`] frame to an
+//! [`AsyncWrite`] writer, or reading them from [`AsyncRead`] reader. While writing works for any
+//! value that implements the [`bytes::Buf`] trait, decoding requires an implementation of the
+//! [`FrameDecoder`] trait.
 
 use std::{
     io,
