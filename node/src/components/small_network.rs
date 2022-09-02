@@ -1236,36 +1236,6 @@ type IncomingStream<P> = TranscodingStream<
     FrameReader<LengthDelimited, Compat<SslStream<TcpStream>>>,
 >;
 
-/// A framed transport for `Message`s.
-pub(crate) type FullTransport<P> = tokio_serde::Framed<
-    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
-    Message<P>,
-    Arc<Message<P>>,
-    CountingFormat<BincodeFormat>,
->;
-
-/// Constructs a new full transport on a stream.
-///
-/// A full transport contains the framing as well as the encoding scheme used to send messages.
-fn full_transport<P>(
-    metrics: Weak<Metrics>,
-    connection_id: ConnectionId,
-    transport: Transport,
-    role: Role,
-) -> FullTransport<P>
-where
-    for<'de> P: Serialize + Deserialize<'de>,
-    for<'de> Message<P>: Serialize + Deserialize<'de>,
-{
-    let framed =
-        tokio_util::codec::Framed::new(transport, LengthDelimitedCodec::builder().new_codec());
-
-    tokio_serde::Framed::new(
-        framed,
-        CountingFormat::new(metrics, connection_id, role, BincodeFormat::default()),
-    )
-}
-
 impl<R, P> Debug for SmallNetwork<R, P>
 where
     P: Payload,

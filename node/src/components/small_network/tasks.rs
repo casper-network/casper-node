@@ -48,12 +48,10 @@ use super::{
     counting_format::{ConnectionId, Role},
     error::ConnectionError,
     event::{IncomingConnection, OutgoingConnection},
-    full_transport,
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    BincodeFormat, EstimatorWeights, Event, FromIncoming, FullTransport, Message, Metrics, Payload,
-    Transport,
+    BincodeFormat, EstimatorWeights, Event, FromIncoming, Message, Metrics, Payload, Transport,
 };
 
 use crate::{
