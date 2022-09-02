@@ -1,4 +1,4 @@
-use std::{io, net::SocketAddr, result, sync::Arc};
+use std::{io, net::SocketAddr, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
@@ -11,8 +11,6 @@ use crate::{
     tls::{LoadCertError, ValidationError},
     utils::{LoadError, Loadable, ResolveAddressError},
 };
-
-pub(super) type Result<T> = result::Result<T, Error>;
 
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]

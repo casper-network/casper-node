@@ -46,7 +46,6 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
-    result,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Weak,
@@ -97,7 +96,7 @@ use self::{
     chain_info::ChainInfo,
     config::IdentityConfig,
     counting_format::{ConnectionId, CountingFormat, Role},
-    error::{ConnectionError, Result},
+    error::ConnectionError,
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,
@@ -229,7 +228,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
-    ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
+    ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>), Error> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
             match utils::resolve_address(address) {
@@ -612,7 +611,7 @@ where
 
     fn handle_incoming_closed(
         &mut self,
-        result: core::result::Result<(), MessageReaderError>,
+        result: Result<(), MessageReaderError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
         span: Span,
