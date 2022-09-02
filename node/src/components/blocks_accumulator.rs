@@ -137,8 +137,7 @@ impl BlocksAccumulator {
         }
 
         let block_hash = finality_signature.block_hash;
-        // let validator_weights = self.validator_weights(finality_signature.era_id);
-        let validator_weights = BTreeMap::new();
+        let validator_weights = BTreeMap::new(); // TODO: Use proper weights.
         let mut has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(AccumulatedBlock::new_from_finality_signature(
