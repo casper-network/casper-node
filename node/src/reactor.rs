@@ -1032,13 +1032,6 @@ where
         }
         NetResponse::FinalitySignature(ref serialized_item) => {
             todo!();
-            handle_fetch_response::<R, FinalitySignature>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
         }
         NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
             handle_fetch_response::<R, BlockWithMetadata>(
