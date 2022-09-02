@@ -28,7 +28,7 @@ pub struct AccountConfig {
     pub validator: Option<ValidatorConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ValidatorConfig {
     pub bonded_amount: U512,
     pub delegation_rate: Option<u8>,

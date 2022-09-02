@@ -5,8 +5,8 @@ use rand::Rng;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::{
-        Bid, Bids, SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-        UnbondingPurses,
+        Bid, Bids, Delegator, SeigniorageRecipient, SeigniorageRecipients,
+        SeigniorageRecipientsSnapshot, UnbondingPurses,
     },
     testing::TestRng,
     AccessRights, CLValue, Key, PublicKey, StoredValue, URef, URefAddr, U512,
@@ -56,14 +56,16 @@ impl MockStateReader {
 
     fn with_validators<R: Rng>(
         mut self,
-        validators: Vec<(PublicKey, U512, U512)>,
+        validators: Vec<(PublicKey, U512, ValidatorConfig)>,
         rng: &mut R,
     ) -> Self {
         let mut recipients = SeigniorageRecipients::new();
-        for (public_key, stake, balance) in validators {
+        for (public_key, balance, validator_cfg) in validators {
+            let stake = validator_cfg.bonded_amount;
+            let delegation_rate = validator_cfg.delegation_rate.unwrap_or_default();
+            let delegators = validator_cfg.delegators_map().unwrap_or_default();
             // add an entry to the recipients snapshot
-            let recipient =
-                SeigniorageRecipient::new(stake, Default::default(), Default::default());
+            let recipient = SeigniorageRecipient::new(stake, delegation_rate, delegators.clone());
             recipients.insert(public_key.clone(), recipient);
 
             // create the account if it doesn't exist
@@ -76,8 +78,31 @@ impl MockStateReader {
             self.purses.insert(bonding_purse.addr(), stake);
             self.total_supply += stake;
 
+            for delegator_pub_key in delegators.keys() {
+                let account_hash = delegator_pub_key.to_account_hash();
+                if !self.accounts.contains_key(&account_hash) {
+                    self = self.with_account(account_hash, U512::zero(), rng);
+                }
+            }
+
             // create the bid
-            let bid = Bid::unlocked(public_key.clone(), bonding_purse, stake, Default::default());
+            let mut bid = Bid::unlocked(public_key.clone(), bonding_purse, stake, delegation_rate);
+
+            for (delegator_pub_key, delegator_stake) in &delegators {
+                let bonding_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
+                self.purses.insert(bonding_purse.addr(), *delegator_stake);
+                self.total_supply += *delegator_stake;
+
+                let delegator = Delegator::unlocked(
+                    delegator_pub_key.clone(),
+                    *delegator_stake,
+                    bonding_purse,
+                    public_key.clone(),
+                );
+                bid.delegators_mut()
+                    .insert(delegator_pub_key.clone(), delegator);
+            }
+
             self.bids.insert(public_key, bid);
         }
 
@@ -264,9 +289,30 @@ fn should_change_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
-            (validator3.clone(), U512::from(103), U512::from(103)),
+            (
+                validator1,
+                U512::from(101),
+                ValidatorConfig {
+                    bonded_amount: U512::from(101),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator2,
+                U512::from(102),
+                ValidatorConfig {
+                    bonded_amount: U512::from(102),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator3.clone(),
+                U512::from(103),
+                ValidatorConfig {
+                    bonded_amount: U512::from(103),
+                    ..Default::default()
+                },
+            ),
         ],
         &mut rng,
     );
@@ -341,9 +387,30 @@ fn should_change_only_stake_of_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
-            (validator3.clone(), U512::from(103), U512::from(103)),
+            (
+                validator1,
+                U512::from(101),
+                ValidatorConfig {
+                    bonded_amount: U512::from(101),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator2,
+                U512::from(102),
+                ValidatorConfig {
+                    bonded_amount: U512::from(102),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator3.clone(),
+                U512::from(103),
+                ValidatorConfig {
+                    bonded_amount: U512::from(103),
+                    ..Default::default()
+                },
+            ),
         ],
         &mut rng,
     );
@@ -408,9 +475,30 @@ fn should_change_only_balance_of_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
-            (validator3.clone(), U512::from(103), U512::from(103)),
+            (
+                validator1,
+                U512::from(101),
+                ValidatorConfig {
+                    bonded_amount: U512::from(101),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator2,
+                U512::from(102),
+                ValidatorConfig {
+                    bonded_amount: U512::from(102),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator3.clone(),
+                U512::from(103),
+                ValidatorConfig {
+                    bonded_amount: U512::from(103),
+                    ..Default::default()
+                },
+            ),
         ],
         &mut rng,
     );
@@ -460,7 +548,14 @@ fn should_replace_one_validator() {
     let validator2 = PublicKey::random(&mut rng);
 
     let mut reader = MockStateReader::new().with_validators(
-        vec![(validator1.clone(), U512::from(101), U512::from(101))],
+        vec![(
+            validator1.clone(),
+            U512::from(101),
+            ValidatorConfig {
+                bonded_amount: U512::from(101),
+                ..Default::default()
+            },
+        )],
         &mut rng,
     );
 
@@ -584,9 +679,30 @@ fn should_add_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
-            (validator3, U512::from(103), U512::from(103)),
+            (
+                validator1,
+                U512::from(101),
+                ValidatorConfig {
+                    bonded_amount: U512::from(101),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator2,
+                U512::from(102),
+                ValidatorConfig {
+                    bonded_amount: U512::from(102),
+                    ..Default::default()
+                },
+            ),
+            (
+                validator3,
+                U512::from(103),
+                ValidatorConfig {
+                    bonded_amount: U512::from(103),
+                    ..Default::default()
+                },
+            ),
         ],
         &mut rng,
     );
