@@ -58,6 +58,9 @@ pub enum Tag {
     FinalitySignature,
     /// Finality signatures for a block requested by the block's hash.
     FinalitySignaturesByHash,
+    /// Headers and signatures required to prove that if a given trusted block hash is on the correct
+    /// chain, then so is a later header, which should be the most recent one according to the sender.
+    SyncLeap,
 }
 
 /// A trait unifying the common pieces of the `FetcherItem` and `GossiperItem` traits.

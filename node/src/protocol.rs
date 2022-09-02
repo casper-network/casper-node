@@ -101,6 +101,7 @@ impl Payload for Message {
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
+                    Tag::SyncLeap => MessageKind::BlockTransfer,
 
                     // The following tags should be unreachable.
                     Tag::FinalitySignature => MessageKind::Other,
@@ -148,6 +149,7 @@ impl Payload for Message {
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_requests,
                 Tag::FinalitySignaturesByHash => weights.block_requests,
+                Tag::SyncLeap => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -162,6 +164,7 @@ impl Payload for Message {
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_responses,
                 Tag::FinalitySignaturesByHash => weights.block_responses,
+                Tag::SyncLeap => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -402,6 +405,11 @@ where
                     message: NetRequest::FinalitySignatures(serialized_id),
                 }
                 .into(),
+                Tag::SyncLeap => NetRequestIncoming {
+                    sender,
+                    message: todo!(), // TODO: Add NetRequest::SyncLeap.
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -465,6 +473,11 @@ where
                 Tag::FinalitySignaturesByHash => NetResponseIncoming {
                     sender,
                     message: NetResponse::FinalitySignatures(serialized_item),
+                }
+                .into(),
+                Tag::SyncLeap => NetResponseIncoming {
+                    sender,
+                    message: todo!(), // TODO: Add NetResponseIncoming::SyncLeap.
                 }
                 .into(),
             },
