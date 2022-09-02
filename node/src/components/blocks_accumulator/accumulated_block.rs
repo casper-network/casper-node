@@ -58,7 +58,9 @@ impl AccumulatedBlock {
         if let Some(block) = self.block.as_ref() {
             if block.header().era_id() != finality_signature.era_id {
                 warn!(block_hash = %block.hash(), "received finality signature with invalid era");
-                // TODO: return Err
+                // We should not add this signature.
+                // TODO: Return an Error here
+                return;
             }
         }
         self.signatures
@@ -70,6 +72,10 @@ impl AccumulatedBlock {
             warn!(block_hash = %block.hash(), "received duplicate block");
             return;
         }
+
+        // TODO: Maybe disconnect from senders of the incorrect signatures.
+        self.signatures
+            .retain(|_, finality_signature| finality_signature.era_id == block.header().era_id());
 
         self.block = Some(block);
     }
