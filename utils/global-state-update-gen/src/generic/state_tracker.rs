@@ -227,11 +227,25 @@ impl<T: StateReader> StateTracker<T> {
 
         // Update the bonding purses - this will also take care of the total supply changes.
         if let Some(old_bid) = maybe_current_bid {
-            self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
-            for delegator in old_bid.delegators().values() {
+            // only zero the bonding purse if the new one is different (just to save unnecessary
+            // writes)
+            if old_bid.bonding_purse() != bid.bonding_purse() {
+                self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
+            }
+            for (delegator_pub_key, delegator) in old_bid.delegators() {
+                // skip zeroing purses of delegators that will be handled later
+                if bid
+                    .delegators()
+                    .get(delegator_pub_key)
+                    .map(|new_delegator| new_delegator.bonding_purse() == delegator.bonding_purse())
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
                 self.set_purse_balance(*delegator.bonding_purse(), U512::zero());
             }
         }
+
         self.set_purse_balance(*bid.bonding_purse(), new_amount);
         for delegator in bid.delegators().values() {
             self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());

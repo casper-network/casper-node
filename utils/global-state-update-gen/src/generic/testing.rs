@@ -922,3 +922,114 @@ fn should_add_one_validator_with_delegators() {
     // 10 keys above should be all that was written
     assert_eq!(result.len(), 10);
 }
+
+#[test]
+fn should_replace_a_delegator() {
+    let mut rng = TestRng::new();
+
+    let validator1 = PublicKey::random(&mut rng);
+    let delegator1 = PublicKey::random(&mut rng);
+    let delegator2 = PublicKey::random(&mut rng);
+
+    let mut reader = MockStateReader::new().with_validators(
+        vec![(
+            validator1.clone(),
+            U512::from(101),
+            ValidatorConfig {
+                bonded_amount: U512::from(101),
+                delegation_rate: Some(5),
+                delegators: Some(vec![DelegatorConfig {
+                    public_key: delegator1.clone(),
+                    delegated_amount: U512::from(13),
+                }]),
+            },
+        )],
+        &mut rng,
+    );
+
+    // we'll be adding validator 2
+    let config = Config {
+        accounts: vec![AccountConfig {
+            public_key: validator1.clone(),
+            balance: Some(U512::from(101)),
+            validator: Some(ValidatorConfig {
+                bonded_amount: U512::from(101),
+                delegation_rate: None,
+                delegators: Some(vec![DelegatorConfig {
+                    public_key: delegator2.clone(),
+                    delegated_amount: U512::from(14),
+                }]),
+            }),
+        }],
+        only_listed_validators: false,
+        ..Default::default()
+    };
+
+    let result = get_update(&mut reader, config);
+
+    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    assert_eq!(
+        result.get(&reader.get_total_supply_key()),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(216)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    let account1 = validator1.to_account_hash();
+
+    let bid_write = result
+        .get(&Key::Bid(account1))
+        .expect("should create bid")
+        .as_bid()
+        .expect("should be bid")
+        .clone();
+    assert_eq!(bid_write.validator_public_key(), &validator1);
+    assert_eq!(*bid_write.staked_amount(), U512::from(101));
+    assert_eq!(
+        bid_write
+            .total_staked_amount()
+            .expect("should read total staked amount"),
+        U512::from(115)
+    );
+    assert!(!bid_write.inactive());
+
+    let delegator1_bid_purse = *reader
+        .get_bids()
+        .get(&validator1)
+        .expect("should have old bid")
+        .delegators()
+        .get(&delegator1)
+        .expect("should have old delegator")
+        .bonding_purse();
+
+    let delegator2_bid_purse = *bid_write
+        .delegators()
+        .get(&delegator2)
+        .expect("should have new delegator")
+        .bonding_purse();
+
+    // check that the old delegator's bid purse got zeroed
+    assert_eq!(
+        result.get(&Key::Balance(delegator1_bid_purse.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(0)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    // check that the bid purse for the new delegator has been created with the correct amount
+    assert_eq!(
+        result.get(&Key::URef(delegator2_bid_purse)),
+        Some(&StoredValue::from(
+            CLValue::from_t(()).expect("should convert unit to CLValue")
+        ))
+    );
+    assert_eq!(
+        result.get(&Key::Balance(delegator2_bid_purse.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(14)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    // 6 keys above should be all that was written
+    assert_eq!(result.len(), 6);
+}
