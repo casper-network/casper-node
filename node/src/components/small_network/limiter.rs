@@ -5,6 +5,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    rc::Rc,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -26,9 +27,9 @@ const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
 /// Normally the validator map will contain 3 eras worth of entries: the era just completed, the
 /// currently-active era, and the era after that.
 #[derive(Clone, Debug, Default, DataSize)]
-pub(super) struct ValidatorSets {
+pub(crate) struct ValidatorSets {
     active_era: EraId,
-    validators: BTreeMap<EraId, HashSet<PublicKey>>,
+    pub(crate) validators: BTreeMap<EraId, HashSet<PublicKey>>,
 }
 
 impl ValidatorSets {
@@ -55,7 +56,7 @@ impl ValidatorSets {
         self.validators.append(&mut upcoming_era_validators);
     }
 
-    pub(super) fn is_validator_in_era(&self, era: EraId, public_key: &PublicKey) -> Option<bool> {
+    pub(crate) fn is_validator_in_era(&self, era: EraId, public_key: &PublicKey) -> Option<bool> {
         self.validators
             .get(&era)
             .map(|validators| validators.contains(public_key))
@@ -185,11 +186,11 @@ impl Limiter {
 
 /// The limiter's state.
 #[derive(Debug)]
-struct LimiterData {
+pub(crate) struct LimiterData {
     /// Number of resource units to allow for non-validators per second.
     resources_per_second: u32,
     /// Set of active and upcoming validators.
-    validator_sets: RwLock<ValidatorSets>,
+    pub(crate) validator_sets: RwLock<ValidatorSets>,
     /// A mapping from node IDs to public keys of validators to which we have an outgoing
     /// connection.
     connected_validators: RwLock<HashMap<NodeId, PublicKey>>,
@@ -326,6 +327,10 @@ impl LimiterHandle {
                 }
             }
         }
+    }
+
+    pub(super) fn data(&self) -> Arc<LimiterData> {
+        Arc::clone(&self.data)
     }
 }
 

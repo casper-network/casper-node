@@ -1,22 +1,27 @@
 //! A network message type used for communication between nodes
 
 use std::{
+    collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     sync::Arc,
 };
 
+use casper_types::{EraId, PublicKey};
 use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
     components::{
         consensus,
         fetcher::FetchedOrNotFound,
         gossiper,
-        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
+        small_network::{
+            EstimatorWeights, FromIncoming, GossipedAddress, LimiterData, MessageKind, Payload,
+        },
     },
     effect::{
         incoming::{
@@ -63,6 +68,16 @@ pub(crate) enum Message {
     /// Finality signature.
     #[from]
     FinalitySignature(Box<FinalitySignature>),
+}
+
+/// Describes the validity of the message.
+pub(crate) enum Validity {
+    /// All checks made on the message indicate that it is valid.
+    Valid,
+    /// The message is not malicious, but not all checks could be executed to prove that.
+    NotValid,
+    /// Checks made on the message indicate that it is malicious.
+    Malicious,
 }
 
 impl Payload for Message {
@@ -167,23 +182,35 @@ impl Payload for Message {
         }
     }
 
-    fn is_malicious(&self) -> bool {
+    /// Checks the validity of the message.
+    fn is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity {
         match self {
-            Message::Consensus(_) => false,
-            Message::DeployGossiper(_) => false,
-            Message::BlockGossiper(_) => false,
+            Message::Consensus(_) => Validity::Valid,
+            Message::DeployGossiper(_) => Validity::Valid,
+            Message::BlockGossiper(_) => Validity::Valid,
             Message::FinalitySignatureGossiper(gossiper::Message::Gossip(item_id))
             | Message::FinalitySignatureGossiper(gossiper::Message::GossipResponse {
                 item_id,
                 ..
             }) => {
-                // TODO - before checking crypto verification, check against validator sets
-                item_id.is_verified().is_err()
+                if item_id.is_verified().is_err() {
+                    return Validity::Malicious;
+                }
+                if let Ok(validator_sets) = limiter_data.validator_sets.read() {
+                    match validator_sets.is_validator_in_era(item_id.era_id, &item_id.public_key) {
+                        Some(false) => Validity::Malicious,
+                        Some(true) => Validity::Valid,
+                        None => Validity::NotValid,
+                    }
+                } else {
+                    error!("could not get validators, lock poisoned");
+                    Validity::NotValid
+                }
             }
-            Message::AddressGossiper(_) => false,
-            Message::GetRequest { .. } => false,
-            Message::GetResponse { .. } => false,
-            Message::FinalitySignature(_) => false,
+            Message::AddressGossiper(_) => Validity::Valid,
+            Message::GetRequest { .. } => Validity::Valid,
+            Message::GetResponse { .. } => Validity::Valid,
+            Message::FinalitySignature(_) => Validity::Valid,
         }
     }
 }

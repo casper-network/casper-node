@@ -4,11 +4,13 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
+use casper_types::{EraId, PublicKey};
 use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
@@ -16,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, FromIncoming, GossipedAddress,
-    MessageKind, Payload, SmallNetwork,
+    chain_info::ChainInfo, limiter::LimiterData, Config, Event as SmallNetworkEvent, FromIncoming,
+    GossipedAddress, MessageKind, Payload, SmallNetwork,
 };
 use crate::{
     components::{
@@ -34,7 +36,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    protocol,
+    protocol::{self, Validity},
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     testing::{
         self, init_logging,
@@ -166,8 +168,8 @@ impl Payload for Message {
         false
     }
 
-    fn is_malicious(&self) -> bool {
-        false
+    fn is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity {
+        Validity::Valid
     }
 }
 

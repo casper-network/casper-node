@@ -57,6 +57,7 @@ use crate::{
         announcements::BlocklistAnnouncement, requests::NetworkRequest, AutoClosingResponder,
         EffectBuilder,
     },
+    protocol::Validity,
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -593,15 +594,25 @@ where
 
                         let effect_builder = EffectBuilder::new(context.event_queue);
 
-                        todo!("pass in validator sets");
-                        if msg.payload_is_malicious() {
-                            warn!(
-                                message_kind = ?msg,
-                                ?peer_id,
-                                "malicious payload received"
-                            );
-                            effect_builder.announce_disconnect_from_peer(peer_id).await;
-                            break;
+                        match msg.payload_is_valid(limiter.data()) {
+                            Validity::Valid => (),
+                            Validity::NotValid => {
+                                warn!(
+                                    message_kind = ?msg,
+                                    ?peer_id,
+                                    "not valid payload received"
+                                );
+                                continue;
+                            }
+                            Validity::Malicious => {
+                                warn!(
+                                    message_kind = ?msg,
+                                    ?peer_id,
+                                    "malicious payload received"
+                                );
+                                effect_builder.announce_disconnect_from_peer(peer_id).await;
+                                break;
+                            }
                         }
 
                         match msg.try_into_demand(effect_builder, peer_id) {

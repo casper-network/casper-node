@@ -1,13 +1,16 @@
 use std::{
+    collections::{BTreeMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{
+    crypto, AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, Signature,
+};
 use datasize::DataSize;
 use futures::future::BoxFuture;
 use serde::{
@@ -15,9 +18,14 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
+use crate::{
+    effect::EffectBuilder, protocol::Validity, types::NodeId, utils::opt_display::OptDisplay,
+};
 
-use super::counting_format::ConnectionId;
+use super::{
+    counting_format::ConnectionId,
+    limiter::{LimiterData, ValidatorSets},
+};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -86,11 +94,11 @@ impl<P: Payload> Message<P> {
         }
     }
 
-    /// Returns `true` if the message is invalid and the peer should be blocklisted.
-    pub(super) fn payload_is_malicious(&self) -> bool {
+    /// Returns [Validity] of the message.
+    pub(super) fn payload_is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity {
         match self {
-            Message::Handshake { .. } => false,
-            Message::Payload(payload) => payload.is_malicious(),
+            Message::Handshake { .. } => Validity::Valid,
+            Message::Payload(payload) => payload.is_valid(limiter_data),
         }
     }
 
@@ -358,8 +366,8 @@ pub(crate) trait Payload:
     /// This functionality should be removed once multiplexed networking lands.
     fn is_unsafe_for_syncing_peers(&self) -> bool;
 
-    /// Returns `true` if the message is invalid and the peer should be blocklisted.
-    fn is_malicious(&self) -> bool;
+    /// Returns [Validity] of the message.
+    fn is_valid(&self, limiter_data: Arc<LimiterData>) -> Validity;
 }
 
 /// Network message conversion support.
