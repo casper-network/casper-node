@@ -212,13 +212,7 @@ impl<T: StateReader> StateTracker<T> {
     pub fn set_bid(&mut self, public_key: PublicKey, bid: Bid) {
         let maybe_current_bid = self.get_bids().get(&public_key).cloned();
 
-        let new_amount = match bid.total_staked_amount() {
-            Ok(amount) => amount,
-            Err(e) => {
-                eprintln!("invalid new bid for {:?}: {:?}", public_key, e);
-                return;
-            }
-        };
+        let new_amount = *bid.staked_amount();
 
         // we called `get_bids` above, so `bids_cache` will be `Some`
         self.bids_cache
@@ -234,8 +228,14 @@ impl<T: StateReader> StateTracker<T> {
         // Update the bonding purses - this will also take care of the total supply changes.
         if let Some(old_bid) = maybe_current_bid {
             self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
+            for delegator in old_bid.delegators().values() {
+                self.set_purse_balance(*delegator.bonding_purse(), U512::zero());
+            }
         }
         self.set_purse_balance(*bid.bonding_purse(), new_amount);
+        for delegator in bid.delegators().values() {
+            self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
+        }
     }
 
     /// Generates the writes to the global state that will remove the pending withdraws of all the

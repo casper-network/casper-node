@@ -13,7 +13,7 @@ use casper_types::{
 };
 
 use super::{
-    config::{AccountConfig, Config, Transfer, ValidatorConfig},
+    config::{AccountConfig, Config, DelegatorConfig, Transfer, ValidatorConfig},
     get_update,
     state_reader::StateReader,
 };
@@ -791,4 +791,134 @@ fn should_add_one_validator() {
 
     // 8 keys above should be all that was written
     assert_eq!(result.len(), 8);
+}
+
+#[test]
+fn should_add_one_validator_with_delegators() {
+    let mut rng = TestRng::new();
+
+    let validator1 = PublicKey::random(&mut rng);
+    let validator2 = PublicKey::random(&mut rng);
+    let delegator1 = PublicKey::random(&mut rng);
+
+    let mut reader = MockStateReader::new().with_validators(
+        vec![(
+            validator1,
+            U512::from(101),
+            ValidatorConfig {
+                bonded_amount: U512::from(101),
+                ..Default::default()
+            },
+        )],
+        &mut rng,
+    );
+
+    // we'll be adding validator 2
+    let config = Config {
+        accounts: vec![AccountConfig {
+            public_key: validator2.clone(),
+            balance: Some(U512::from(100)),
+            validator: Some(ValidatorConfig {
+                bonded_amount: U512::from(102),
+                delegation_rate: Some(5),
+                delegators: Some(vec![DelegatorConfig {
+                    public_key: delegator1.clone(),
+                    delegated_amount: U512::from(13),
+                }]),
+            }),
+        }],
+        only_listed_validators: false,
+        ..Default::default()
+    };
+
+    let result = get_update(&mut reader, config);
+
+    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    assert_eq!(
+        result.get(&reader.get_total_supply_key()),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(417)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    // check writes for validator2
+    let account2 = validator2.to_account_hash();
+
+    // the new account should be created
+    let account_write = result
+        .get(&Key::Account(account2))
+        .expect("should create account")
+        .as_account()
+        .expect("should be account")
+        .clone();
+    let main_purse_2 = account_write.main_purse();
+
+    // check that the main purse for the new account has been created with the correct amount
+    assert_eq!(
+        result.get(&Key::URef(main_purse_2)),
+        Some(&StoredValue::from(
+            CLValue::from_t(()).expect("should convert unit to CLValue")
+        ))
+    );
+    assert_eq!(
+        result.get(&Key::Balance(main_purse_2.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    let bid_write = result
+        .get(&Key::Bid(account2))
+        .expect("should create bid")
+        .as_bid()
+        .expect("should be bid")
+        .clone();
+    assert_eq!(bid_write.validator_public_key(), &validator2);
+    assert_eq!(*bid_write.staked_amount(), U512::from(102));
+    assert_eq!(
+        bid_write
+            .total_staked_amount()
+            .expect("should read total staked amount"),
+        U512::from(115)
+    );
+    assert!(!bid_write.inactive());
+
+    let bid_purse_2 = *bid_write.bonding_purse();
+
+    // check that the bid purse for the new validator has been created with the correct amount
+    assert_eq!(
+        result.get(&Key::URef(bid_purse_2)),
+        Some(&StoredValue::from(
+            CLValue::from_t(()).expect("should convert unit to CLValue")
+        ))
+    );
+    assert_eq!(
+        result.get(&Key::Balance(bid_purse_2.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(102)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    let bid_delegator_purse = *bid_write
+        .delegators()
+        .get(&delegator1)
+        .expect("should have delegator")
+        .bonding_purse();
+
+    // check that the bid purse for the new delegator has been created with the correct amount
+    assert_eq!(
+        result.get(&Key::URef(bid_delegator_purse)),
+        Some(&StoredValue::from(
+            CLValue::from_t(()).expect("should convert unit to CLValue")
+        ))
+    );
+    assert_eq!(
+        result.get(&Key::Balance(bid_delegator_purse.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(13)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    // 10 keys above should be all that was written
+    assert_eq!(result.len(), 10);
 }

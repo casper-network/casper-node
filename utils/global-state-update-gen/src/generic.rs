@@ -291,13 +291,21 @@ fn create_or_update_bid<T: StateReader>(
     pub_key: &PublicKey,
     recipient: &SeigniorageRecipient,
 ) {
+    let check_bid = |bid: &Bid| {
+        let bid_delegators: BTreeMap<_, _> = bid
+            .delegators()
+            .iter()
+            .map(|(key, delegator)| (key.clone(), *delegator.staked_amount()))
+            .collect();
+        &bid_delegators == recipient.delegator_stake() && *bid.staked_amount() == *recipient.stake()
+    };
     if state
         .get_bids()
         .get(pub_key)
-        .and_then(|bid| bid.total_staked_amount().ok())
-        == recipient.total_stake()
+        .map(check_bid)
+        .unwrap_or(false)
     {
-        // already staked the amount we need, nothing to do
+        // the stake and delegators match, nothing to do
         return;
     }
 
@@ -312,6 +320,7 @@ fn create_or_update_bid<T: StateReader>(
 
         for (delegator_pub_key, delegator_stake) in recipient.delegator_stake() {
             let delegator = if let Some(delegator) = old_bid.delegators().get(delegator_pub_key) {
+                state.set_purse_balance(*delegator.bonding_purse(), *delegator_stake);
                 Delegator::unlocked(
                     delegator_pub_key.clone(),
                     *delegator_stake,
