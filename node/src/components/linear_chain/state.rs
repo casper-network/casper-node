@@ -836,7 +836,7 @@ mod tests {
             .iter()
             .map(|sk| {
                 let pk = PublicKey::from(sk);
-                Box::new(FinalitySignature::new(*block.hash(), era_id, sk, pk))
+                Box::new(FinalitySignature::create(*block.hash(), era_id, sk, pk))
             })
             .collect();
 
@@ -948,7 +948,7 @@ mod tests {
             .iter()
             .map(|sk| {
                 let pk = PublicKey::from(sk);
-                Box::new(FinalitySignature::new(*block.hash(), era_id, sk, pk))
+                Box::new(FinalitySignature::create(*block.hash(), era_id, sk, pk))
             })
             .collect();
 

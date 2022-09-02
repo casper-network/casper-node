@@ -73,7 +73,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, ExitCode,
-        FinalitySignature,
+        FinalitySignature, Item,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -782,7 +782,7 @@ impl reactor::Reactor for Reactor {
                             // We're responsible for signing the new block if we're in the provided
                             // list.
                             if validator_weights.contains_key(&public_key) {
-                                let signature = FinalitySignature::new(
+                                let signature = FinalitySignature::create(
                                     block_hash,
                                     current_era_id,
                                     &secret_key,
@@ -1335,7 +1335,7 @@ impl reactor::Reactor for Reactor {
                         let reactor_finality_signatures_gossiper_event =
                             ParticipatingEvent::FinalitySignatureGossiper(
                                 gossiper::Event::ItemReceived {
-                                    item_id: *fs.clone(),
+                                    item_id: fs.id(),
                                     source: Source::Ourself,
                                 },
                             );
@@ -1597,11 +1597,14 @@ impl reactor::Reactor for Reactor {
                     &message.0,
                 )
             }
-            ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
-                ParticipatingEvent::LinearChain,
-                self.linear_chain
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
+            ParticipatingEvent::FinalitySignatureIncoming(incoming) => {
+                todo!(); // route it to both the LinearChain and BlocksAccumulator
+                reactor::wrap_effects(
+                    ParticipatingEvent::LinearChain,
+                    self.linear_chain
+                        .handle_event(effect_builder, rng, incoming.into()),
+                )
+            }
             ParticipatingEvent::ContractRuntimeAnnouncement(ann) => self.dispatch_event(
                 effect_builder,
                 rng,

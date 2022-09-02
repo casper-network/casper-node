@@ -1,4 +1,4 @@
-mod accumulated_block;
+mod block_acceptor;
 
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -18,7 +18,7 @@ use crate::{
     NodeRng,
 };
 
-use accumulated_block::AccumulatedBlock;
+use block_acceptor::BlockAcceptor;
 
 #[derive(Debug)]
 enum SignaturesFinality {
@@ -34,7 +34,7 @@ enum SignaturesFinality {
 /// onwards.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
-    accumulated_blocks: BTreeMap<BlockHash, AccumulatedBlock>,
+    block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
 }
@@ -42,7 +42,7 @@ pub(crate) struct BlocksAccumulator {
 impl BlocksAccumulator {
     pub(crate) fn new(fault_tolerance_fraction: Ratio<u64>) -> Self {
         Self {
-            accumulated_blocks: Default::default(),
+            block_acceptors: Default::default(),
             fault_tolerance_fraction,
         }
     }
@@ -62,9 +62,9 @@ impl BlocksAccumulator {
         }
 
         let block_hash = *block.hash();
-        let has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
+        let has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                entry.insert(AccumulatedBlock::new_from_block_added(block));
+                entry.insert(BlockAcceptor::new_from_block_added(block));
                 SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
@@ -77,7 +77,7 @@ impl BlocksAccumulator {
 
         match has_sufficient_signatures {
             SignaturesFinality::Sufficient => {
-                if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
+                if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
                     return self.execute(effect_builder, &accumulated_block);
                 }
             }
@@ -138,9 +138,9 @@ impl BlocksAccumulator {
 
         let block_hash = finality_signature.block_hash;
         let validator_weights = BTreeMap::new(); // TODO: Use proper weights.
-        let mut has_sufficient_signatures = match self.accumulated_blocks.entry(block_hash) {
+        let mut has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                entry.insert(AccumulatedBlock::new_from_finality_signature(
+                entry.insert(BlockAcceptor::new_from_finality_signature(
                     finality_signature,
                 ));
                 SignaturesFinality::NotSufficient
@@ -156,7 +156,7 @@ impl BlocksAccumulator {
         for _ in 0..2 {
             match has_sufficient_signatures {
                 SignaturesFinality::Sufficient => {
-                    if let Some(accumulated_block) = self.accumulated_blocks.remove(&block_hash) {
+                    if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
                         return self.execute(effect_builder, &accumulated_block);
                     }
                     error!(%block_hash, "expected to have block");
@@ -169,7 +169,7 @@ impl BlocksAccumulator {
                     self.remove_signatures(&block_hash, public_keys);
 
                     has_sufficient_signatures = self
-                        .accumulated_blocks
+                        .block_acceptors
                         .get(&block_hash)
                         .map(|accumulated_block| {
                             accumulated_block.has_sufficient_signatures(
@@ -191,7 +191,7 @@ impl BlocksAccumulator {
 
         // - proceed to execute
         // - store block
-        // - remove from accumulated_blocks
+        // - remove from block_acceptors
         //}
 
         // TODO: Reject if the era is out of the range we currently handle.
@@ -215,7 +215,7 @@ impl BlocksAccumulator {
     fn execute<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        accumulated_block: &AccumulatedBlock,
+        accumulated_block: &BlockAcceptor,
     ) -> Effects<Event>
     where
         REv: Send,
@@ -224,7 +224,7 @@ impl BlocksAccumulator {
     }
 
     fn remove_signatures(&mut self, block_hash: &BlockHash, signers: &[PublicKey]) {
-        if let Some(accumulated_block) = self.accumulated_blocks.get_mut(&block_hash) {
+        if let Some(accumulated_block) = self.block_acceptors.get_mut(&block_hash) {
             accumulated_block.remove_signatures(signers);
         }
     }

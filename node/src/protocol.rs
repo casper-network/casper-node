@@ -185,7 +185,7 @@ impl Payload for Message {
         }
     }
 
-    /// Checks the validity of the message.
+    /*// Checks the validity of the message.
     fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
         match self {
             Message::Consensus(_) => Validity::Valid,
@@ -196,9 +196,6 @@ impl Payload for Message {
                 item_id,
                 ..
             }) => {
-                if item_id.is_verified().is_err() {
-                    return Validity::Malicious;
-                }
                 if let Ok(validator_sets) = validator_sets.read() {
                     match validator_sets.is_validator_in_era(item_id.era_id, &item_id.public_key) {
                         Some(false) => Validity::Malicious,
@@ -215,7 +212,7 @@ impl Payload for Message {
             Message::GetResponse { .. } => Validity::Valid,
             Message::FinalitySignature(_) => Validity::Valid,
         }
-    }
+    }*/
 }
 
 impl Message {

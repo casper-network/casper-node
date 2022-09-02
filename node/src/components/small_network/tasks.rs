@@ -594,7 +594,7 @@ where
 
                         let effect_builder = EffectBuilder::new(context.event_queue);
 
-                        // TODO: Handle correctly if we don't know any validator yet. We know validators only
+                        /*/ TODO: Handle correctly if we don't know any validator yet. We know validators only
                         // 1) after executing block (implemented)
                         // 2) after we "accumulated" switch block (to be possibly implemented)
                         match msg.payload_is_valid(limiter.validator_sets()) {
@@ -616,7 +616,7 @@ where
                                 effect_builder.announce_disconnect_from_peer(peer_id).await;
                                 break;
                             }
-                        }
+                        }*/
 
                         match msg.try_into_demand(effect_builder, peer_id) {
                             Ok((event, wait_for_response)) => {

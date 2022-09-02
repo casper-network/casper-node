@@ -82,6 +82,11 @@ impl ValidatorSets {
             .any(|validator| validator == public_key)
     }
 
+    pub(super) fn is_initialized(&self) -> bool {
+        // TODO: genesis special case - handle the case of running within the first few eras
+        self.validators.len() >= 3
+    }
+
     // fn active_validators(&self, era_id: EraId) -> Option<&HashSet<PublicKey>> {
     //     if self.active_era != era_id {
     //         return None;

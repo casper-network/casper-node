@@ -91,7 +91,7 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
     let mut block_signatures = BlockSignatures::new(block_hash, era_id);
     for _ in 0..3 {
         let secret_key = SecretKey::random(rng);
-        let signature = FinalitySignature::new(
+        let signature = FinalitySignature::create(
             block_hash,
             era_id,
             &secret_key,

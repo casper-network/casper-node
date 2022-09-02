@@ -9,6 +9,7 @@ use casper_types::{bytesrepr, crypto, EraId};
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{
     error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
+    FinalitySignature, FinalitySignatureId,
 };
 
 /// A fatal storage component error.
@@ -171,7 +172,15 @@ pub(super) enum GetRequestError {
     /// Received a get request for a gossiped address, which is unanswerable.
     #[error("received a request for a gossiped address")]
     GossipedAddressNotGettable,
-    /// Received a get request for a gossiped finality signature, which is unanswerable.
-    #[error("received a request for a gossiped finality signature")]
-    GossipedFinalitySignatureNotGettable,
+    #[error(
+        "id information not matching the finality signature: \
+        requested id: {requested_id},\
+        signature: {finality_signature}"
+    )]
+    FinalitySignatureIdMismatch {
+        // the ID requested
+        requested_id: FinalitySignatureId,
+        // the finality signature read from storage
+        finality_signature: FinalitySignature,
+    },
 }

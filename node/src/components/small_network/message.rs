@@ -22,10 +22,7 @@ use crate::{
     effect::EffectBuilder, protocol::Validity, types::NodeId, utils::opt_display::OptDisplay,
 };
 
-use super::{
-    counting_format::ConnectionId,
-    limiter::{ValidatorSets},
-};
+use super::{counting_format::ConnectionId, limiter::ValidatorSets};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -94,13 +91,13 @@ impl<P: Payload> Message<P> {
         }
     }
 
-    /// Returns [Validity] of the message.
+    /*// Returns [Validity] of the message.
     pub(super) fn payload_is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
         match self {
             Message::Handshake { .. } => Validity::Valid,
             Message::Payload(payload) => payload.is_valid(validator_sets),
         }
-    }
+    }*/
 
     /// Attempts to create a demand-event from this message.
     ///
@@ -366,8 +363,8 @@ pub(crate) trait Payload:
     /// This functionality should be removed once multiplexed networking lands.
     fn is_unsafe_for_syncing_peers(&self) -> bool;
 
-    /// Returns [Validity] of the message.
-    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity;
+    /*// Returns [Validity] of the message.
+    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity;*/
 }
 
 /// Network message conversion support.

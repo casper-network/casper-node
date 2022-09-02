@@ -224,11 +224,11 @@ mod tests {
         let era_id = EraId::new(0);
         for _ in 0..MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
             let block_hash = BlockHash::random(&mut rng);
-            let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key.clone());
+            let sig = FinalitySignature::create(block_hash, era_id, &sec_key, pub_key.clone());
             assert!(pending_sigs.add(Signature::External(Box::new(sig))));
         }
         let block_hash = BlockHash::random(&mut rng);
-        let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key);
+        let sig = FinalitySignature::create(block_hash, era_id, &sec_key, pub_key);
         assert!(!pending_sigs.add(Signature::External(Box::new(sig))));
     }
 

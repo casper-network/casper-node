@@ -70,7 +70,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, ExitCode,
-        FetcherItem, NodeId,
+        FetcherItem, FinalitySignature, NodeId,
     },
     unregister_metric,
     utils::{
@@ -1030,16 +1030,15 @@ where
                 .announce_disconnect_from_peer(sender)
                 .ignore()
         }
-        NetResponse::FinalitySignature(_) => {
-            // The item trait is used for both fetchers and gossiped things, but this kind of
-            // item is never fetched, only gossiped.
-            warn!(
-                ?sender,
-                "gossiped finality signatures are never fetched, banning peer",
-            );
-            effect_builder
-                .announce_disconnect_from_peer(sender)
-                .ignore()
+        NetResponse::FinalitySignature(ref serialized_item) => {
+            todo!();
+            handle_fetch_response::<R, FinalitySignature>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
         }
         NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
             handle_fetch_response::<R, BlockWithMetadata>(

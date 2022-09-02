@@ -85,7 +85,7 @@ use crate::{
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
         BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalizedApprovals, Item, NodeId,
+        FinalitySignature, FinalizedApprovals, Item, NodeId,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -598,8 +598,30 @@ impl Storage {
                     opt_item,
                 )?)
             }
-            NetRequest::FinalitySignature(_) => {
-                Err(GetRequestError::GossipedFinalitySignatureNotGettable)
+            NetRequest::FinalitySignature(ref serialized_id) => {
+                let id = decode_item_id::<FinalitySignature>(serialized_id)?;
+                let opt_item =
+                    self.read_block_signatures(&id.block_hash)?
+                        .and_then(|block_signatures| {
+                            block_signatures.get_finality_signature(&id.public_key)
+                        });
+
+                if let Some(item) = opt_item.as_ref() {
+                    if item.block_hash != id.block_hash || item.era_id != id.era_id {
+                        return Err(GetRequestError::FinalitySignatureIdMismatch {
+                            requested_id: id,
+                            finality_signature: item.clone(),
+                        });
+                    }
+                }
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    id,
+                    opt_item,
+                )?)
             }
             NetRequest::GossipedAddress(_) => Err(GetRequestError::GossipedAddressNotGettable),
             NetRequest::BlockAndMetadataByHeight(ref serialized_id) => {

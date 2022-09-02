@@ -28,7 +28,7 @@ pub use block::{
 };
 pub(crate) use block::{
     BlockHashAndHeight, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-    BlockPayload, BlockWithMetadata,
+    BlockPayload, BlockWithMetadata, FinalitySignatureId,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};

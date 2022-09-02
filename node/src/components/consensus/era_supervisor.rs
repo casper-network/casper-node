@@ -674,7 +674,7 @@ impl EraSupervisor {
         self.executed_block(&block_header);
         let mut effects = if self.is_validator_in(&our_pk, era_id) {
             effect_builder
-                .announce_created_finality_signature(FinalitySignature::new(
+                .announce_created_finality_signature(FinalitySignature::create(
                     block_header.hash(),
                     era_id,
                     &our_sk,

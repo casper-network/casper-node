@@ -1057,6 +1057,7 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::FinalitySignatureIncoming(FinalitySignatureIncoming {
                 sender, ..
             }) => {
+                todo!(); // route to BlocksAccumulator
                 debug!(%sender, "finality signatures not handled in joiner reactor");
                 Effects::new()
             }

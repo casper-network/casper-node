@@ -1481,6 +1481,15 @@ impl BlockSignatures {
         }
         Ok(())
     }
+
+    pub(crate) fn get_finality_signature(
+        &self,
+        public_key: &PublicKey,
+    ) -> Option<FinalitySignature> {
+        self.proofs.get(public_key).map(|signature| {
+            FinalitySignature::new(self.block_hash, self.era_id, *signature, public_key.clone())
+        })
+    }
 }
 
 impl Display for BlockSignatures {
@@ -2244,7 +2253,7 @@ pub struct FinalitySignature {
 
 impl FinalitySignature {
     /// Create an instance of `FinalitySignature`.
-    pub fn new(
+    pub fn create(
         block_hash: BlockHash,
         era_id: EraId,
         secret_key: &SecretKey,
@@ -2259,6 +2268,22 @@ impl FinalitySignature {
             signature,
             public_key,
             is_verified: OnceCell::with_value(Ok(())),
+        }
+    }
+
+    /// Create an instance of `FinalitySignature`.
+    pub fn new(
+        block_hash: BlockHash,
+        era_id: EraId,
+        signature: Signature,
+        public_key: PublicKey,
+    ) -> Self {
+        FinalitySignature {
+            block_hash,
+            era_id,
+            signature,
+            public_key,
+            is_verified: OnceCell::new(),
         }
     }
 
@@ -2278,7 +2303,7 @@ impl FinalitySignature {
     #[cfg(any(feature = "testing", test))]
     pub fn random_for_block(block_hash: BlockHash, era_id: u64) -> Self {
         let (sec_key, pub_key) = generate_ed25519_keypair();
-        FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)
+        FinalitySignature::create(block_hash, EraId::new(era_id), &sec_key, pub_key)
     }
 }
 
@@ -2360,19 +2385,48 @@ impl Display for FinalitySignature {
 }
 
 impl Item for FinalitySignature {
-    type Id = FinalitySignature;
+    type Id = FinalitySignatureId;
     const TAG: Tag = Tag::FinalitySignature;
 
     fn id(&self) -> Self::Id {
-        self.clone()
+        FinalitySignatureId {
+            block_hash: self.block_hash,
+            era_id: self.era_id,
+            public_key: self.public_key.clone(),
+        }
     }
 }
 
 impl GossiperItem for FinalitySignature {
-    const ID_IS_COMPLETE_ITEM: bool = true;
+    const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::NonValidators(self.era_id)
+    }
+}
+
+impl FetcherItem for FinalitySignature {
+    type ValidationError = crypto::Error;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        self.is_verified()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, DataSize)]
+pub(crate) struct FinalitySignatureId {
+    pub(crate) block_hash: BlockHash,
+    pub(crate) era_id: EraId,
+    pub(crate) public_key: PublicKey,
+}
+
+impl Display for FinalitySignatureId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "finality signature id for block hash {}, from {}",
+            self.block_hash, self.public_key
+        )
     }
 }
 
@@ -2498,7 +2552,7 @@ mod tests {
         let (secret_key, public_key) = generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId::from(1);
-        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key.clone());
+        let fs = FinalitySignature::create(*block.hash(), era_id, &secret_rc, public_key.clone());
         assert!(fs.is_verified().is_ok());
         let signature = fs.signature;
         // Verify that signature includes era id.

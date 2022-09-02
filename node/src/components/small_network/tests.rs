@@ -168,9 +168,9 @@ impl Payload for Message {
         false
     }
 
-    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
+    /*fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
         Validity::Valid
-    }
+    }*/
 }
 
 /// Test reactor.
