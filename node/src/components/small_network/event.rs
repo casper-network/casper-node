@@ -12,8 +12,8 @@ use static_assertions::const_assert;
 use tracing::Span;
 
 use super::{
-    error::ConnectionError, tasks::MessageReaderError, GossipedAddress, IncomingStream, Message,
-    NodeId, OutgoingSink,
+    error::{ConnectionError, MessageReaderError},
+    GossipedAddress, IncomingStream, Message, NodeId, OutgoingSink,
 };
 use crate::{
     effect::{

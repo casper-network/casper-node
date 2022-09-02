@@ -3,6 +3,7 @@ use std::{io, net::SocketAddr, sync::Arc};
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
 use datasize::DataSize;
+use muxink::codec::TranscodingIoError;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -106,7 +107,7 @@ impl DataSize for ConnectionError {
     }
 }
 
-/// An error related to an incoming or outgoing connection.
+/// An error related to the establishment of an incoming or outgoing connection.
 #[derive(Debug, Error, Serialize)]
 pub enum ConnectionError {
     /// Failed to create TLS acceptor.
@@ -213,4 +214,16 @@ pub enum RawFrameIoError {
     /// Length limit violation.
     #[error("advertised length of {0} exceeds configured maximum raw frame size")]
     MaximumLengthExceeded(usize),
+}
+
+/// An error produced by reading messages.
+#[derive(Debug, Error)]
+pub enum MessageReaderError {
+    /// The semaphore that limits trie demands was closed unexpectedly.
+    #[error("demand limiter semaphore closed unexpectedly")]
+    UnexpectedSemaphoreClose,
+    /// The message receival stack returned an error.
+    // These errors can get fairly and complicated and are boxed here for that reason.
+    #[error("message receive error")]
+    ReceiveError(Box<dyn std::error::Error + Send>),
 }
