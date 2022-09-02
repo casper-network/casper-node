@@ -48,7 +48,7 @@ use std::{
     net::{SocketAddr, TcpListener},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Weak,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -68,7 +68,6 @@ use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
 use rand::{prelude::SliceRandom, seq::IteratorRandom};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
@@ -79,7 +78,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_util::{codec::LengthDelimitedCodec, compat::Compat};
+use tokio_util::compat::Compat;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use casper_types::{EraId, PublicKey};
@@ -95,8 +94,6 @@ pub(crate) use self::{
 use self::{
     chain_info::ChainInfo,
     config::IdentityConfig,
-    counting_format::{ConnectionId, CountingFormat, Role},
-    error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,

@@ -1,12 +1,11 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
-    io, mem,
+    mem,
     net::SocketAddr,
 };
 
 use casper_types::PublicKey;
 use derive_more::From;
-use futures::stream::SplitStream;
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;

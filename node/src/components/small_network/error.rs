@@ -3,7 +3,6 @@ use std::{io, net::SocketAddr, sync::Arc};
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
 use datasize::DataSize;
-use muxink::codec::TranscodingIoError;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;

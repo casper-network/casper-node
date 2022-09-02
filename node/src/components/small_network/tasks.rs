@@ -2,7 +2,6 @@
 
 use std::{
     fmt::Display,
-    io,
     net::SocketAddr,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc, Weak},
@@ -11,14 +10,12 @@ use std::{
 use bincode::Options;
 use futures::{
     future::{self, Either},
-    stream::SplitStream,
-    SinkExt, Stream, StreamExt, TryStreamExt,
+    SinkExt, StreamExt,
 };
 use muxink::{
     codec::{
         bincode::{BincodeDecoder, BincodeEncoder},
         length_delimited::LengthDelimited,
-        TranscodingIoError, TranscodingStream,
     },
     io::{FrameReader, FrameWriter},
 };
@@ -29,7 +26,6 @@ use openssl::{
 };
 use prometheus::IntGauge;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
@@ -45,7 +41,7 @@ use casper_types::{ProtocolVersion, TimeDiff};
 
 use super::{
     chain_info::ChainInfo,
-    counting_format::{ConnectionId, Role},
+    counting_format::ConnectionId,
     error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
     handshake::{negotiate_handshake, HandshakeOutcome},
