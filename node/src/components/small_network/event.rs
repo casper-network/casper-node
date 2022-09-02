@@ -12,7 +12,8 @@ use static_assertions::const_assert;
 use tracing::Span;
 
 use super::{
-    error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId, OutgoingSink,
+    error::ConnectionError, tasks::MessageReaderError, FullTransport, GossipedAddress,
+    IncomingStream, Message, NodeId, OutgoingSink,
 };
 use crate::{
     effect::{
@@ -52,7 +53,7 @@ where
     /// Incoming connection closed.
     IncomingClosed {
         #[serde(skip_serializing)]
-        result: io::Result<()>,
+        result: Result<(), MessageReaderError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
         #[serde(skip_serializing)]
@@ -198,7 +199,7 @@ pub(crate) enum IncomingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
-        stream: SplitStream<FullTransport<P>>,
+        stream: IncomingStream<P>,
     },
 }
 

@@ -12,12 +12,15 @@ use bincode::Options;
 use futures::{
     future::{self, Either},
     stream::SplitStream,
-    SinkExt, StreamExt,
+    SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use muxink::{
-    codec::{bincode::BincodeEncoder, length_delimited::LengthDelimited},
-    io::FrameWriter,
-    SinkMuxExt,
+    codec::{
+        bincode::{BincodeDecoder, BincodeEncoder},
+        length_delimited::LengthDelimited,
+        TranscodingIoError, TranscodingStream,
+    },
+    io::{FrameReader, FrameWriter},
 };
 use openssl::{
     pkey::{PKey, Private},
@@ -26,6 +29,7 @@ use openssl::{
 };
 use prometheus::IntGauge;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
@@ -53,7 +57,7 @@ use super::{
 };
 
 use crate::{
-    components::small_network::OutgoingSink,
+    components::small_network::{IncomingStream, OutgoingSink},
     effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
@@ -161,6 +165,7 @@ where
             let compat_stream =
                 tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
 
+            use muxink::SinkMuxExt;
             let sink: OutgoingSink<P> = FrameWriter::new(LengthDelimited, compat_stream)
                 .with_transcoder(BincodeEncoder::new());
 
@@ -274,15 +279,17 @@ where
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
-            // Establish full transport and close the receiving end.
-            let full_transport = full_transport::<P>(
-                context.net_metrics.clone(),
-                connection_id,
-                transport,
-                Role::Listener,
-            );
+            // TODO: Removal of `CountingTransport` here means some functionality has to be restored.
 
-            let (_sink, stream) = full_transport.split();
+            // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
+            // tokio built-in version instead). The compat layer fixes that.
+            use muxink::StreamMuxExt; // TODO: Move, once methods are renamed.
+            let compat_stream = tokio_util::compat::TokioAsyncReadCompatExt::compat(transport);
+
+            // TODO: We need to split the stream here eventually. Right now, this is safe since the
+            //       reader only uses one direction.
+            let stream: IncomingStream<P> = FrameReader::new(LengthDelimited, compat_stream, 4096)
+                .and_then_transcode(BincodeDecoder::new());
 
             IncomingConnection::Established {
                 peer_addr,
@@ -408,17 +415,28 @@ pub(super) async fn server<P, REv>(
     }
 }
 
+/// An error produced by the message reader.
+#[derive(Debug, Error)]
+pub enum MessageReaderError {
+    /// The semaphore that limits trie demands was closed unexpectedly.
+    #[error("demand limiter semaphore closed unexpectedly")]
+    UnexpectedSemaphoreClose,
+    /// The message receival stack returned an error.
+    #[error("message receive error")]
+    ReceiveError(TranscodingIoError<bincode::Error, io::Error>),
+}
+
 /// Network message reader.
 ///
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: SplitStream<FullTransport<P>>,
+    mut stream: IncomingStream<P>,
     limiter: Box<dyn LimiterHandle>,
     mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,
     span: Span,
-) -> io::Result<()>
+) -> Result<(), MessageReaderError>
 where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
@@ -450,12 +468,7 @@ where
                                     //       explicitly be closed for acquisition to fail, which we
                                     //       never do. If this happens, there is a bug in the code;
                                     //       we exit with an error and close the connection.
-                                    .map_err(|_| {
-                                        io::Error::new(
-                                            io::ErrorKind::Other,
-                                            "demand limiter semaphore closed unexpectedly",
-                                        )
-                                    })?;
+                                    .map_err(|_| MessageReaderError::UnexpectedSemaphoreClose)?;
 
                                 Metrics::record_trie_request_start(&context.net_metrics);
 
@@ -521,11 +534,13 @@ where
                         }
                     }
                     Err(err) => {
+                        // TODO: Consider not logging the error here, as it will be logged in the
+                        //       same span in the component proper.
                         warn!(
                             err = display_error(&err),
                             "receiving message failed, closing connection"
                         );
-                        return Err(err);
+                        return Err(MessageReaderError::ReceiveError(err));
                     }
                 }
             }
