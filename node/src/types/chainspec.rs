@@ -81,24 +81,9 @@ impl Chainspec {
         }
 
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
-
-        if self.core_config.unbonding_delay <= self.core_config.auction_delay {
-            warn!(
-                "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
-                self.core_config.unbonding_delay, self.core_config.auction_delay);
-            return false;
-        }
-
-        // If the era duration is set to zero, we will treat it as explicitly stating that eras
-        // should be defined by height only.
-        if self.core_config.era_duration.millis() > 0
-            && self.core_config.era_duration.millis()
-                < self.core_config.minimum_era_height * min_era_ms
-        {
-            warn!("era duration is less than minimum era height * round length!");
-        }
-
-        self.protocol_config.is_valid() && self.highway_config.is_valid()
+        self.core_config.is_valid(min_era_ms)
+            && self.protocol_config.is_valid()
+            && self.highway_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.

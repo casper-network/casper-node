@@ -65,7 +65,7 @@ use crate::{
 };
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
-const RECENT_ERA_COUNT: u64 = 7;
+const RECENT_ERA_COUNT: u64 = 5;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]

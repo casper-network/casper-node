@@ -1,8 +1,11 @@
+use std::cmp;
+
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -39,6 +42,36 @@ pub struct CoreConfig {
     pub(crate) minimum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
+}
+
+impl CoreConfig {
+    /// The number of eras that have already started and whose validators are still bonded.
+    pub(crate) fn recent_era_count(&self) -> u64 {
+        // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
+        self.unbonding_delay - self.auction_delay
+    }
+
+    /// Returns `false` if unbonding delay is not greater than auction delay to ensure
+    /// that `recent_era_count()` yields a value of at least 1.
+    pub(super) fn is_valid(&self, min_era_ms: u64) -> bool {
+        if self.unbonding_delay <= self.auction_delay {
+            warn!(
+                unbonding_delay = self.unbonding_delay,
+                auction_delay = self.auction_delay,
+                "unbonding delay should be greater than auction delay",
+            );
+            return false;
+        }
+
+        // If the era duration is set to zero, we will treat it as explicitly stating that eras
+        // should be defined by height only.  Warn only.
+        if self.era_duration.millis() > 0
+            && self.era_duration.millis() < self.minimum_era_height * min_era_ms
+        {
+            warn!("era duration is less than minimum era height * round length!");
+        }
+        true
+    }
 }
 
 #[cfg(test)]

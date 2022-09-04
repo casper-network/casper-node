@@ -24,7 +24,7 @@ use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
 
-const RECENT_ERA_COUNT: u64 = 7;
+const RECENT_ERA_COUNT: u64 = 5;
 
 /// Gets many deploys by hash.
 pub fn get_many_deploys_by_hash(

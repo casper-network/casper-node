@@ -201,7 +201,7 @@ impl Reactor {
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
             &chainspec_loader.chainspec().network_config.name,
-            chainspec_loader.chainspec().core_config.unbonding_delay,
+            chainspec_loader.chainspec().core_config.recent_era_count(),
         )?;
 
         let contract_runtime = ContractRuntime::new(
