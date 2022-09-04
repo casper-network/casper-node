@@ -9,7 +9,7 @@ use tracing::{debug, error, warn};
 
 use casper_types::{EraId, PublicKey, U512};
 
-use super::SignaturesFinality;
+use super::{Error, SignaturesFinality};
 use crate::{
     components::{
         linear_chain::{self, BlockSignatureError},
@@ -29,29 +29,43 @@ pub(super) struct BlockAcceptor {
 }
 
 impl BlockAcceptor {
-    pub(super) fn new_from_block_added(block: Block) -> Self {
-        Self {
+    pub(super) fn new_from_block_added(block: Block) -> Result<Self, Error> {
+        if let Err(error) = block.verify() {
+            warn!(%error, "received invalid block");
+            return Err(Error::InvalidBlock(error));
+        }
+        Ok(Self {
             block_hash: *block.hash(),
             era_id: block.header().era_id(),
             block: Some(block),
             signatures: Default::default(),
-        }
+        })
     }
 
-    pub(super) fn new_from_finality_signature(finality_signature: FinalitySignature) -> Self {
+    pub(super) fn new_from_finality_signature(
+        finality_signature: FinalitySignature,
+    ) -> Result<Self, Error> {
+        if let Err(error) = finality_signature.is_verified() {
+            warn!(%error, "received invalid finality signature");
+            return Err(Error::InvalidFinalitySignature(error));
+        }
+
         let mut signatures = BTreeMap::new();
         let era_id = finality_signature.era_id;
         let block_hash = finality_signature.block_hash;
         signatures.insert(finality_signature.public_key.clone(), finality_signature);
-        Self {
+        Ok(Self {
             block_hash,
             block: None,
             era_id,
             signatures,
-        }
+        })
     }
 
-    pub(super) fn register_signature(&mut self, finality_signature: FinalitySignature) {
+    pub(super) fn register_signature(
+        &mut self,
+        finality_signature: FinalitySignature,
+    ) -> Result<(), Error> {
         // TODO: verify sig
         // TODO: What to do when we receive multiple valid finality_signature from single public_key?
         // TODO: What to do when we receive too many finality_signature from single peer?
@@ -60,17 +74,26 @@ impl BlockAcceptor {
                 warn!(block_hash = %block.hash(), "received finality signature with invalid era");
                 // We should not add this signature.
                 // TODO: Return an Error here
-                return;
+                return Err(Error::FinalitySignatureWithWrongEra {
+                    finality_signature,
+                    correct_era: block.header().era_id(),
+                });
             }
         }
         self.signatures
             .insert(finality_signature.public_key.clone(), finality_signature);
+        Ok(())
     }
 
-    pub(super) fn register_block(&mut self, block: Block) {
+    pub(super) fn register_block(&mut self, block: Block) -> Result<(), Error> {
         if self.block.is_some() {
-            warn!(block_hash = %block.hash(), "received duplicate block");
-            return;
+            debug!(block_hash = %block.hash(), "received duplicate block");
+            return Ok(());
+        }
+
+        if let Err(error) = block.verify() {
+            warn!(%error, "received invalid block");
+            return Err(Error::InvalidBlock(error));
         }
 
         // TODO: Maybe disconnect from senders of the incorrect signatures.
@@ -78,6 +101,7 @@ impl BlockAcceptor {
             .retain(|_, finality_signature| finality_signature.era_id == block.header().era_id());
 
         self.block = Some(block);
+        Ok(())
     }
 
     pub(super) fn has_sufficient_signatures(

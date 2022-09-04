@@ -579,7 +579,6 @@ where
                 effects.extend(responder.respond(()).ignore());
                 effects
             }
-
             Event::ItemReceived { item_id, source } => {
                 self.handle_item_received(effect_builder, item_id, source)
             }

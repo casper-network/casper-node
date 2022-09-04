@@ -625,7 +625,7 @@ where
                         }
                     }
 
-                    // Notify requestor that we finished writing the queue dump.
+                    // Notify requester that we finished writing the queue dump.
                     finished.respond(()).await;
 
                     // Do nothing on queue dump otherwise.

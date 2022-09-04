@@ -130,6 +130,7 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
+use crate::effect::announcements::BlocksAccumulatorAnnouncement;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
@@ -835,6 +836,34 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 GossiperAnnouncement::NewCompleteItem(item),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that the blocks accumulator has received and stored a new block.
+    pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
+    where
+        REv: From<BlocksAccumulatorAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                BlocksAccumulatorAnnouncement::AcceptedNewBlock { block },
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that the blocks accumulator has received and stored a new finality signature.
+    pub(crate) async fn announce_finality_signature_accepted(
+        self,
+        finality_signature: FinalitySignature,
+    ) where
+        REv: From<BlocksAccumulatorAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                BlocksAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
                 QueueKind::Regular,
             )
             .await;

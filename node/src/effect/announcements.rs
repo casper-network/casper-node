@@ -367,3 +367,29 @@ impl Display for ChainSynchronizerAnnouncement {
         }
     }
 }
+
+/// A `BlockAccumulator` announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum BlocksAccumulatorAnnouncement {
+    /// A block which wasn't previously stored on this node has been accepted and stored.
+    AcceptedNewBlock { block: Box<Block> },
+    /// A finality signature which wasn't previously stored on this node has been accepted and
+    /// stored.
+    AcceptedNewFinalitySignature {
+        /// The new finality signature.
+        finality_signature: FinalitySignature,
+    },
+}
+
+impl Display for BlocksAccumulatorAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlocksAccumulatorAnnouncement::AcceptedNewBlock { block } => {
+                write!(f, "block {} accepted", block.hash())
+            }
+            BlocksAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
+                write!(f, "finality signature {} accepted", finality_signature)
+            }
+        }
+    }
+}

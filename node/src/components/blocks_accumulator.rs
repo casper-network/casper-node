@@ -1,4 +1,6 @@
 mod block_acceptor;
+mod error;
+mod event;
 
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -14,11 +16,13 @@ use casper_types::{EraId, PublicKey};
 use crate::{
     components::Component,
     effect::{announcements::BlocklistAnnouncement, Effect, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, FinalitySignatureId, NodeId},
     NodeRng,
 };
 
 use block_acceptor::BlockAcceptor;
+use error::Error;
+pub(crate) use event::Event;
 
 #[derive(Debug)]
 enum SignaturesFinality {
@@ -27,11 +31,9 @@ enum SignaturesFinality {
     BogusValidators(Vec<PublicKey>),
 }
 
-/// A cache of pending blocks and finality signatures that executes and stores fully signed blocks.
+/// A cache of pending blocks and finality signatures that are gossiped to this node.
 ///
-/// Caches incoming blocks and finality signatures. Invokes execution and then storage of a block
-/// once it has a quorum of finality signatures. At that point it also starts gossiping that block
-/// onwards.
+/// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
@@ -56,20 +58,30 @@ impl BlocksAccumulator {
     where
         REv: Send + From<BlocklistAnnouncement>,
     {
-        if let Err(err) = block.verify() {
-            warn!(%err, "received invalid block");
-            return Effects::new();
-        }
-
         let block_hash = *block.hash();
         let has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                entry.insert(BlockAcceptor::new_from_block_added(block));
+                if let Err(err) = block.verify() {
+                    warn!(%err, "received invalid block");
+                    return effect_builder
+                        .announce_disconnect_from_peer(sender)
+                        .ignore();
+                }
+                match BlockAcceptor::new_from_block_added(block) {
+                    Ok(block_acceptor) => entry.insert(block_acceptor),
+                    Err(_error) => {
+                        return effect_builder
+                            .announce_disconnect_from_peer(sender)
+                            .ignore();
+                    }
+                };
                 SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
-                accumulated_block.register_block(block);
+                if let Err(_error) = accumulated_block.register_block(block) {
+                    return Effects::new();
+                }
                 accumulated_block
                     .has_sufficient_signatures(self.fault_tolerance_fraction, BTreeMap::new())
             }
@@ -78,11 +90,10 @@ impl BlocksAccumulator {
         match has_sufficient_signatures {
             SignaturesFinality::Sufficient => {
                 if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
-                    return self.execute(effect_builder, &accumulated_block);
+                    return self.announce(effect_builder, &accumulated_block);
                 }
             }
             SignaturesFinality::NotSufficient => {
-                error!(%block_hash, "expected to have block");
                 return Effects::new();
             }
             SignaturesFinality::BogusValidators(ref public_keys) => {
@@ -140,9 +151,14 @@ impl BlocksAccumulator {
         let validator_weights = BTreeMap::new(); // TODO: Use proper weights.
         let mut has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                entry.insert(BlockAcceptor::new_from_finality_signature(
-                    finality_signature,
-                ));
+                match BlockAcceptor::new_from_finality_signature(finality_signature) {
+                    Ok(block_acceptor) => entry.insert(block_acceptor),
+                    Err(_error) => {
+                        return effect_builder
+                            .announce_disconnect_from_peer(sender)
+                            .ignore()
+                    }
+                };
                 SignaturesFinality::NotSufficient
             }
             Entry::Occupied(entry) => {
@@ -157,7 +173,7 @@ impl BlocksAccumulator {
             match has_sufficient_signatures {
                 SignaturesFinality::Sufficient => {
                     if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
-                        return self.execute(effect_builder, &accumulated_block);
+                        return self.announce(effect_builder, &accumulated_block);
                     }
                     error!(%block_hash, "expected to have block");
                     return Effects::new();
@@ -212,7 +228,7 @@ impl BlocksAccumulator {
     //     None
     // }
 
-    fn execute<REv>(
+    fn announce<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
         accumulated_block: &BlockAcceptor,
@@ -228,18 +244,6 @@ impl BlocksAccumulator {
             accumulated_block.remove_signatures(signers);
         }
     }
-}
-
-#[derive(Debug)]
-pub(crate) enum Event {
-    ReceivedBlock {
-        block: Block,
-        sender: NodeId,
-    },
-    AcceptFinalitySignature {
-        finality_signature: FinalitySignature,
-        sender: NodeId,
-    },
 }
 
 impl<REv> Component<REv> for BlocksAccumulator
@@ -259,7 +263,7 @@ where
             Event::ReceivedBlock { block, sender } => {
                 self.handle_block(effect_builder, block, sender)
             }
-            Event::AcceptFinalitySignature {
+            Event::ReceivedFinalitySignature {
                 finality_signature,
                 sender,
             } => self.handle_finality_signature(effect_builder, finality_signature, sender),
