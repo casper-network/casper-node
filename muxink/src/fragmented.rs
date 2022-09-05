@@ -118,7 +118,7 @@ where
         // At this point everything has been buffered, so we defer to the underlying sink's flush to
         // ensure the final fragment also has been sent.
 
-        self_mut.poll_flush_unpin(cx)
+        self_mut.sink.poll_flush_unpin(cx)
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -126,7 +126,7 @@ where
 
         try_ready!(ready!(self_mut.flush_current_frame(cx)));
 
-        self_mut.poll_close_unpin(cx)
+        self_mut.sink.poll_close_unpin(cx)
     }
 }
 
@@ -191,8 +191,8 @@ where
             match ready!(self_mut.stream.poll_next_unpin(cx)) {
                 Some(Ok(mut next_fragment)) => {
                     let is_final = match next_fragment.get(0).cloned() {
-                        Some(MORE_FRAGMENTS) => true,
-                        Some(FINAL_FRAGMENT) => false,
+                        Some(MORE_FRAGMENTS) => false,
+                        Some(FINAL_FRAGMENT) => true,
                         Some(invalid) => {
                             return Poll::Ready(Some(Err(
                                 DefragmentizerError::InvalidFragmentHeader(invalid),
