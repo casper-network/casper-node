@@ -7,16 +7,14 @@ use std::{
     sync::{atomic::AtomicBool, Arc, Weak},
 };
 
-use bincode::Options;
+use bincode::{self, Options};
+use bytes::Bytes;
 use futures::{
     future::{self, Either},
-    SinkExt, StreamExt,
+    SinkExt, StreamExt, TryStreamExt,
 };
 use muxink::{
-    codec::{
-        bincode::{BincodeDecoder, BincodeEncoder},
-        length_delimited::LengthDelimited,
-    },
+    framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
 };
 use openssl::{
@@ -25,7 +23,7 @@ use openssl::{
     x509::X509,
 };
 use prometheus::IntGauge;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use tokio::{
     net::TcpStream,
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
@@ -114,7 +112,7 @@ where
 pub(super) async fn connect_outgoing<P, REv>(
     context: Arc<NetworkContext<REv>>,
     peer_addr: SocketAddr,
-) -> OutgoingConnection<P>
+) -> OutgoingConnection
 where
     REv: 'static,
     P: Payload,
@@ -159,9 +157,7 @@ where
             let compat_stream =
                 tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
 
-            use muxink::SinkMuxExt;
-            let sink: OutgoingSink<P> = FrameWriter::new(LengthDelimited, compat_stream)
-                .with_transcoder(BincodeEncoder::new());
+            let sink: OutgoingSink = FrameWriter::new(LengthDelimited, compat_stream);
 
             OutgoingConnection::Established {
                 peer_addr,
@@ -234,12 +230,10 @@ async fn handle_incoming<P, REv>(
     context: Arc<NetworkContext<REv>>,
     stream: TcpStream,
     peer_addr: SocketAddr,
-) -> IncomingConnection<P>
+) -> IncomingConnection
 where
     REv: From<Event<P>> + 'static,
     P: Payload,
-    for<'de> P: Serialize + Deserialize<'de>,
-    for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
     let (peer_id, transport) = match server_setup_tls(&context, stream).await {
         Ok(value) => value,
@@ -277,13 +271,11 @@ where
 
             // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
             // tokio built-in version instead). The compat layer fixes that.
-            use muxink::StreamMuxExt; // TODO: Move, once methods are renamed.
             let compat_stream = tokio_util::compat::TokioAsyncReadCompatExt::compat(transport);
 
             // TODO: We need to split the stream here eventually. Right now, this is safe since the
             //       reader only uses one direction.
-            let stream: IncomingStream<P> = FrameReader::new(LengthDelimited, compat_stream, 4096)
-                .and_then_transcode(BincodeDecoder::new());
+            let stream: IncomingStream = FrameReader::new(LengthDelimited, compat_stream, 4096);
 
             IncomingConnection::Established {
                 peer_addr,
@@ -409,12 +401,21 @@ pub(super) async fn server<P, REv>(
     }
 }
 
+/// Setups bincode encoding used on the networking transport.
+fn bincode_config() -> impl Options {
+    bincode::options()
+        .with_no_limit() // We rely on `muxink` to impose limits.
+        .with_little_endian() // Default at the time of this writing, we are merely pinning it.
+        .with_varint_encoding() // Same as above.
+        .reject_trailing_bytes() // There is no reason for us not to reject trailing bytes.
+}
+
 /// Network message reader.
 ///
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: IncomingStream<P>,
+    stream: IncomingStream,
     limiter: Box<dyn LimiterHandle>,
     mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,
@@ -426,9 +427,19 @@ where
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
+    let mut decoding_stream = stream
+        .map_err(MessageReaderError::ReceiveError)
+        .map(move |result| {
+            result.and_then(move |bytes| {
+                bincode_config()
+                    .deserialize(&bytes)
+                    .map_err(MessageReaderError::DeserializationError)
+            })
+        });
+
     let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            let msg = msg_result.map_err(|err| MessageReaderError::ReceiveError(Box::new(err)))?;
+        while let Some(msg_result) = decoding_stream.next().await {
+            let msg: Message<P> = msg_result?;
 
             trace!(%msg, "message received");
 
@@ -534,7 +545,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<MessageQueueItem<P>>,
-    mut sink: OutgoingSink<P>,
+    mut sink: OutgoingSink,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where
@@ -555,7 +566,14 @@ pub(super) async fn message_sender<P>(
         };
         limiter.request_allowance(estimated_wire_size).await;
 
-        let mut outcome = sink.send(message).await;
+        let serialized = match bincode_config().serialize(&message) {
+            Ok(vec) => Bytes::from(vec),
+            Err(err) => {
+                error!(%err, "failed to serialize an outoging message");
+                return;
+            }
+        };
+        let mut outcome = sink.send(serialized).await;
 
         // Notify via responder that the message has been buffered by the kernel.
         if let Some(auto_closing_responder) = opt_responder {

@@ -44,7 +44,6 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    io,
     net::{SocketAddr, TcpListener},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -57,11 +56,7 @@ use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use muxink::{
-    codec::{
-        bincode::{BincodeDecoder, BincodeEncoder},
-        length_delimited::LengthDelimited,
-        ResultTranscoder, TranscodingSink, TranscodingStream,
-    },
+    framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
 };
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -494,7 +489,7 @@ where
 
     fn handle_incoming_connection(
         &mut self,
-        incoming: Box<IncomingConnection<P>>,
+        incoming: Box<IncomingConnection>,
         span: Span,
     ) -> Effects<Event<P>> {
         span.clone().in_scope(|| match *incoming {
@@ -673,7 +668,7 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_outgoing_connection(
         &mut self,
-        outgoing: OutgoingConnection<P>,
+        outgoing: OutgoingConnection,
         span: Span,
     ) -> Effects<Event<P>> {
         let now = Instant::now();
@@ -794,7 +789,7 @@ where
             trace!(%request, "processing dial request");
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
-                    tasks::connect_outgoing(self.context.clone(), addr)
+                    tasks::connect_outgoing::<P, _>(self.context.clone(), addr)
                         .instrument(span.clone())
                         .event(|outgoing| Event::OutgoingConnection {
                             outgoing: Box::new(outgoing),
@@ -1220,17 +1215,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// The outgoing message sink of an outgoing connection.
-type OutgoingSink<P> = TranscodingSink<
-    BincodeEncoder<Arc<Message<P>>>,
-    Arc<Message<P>>,
-    FrameWriter<Bytes, LengthDelimited, Compat<SslStream<TcpStream>>>,
->;
+type OutgoingSink = FrameWriter<Bytes, LengthDelimited, Compat<SslStream<TcpStream>>>;
 
 /// The incoming message stream of an incoming connection.
-type IncomingStream<P> = TranscodingStream<
-    ResultTranscoder<BincodeDecoder<Message<P>>, io::Error>,
-    FrameReader<LengthDelimited, Compat<SslStream<TcpStream>>>,
->;
+type IncomingStream = FrameReader<LengthDelimited, Compat<SslStream<TcpStream>>>;
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where

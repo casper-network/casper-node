@@ -224,5 +224,8 @@ pub enum MessageReaderError {
     /// The message receival stack returned an error.
     // These errors can get fairly and complicated and are boxed here for that reason.
     #[error("message receive error")]
-    ReceiveError(Box<dyn std::error::Error + Send>),
+    ReceiveError(io::Error),
+    /// Error deserializing message.
+    #[error("message deserialization error")]
+    DeserializationError(bincode::Error),
 }
