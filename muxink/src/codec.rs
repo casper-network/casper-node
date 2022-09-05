@@ -22,10 +22,6 @@
 //! * [`length_delimited`]: Transforms byte-like values into self-contained frames with a
 //!   length-prefix.
 
-#[cfg(feature = "muxink_bincode_codec")]
-pub mod bincode;
-#[cfg(feature = "muxink_bytesrepr_codec")]
-pub mod bytesrepr;
 pub mod length_delimited;
 
 use std::{
