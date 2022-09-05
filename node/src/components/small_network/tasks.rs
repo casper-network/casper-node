@@ -11,7 +11,7 @@ use bincode::{self, Options};
 use bytes::Bytes;
 use futures::{
     future::{self, Either},
-    SinkExt, StreamExt, TryStreamExt,
+    SinkExt, StreamExt,
 };
 use muxink::{
     framing::length_delimited::LengthDelimited,
@@ -415,7 +415,7 @@ fn bincode_config() -> impl Options {
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    stream: IncomingStream,
+    mut stream: IncomingStream,
     limiter: Box<dyn LimiterHandle>,
     mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,
@@ -427,19 +427,12 @@ where
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
-    let mut decoding_stream = stream
-        .map_err(MessageReaderError::ReceiveError)
-        .map(move |result| {
-            result.and_then(move |bytes| {
-                bincode_config()
-                    .deserialize(&bytes)
-                    .map_err(MessageReaderError::DeserializationError)
-            })
-        });
-
     let read_messages = async move {
-        while let Some(msg_result) = decoding_stream.next().await {
-            let msg: Message<P> = msg_result?;
+        while let Some(frame_result) = stream.next().await {
+            let frame = frame_result.map_err(MessageReaderError::ReceiveError)?;
+            let msg: Message<P> = bincode_config()
+                .deserialize(&frame)
+                .map_err(MessageReaderError::DeserializationError)?;
 
             trace!(%msg, "message received");
 
