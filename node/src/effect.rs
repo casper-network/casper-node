@@ -1364,6 +1364,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Reads the execution results from the storage for particular `block_hash`.
+    pub(crate) async fn get_execution_results_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<HashMap<DeployHash, ExecutionResult>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetExecutionResults {
+                block_hash: Box::new(block_hash),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested deploys from the deploy store.
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,

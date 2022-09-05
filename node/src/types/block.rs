@@ -1250,6 +1250,13 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
+    /// Returns deploy hashes of transactions in an order in which they were executed.
+    pub(crate) fn transaction_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+    }
+
     /// Computes the body hash by hashing the serialized bytes.
     pub fn hash(&self) -> Digest {
         let serialized_body = self

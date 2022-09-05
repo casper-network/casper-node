@@ -386,6 +386,13 @@ pub(crate) enum StorageRequest {
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
+    GetExecutionResults {
+        /// Hash of block.
+        block_hash: Box<BlockHash>,
+        /// Responder to call with the execution results.
+        /// None is returned when we don't have the block in the storage.
+        responder: Responder<Option<HashMap<DeployHash, ExecutionResult>>>,
+    },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
         /// Hash of deploy to be retrieved.
@@ -538,6 +545,10 @@ impl Display for StorageRequest {
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
+            StorageRequest::GetExecutionResults { block_hash, .. } => {
+                write!(formatter, "get execution results for {}", block_hash)
+            }
+
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }

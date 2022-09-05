@@ -1853,7 +1853,7 @@ where
     REv:
         From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + From<StorageRequest>,
 {
-    let fetched_block_effects = fetch_block_effects(&ctx, fetch_id).await?;
+    let fetched_block_effects = fetch_block_effects(&ctx, block_header.hash(), fetch_id).await?;
     match fetched_block_effects {
         AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
         AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
@@ -1876,6 +1876,7 @@ type BlockEffectsFetchResult = AlreadyPresentOrDownloaded<Vec<ExecutionResult>>;
 
 async fn fetch_block_effects<REv>(
     ctx: &ChainSyncContext<'_, REv>,
+    block_hash: BlockHash,
     fetch_id: BlockEffectsOrChunkId,
 ) -> Result<BlockEffectsFetchResult, FetchBlockEffectsError>
 where
@@ -1899,13 +1900,18 @@ where
     let chunk_with_proof = match effects_or_chunk {
         BlockEffectsOrChunk::BlockEffectsLegacy {
             block_hash: _,
-            value,
-        } => match value {
-            ValueOrChunk::Value(block_effects) => {
-                return Ok(BlockEffectsFetchResult::Downloaded(block_effects))
-            }
-            ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
-        },
+            value: ValueOrChunk::Value(block_effects),
+        }
+        | BlockEffectsOrChunk::BlockEffects(ValueOrChunk::Value(block_effects)) => {
+            return Ok(BlockEffectsFetchResult::Downloaded(block_effects))
+        }
+        BlockEffectsOrChunk::BlockEffectsLegacy {
+            block_hash: _,
+            value: ValueOrChunk::ChunkWithProof(chunk_with_proof),
+        }
+        | BlockEffectsOrChunk::BlockEffects(ValueOrChunk::ChunkWithProof(chunk_with_proof)) => {
+            chunk_with_proof
+        }
     };
 
     debug_assert!(
@@ -1931,6 +1937,14 @@ where
                 }
                 FetchedData::FromPeer { item, .. } => match *item {
                     BlockEffectsOrChunk::BlockEffectsLegacy { block_hash, value } => match value {
+                        ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash }),
+                        ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                            let index = chunk_with_proof.proof().index();
+                            let chunk = chunk_with_proof.into_chunk();
+                            Ok((index, chunk))
+                        }
+                    },
+                    BlockEffectsOrChunk::BlockEffects(value) => match value {
                         ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash }),
                         ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
                             let index = chunk_with_proof.proof().index();

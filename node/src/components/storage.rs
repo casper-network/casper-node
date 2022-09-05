@@ -41,7 +41,7 @@ mod tests;
 use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, mem,
@@ -768,6 +768,67 @@ impl Storage {
                         )?,
                     )
                     .ignore()
+            }
+            StorageRequest::GetExecutionResults {
+                block_hash,
+                responder,
+            } => {
+                // There's no mapping between block_hash -> execution results.
+                // We store execution results under the deploy hash for the txn.
+                // In order to pull it out, we have to:
+                // 1. Find the block header for `block_hash`.
+                // 2. Find the block body for `block_header.body_hash`.
+                // 3. For every txns in the block's body, we load its deploy metadata.
+                // 4. We extract txn's execution results from the `deploy_metadata` for the block
+                // we're interested in.
+                let mut txn = self.env.begin_rw_txn()?;
+                let block_header: BlockHeader =
+                    match self.get_single_block_header(&mut txn, &*block_hash)? {
+                        Some(block_header) => block_header,
+                        None => return Ok(responder.respond(None).ignore()),
+                    };
+                let maybe_block_body =
+                    get_body_for_block_header(&mut txn, &block_header, self.block_body_db);
+                let block_body = match maybe_block_body? {
+                    Some(block_body) => block_body,
+                    None => {
+                        info!(
+                            ?block_header,
+                            "retrieved block header but block body is missing from database"
+                        );
+                        return Ok(responder.respond(None).ignore());
+                    }
+                };
+
+                let mut execution_results = HashMap::new();
+                for deploy_hash in block_body.transaction_hashes() {
+                    match self.get_deploy_metadata(&mut txn, &deploy_hash)? {
+                        None => {
+                            // We have the block and the body but not the deploy. This could happen
+                            // for a node that is still syncing and probably shouldn't be a fatal
+                            // error.
+                            return Ok(responder.respond(None).ignore());
+                        }
+                        Some(metadata) => {
+                            match metadata.execution_results.remove(&*block_hash) {
+                                Some(results) => {
+                                    execution_results.insert(*deploy_hash, results);
+                                }
+                                None => {
+                                    // We have the block, we've got the deploy but its metadata
+                                    // doesn't include the reference to the block.
+                                    // This is an error b/c even though types seem to allow for a
+                                    // single deploy map to multiple blocks, it shouldn't happen in
+                                    // practice.
+                                    error!(?block_hash, ?deploy_hash, "missing execution results for a deploy in particular block");
+                                    return Ok(responder.respond(None).ignore());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                responder.respond(Some(execution_results)).ignore()
             }
             StorageRequest::PutExecutionResults {
                 block_hash,
