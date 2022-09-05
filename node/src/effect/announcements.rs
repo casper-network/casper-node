@@ -56,6 +56,9 @@ pub(crate) enum ControlAnnouncement {
         /// Responder called when the dump has been finished.
         finished: Responder<()>,
     },
+    MissingValidatorSet {
+        era_id: EraId,
+    },
 }
 
 /// Queue dump format with handler.
@@ -89,6 +92,10 @@ impl Debug for ControlAnnouncement {
                 .field("msg", msg)
                 .finish(),
             Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
+            Self::MissingValidatorSet { era_id } => f
+                .debug_struct("MissingValidatorSet")
+                .field("era_id", era_id)
+                .finish(),
         }
     }
 }
@@ -101,6 +108,9 @@ impl Display for ControlAnnouncement {
             }
             ControlAnnouncement::QueueDumpRequest { .. } => {
                 write!(f, "dump event queue")
+            }
+            ControlAnnouncement::MissingValidatorSet { era_id } => {
+                write!(f, "missing validator set for era {}", era_id)
             }
         }
     }

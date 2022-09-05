@@ -31,7 +31,7 @@ where
     CouldNotConstructGetRequest { id: T::Id, peer: NodeId },
 }
 
-#[derive(Clone, DataSize, Debug, PartialEq)]
+#[derive(Clone, DataSize, Debug, PartialEq, Serialize)]
 pub(crate) enum FetchedData<T> {
     FromStorage { item: Box<T> },
     FromPeer { item: Box<T>, peer: NodeId },

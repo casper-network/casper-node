@@ -285,6 +285,7 @@ impl<REv: 'static> ComponentHarness<REv> {
                         ControlAnnouncement::QueueDumpRequest { .. } => {
                             panic!("queue dumps are not supported in the test harness")
                         }
+                        ControlAnnouncement::MissingValidatorSet { .. } => todo!(),
                     }
                 } else {
                     debug!(?ev, "ignoring event while looking for a fatal")

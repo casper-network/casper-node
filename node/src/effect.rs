@@ -2150,6 +2150,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn control_announce_missing_validator_set(self, era_id: EraId)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.make_request(
+            |responder| ControlAnnouncement::MissingValidatorSet { era_id },
+            QueueKind::Control,
+        )
+        .await
+    }
+
     /// Get the bytes for the chainspec file and genesis_accounts
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>

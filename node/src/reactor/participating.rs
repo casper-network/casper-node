@@ -30,6 +30,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
+        complete_block_synchronizer::{self, CompleteBlockSyncRequest, CompleteBlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
@@ -148,6 +149,8 @@ pub(crate) enum ParticipatingEvent {
     BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
     #[from]
     FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
+    #[from]
+    CompleteBlockSynchronizer(#[serde(skip_serializing)] complete_block_synchronizer::Event),
 
     // Requests
     #[from]
@@ -200,6 +203,8 @@ pub(crate) enum ParticipatingEvent {
     StateStoreRequest(StateStoreRequest),
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
+    #[from]
+    CompleteBlockSynchronizerRequest(#[serde(skip_serializing)] CompleteBlockSyncRequest),
 
     // Announcements
     #[from]
@@ -364,6 +369,10 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
             }
+            ParticipatingEvent::CompleteBlockSynchronizer(_) => "CompleteBlockSynchronizer",
+            ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
+                "CompleteBlockSynchronizerRequest"
+            }
         }
     }
 }
@@ -470,6 +479,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::FinalitySignaturesFetcher(event) => {
                 write!(f, "finality signatures fetcher: {}", event)
             }
+            ParticipatingEvent::CompleteBlockSynchronizer(event) => {
+                write!(f, "complete block synchronizer: {}", event)
+            }
             ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             ParticipatingEvent::ChainSynchronizerRequest(req) => {
                 write!(f, "chain synchronizer request: {}", req)
@@ -526,6 +538,9 @@ impl Display for ParticipatingEvent {
                 write!(f, "block validator request: {}", req)
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
+            ParticipatingEvent::CompleteBlockSynchronizerRequest(req) => {
+                write!(f, "complete block synchronizer request: {}", req)
+            }
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             ParticipatingEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)
@@ -650,6 +665,7 @@ pub(crate) struct Reactor {
     finalized_approvals_fetcher: Fetcher<DeployFinalizedApprovals>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
+    complete_block_synchronizer: CompleteBlockSynchronizer,
     diagnostics_port: DiagnosticsPort,
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -953,6 +969,10 @@ impl reactor::Reactor for Reactor {
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
+        let complete_block_synchronizer = CompleteBlockSynchronizer::new(
+            config.complete_block_synchronizer,
+            chainspec.highway_config.finality_threshold_fraction,
+        );
 
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::SmallNetwork,
@@ -996,6 +1016,7 @@ impl reactor::Reactor for Reactor {
                 diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
+                complete_block_synchronizer,
             },
             effects,
         ))
@@ -1134,6 +1155,11 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::CompleteBlockSynchronizer(event) => reactor::wrap_effects(
+                ParticipatingEvent::CompleteBlockSynchronizer,
+                self.complete_block_synchronizer
+                    .handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::DiagnosticsPort(event) => reactor::wrap_effects(
                 ParticipatingEvent::DiagnosticsPort,
                 self.diagnostics_port
@@ -1245,6 +1271,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::CompleteBlockSynchronizerRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::CompleteBlockSynchronizer,
+                self.complete_block_synchronizer
+                    .handle_event(effect_builder, rng, req.into()),
             ),
 
             // Announcements:
@@ -1416,6 +1447,37 @@ impl reactor::Reactor for Reactor {
                         execution_effect,
                     });
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            ParticipatingEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::UpcomingEraValidators {
+                    era_that_is_ending,
+                    upcoming_era_validators,
+                },
+            ) => {
+                let mut events = self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    ParticipatingEvent::CompleteBlockSynchronizer(
+                        complete_block_synchronizer::Event::EraValidators {
+                            validators: upcoming_era_validators.clone(),
+                        },
+                    )
+                    .into(),
+                );
+                events.extend(
+                    self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        ParticipatingEvent::SmallNetwork(
+                            ContractRuntimeAnnouncement::UpcomingEraValidators {
+                                era_that_is_ending,
+                                upcoming_era_validators,
+                            }
+                            .into(),
+                        ),
+                    ),
+                );
+                events
             }
             ParticipatingEvent::DeployGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_deploy_id),
@@ -1605,11 +1667,6 @@ impl reactor::Reactor for Reactor {
                         .handle_event(effect_builder, rng, incoming.into()),
                 )
             }
-            ParticipatingEvent::ContractRuntimeAnnouncement(ann) => self.dispatch_event(
-                effect_builder,
-                rng,
-                ParticipatingEvent::SmallNetwork(ann.into()),
-            ),
             ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
                 ParticipatingEvent::ContractRuntime,
                 self.contract_runtime

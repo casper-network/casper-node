@@ -1,0 +1,204 @@
+mod complete_block_builder;
+mod config;
+mod event;
+
+use std::{
+    collections::{hash_map::Entry, BTreeMap, HashMap},
+    convert::Infallible,
+    fmt::{self, Display, Formatter},
+};
+
+use datasize::DataSize;
+use num_rational::Ratio;
+use serde::{Deserialize, Serialize};
+use tracing::{debug, error};
+
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
+
+use crate::{
+    components::Component,
+    effect::{
+        announcements::ControlAnnouncement, requests::FetcherRequest, EffectBuilder, EffectExt,
+        Effects,
+    },
+    types::{Block, BlockHash, NodeId},
+    NodeRng,
+};
+
+use complete_block_builder::{BlockAcquisitionState, CompleteBlockBuilder, NeedNext};
+pub(crate) use config::Config;
+pub(crate) use event::Event;
+
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub(crate) struct CompleteBlockSyncRequest {
+    pub(crate) block_hash: BlockHash,
+    pub(crate) era_id: EraId,
+    pub(crate) should_fetch_execution_state: bool,
+    pub(crate) peer: NodeId,
+}
+
+impl Display for CompleteBlockSyncRequest {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "complete block ID {} with should fetch execution state: {} from peer {}",
+            self.block_hash, self.should_fetch_execution_state, self.peer
+        )
+    }
+}
+
+#[derive(DataSize, Debug)]
+pub(crate) struct CompleteBlockSynchronizer {
+    timeout: TimeDiff,
+    #[data_size(skip)]
+    fault_tolerance_fraction: Ratio<u64>,
+    builders: HashMap<BlockHash, CompleteBlockBuilder>,
+    validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+}
+
+impl CompleteBlockSynchronizer {
+    pub(crate) fn new(config: Config, fault_tolerance_fraction: Ratio<u64>) -> Self {
+        CompleteBlockSynchronizer {
+            timeout: config.timeout(),
+            fault_tolerance_fraction,
+            builders: Default::default(),
+            validators: Default::default(),
+        }
+    }
+
+    fn upsert<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        request: CompleteBlockSyncRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<ControlAnnouncement> + From<FetcherRequest<Block>> + Send,
+    {
+        match self.builders.entry(request.block_hash) {
+            Entry::Occupied(mut entry) => {
+                let _ = entry.get_mut().register_peer(request.peer);
+            }
+            Entry::Vacant(entry) => {
+                let validators = match self.validators.get(&request.era_id) {
+                    None => {
+                        debug!(
+                            era_id = %request.era_id,
+                            "missing validators for given era"
+                        );
+                        return effect_builder
+                            .control_announce_missing_validator_set(request.era_id)
+                            .ignore();
+                    }
+                    Some(validators) => validators.clone(),
+                };
+                let builder = CompleteBlockBuilder::new(
+                    request.block_hash,
+                    request.era_id,
+                    validators,
+                    request.should_fetch_execution_state,
+                );
+                let _ = entry.insert(builder);
+                // effect_builder
+                //     .fetch::<Block>(request.block_hash, request.peer)
+                //     .event(Event::BlockFetched)
+            }
+        }
+        Effects::new()
+    }
+}
+
+pub(crate) enum BlockSyncState {
+    Unknown,
+    NotYetStarted,
+    InProgress {
+        started: Timestamp,
+        most_recent: Timestamp,
+        current_state: BlockAcquisitionState,
+    },
+    Completed,
+}
+
+impl CompleteBlockSynchronizer {
+    fn block_state(self, block_hash: &BlockHash) -> BlockSyncState {
+        match self.builders.get(block_hash) {
+            None => BlockSyncState::Unknown,
+            Some(builder) if builder.is_initialized() => BlockSyncState::NotYetStarted,
+            Some(builder) if builder.is_complete() => BlockSyncState::Completed,
+            Some(builder) => {
+                let started = builder.started().unwrap_or_else(|| {
+                    error!("started block should have started timestamp");
+                    Timestamp::zero()
+                });
+                let last_progress_time = builder.last_progress_time().unwrap_or_else(|| {
+                    error!("started block should have last_progress_time");
+                    Timestamp::zero()
+                });
+                BlockSyncState::InProgress {
+                    started,
+                    most_recent: last_progress_time,
+                    current_state: builder.builder_state(),
+                }
+            }
+        }
+    }
+
+    fn register_peer(&mut self, block_hash: &BlockHash, peer: NodeId) -> bool {
+        match self.builders.get_mut(block_hash) {
+            None => false,
+            Some(builder) if builder.is_complete() => false,
+            Some(builder) => builder.register_peer(peer),
+        }
+    }
+
+    fn next<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
+    where
+        REv: From<FetcherRequest<Block>> + Send,
+    {
+        let mut results = Effects::new();
+        for builder in self.builders.values_mut() {
+            match builder.next_needed(self.fault_tolerance_fraction) {
+                NeedNext::Block(block_hash) => results.extend(
+                    effect_builder
+                        .fetch::<Block>(block_hash, todo!())
+                        .event(Event::BlockFetched),
+                ),
+                NeedNext::FinalitySignatures(_) => {}
+                NeedNext::GlobalState(_) => {}
+                NeedNext::Deploy(_) => {}
+                NeedNext::ExecutionResults(_) => {}
+                NeedNext::Nothing => (),
+            }
+        }
+        results
+    }
+
+    /// Reactor instructing this instance to be stopped
+    fn stop(&mut self, block_hash: &BlockHash) {
+        todo!();
+    }
+}
+
+impl<REv> Component<REv> for CompleteBlockSynchronizer
+where
+    REv: From<ControlAnnouncement> + From<FetcherRequest<Block>> + Send,
+{
+    type Event = Event;
+    type ConstructionError = Infallible;
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        match event {
+            Event::EraValidators { mut validators } => {
+                self.validators.append(&mut validators);
+                Effects::new()
+            }
+            Event::Fetch(request) => self.upsert(effect_builder, request),
+            Event::Next => self.next(effect_builder),
+            _ => todo!(),
+        }
+    }
+}

@@ -15,11 +15,11 @@ use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
 use crate::{
     components::{
-        fetcher::event::FetchResponder,
         linear_chain::{self, BlockSignatureError},
         Component,
     },
     effect::{
+        announcements::BlocklistAnnouncement,
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -33,9 +33,8 @@ use crate::{
     FetcherConfig, NodeRng,
 };
 
-use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
-pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
+pub(crate) use event::{Event, FetchResponder, FetchResult, FetchedData, FetcherError};
 use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
@@ -159,6 +158,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
             .entry(peer)
             .or_default()
             .push(responder);
+        todo!("don't dup send message");
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
                 self.metrics().fetch_total.inc();
