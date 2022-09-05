@@ -1,23 +1,15 @@
 //! Asynchronous multiplexing
 
 pub mod backpressured;
-pub mod codec;
 pub mod error;
 pub mod fragmented;
+pub mod framing;
 pub mod io;
 pub mod mux;
 #[cfg(test)]
 pub mod testing;
 
-use std::num::NonZeroUsize;
-
 use bytes::Buf;
-use codec::{
-    length_delimited::{LengthDelimited, LengthPrefixedFrame},
-    ResultTranscoder, Transcoder, TranscodingSink, TranscodingStream,
-};
-use fragmented::{Defragmentizer, Fragmentizer, SingleFragment};
-use futures::{Sink, Stream};
 
 /// Helper macro for returning a `Poll::Ready(Err)` eagerly.
 ///
@@ -85,97 +77,6 @@ where
         self.pos = (self.pos + cnt).min(self.value.as_ref().len());
     }
 }
-
-/// Convenience trait for construction of sink chains.
-pub trait SinkMuxExt: Sized {
-    /// Wraps the current sink in a transcoder.
-    ///
-    /// The resulting sink will pass all items through the given transcoder before passing them on.
-    fn with_transcoder<Input, T, NewInput>(
-        self,
-        transcoder: T,
-    ) -> TranscodingSink<T, NewInput, Self>
-    where
-        T: Transcoder<NewInput, Output = Input>;
-
-    /// Wraps the current sink in a bincode transcoder.
-    #[cfg(feature = "bincode")]
-    fn bincode<T>(self) -> TranscodingSink<codec::bincode::BincodeEncoder<T>, T, Self>
-    where
-        Self: Sink<bytes::Bytes>,
-        T: serde::Serialize + Sync + Send + 'static,
-    {
-        self.with_transcoder(codec::bincode::BincodeEncoder::new())
-    }
-
-    /// Wraps the current sink in a fragmentizer.
-    fn fragmenting<F>(self, fragment_size: NonZeroUsize) -> Fragmentizer<Self, F>
-    where
-        Self: Sink<SingleFragment> + Unpin,
-        F: Buf + Send + Sync + 'static;
-
-    /// Wrap current sink in length delimination.
-    ///
-    /// Equivalent to `.with_transcoder(LengthDelimited)`.
-    fn length_delimited<F>(self) -> TranscodingSink<LengthDelimited, F, Self>
-    where
-        Self: Sink<LengthPrefixedFrame<F>>,
-        F: Buf + Send + Sync + 'static,
-    {
-        self.with_transcoder(LengthDelimited)
-    }
-}
-
-impl<S> SinkMuxExt for S {
-    fn with_transcoder<Input, T, NewInput>(
-        self,
-        transcoder: T,
-    ) -> TranscodingSink<T, NewInput, Self> {
-        TranscodingSink::new(transcoder, self)
-    }
-
-    fn fragmenting<F>(self, fragment_size: NonZeroUsize) -> Fragmentizer<Self, F>
-    where
-        Self: Sink<SingleFragment> + Unpin,
-        F: Buf + Send + Sync + 'static,
-    {
-        Fragmentizer::new(fragment_size, self)
-    }
-}
-
-/// Convenience trait for the construction of stream chains.
-// Note: The trait bounds are not strictly necessary, but make compiler error messages a lot easier
-//       to read.
-pub trait StreamMuxExt: Sized + Stream + Unpin {
-    /// Wraps the current stream with a transcoder.
-    fn with_transcoder<T>(self, transcoder: T) -> TranscodingStream<T, Self>
-    where
-        T: Transcoder<Self::Item> + Unpin,
-    {
-        TranscodingStream::new(transcoder, self)
-    }
-
-    /// Wraps the current stream with a `Result`-mapping transcoder.
-    #[inline]
-    fn and_then_transcode<Trans, E, T>(
-        self,
-        transcoder: Trans,
-    ) -> TranscodingStream<ResultTranscoder<Trans, E>, Self>
-    where
-        Trans: Transcoder<T>,
-        Self: Stream<Item = Result<T, E>>,
-    {
-        let result_transcoder = ResultTranscoder::<_, E>::new(transcoder);
-        TranscodingStream::new(result_transcoder, self)
-    }
-
-    /// Wraps the current stream in a defragmentizer.
-    fn defragmenting(self, max_frame_size: usize) -> Defragmentizer<Self> {
-        Defragmentizer::new(max_frame_size, self)
-    }
-}
-
-impl<S> StreamMuxExt for S where S: Sized + Stream + Unpin {}
 
 #[rustfmt::skip]
 #[cfg(test)]

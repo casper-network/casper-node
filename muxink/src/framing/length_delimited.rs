@@ -11,7 +11,7 @@ use std::convert::Infallible;
 use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 
-use super::{DecodeResult, FrameDecoder, Transcoder};
+use super::{DecodeResult, FrameDecoder, FrameEncoder};
 use crate::ImmediateFrame;
 
 /// Lenght of the prefix that describes the length of the following frame.
@@ -21,9 +21,28 @@ const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
 #[derive(Debug)]
 pub struct LengthDelimited;
 
+/// The frame type for length prefixed frames.
+pub type LengthPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 2]>, F>;
+
+impl<B> FrameEncoder<B> for LengthDelimited
+where
+    B: Buf + Send,
+{
+    type Error = LengthExceededError;
+
+    type Output = LengthPrefixedFrame<B>;
+
+    fn encode_frame(&mut self, buffer: B) -> Result<Self::Output, Self::Error> {
+        let remaining = buffer.remaining();
+        let length: u16 = remaining
+            .try_into()
+            .map_err(|_err| LengthExceededError(remaining))?;
+        Ok(ImmediateFrame::from(length).chain(buffer))
+    }
+}
+
 impl FrameDecoder for LengthDelimited {
     type Error = Infallible;
-    type Output = Bytes;
 
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Bytes, Self::Error> {
         let bytes_in_buffer = buffer.remaining();
@@ -53,25 +72,6 @@ impl FrameDecoder for LengthDelimited {
 #[derive(Debug, Error)]
 #[error("outgoing frame would exceed maximum frame length of 64 KB: {0}")]
 pub struct LengthExceededError(usize);
-
-/// The frame type for length prefixed frames.
-pub type LengthPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 2]>, F>;
-
-impl<F> Transcoder<F> for LengthDelimited
-where
-    F: Buf + Send + Sync + 'static,
-{
-    type Error = LengthExceededError;
-    type Output = LengthPrefixedFrame<F>;
-
-    fn transcode(&mut self, input: F) -> Result<Self::Output, Self::Error> {
-        let remaining = input.remaining();
-        let length: u16 = remaining
-            .try_into()
-            .map_err(|_err| LengthExceededError(remaining))?;
-        Ok(ImmediateFrame::from(length).chain(input))
-    }
-}
 
 #[cfg(test)]
 mod tests {

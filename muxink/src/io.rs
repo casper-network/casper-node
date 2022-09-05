@@ -11,15 +11,15 @@ use std::{
     task::{Context, Poll},
 };
 
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use futures::{ready, AsyncRead, AsyncWrite, Sink, Stream};
 
 use crate::{
-    codec::{DecodeResult, FrameDecoder, Transcoder},
+    framing::{DecodeResult, FrameDecoder, FrameEncoder},
     try_ready,
 };
 
-/// Frame decoder for an underlying reader.
+/// Reads frames from an underlying reader.
 ///
 /// Uses the given [`FrameDecoder`] `D` to read frames from the underlying IO.
 ///
@@ -41,14 +41,18 @@ pub struct FrameReader<D, R> {
 
 /// Writer for frames.
 ///
-/// Simply writes any given [`Buf`]-implementing frame to the underlying writer.
+/// Writes a frame to the underlying writer after encoding it using the given [`FrameEncoder`].
 ///
 /// # Cancellation safety
 ///
 /// The [`Sink`] methods on [`FrameWriter`] are cancellation safe. Only a single item is buffered
 /// inside the writer itself.
 #[derive(Debug)]
-pub struct FrameWriter<F, E: Transcoder<F>, W> {
+pub struct FrameWriter<F, E, W>
+where
+    E: FrameEncoder<F>,
+    F: Buf,
+{
     /// The encoder used to encode outgoing frames.
     encoder: E,
     /// Underlying async bytestream being written.
@@ -79,7 +83,7 @@ where
     D: FrameDecoder + Unpin,
     R: AsyncRead + Unpin,
 {
-    type Item = io::Result<<D as FrameDecoder>::Output>;
+    type Item = io::Result<Bytes>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let FrameReader {
@@ -118,8 +122,9 @@ where
 
 impl<F, E, W> FrameWriter<F, E, W>
 where
-    E: Transcoder<F>,
-    <E as Transcoder<F>>::Output: Buf,
+    E: FrameEncoder<F>,
+    <E as FrameEncoder<F>>::Output: Buf,
+    F: Buf,
 {
     /// Creates a new frame writer with the given encoder.
     pub fn new(encoder: E, stream: W) -> Self {
@@ -172,8 +177,9 @@ where
 impl<F, E, W> Sink<F> for FrameWriter<F, E, W>
 where
     Self: Unpin,
-    E: Transcoder<F>,
-    <E as Transcoder<F>>::Output: Buf,
+    E: FrameEncoder<F>,
+    <E as FrameEncoder<F>>::Output: Buf,
+    F: Buf,
     W: AsyncWrite + Unpin,
 {
     type Error = io::Error;
@@ -191,7 +197,7 @@ where
     fn start_send(mut self: Pin<&mut Self>, item: F) -> Result<(), Self::Error> {
         let wrapped_frame = self
             .encoder
-            .transcode(item)
+            .encode_frame(item)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         self.current_frame = Some(wrapped_frame);
 
