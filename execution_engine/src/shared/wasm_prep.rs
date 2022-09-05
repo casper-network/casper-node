@@ -1,6 +1,4 @@
 //! Preprocessing of Wasm modules.
-use std::fmt::{self, Display, Formatter};
-
 use parity_wasm::elements::{
     self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
 };
@@ -25,7 +23,7 @@ pub const DEFAULT_MAX_PARAMETER_COUNT: u32 = 256;
 /// An error emitted by the Wasm preprocessor.
 #[derive(Debug, Clone, Error)]
 #[non_exhaustive]
-enum WasmValidationError {
+pub enum WasmValidationError {
     /// Initial table size outside allowed bounds.
     #[error("initial table size of {actual} exceeds allowed limit of {max}")]
     InitialTableSizeExceeded {
@@ -97,38 +95,30 @@ enum WasmValidationError {
 #[non_exhaustive]
 pub enum PreprocessingError {
     /// Unable to deserialize Wasm bytes.
+    #[error("Deserialization error: {0}")]
     Deserialize(String),
     /// Found opcodes forbidden by gas rules.
+    #[error(
+        "Encountered operation forbidden by gas rules. Consult instruction -> metering config map"
+    )]
     OperationForbiddenByGasRules,
     /// Stack limiter was unable to instrument the binary.
+    #[error("Stack limiter error")]
     StackLimiter,
     /// Wasm bytes is missing memory section.
+    #[error("Memory section should exist")]
     MissingMemorySection,
     /// The module is missing.
+    #[error("Missing module")]
     MissingModule,
+    /// Unable to validate wasm bytes.
+    #[error("Wasm validation error: {0}")]
+    WasmValidation(#[from] WasmValidationError),
 }
 
 impl From<elements::Error> for PreprocessingError {
     fn from(error: elements::Error) -> Self {
         PreprocessingError::Deserialize(error.to_string())
-    }
-}
-
-impl From<WasmValidationError> for PreprocessingError {
-    fn from(wasm_validation_error: WasmValidationError) -> Self {
-        Self::Deserialize(wasm_validation_error.to_string())
-    }
-}
-
-impl Display for PreprocessingError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            PreprocessingError::Deserialize(error) => write!(f, "Deserialization error: {}", error),
-            PreprocessingError::OperationForbiddenByGasRules => write!(f, "Encountered operation forbidden by gas rules. Consult instruction -> metering config map"),
-            PreprocessingError::StackLimiter => write!(f, "Stack limiter error"),
-            PreprocessingError::MissingMemorySection => write!(f, "Memory section should exist"),
-            PreprocessingError::MissingModule => write!(f, "Missing module"),
-        }
     }
 }
 
@@ -468,7 +458,11 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            matches!(
+                &error,
+                PreprocessingError::WasmValidation(WasmValidationError::MissingFunctionIndex { index: missing_index })
+                if *missing_index == u32::MAX
+            ),
             "{:?}",
             error,
         );
@@ -503,7 +497,11 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(_msg)),
+            matches!(
+                &error,
+                PreprocessingError::WasmValidation(WasmValidationError::MissingFunctionIndex { index: missing_index })
+                if *missing_index == u32::MAX
+            ),
             "{:?}",
             error,
         );
@@ -535,8 +533,11 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == &format!("missing function index {index}", index=u32::MAX)),
+            matches!(
+                &error,
+                PreprocessingError::WasmValidation(WasmValidationError::MissingFunctionIndex { index: missing_index })
+                if *missing_index == u32::MAX
+            ),
             "{:?}",
             error,
         );
@@ -554,8 +555,11 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == &format!("missing function index {index}", index=u32::MAX)),
+            matches!(
+                &error,
+                PreprocessingError::WasmValidation(WasmValidationError::MissingFunctionIndex { index: missing_index })
+                if *missing_index == u32::MAX
+            ),
             "{:?}",
             error,
         );
@@ -573,8 +577,11 @@ mod tests {
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == &format!("missing function index {index}", index=u32::MAX)),
+            matches!(
+                &error,
+                PreprocessingError::WasmValidation(WasmValidationError::MissingFunctionIndex { index: missing_index })
+                if *missing_index == u32::MAX
+            ),
             "{:?}",
             error,
         );

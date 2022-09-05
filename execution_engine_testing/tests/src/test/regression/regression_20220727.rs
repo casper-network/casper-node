@@ -15,7 +15,7 @@ use casper_execution_engine::{
         execution,
     },
     shared::wasm_prep::{
-        PreprocessingError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
+        PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
         DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
     },
 };
@@ -60,14 +60,11 @@ fn should_not_oom() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let test_cases = vec![
-        OOM_INIT,
-        FAILURE_ONE_ABOVE_LIMIT,
-        FAILURE_MAX_ABOVE_LIMIT,
-        FAILURE_INIT_ABOVE_LIMIT,
-    ];
+    let initial_size_exceeded = vec![OOM_INIT, FAILURE_ONE_ABOVE_LIMIT];
 
-    for (initial, maximum) in test_cases {
+    let max_size_exceeded = vec![FAILURE_MAX_ABOVE_LIMIT, FAILURE_INIT_ABOVE_LIMIT];
+
+    for (initial, maximum) in initial_size_exceeded {
         let module_bytes = make_oom_payload(initial, maximum);
         let exec_request = ExecuteRequestBuilder::module_bytes(
             *DEFAULT_ACCOUNT_ADDR,
@@ -80,10 +77,39 @@ fn should_not_oom() {
 
         let error = builder.get_error().unwrap();
 
-        assert!(matches!(
-            error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref _msg))
-        ))
+        assert!(
+            matches!(
+                error,
+                engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(WasmValidationError::InitialTableSizeExceeded { max, actual }))
+                if max == DEFAULT_MAX_TABLE_SIZE && actual == initial
+            ),
+            "{:?}",
+            error
+        );
+    }
+
+    for (initial, maximum) in max_size_exceeded {
+        let module_bytes = make_oom_payload(initial, maximum);
+        let exec_request = ExecuteRequestBuilder::module_bytes(
+            *DEFAULT_ACCOUNT_ADDR,
+            module_bytes,
+            RuntimeArgs::default(),
+        )
+        .build();
+
+        builder.exec(exec_request).expect_failure().commit();
+
+        let error = builder.get_error().unwrap();
+
+        assert!(
+            matches!(
+                error,
+                engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(WasmValidationError::MaxTableSizeExceeded { max, actual }))
+                if max == DEFAULT_MAX_TABLE_SIZE && Some(actual) == maximum
+            ),
+            "{initial} {maximum:?} {:?}",
+            error
+        );
     }
 }
 
@@ -268,8 +294,9 @@ fn should_not_allow_more_than_one_table() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
-            if msg == "the number of tables must be at most one"
+            engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(
+                WasmValidationError::MoreThanOneTable
+            ))
         ),
         "{:?}",
         error
@@ -389,10 +416,8 @@ fn should_not_allow_large_br_table() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(
-                ref msg
-            ))
-            if msg == &format!("maximum br_table size of {FAILING_BR_TABLE_SIZE} exceeds allowed limit of {DEFAULT_BR_TABLE_MAX_SIZE}")
+            engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(WasmValidationError::BrTableSizeExceeded { max, actual }))
+            if max == DEFAULT_BR_TABLE_MAX_SIZE && actual == FAILING_BR_TABLE_SIZE
         ),
         "{:?}",
         error,
@@ -480,8 +505,8 @@ fn should_not_allow_too_many_globals() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
-            if msg == &format!("declared number of globals ({FAILING_GLOBALS_SIZE}) exceeds allowed limit of {DEFAULT_MAX_GLOBALS}")
+            engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(WasmValidationError::TooManyGlobals { max, actual }))
+            if max == DEFAULT_MAX_GLOBALS && actual == FAILING_GLOBALS_SIZE
         ),
         "{:?}",
         error,
@@ -556,8 +581,8 @@ fn should_not_allow_too_many_params() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
-            if msg == &format!("use of a function type with too many parameters (limit of {DEFAULT_MAX_PARAMETER_COUNT} but function declares {FAILING_PARAMS_COUNT})")
+            engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(WasmValidationError::TooManyParameters { max, actual }))
+            if max == DEFAULT_MAX_PARAMETER_COUNT && actual == FAILING_PARAMS_COUNT
         ),
         "{:?}",
         error,
@@ -592,8 +617,9 @@ fn should_not_allow_to_import_gas_function() {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
-            if msg == "module imports a non-existent function"
+            engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(
+                WasmValidationError::MissingHostFunction
+            ))
         ),
         "{:?}",
         error,
@@ -722,8 +748,8 @@ fn test_non_existing_global(module_wat: &str, index: u32) {
     assert!(
         matches!(
             error,
-            engine_state::Error::WasmPreprocessing(PreprocessingError::Deserialize(ref msg))
-            if msg == &format!("opcode for a global access refers to non-existing global index {index}")
+            engine_state::Error::WasmPreprocessing(PreprocessingError::WasmValidation(WasmValidationError::IncorrectGlobalOperation { index: incorrect_index }))
+            if incorrect_index == index
         ),
         "{:?}",
         error,
