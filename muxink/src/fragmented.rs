@@ -14,7 +14,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use thiserror::Error;
 
-use crate::{error::Error, try_ready, ImmediateFrame};
+use crate::{try_ready, ImmediateFrame};
 
 pub type SingleFragment = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
@@ -243,32 +243,6 @@ where
             }
         }
     }
-}
-
-/// Splits a frame into ready-to-send fragments.
-///
-/// # Notes
-///
-/// Internally, data is copied into fragments by using `Buf::copy_to_bytes`. It is advisable to use
-/// a `B` that has an efficient implementation for this that avoids copies, like `Bytes` itself.
-pub fn fragment_frame<B: Buf>(
-    mut frame: B,
-    fragment_size: NonZeroUsize,
-) -> Result<impl Iterator<Item = SingleFragment>, Error> {
-    let fragment_size: usize = fragment_size.into();
-    let num_frames = (frame.remaining() + fragment_size - 1) / fragment_size;
-
-    Ok((0..num_frames).into_iter().map(move |_| {
-        let remaining = frame.remaining().min(fragment_size);
-        let fragment_data = frame.copy_to_bytes(remaining);
-
-        let continuation_byte: u8 = if frame.has_remaining() {
-            MORE_FRAGMENTS
-        } else {
-            FINAL_FRAGMENT
-        };
-        ImmediateFrame::from(continuation_byte).chain(fragment_data)
-    }))
 }
 
 #[cfg(test)]
