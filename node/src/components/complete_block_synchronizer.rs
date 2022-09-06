@@ -156,20 +156,21 @@ impl CompleteBlockSynchronizer {
     {
         let mut results = Effects::new();
         for builder in self.builders.values_mut() {
-            match builder.next_needed(self.fault_tolerance_fraction) {
+            let (peers, next) = builder.next_needed(self.fault_tolerance_fraction);
+            match next {
                 NeedNext::Block(block_hash) => {
-                    results.extend(builder.peer_list().iter().flat_map(|node_id| {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, *node_id)
+                            .fetch::<Block>(block_hash, node_id)
                             .event(Event::BlockFetched)
                     }))
                 }
                 NeedNext::FinalitySignatures(_) => {}
                 NeedNext::GlobalState(_) => {}
                 NeedNext::Deploy(deploy_hash) => {
-                    results.extend(builder.peer_list().iter().flat_map(|node_id| {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Deploy>(deploy_hash, *node_id)
+                            .fetch::<Deploy>(deploy_hash, node_id)
                             .event(Event::DeployFetched)
                     }))
                 }

@@ -159,7 +159,6 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
             .entry(peer)
             .or_default()
             .push(responder);
-        todo!("don't dup send message");
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
                 self.metrics().fetch_total.inc();
