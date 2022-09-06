@@ -24,9 +24,9 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals,
-        DeployHash, DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals,
-        FinalizedApprovalsWithId, Item, NodeId, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, FinalizedApprovalsWithId,
+        Item, NodeId, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
     FetcherConfig, NodeRng,

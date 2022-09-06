@@ -16,9 +16,7 @@ use crate::{
         consensus,
         fetcher::FetchResponse,
         gossiper,
-        small_network::{
-            EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload,
-        },
+        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
     effect::{
         incoming::{

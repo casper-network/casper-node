@@ -144,19 +144,18 @@ use crate::{
         small_network::FromIncoming,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::announcements::ChainSynchronizerAnnouncement,
+    effect::announcements::{BlocksAccumulatorAnnouncement, ChainSynchronizerAnnouncement},
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, TrieOrChunk,
-        TrieOrChunkId,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
-use crate::{effect::announcements::BlocksAccumulatorAnnouncement, types::FinalitySignature};
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
     ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,

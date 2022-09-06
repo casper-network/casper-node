@@ -11,8 +11,10 @@ use thiserror::Error;
 
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
 
-use crate::effect::GossipTarget;
-use crate::types::{BlockHash, BlockHeader, TrieOrChunk, TrieOrChunkId};
+use crate::{
+    effect::GossipTarget,
+    types::{BlockHash, BlockHeader, TrieOrChunk, TrieOrChunkId},
+};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -55,8 +57,9 @@ pub enum Tag {
     FinalitySignature,
     /// Finality signatures for a block requested by the block's hash.
     FinalitySignaturesByHash,
-    /// Headers and signatures required to prove that if a given trusted block hash is on the correct
-    /// chain, then so is a later header, which should be the most recent one according to the sender.
+    /// Headers and signatures required to prove that if a given trusted block hash is on the
+    /// correct chain, then so is a later header, which should be the most recent one according
+    /// to the sender.
     SyncLeap,
 }
 

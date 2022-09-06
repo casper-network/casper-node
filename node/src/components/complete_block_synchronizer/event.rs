@@ -4,7 +4,7 @@ use std::{
 };
 
 use derive_more::From;
-use serde::{ Serialize};
+use serde::Serialize;
 
 use casper_types::{EraId, PublicKey, U512};
 

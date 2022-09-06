@@ -59,8 +59,9 @@ impl BlockAcceptor {
         finality_signature: FinalitySignature,
     ) -> Result<(), Error> {
         // TODO: verify sig
-        // TODO: What to do when we receive multiple valid finality_signature from single public_key?
-        // TODO: What to do when we receive too many finality_signature from single peer?
+        // TODO: What to do when we receive multiple valid finality_signature from single
+        // public_key? TODO: What to do when we receive too many finality_signature from
+        // single peer?
         if let Some(block) = self.block.as_ref() {
             if block.header().era_id() != finality_signature.era_id {
                 warn!(block_hash = %block.hash(), "received finality signature with invalid era");
@@ -101,8 +102,8 @@ impl BlockAcceptor {
         fault_tolerance_fraction: Ratio<u64>,
         trusted_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> SignaturesFinality {
-        // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid creating it
-        // from `BTreeMap<PublicKey, FinalitySignature>` on every call.
+        // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid
+        // creating it from `BTreeMap<PublicKey, FinalitySignature>` on every call.
         let mut block_signatures = BlockSignatures::new(self.block_hash, self.era_id);
         self.signatures
             .iter()
