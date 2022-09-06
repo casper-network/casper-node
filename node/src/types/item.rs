@@ -130,14 +130,6 @@ impl FetcherItem for TrieOrChunk {
     }
 }
 
-impl GossiperItem for TrieOrChunk {
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    fn target(&self) -> GossipTarget {
-        GossipTarget::All
-    }
-}
-
 impl Item for BlockHeader {
     type Id = BlockHash;
     const TAG: Tag = Tag::BlockHeaderByHash;
