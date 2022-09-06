@@ -1968,9 +1968,17 @@ impl Item for BlockEffectsOrChunk {
                 }
             },
             BlockEffectsOrChunk::BlockEffects(value) => match value {
-                ValueOrChunk::Value(execution_results) => BlockEffectsOrChunkId::new(
-                    Chunkable::hash(&execution_results).expect("hashing to succeed."), //TODO
-                ),
+                ValueOrChunk::Value(execution_results) => {
+                    match Chunkable::hash(&execution_results) {
+                        Ok(chunked_hash) => BlockEffectsOrChunkId::new(chunked_hash),
+                        Err(err) => {
+                            error!(?err, "error when calculating hash of block effects. Will likely lead to a sync process being stuck.");
+                            // To appease compiler we have to return `Self::Id`. This will have no
+                            // effect and will be dropped in the fetcher.
+                            BlockEffectsOrChunkId::new(Digest::default())
+                        }
+                    }
+                }
                 ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
                     BlockEffectsOrChunkId::BlockEffectsOrChunkId {
                         chunk_index: chunk_with_proof.proof().index(),
