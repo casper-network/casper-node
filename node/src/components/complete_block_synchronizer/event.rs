@@ -11,7 +11,7 @@ use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::{complete_block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
-    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash},
+    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash, NodeId},
 };
 
 #[derive(From, Debug, Serialize)]
@@ -26,6 +26,8 @@ pub(crate) enum Event {
     },
 
     Next,
+
+    DisconnectFromPeer(NodeId),
 
     #[from]
     BlockFetched(FetchResult<Block>),

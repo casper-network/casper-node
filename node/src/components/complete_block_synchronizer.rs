@@ -175,10 +175,20 @@ impl CompleteBlockSynchronizer {
                     }))
                 }
                 NeedNext::ExecutionResults(_) => {}
-                NeedNext::Nothing => (),
+                // No further parts of the block are missing. Nothing to do.
+                NeedNext::Nothing => {}
+                // We expect to be told about new peers automatically; do nothing.
+                NeedNext::Peers => {}
             }
         }
         results
+    }
+
+    fn handle_disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
+        for builder in self.builders.values_mut() {
+            builder.remove_peer(node_id);
+        }
+        Effects::new()
     }
 
     /// Reactor instructing this instance to be stopped
@@ -210,6 +220,7 @@ where
             }
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
+            Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
             _ => todo!(),
         }
     }
