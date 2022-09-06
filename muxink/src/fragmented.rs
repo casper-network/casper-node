@@ -247,10 +247,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{convert::Infallible, num::NonZeroUsize, sync::Arc};
+    use std::{convert::Infallible, io, num::NonZeroUsize, sync::Arc};
 
     use bytes::{Buf, Bytes};
-    use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
+    use futures::{channel::mpsc, stream, FutureExt, SinkExt, StreamExt};
 
     use crate::{
         fragmented::{Defragmentizer, DefragmentizerError},
@@ -273,6 +273,15 @@ mod tests {
                 _ => core::mem::discriminant(self) == core::mem::discriminant(other),
             }
         }
+    }
+
+    /// Builds a sequence of frames that could have been read from the network.
+    fn build_frame_input(frames: &[&'static [u8]]) -> Vec<io::Result<Bytes>> {
+        frames
+            .into_iter()
+            .map(|&x| Bytes::from(x))
+            .map(Result::Ok)
+            .collect()
     }
 
     #[test]
@@ -301,29 +310,10 @@ mod tests {
     #[test]
     fn defragmentizer_basic() {
         let frame_data = b"01234567890abcdefghijklmno";
-        let mut fragments: Vec<Bytes> = [b"\x0001234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
-        fragments.push(b"\xFFno".as_slice().into());
+        let frames =
+            build_frame_input(&[b"\x0001234567", b"\x00890abcde", b"\x00fghijklm", b"\xFFno"]);
 
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        for fragment in fragments {
-            sender
-                .send(Ok(fragment))
-                .now_or_never()
-                .expect("Couldn't send encoded frame")
-                .unwrap();
-        }
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
-
-        let defragmentizer = Defragmentizer::new(frame_data.len(), receiver);
+        let defragmentizer = Defragmentizer::new(frame_data.len(), stream::iter(frames));
         let frames: Vec<Bytes> = defragmentizer
             .map(|bytes_result| bytes_result.unwrap())
             .collect()
@@ -374,33 +364,10 @@ mod tests {
     #[test]
     fn defragmentizer_incomplete_frame() {
         let frame_data = b"01234567890abcdefghijklmno";
-        let mut fragments: Vec<Bytes> = [b"\x0001234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
-        fragments.push(b"\xFFno".as_slice().into());
+        // Send an incomplete frame with no final fragment.
+        let frames = build_frame_input(&[b"\x0001234567", b"\x00890abcde"]);
 
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        // Send just 2 frames and prematurely close the stream.
-        sender
-            .send(Ok(fragments[0].clone()))
-            .now_or_never()
-            .expect("Couldn't send encoded frame")
-            .unwrap();
-        sender
-            .send(Ok(fragments[1].clone()))
-            .now_or_never()
-            .expect("Couldn't send encoded frame")
-            .unwrap();
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
-
-        let mut defragmentizer = Defragmentizer::new(frame_data.len(), receiver);
+        let mut defragmentizer = Defragmentizer::new(frame_data.len(), stream::iter(frames));
         // Ensure we don't incorrectly yield a frame.
         assert_eq!(
             defragmentizer
@@ -417,29 +384,10 @@ mod tests {
     fn defragmentizer_invalid_fragment_header() {
         let frame_data = b"01234567890abcdefghijklmno";
         // Insert invalid header '0xAB' into the first fragment.
-        let mut fragments: Vec<Bytes> = [b"\xAB01234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
-        fragments.push(b"\xFFno".as_slice().into());
+        let frames =
+            build_frame_input(&[b"\xAB01234567", b"\x00890abcde", b"\x00fghijklm", b"\xFFno"]);
 
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        for fragment in fragments {
-            sender
-                .send(Ok(fragment))
-                .now_or_never()
-                .expect("Couldn't send encoded frame")
-                .unwrap();
-        }
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
-
-        let mut defragmentizer = Defragmentizer::new(frame_data.len(), receiver);
+        let mut defragmentizer = Defragmentizer::new(frame_data.len(), stream::iter(frames));
         assert_eq!(
             defragmentizer
                 .next()
@@ -454,31 +402,16 @@ mod tests {
     #[test]
     fn defragmentizer_zero_length_non_final_fragment() {
         let frame_data = b"01234567890abcdefghijklmno";
-        let mut fragments: Vec<Bytes> = [b"\x0001234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
         // Insert an empty, non-final fragment with just the header.
-        fragments.push(b"\x00".as_slice().into());
-        fragments.push(b"\xFFno".as_slice().into());
+        let frames = build_frame_input(&[
+            b"\x0001234567",
+            b"\x00890abcde",
+            b"\x00fghijklm",
+            b"\x00",
+            b"\xFFno",
+        ]);
 
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        for fragment in fragments {
-            sender
-                .send(Ok(fragment))
-                .now_or_never()
-                .expect("Couldn't send encoded frame")
-                .unwrap();
-        }
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
-
-        let mut defragmentizer = Defragmentizer::new(frame_data.len(), receiver);
+        let mut defragmentizer = Defragmentizer::new(frame_data.len(), stream::iter(frames));
         assert_eq!(
             defragmentizer
                 .next()
@@ -493,32 +426,13 @@ mod tests {
     #[test]
     fn defragmentizer_zero_length_final_fragment() {
         let frame_data = b"01234567890abcdefghijklm";
-        let mut fragments: Vec<Bytes> = [b"\x0001234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
         // Insert an empty, final fragment with just the header. This should
         // succeed as the requirement to have non-empty fragments only applies
         // to non-final fragments.
-        fragments.push(b"\xFF".as_slice().into());
+        let frames =
+            build_frame_input(&[b"\x0001234567", b"\x00890abcde", b"\x00fghijklm", b"\xFF"]);
 
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        for fragment in fragments {
-            sender
-                .send(Ok(fragment))
-                .now_or_never()
-                .expect("Couldn't send encoded frame")
-                .unwrap();
-        }
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
-
-        let defragmentizer = Defragmentizer::new(frame_data.len(), receiver);
+        let defragmentizer = Defragmentizer::new(frame_data.len(), stream::iter(frames));
         let frames: Vec<Bytes> = defragmentizer
             .map(|bytes_result| bytes_result.unwrap())
             .collect()
@@ -531,31 +445,16 @@ mod tests {
     #[test]
     fn defragmentizer_missing_fragment_header() {
         let frame_data = b"01234567890abcdefghijklmno";
-        let mut fragments: Vec<Bytes> = [b"\x0001234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
         // Insert an empty fragment, not even a header in it.
-        fragments.push(b"".as_slice().into());
-        fragments.push(b"\xFFno".as_slice().into());
+        let frames = build_frame_input(&[
+            b"\x0001234567",
+            b"\x00890abcde",
+            b"\x00fghijklm",
+            b"",
+            b"\xFFno",
+        ]);
 
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        for fragment in fragments {
-            sender
-                .send(Ok(fragment))
-                .now_or_never()
-                .expect("Couldn't send encoded frame")
-                .unwrap();
-        }
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
-
-        let mut defragmentizer = Defragmentizer::new(frame_data.len(), receiver);
+        let mut defragmentizer = Defragmentizer::new(frame_data.len(), stream::iter(frames));
         assert_eq!(
             defragmentizer
                 .next()
@@ -570,31 +469,12 @@ mod tests {
     #[test]
     fn defragmentizer_max_frame_size_exceeded() {
         let frame_data = b"01234567890abcdefghijklmno";
-        let mut fragments: Vec<Bytes> = [b"\x0001234567", b"\x00890abcde", b"\x00fghijklm"]
-            .into_iter()
-            .map(|bytes| bytes.as_slice().into())
-            .collect();
-        fragments.push(b"\xFFno".as_slice().into());
-
-        let (mut sender, receiver) =
-            mpsc::channel::<Result<Bytes, Infallible>>(CHANNEL_BUFFER_SIZE);
-        for fragment in fragments {
-            sender
-                .send(Ok(fragment))
-                .now_or_never()
-                .expect("Couldn't send encoded frame")
-                .unwrap();
-        }
-        sender
-            .flush()
-            .now_or_never()
-            .expect("Couldn't flush")
-            .unwrap();
-        drop(sender);
+        let frames =
+            build_frame_input(&[b"\x0001234567", b"\x00890abcde", b"\x00fghijklm", b"\xFFno"]);
 
         // Initialize the defragmentizer with a max frame length lower than what
         // we're trying to send.
-        let mut defragmentizer = Defragmentizer::new(frame_data.len() - 1, receiver);
+        let mut defragmentizer = Defragmentizer::new(frame_data.len() - 1, stream::iter(frames));
         // Ensure the data doesn't fit in the frame size limit.
         assert_eq!(
             defragmentizer
