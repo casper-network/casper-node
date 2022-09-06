@@ -11,8 +11,6 @@ use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-
 use crate::{
     components::{
         linear_chain::{self, BlockSignatureError},
@@ -28,6 +26,9 @@ use crate::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals,
         DeployHash, DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, Item, NodeId,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
     FetcherConfig, NodeRng,

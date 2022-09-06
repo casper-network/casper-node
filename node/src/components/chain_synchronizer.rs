@@ -11,8 +11,6 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::storage::trie::TrieOrChunk;
-
 use crate::{
     components::{
         chain_synchronizer::error::{FetchBlockHeadersBatchError, FetchTrieError},
@@ -34,6 +32,8 @@ use crate::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Chainspec, Deploy, DeployFinalizedApprovals,
         NodeConfig, NodeState,
+        BlockSignatures, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId,
+        NodeConfig, NodeState, TrieOrChunk,
     },
     NodeRng, SmallNetworkConfig,
 };

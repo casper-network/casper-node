@@ -9,13 +9,10 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use thiserror::Error;
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
 
-use crate::{
-    effect::GossipTarget,
-    types::{BlockHash, BlockHeader},
-};
+use crate::effect::GossipTarget;
+use crate::types::{BlockHash, BlockHeader, TrieOrChunk, TrieOrChunkId};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -110,7 +107,7 @@ impl Item for TrieOrChunk {
 
     fn id(&self) -> Self::Id {
         match self {
-            TrieOrChunk::Trie(node_bytes) => TrieOrChunkId(0, Digest::hash(&node_bytes)),
+            TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, Digest::hash(&trie_raw.inner())),
             TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
                 chunked_data.proof().index(),
                 chunked_data.proof().root_hash(),
@@ -124,9 +121,17 @@ impl FetcherItem for TrieOrChunk {
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
         match self {
-            TrieOrChunk::Trie(_) => Ok(()),
+            TrieOrChunk::Value(_) => Ok(()),
             TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
         }
+    }
+}
+
+impl GossiperItem for TrieOrChunk {
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn target(&self) -> GossipTarget {
+        GossipTarget::All
     }
 }
 

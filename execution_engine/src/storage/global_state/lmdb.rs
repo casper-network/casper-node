@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use casper_hashing::Digest;
+use casper_types::{Key, StoredValue};
 use tracing::trace;
 
 use crate::{
@@ -19,8 +19,7 @@ use crate::{
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
-            TrieOrChunkId,
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw,
         },
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
@@ -129,6 +128,11 @@ impl LmdbGlobalState {
     #[must_use]
     pub fn trie_store(&self) -> &LmdbTrieStore {
         &self.trie_store
+    }
+
+    /// Returns an initial, empty root hash of the underlying trie.
+    pub fn empty_state_root_hash(&self) -> Digest {
+        self.empty_root_hash
     }
 }
 
@@ -247,43 +251,15 @@ impl StateProvider for LmdbGlobalState {
         self.empty_root_hash
     }
 
-    fn get_trie(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Self::Error> {
-        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
-
-        let maybe_trie_or_chunk = bytes.map_or_else(
-            || Ok(None),
-            |bytes| {
-                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes)))
-                } else {
-                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
-                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
-                }
-            },
-        );
-
-        txn.commit()?;
-        maybe_trie_or_chunk
-    }
-
     fn get_trie_full(
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
+        let ret: Option<TrieRaw> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(TrieRaw::new);
         txn.commit()?;
         Ok(ret)
     }
@@ -378,7 +354,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, bytesrepr, CLValue};
+    use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
     use crate::storage::{
@@ -401,25 +377,6 @@ mod tests {
             TestPair {
                 key: Key::Account(AccountHash::new([2_u8; 32])),
                 value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
-            },
-        ]
-    }
-
-    // Creates the test pairs that contain data of size
-    // greater than the chunk limit.
-    fn create_test_pairs_with_large_data() -> [TestPair; 2] {
-        let val = CLValue::from_t(
-            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
-        )
-        .unwrap();
-        [
-            TestPair {
-                key: Key::Account(AccountHash::new([1_u8; 32])),
-                value: StoredValue::CLValue(val.clone()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(val),
             },
         ]
     }
@@ -568,100 +525,5 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
-    }
-
-    #[test]
-    fn returns_trie_or_chunk() {
-        let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state(create_test_pairs_with_large_data);
-
-        // Expect `Trie` with NodePointer when asking with a root hash.
-        let trie = state
-            .get_trie(correlation_id, TrieOrChunkId(0, root_hash))
-            .expect("should get trie correctly")
-            .expect("should be Some()");
-        assert!(matches!(trie, TrieOrChunk::Trie(_)));
-
-        // Expect another `Trie` with two LeafPointers.
-        let trie = state
-            .get_trie(
-                correlation_id,
-                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
-            )
-            .expect("should get trie correctly")
-            .expect("should be Some()");
-        assert!(matches!(trie, TrieOrChunk::Trie(_)));
-
-        // Now, the next hash will point to the actual leaf, which as we expect
-        // contains large data, so we expect to get `ChunkWithProof`.
-        let hash = extract_next_hash_from_trie(trie);
-        let chunk = match state
-            .get_trie(correlation_id, TrieOrChunkId(0, hash))
-            .expect("should get trie correctly")
-            .expect("should be Some()")
-        {
-            TrieOrChunk::ChunkWithProof(chunk) => chunk,
-            other => panic!("expected ChunkWithProof, got {:?}", other),
-        };
-
-        assert_eq!(chunk.proof().root_hash(), hash);
-
-        // try to read all the chunks
-        let count = chunk.proof().count();
-        let mut chunks = vec![chunk];
-        for i in 1..count {
-            let chunk = match state
-                .get_trie(correlation_id, TrieOrChunkId(i, hash))
-                .expect("should get trie correctly")
-                .expect("should be Some()")
-            {
-                TrieOrChunk::ChunkWithProof(chunk) => chunk,
-                other => panic!("expected ChunkWithProof, got {:?}", other),
-            };
-            chunks.push(chunk);
-        }
-
-        // there should be no chunk with index `count`
-        assert!(matches!(
-            state.get_trie(correlation_id, TrieOrChunkId(count, hash)),
-            Err(error::Error::MerkleConstruction(_))
-        ));
-
-        // all chunks should be valid
-        assert!(chunks.iter().all(|chunk| chunk.verify().is_ok()));
-
-        let data: Vec<u8> = chunks
-            .into_iter()
-            .flat_map(|chunk| chunk.into_chunk())
-            .collect();
-
-        let trie: Trie<Key, StoredValue> =
-            bytesrepr::deserialize(data).expect("trie should deserialize correctly");
-
-        // should be deserialized to a leaf
-        assert!(matches!(trie, Trie::Leaf { .. }));
-    }
-
-    fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
-        let next_hash = if let TrieOrChunk::Trie(trie_bytes) = trie_or_chunk {
-            if let Trie::Node { pointer_block } =
-                bytesrepr::deserialize::<Trie<Key, StoredValue>>(Vec::<u8>::from(trie_bytes))
-                    .expect("Could not parse trie bytes")
-            {
-                if pointer_block.child_count() == 0 {
-                    panic!("expected children");
-                }
-                let (_, ptr) = pointer_block.as_indexed_pointers().next().unwrap();
-                match ptr {
-                    crate::storage::trie::Pointer::LeafPointer(ptr)
-                    | crate::storage::trie::Pointer::NodePointer(ptr) => ptr,
-                }
-            } else {
-                panic!("expected `Node`");
-            }
-        } else {
-            panic!("expected `Trie`");
-        };
-        next_hash
     }
 }

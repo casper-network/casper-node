@@ -9,6 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use casper_execution_engine::storage::trie::TrieRaw;
 use datasize::DataSize;
 use futures::{
     stream::{futures_unordered::FuturesUnordered, StreamExt},
@@ -22,7 +23,6 @@ use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
 
@@ -50,7 +50,7 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
         BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, FetcherItem,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, FinalizedApprovalsWithId, Item, TrieOrChunk, TrieOrChunkId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -507,7 +507,7 @@ where
 
 enum TrieAlreadyPresentOrDownloaded {
     AlreadyPresent,
-    Downloaded(Bytes),
+    Downloaded(TrieRaw),
 }
 
 async fn fetch_trie_with_retries<REv>(
@@ -529,7 +529,7 @@ where
         };
 
     let chunk_with_proof = match trie_or_chunk {
-        TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
+        TrieOrChunk::Value(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
         TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
     };
 
@@ -550,7 +550,7 @@ where
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
                 FetchedData::FromPeer { item, .. } => match *item {
-                    TrieOrChunk::Trie(_) => Err(
+                    TrieOrChunk::Value(_) => Err(
                         FetchTrieError::TrieBeingFetchedByChunksSomehowFetchWholeFromPeer {
                             digest: id,
                         },
@@ -585,8 +585,10 @@ where
     chunk_map.insert(0, first_chunk);
 
     // Concatenate all of the chunks into a trie
-    let trie_bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
-    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes))
+    let trie_bytes: Bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
+    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(TrieRaw::new(
+        trie_bytes,
+    )))
 }
 
 /// Fetches and stores a block header from the network.

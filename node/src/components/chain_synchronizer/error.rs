@@ -4,10 +4,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::{sync::AcquireError, task::JoinError};
 
-use casper_execution_engine::{
-    core::{engine_state, engine_state::GetEraValidatorsError},
-    storage::trie::TrieOrChunk,
-};
+use casper_execution_engine::core::{engine_state, engine_state::GetEraValidatorsError};
 use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
@@ -19,6 +16,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockWithMetadata, Deploy, DeployFinalizedApprovals, FetcherItem,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, TrieOrChunk,
     },
 };
 

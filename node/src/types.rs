@@ -4,6 +4,7 @@ pub(crate) mod appendable_block;
 mod available_block_range;
 mod block;
 pub mod chainspec;
+mod chunkable;
 mod deploy;
 pub mod error;
 mod exit_code;
@@ -15,6 +16,7 @@ mod node_id;
 pub mod peers_map;
 mod shared_object;
 mod status_feed;
+mod value_or_chunk;
 
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
@@ -32,6 +34,7 @@ pub(crate) use block::{
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
+pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployFinalizedApprovals, DeployHash,
@@ -46,6 +49,9 @@ pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
+pub use value_or_chunk::{
+    ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
+};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}

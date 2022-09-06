@@ -31,9 +31,7 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState,
-        transaction_source::lmdb::LmdbEnvironment,
-        trie::{TrieOrChunk, TrieOrChunkId},
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -50,7 +48,10 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock},
+    types::{
+        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
+        FinalizedBlock, TrieOrChunk, TrieOrChunkId,
+    },
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -72,6 +73,9 @@ pub(crate) enum ContractRuntimeError {
     // It was not possible to get trie with the specified id
     #[error("error retrieving trie by id: {0}")]
     FailedToRetrieveTrieById(#[source] engine_state::Error),
+    /// Chunking error.
+    #[error("failed to chunk the data {0}")]
+    ChunkingError(#[source] ChunkingError),
 }
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -457,7 +461,7 @@ impl ContractRuntime {
                     let start = Instant::now();
                     let result = engine_state.put_trie_and_find_missing_descendant_trie_keys(
                         correlation_id,
-                        &*trie_bytes,
+                        trie_bytes.inner(),
                     );
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
@@ -860,12 +864,16 @@ impl ContractRuntime {
         engine_state: &EngineState<LmdbGlobalState>,
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
+    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
-        let result = engine_state.get_trie(correlation_id, trie_or_chunk_id);
+        let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
+        let ret = match engine_state.get_trie_full(correlation_id, trie_key)? {
+            None => Ok(None),
+            Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw, chunk_index)?)),
+        };
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        result
+        ret
     }
 
     fn get_trie_full(
@@ -877,12 +885,187 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = engine_state.get_trie_full(correlation_id, trie_key);
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        result
+        // Extract the inner Bytes, we don't want this change to ripple through the system right
+        // now.
+        result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
     }
 
     /// Returns the engine state, for testing only.
     #[cfg(test)]
     pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
         &self.engine_state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_execution_engine::{
+        shared::{
+            additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
+            transform::Transform, wasm_config::WasmConfig,
+        },
+        storage::trie::{Pointer, Trie},
+    };
+    use casper_hashing::{ChunkWithProof, Digest};
+    use casper_types::{
+        account::AccountHash, bytesrepr, CLValue, Key, ProtocolVersion, StoredValue,
+    };
+    use prometheus::Registry;
+    use tempfile::tempdir;
+
+    use crate::{
+        components::fetcher::FetchedOrNotFound,
+        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
+        types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+    };
+
+    use super::ContractRuntimeError;
+
+    #[derive(Debug, Clone)]
+    struct TestPair(Key, StoredValue);
+
+    // Creates the test pairs that contain data of size
+    // greater than the chunk limit.
+    fn create_test_pairs_with_large_data() -> [TestPair; 2] {
+        let val = CLValue::from_t(
+            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
+        )
+        .unwrap();
+        [
+            TestPair(
+                Key::Account(AccountHash::new([1_u8; 32])),
+                StoredValue::CLValue(val.clone()),
+            ),
+            TestPair(
+                Key::Account(AccountHash::new([2_u8; 32])),
+                StoredValue::CLValue(val),
+            ),
+        ]
+    }
+
+    fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
+        let next_hash = if let TrieOrChunk::Value(trie_bytes) = trie_or_chunk {
+            if let Trie::Node { pointer_block } =
+                bytesrepr::deserialize::<Trie<Key, StoredValue>>(trie_bytes.into_inner().into())
+                    .expect("Could not parse trie bytes")
+            {
+                if pointer_block.child_count() == 0 {
+                    panic!("expected children");
+                }
+                let (_, ptr) = pointer_block.as_indexed_pointers().next().unwrap();
+                match ptr {
+                    Pointer::LeafPointer(ptr) | Pointer::NodePointer(ptr) => ptr,
+                }
+            } else {
+                panic!("expected `Node`");
+            }
+        } else {
+            panic!("expected `Trie`");
+        };
+        next_hash
+    }
+
+    // Creates a test ContractRuntime and feeds the underlying GlobalState with `test_pair`.
+    // Returns [`ContractRuntime`] instance and the new merkle root after applying the `test_pair`.
+    fn create_test_state(test_pair: [TestPair; 2]) -> (ContractRuntime, Digest) {
+        let temp_dir = tempdir().unwrap();
+        let contract_runtime = ContractRuntime::new(
+            ProtocolVersion::default(),
+            temp_dir.path(),
+            &ContractRuntimeConfig::default(),
+            WasmConfig::default(),
+            SystemConfig::default(),
+            10,
+            10,
+            10,
+            true,
+            1,
+            &Registry::default(),
+        )
+        .unwrap();
+        let empty_state_root = contract_runtime
+            .engine_state()
+            .get_state()
+            .empty_state_root_hash();
+        let mut effects: AdditiveMap<Key, Transform> = AdditiveMap::new();
+        for TestPair(key, value) in test_pair {
+            assert!(effects.insert(key, Transform::Write(value)).is_none());
+        }
+        let post_state_hash = contract_runtime
+            .engine_state()
+            .apply_effect(CorrelationId::new(), empty_state_root, effects)
+            .expect("applying effects to succeed");
+        (contract_runtime, post_state_hash)
+    }
+
+    fn read_trie(contract_runtime: &ContractRuntime, id: TrieOrChunkId) -> TrieOrChunk {
+        let serialized_id = bincode::serialize(&id).unwrap();
+        match contract_runtime
+            .get_trie(&serialized_id)
+            .expect("expected a successful read")
+        {
+            FetchedOrNotFound::Fetched(found) => found,
+            FetchedOrNotFound::NotFound(_) => panic!("expected to find the trie"),
+        }
+    }
+
+    #[test]
+    fn returns_trie_or_chunk() {
+        let (contract_runtime, root_hash) = create_test_state(create_test_pairs_with_large_data());
+
+        // Expect `Trie` with NodePointer when asking with a root hash.
+        let trie = read_trie(&contract_runtime, TrieOrChunkId(0, root_hash));
+        assert!(matches!(trie, ValueOrChunk::Value(_)));
+
+        // Expect another `Trie` with two LeafPointers.
+        let trie = read_trie(
+            &contract_runtime,
+            TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
+        );
+        assert!(matches!(trie, TrieOrChunk::Value(_)));
+
+        // Now, the next hash will point to the actual leaf, which as we expect
+        // contains large data, so we expect to get `ChunkWithProof`.
+        let hash = extract_next_hash_from_trie(trie);
+        let chunk = match read_trie(&contract_runtime, TrieOrChunkId(0, hash)) {
+            TrieOrChunk::ChunkWithProof(chunk) => chunk,
+            other => panic!("expected ChunkWithProof, got {:?}", other),
+        };
+
+        assert_eq!(chunk.proof().root_hash(), hash);
+
+        // try to read all the chunks
+        let count = chunk.proof().count();
+        let mut chunks = vec![chunk];
+        for i in 1..count {
+            let chunk = match read_trie(&contract_runtime, TrieOrChunkId(i, hash)) {
+                TrieOrChunk::ChunkWithProof(chunk) => chunk,
+                other => panic!("expected ChunkWithProof, got {:?}", other),
+            };
+            chunks.push(chunk);
+        }
+
+        // there should be no chunk with index `count`
+        let serialized_id = bincode::serialize(&TrieOrChunkId(count, hash)).unwrap();
+        assert!(matches!(
+            contract_runtime.get_trie(&serialized_id),
+            Err(ContractRuntimeError::ChunkingError(
+                ChunkingError::MerkleConstruction(_)
+            ))
+        ));
+
+        // all chunks should be valid
+        assert!(chunks.iter().all(|chunk| chunk.verify().is_ok()));
+
+        let data: Vec<u8> = chunks
+            .into_iter()
+            .flat_map(|chunk| chunk.into_chunk())
+            .collect();
+
+        let trie: Trie<Key, StoredValue> =
+            bytesrepr::deserialize(data).expect("trie should deserialize correctly");
+
+        // should be deserialized to a leaf
+        assert!(matches!(trie, Trie::Leaf { .. }));
     }
 }

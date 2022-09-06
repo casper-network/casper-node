@@ -14,7 +14,7 @@ use std::{collections::HashMap, hash::BuildHasher};
 use tracing::error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use crate::{
     shared::{
@@ -24,7 +24,7 @@ use crate::{
     },
     storage::{
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
         trie_store::{
             operations::{read, write, ReadResult, WriteResult},
             TrieStore,
@@ -104,19 +104,12 @@ pub trait StateProvider {
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;
 
-    /// Reads a `Trie` (possibly chunked) from the state if it is present
-    fn get_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Self::Error>;
-
     /// Reads a full `Trie` (never chunked) from the state if it is present
     fn get_trie_full(
         &self,
         correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error>;
+    ) -> Result<Option<TrieRaw>, Self::Error>;
 
     /// Insert a trie node into the trie
     fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error>;

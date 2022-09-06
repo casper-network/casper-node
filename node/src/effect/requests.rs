@@ -26,7 +26,7 @@ use casper_execution_engine::{
         query::{QueryRequest, QueryResult},
         UpgradeConfig, UpgradeSuccess,
     },
-    storage::trie::{TrieOrChunk, TrieOrChunkId},
+    storage::trie::TrieRaw,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -39,7 +39,8 @@ use crate::{
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+            BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
+            EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
@@ -53,6 +54,8 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed,
+        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
+        FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -1029,7 +1032,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// The ID of the trie (or chunk of a trie) to be read.
         trie_or_chunk_id: TrieOrChunkId,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunk>, engine_state::Error>>,
+        responder: Responder<Result<Option<TrieOrChunk>, ContractRuntimeError>>,
     },
     /// Get a trie by its ID.
     GetTrieFull {
@@ -1041,7 +1044,7 @@ pub(crate) enum ContractRuntimeRequest {
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
-        trie_bytes: Bytes,
+        trie_bytes: TrieRaw,
         /// Responder to call with the result. Contains the missing descendants of the inserted
         /// trie.
         responder: Responder<Result<Vec<Digest>, engine_state::Error>>,

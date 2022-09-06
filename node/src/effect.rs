@@ -121,7 +121,7 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
-    storage::trie::{TrieOrChunk, TrieOrChunkId},
+    storage::trie::TrieRaw,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -137,7 +137,8 @@ use crate::{
         chainspec_loader::NextUpgrade,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+            BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
+            EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
         fetcher::FetchResult,
@@ -150,8 +151,10 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
+        DeployHash, DeployHash, DeployHeader, DeployHeader, DeployMetadataExt, DeployMetadataExt,
+        DeployWithFinalizedApprovals, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalitySignature, FinalizedApprovals, FinalizedApprovals, FinalizedBlock, FinalizedBlock,
+        GossiperItem, Item, NodeId, NodeId, NodeState, NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1288,7 +1291,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_trie(
         self,
         trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, engine_state::Error>
+    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1323,7 +1326,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
-        trie_bytes: Bytes,
+        trie_bytes: TrieRaw,
     ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
