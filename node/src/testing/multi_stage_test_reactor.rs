@@ -20,7 +20,6 @@ use crate::{
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::{
         initializer::Reactor as InitializerReactor,
-        joiner::Reactor as JoinerReactor,
         participating::{ParticipatingInitConfig, Reactor as ParticipatingReactor},
         wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorEvent, ReactorExit, Scheduler,
     },

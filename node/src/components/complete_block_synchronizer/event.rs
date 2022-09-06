@@ -48,6 +48,7 @@ pub(crate) enum Event {
         success: bool,
     },
     TrieOrChunkFetched {
+        block_hash: BlockHash,
         id: TrieOrChunkId,
         fetch_result: FetchResult<TrieOrChunk>,
     },

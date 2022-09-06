@@ -26,7 +26,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{
-        initializer, joiner,
+        initializer,
         participating::{self, ParticipatingEvent},
         Reactor, ReactorExit, Runner,
     },

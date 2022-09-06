@@ -221,6 +221,7 @@ where
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
             Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
+            Event::BlockFetched(block) => todo!(), // self.builders.get(block.unwrap().hash()).unwrap().touch(),
             _ => todo!(),
         }
     }

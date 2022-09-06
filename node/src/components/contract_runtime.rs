@@ -914,7 +914,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::{
-        components::fetcher::FetchedOrNotFound,
+        components::fetcher::FetchResponse,
         contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };

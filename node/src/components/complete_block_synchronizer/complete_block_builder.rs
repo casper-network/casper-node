@@ -118,6 +118,12 @@ impl CompleteBlockBuilder {
             return (peers, NeedNext::FinalitySignatures(self.block_hash));
         }
 
+        // TODO: only attempt x times or over a period of time - e.g.
+        // if self.has_sufficient_weight(fault_tolerance_fraction, true) == false {
+        //     self.builder_state = BlockAcquisitionState::GettingMoreFinalitySignatures;
+        //     return lots of NeedNext::FinalitySignature(self.block_hash, public_key);
+        // }
+
         if self.should_fetch_execution_state
             && self.has_global_state == false
             && self.state_root_hash.is_some()
