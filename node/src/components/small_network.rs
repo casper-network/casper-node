@@ -46,7 +46,6 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
-    result,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Weak,
@@ -56,12 +55,9 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
-use pkey::{PKey, Private};
 use prometheus::Registry;
 use rand::{prelude::SliceRandom, seq::IteratorRandom};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{
@@ -107,7 +103,7 @@ use crate::{
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
-    tls::{self, TlsCert, ValidationError},
+    tls,
     types::NodeId,
     utils::{self, display_error, Source, WithDir},
     NodeRng,
@@ -215,7 +211,6 @@ where
         cfg: Config,
         consensus_cfg: Option<WithDir<&consensus::Config>>,
         registry: &Registry,
-        small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
@@ -296,13 +291,18 @@ where
             cfg.max_in_flight_demands as usize
         };
 
+        // First, we generate the TLS keys.
+        let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
+        let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
+        let our_id = NodeId::from(certificate.public_key_fingerprint());
+
         let chain_info = chain_info_source.into();
         let protocol_version = chain_info.protocol_version;
         let context = Arc::new(NetworkContext {
             event_queue,
-            our_id: NodeId::from(&small_network_identity),
-            our_cert: small_network_identity.tls_certificate,
-            secret_key: small_network_identity.secret_key,
+            our_id,
+            our_cert: certificate,
+            secret_key: Arc::new(secret_key),
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info,
             public_addr,
@@ -1137,55 +1137,6 @@ where
                 Effects::new()
             }
         }
-    }
-}
-
-#[derive(Debug, Error)]
-pub(crate) enum SmallNetworkIdentityError {
-    #[error("could not generate TLS certificate: {0}")]
-    CouldNotGenerateTlsCertificate(OpenSslErrorStack),
-    #[error(transparent)]
-    ValidationError(#[from] ValidationError),
-}
-
-/// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
-#[derive(DataSize, Debug, Clone)]
-pub(crate) struct SmallNetworkIdentity {
-    secret_key: Arc<PKey<Private>>,
-    tls_certificate: Arc<TlsCert>,
-}
-
-impl SmallNetworkIdentity {
-    pub(crate) fn new() -> result::Result<Self, SmallNetworkIdentityError> {
-        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
-            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
-        let tls_certificate = tls::validate_cert(not_yet_validated_x509_cert)?;
-        Ok(SmallNetworkIdentity {
-            secret_key: Arc::new(secret_key),
-            tls_certificate: Arc::new(tls_certificate),
-        })
-    }
-}
-
-impl<REv, P> From<&SmallNetwork<REv, P>> for SmallNetworkIdentity
-where
-    P: Payload,
-{
-    fn from(small_network: &SmallNetwork<REv, P>) -> Self {
-        SmallNetworkIdentity {
-            secret_key: small_network.context.secret_key.clone(),
-            tls_certificate: small_network.context.our_cert.clone(),
-        }
-    }
-}
-
-impl From<&SmallNetworkIdentity> for NodeId {
-    fn from(small_network_identity: &SmallNetworkIdentity) -> Self {
-        NodeId::from(
-            small_network_identity
-                .tls_certificate
-                .public_key_fingerprint(),
-        )
     }
 }
 

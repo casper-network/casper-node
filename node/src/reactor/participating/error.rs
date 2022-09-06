@@ -6,7 +6,7 @@ use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 use crate::{
     components::{
         chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
-        diagnostics_port, small_network, small_network::SmallNetworkIdentityError, storage,
+        diagnostics_port, small_network, storage,
     },
     types::chainspec,
     utils::{ListeningError, LoadError},
@@ -26,10 +26,6 @@ pub(crate) enum Error {
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
     SmallNetwork(#[from] small_network::Error),
-
-    /// An error that occurred when creating a `SmallNetworkIdentity`.
-    #[error(transparent)]
-    SmallNetworkIdentity(#[from] SmallNetworkIdentityError),
 
     /// An error starting one of the HTTP servers.
     #[error("http server listening error: {0}")]

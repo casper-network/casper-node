@@ -24,7 +24,6 @@ use super::{
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        small_network::SmallNetworkIdentity,
         Component,
     },
     effect::{
@@ -193,13 +192,11 @@ impl Reactor for TestReactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let small_network_identity = SmallNetworkIdentity::new()?;
         let (net, effects) = SmallNetwork::new(
             event_queue,
             cfg,
             None,
             registry,
-            small_network_identity,
             ChainInfo::create_for_testing(),
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();

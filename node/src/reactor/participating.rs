@@ -35,7 +35,7 @@ use crate::{
         metrics::Metrics,
         rest_server::RestServer,
         rpc_server::RpcServer,
-        small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
+        small_network::{self, GossipedAddress, SmallNetwork},
         storage::Storage,
         Component,
     },
@@ -158,13 +158,11 @@ impl Reactor {
         //     todo!(), //&highest_block_header
         // ))?;
 
-        let small_network_identity = SmallNetworkIdentity::new()?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             Some(WithDir::new(&root_dir, &config.consensus)),
             registry,
-            small_network_identity,
             chainspec.as_ref(),
         )?;
         effects.extend(reactor::wrap_effects(
