@@ -57,5 +57,6 @@ mod regression_20220222;
 mod regression_20220223;
 mod regression_20220224;
 mod regression_20220303;
+mod regression_20220727;
 pub(crate) mod test_utils;
 mod transforms_must_be_ordered;
