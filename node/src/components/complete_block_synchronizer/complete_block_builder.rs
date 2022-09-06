@@ -4,9 +4,9 @@ use datasize::DataSize;
 use num_rational::Ratio;
 
 use casper_hashing::Digest;
-use casper_types::{DeployHash, EraId, PublicKey, Timestamp, U512};
+use casper_types::{EraId, PublicKey, Timestamp, U512};
 
-use crate::types::{BlockHash, FinalitySignature, NodeId};
+use crate::types::{BlockHash, DeployHash, FinalitySignature, NodeId};
 
 /// given a block hash we fetch
 ///     * block,
@@ -101,7 +101,7 @@ impl CompleteBlockBuilder {
             return NeedNext::Block(self.block_hash);
         }
 
-        if self.has_sufficient_weight(fault_tolerance_fraction, false) {
+        if self.has_sufficient_weight(fault_tolerance_fraction, false) == false {
             self.builder_state = BlockAcquisitionState::GettingFinalitySignatures;
             return NeedNext::FinalitySignatures(self.block_hash);
         }
@@ -248,5 +248,9 @@ impl CompleteBlockBuilder {
 
     pub(super) fn last_progress_time(&self) -> Option<Timestamp> {
         self.last_progress_time
+    }
+
+    pub(super) fn peer_list(&self) -> &HashSet<NodeId> {
+        &self.peer_list
     }
 }

@@ -7,18 +7,18 @@ use derive_more::From;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-use casper_types::{DeployHash, EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::{complete_block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
-    types::{Block, BlockHash, BlockSignatures, Deploy},
+    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash},
 };
 
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
     /// The initiating event to fetch an item by its id.
     #[from]
-    Fetch(CompleteBlockSyncRequest),
+    Upsert(CompleteBlockSyncRequest),
 
     /// Received announcement about upcoming era validators.
     EraValidators {

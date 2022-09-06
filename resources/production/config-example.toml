@@ -392,6 +392,14 @@ gossip_request_timeout = '30sec'
 get_remainder_timeout = '5sec'
 
 
+# =========================================================
+# Configuration options for the complete block synchronizer
+# =========================================================
+[complete_block_synchronizer]
+
+timeout = '10mins'
+
+
 # =================================
 # Configuration options for fetcher
 # =================================

@@ -21,7 +21,7 @@ use crate::{
         announcements::ControlAnnouncement, requests::FetcherRequest, EffectBuilder, EffectExt,
         Effects,
     },
-    types::{Block, BlockHash, NodeId},
+    types::{Block, BlockHash, Deploy, NodeId},
     NodeRng,
 };
 
@@ -152,19 +152,27 @@ impl CompleteBlockSynchronizer {
 
     fn next<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
-        REv: From<FetcherRequest<Block>> + Send,
+        REv: From<FetcherRequest<Block>> + From<FetcherRequest<Deploy>> + Send,
     {
         let mut results = Effects::new();
         for builder in self.builders.values_mut() {
             match builder.next_needed(self.fault_tolerance_fraction) {
-                NeedNext::Block(block_hash) => results.extend(
-                    effect_builder
-                        .fetch::<Block>(block_hash, todo!())
-                        .event(Event::BlockFetched),
-                ),
+                NeedNext::Block(block_hash) => {
+                    results.extend(builder.peer_list().iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<Block>(block_hash, *node_id)
+                            .event(Event::BlockFetched)
+                    }))
+                }
                 NeedNext::FinalitySignatures(_) => {}
                 NeedNext::GlobalState(_) => {}
-                NeedNext::Deploy(_) => {}
+                NeedNext::Deploy(deploy_hash) => {
+                    results.extend(builder.peer_list().iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<Deploy>(deploy_hash, *node_id)
+                            .event(Event::DeployFetched)
+                    }))
+                }
                 NeedNext::ExecutionResults(_) => {}
                 NeedNext::Nothing => (),
             }
@@ -180,7 +188,10 @@ impl CompleteBlockSynchronizer {
 
 impl<REv> Component<REv> for CompleteBlockSynchronizer
 where
-    REv: From<ControlAnnouncement> + From<FetcherRequest<Block>> + Send,
+    REv: From<ControlAnnouncement>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<Deploy>>
+        + Send,
 {
     type Event = Event;
     type ConstructionError = Infallible;
@@ -196,7 +207,7 @@ where
                 self.validators.append(&mut validators);
                 Effects::new()
             }
-            Event::Fetch(request) => self.upsert(effect_builder, request),
+            Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
             _ => todo!(),
         }
