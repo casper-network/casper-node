@@ -4,14 +4,13 @@ use std::{
 };
 
 use derive_more::From;
-use serde::{Deserialize, Serialize};
+use serde::{ Serialize};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::{complete_block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
-    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash},
+    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash, TrieOrChunk, TrieOrChunkId},
 };
 
 #[derive(From, Debug, Serialize)]

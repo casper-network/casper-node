@@ -655,12 +655,12 @@ impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
 
 /// A set of finalized approvals together with data identifying the deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
-pub struct DeployFinalizedApprovals {
+pub struct FinalizedApprovalsWithId {
     id: DeployHash,
     approvals: FinalizedApprovals,
 }
 
-impl DeployFinalizedApprovals {
+impl FinalizedApprovalsWithId {
     /// Creates a new instance of `FinalizedApprovalsWithId`.
     pub fn new(id: DeployHash, approvals: FinalizedApprovals) -> Self {
         Self { id, approvals }
@@ -680,7 +680,7 @@ pub struct FinalizedApprovalsVerificationError {
     error: String,
 }
 
-impl Item for DeployFinalizedApprovals {
+impl Item for FinalizedApprovalsWithId {
     type Id = DeployHash;
 
     const TAG: Tag = Tag::FinalizedApprovals;
@@ -690,7 +690,7 @@ impl Item for DeployFinalizedApprovals {
     }
 }
 
-impl FetcherItem for DeployFinalizedApprovals {
+impl FetcherItem for FinalizedApprovalsWithId {
     type ValidationError = FinalizedApprovalsVerificationError;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
@@ -706,7 +706,7 @@ impl FetcherItem for DeployFinalizedApprovals {
     }
 }
 
-impl Display for DeployFinalizedApprovals {
+impl Display for FinalizedApprovalsWithId {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,

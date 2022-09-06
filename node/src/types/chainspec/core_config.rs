@@ -1,5 +1,3 @@
-use std::cmp;
-
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]

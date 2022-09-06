@@ -57,7 +57,6 @@ use crate::{
         announcements::BlocklistAnnouncement, requests::NetworkRequest, AutoClosingResponder,
         EffectBuilder,
     },
-    protocol::Validity,
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,

@@ -71,10 +71,8 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, ExitCode,
-        FinalitySignature, Item,
         BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId, TrieOrChunk,
+        FinalizedApprovalsWithId, Item, TrieOrChunk,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -144,7 +142,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
     #[from]
-    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<DeployFinalizedApprovals>),
+    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
     #[from]
     BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
     #[from]
@@ -179,7 +177,7 @@ pub(crate) enum ParticipatingEvent {
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
     #[from]
     FinalizedApprovalsFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<DeployFinalizedApprovals>,
+        #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
     ),
     #[from]
     BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
@@ -662,7 +660,7 @@ pub(crate) struct Reactor {
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
-    finalized_approvals_fetcher: Fetcher<DeployFinalizedApprovals>,
+    finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     complete_block_synchronizer: CompleteBlockSynchronizer,

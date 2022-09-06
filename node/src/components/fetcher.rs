@@ -24,11 +24,9 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals,
-        DeployHash, DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, Item, NodeId,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
-        TrieOrChunk, TrieOrChunkId,
+        DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, FinalizedApprovalsWithId,
+        Item, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -377,12 +375,12 @@ impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
     }
 }
 
-impl ItemFetcher<DeployFinalizedApprovals> for Fetcher<DeployFinalizedApprovals> {
+impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<DeployFinalizedApprovals>>>>
+    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<FinalizedApprovalsWithId>>>>
     {
         &mut self.responders
     }
@@ -396,13 +394,13 @@ impl ItemFetcher<DeployFinalizedApprovals> for Fetcher<DeployFinalizedApprovals>
     }
 
     /// Gets the finalized approvals for a deploy from the storage component.
-    fn get_from_storage<REv: ReactorEventT<DeployFinalizedApprovals>>(
+    fn get_from_storage<REv: ReactorEventT<FinalizedApprovalsWithId>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         id: DeployHash,
         peer: NodeId,
-        responder: FetchResponder<DeployFinalizedApprovals>,
-    ) -> Effects<Event<DeployFinalizedApprovals>> {
+        responder: FetchResponder<FinalizedApprovalsWithId>,
+    ) -> Effects<Event<FinalizedApprovalsWithId>> {
         effect_builder
             .get_deploys_from_storage(vec![id])
             .event(move |mut results| Event::GetFromStorageResult {
@@ -410,7 +408,7 @@ impl ItemFetcher<DeployFinalizedApprovals> for Fetcher<DeployFinalizedApprovals>
                 peer,
                 maybe_item: Box::new(results.pop().expect("can only contain one result").map(
                     |deploy| {
-                        DeployFinalizedApprovals::new(
+                        FinalizedApprovalsWithId::new(
                             id,
                             FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
                         )

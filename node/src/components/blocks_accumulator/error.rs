@@ -1,4 +1,3 @@
-use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{crypto, EraId};

@@ -1,4 +1,4 @@
-use crate::types::{Block, BlockHash, FinalitySignature, NodeId};
+use crate::types::{Block, FinalitySignature, NodeId};
 
 #[derive(Debug)]
 pub(crate) enum Event {

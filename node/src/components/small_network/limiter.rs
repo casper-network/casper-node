@@ -5,7 +5,6 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    rc::Rc,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };

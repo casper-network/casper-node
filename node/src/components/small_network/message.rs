@@ -1,16 +1,13 @@
 use std::{
-    collections::{BTreeMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{
-    crypto, AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, Signature,
-};
+use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
 use futures::future::BoxFuture;
 use serde::{
@@ -18,11 +15,9 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::{
-    effect::EffectBuilder, protocol::Validity, types::NodeId, utils::opt_display::OptDisplay,
-};
+use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
-use super::{counting_format::ConnectionId, limiter::ValidatorSets};
+use super::counting_format::ConnectionId;
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]

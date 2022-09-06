@@ -57,7 +57,6 @@ use lmdb::{
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use tracing::{debug, error, info, warn};
@@ -83,9 +82,9 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, Item, NodeId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalizedApprovals,
+        FinalizedApprovalsWithId, Item, NodeId,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -573,7 +572,7 @@ impl Storage {
                 )?)
             }
             NetRequest::FinalizedApprovals(ref serialized_id) => {
-                let id = decode_item_id::<DeployFinalizedApprovals>(serialized_id)?;
+                let id = decode_item_id::<FinalizedApprovalsWithId>(serialized_id)?;
                 let opt_item = self
                     .env
                     .begin_ro_txn()
@@ -583,7 +582,7 @@ impl Storage {
                             .map_err(FatalStorageError::from)
                     })?
                     .map(|deploy| {
-                        DeployFinalizedApprovals::new(
+                        FinalizedApprovalsWithId::new(
                             id,
                             FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
                         )

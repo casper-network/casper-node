@@ -14,7 +14,6 @@ use std::{
 use datasize::DataSize;
 use serde::Serialize;
 use smallvec::SmallVec;
-use static_assertions::const_assert;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -53,9 +52,8 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, Item, NodeId, NodeState, StatusFeed,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };

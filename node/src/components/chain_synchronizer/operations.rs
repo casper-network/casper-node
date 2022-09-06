@@ -49,8 +49,8 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployFinalizedApprovals, DeployHash, FetcherItem,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId, FinalizedApprovalsWithId, Item, TrieOrChunk, TrieOrChunkId,
+        BlockWithMetadata, Deploy, DeployHash, FetcherItem, FinalizedApprovals,
+        FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -671,13 +671,13 @@ async fn fetch_finalized_approvals<REv>(
     deploy_hash: DeployHash,
     peer: NodeId,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<DeployFinalizedApprovals, FetcherError<DeployFinalizedApprovals>>
+) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>>
 where
-    REv: From<FetcherRequest<DeployFinalizedApprovals>>,
+    REv: From<FetcherRequest<FinalizedApprovalsWithId>>,
 {
     let fetched_approvals = ctx
         .effect_builder
-        .fetch::<DeployFinalizedApprovals>(deploy_hash, peer)
+        .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer)
         .await?;
     match fetched_approvals {
         FetchedData::FromStorage { item: approvals } => Ok(*approvals),
@@ -1920,7 +1920,7 @@ where
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
         + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<DeployFinalizedApprovals>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
@@ -2035,7 +2035,7 @@ async fn retry_execution_with_approvals_from_peer<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<BlockAndExecutionEffects, Error>
 where
-    REv: From<FetcherRequest<DeployFinalizedApprovals>> + From<ContractRuntimeRequest>,
+    REv: From<FetcherRequest<FinalizedApprovalsWithId>> + From<ContractRuntimeRequest>,
 {
     for deploy in deploys.iter_mut().chain(transfers.iter_mut()) {
         let new_approvals = fetch_finalized_approvals(*deploy.id(), peer, ctx).await?;
@@ -2062,7 +2062,7 @@ async fn fetch_and_execute_blocks<REv>(
 ) -> Result<BlockHeader, Error>
 where
     REv: From<FetcherRequest<BlockWithMetadata>>
-        + From<FetcherRequest<DeployFinalizedApprovals>>
+        + From<FetcherRequest<FinalizedApprovalsWithId>>
         + From<FetcherRequest<Deploy>>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>

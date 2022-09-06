@@ -66,10 +66,8 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals, ExitCode,
-        FinalitySignature,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalizedApprovalsWithId,
-        TrieOrChunk,
+        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
+        FinalizedApprovalsWithId, TrieOrChunk,
     },
     utils::WithDir,
     NodeRng,
@@ -115,7 +113,7 @@ pub(crate) enum JoinerEvent {
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
     #[from]
-    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<DeployFinalizedApprovals>),
+    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
     #[from]
     TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
     #[from]
@@ -158,7 +156,7 @@ pub(crate) enum JoinerEvent {
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
     #[from]
     FinalizedApprovalsFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<DeployFinalizedApprovals>,
+        #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
     ),
     #[from]
     BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
@@ -521,7 +519,7 @@ pub(crate) struct Reactor {
     contract_runtime: ContractRuntime,
     chain_synchronizer: ChainSynchronizer<JoinerEvent>,
     deploy_fetcher: Fetcher<Deploy>,
-    finalized_approvals_fetcher: Fetcher<DeployFinalizedApprovals>,
+    finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,

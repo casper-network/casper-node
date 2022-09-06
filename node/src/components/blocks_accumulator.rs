@@ -3,20 +3,20 @@ mod error;
 mod event;
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap},
     convert::Infallible,
 };
 
 use datasize::DataSize;
 use num_rational::Ratio;
-use tracing::{debug, error, warn};
+use tracing::{error, warn};
 
-use casper_types::{EraId, PublicKey};
+use casper_types::PublicKey;
 
 use crate::{
     components::Component,
-    effect::{announcements::BlocklistAnnouncement, Effect, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, FinalitySignatureId, NodeId},
+    effect::{announcements::BlocklistAnnouncement, EffectBuilder, EffectExt, Effects},
+    types::{Block, BlockHash, FinalitySignature, NodeId},
     NodeRng,
 };
 

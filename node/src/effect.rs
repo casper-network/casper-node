@@ -130,7 +130,6 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
-use crate::effect::announcements::BlocksAccumulatorAnnouncement;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
@@ -151,13 +150,13 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHash, DeployHeader, DeployHeader, DeployMetadataExt, DeployMetadataExt,
-        DeployWithFinalizedApprovals, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignature, FinalizedApprovals, FinalizedApprovals, FinalizedBlock, FinalizedBlock,
-        GossiperItem, Item, NodeId, NodeId, NodeState, NodeState, TrieOrChunk, TrieOrChunkId,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
+use crate::{effect::announcements::BlocksAccumulatorAnnouncement, types::FinalitySignature};
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
     ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,

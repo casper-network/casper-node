@@ -1,18 +1,15 @@
 //! A network message type used for communication between nodes
 
 use std::{
-    collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
-use casper_types::{EraId, PublicKey};
 use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
 use crate::{
     components::{
@@ -20,7 +17,7 @@ use crate::{
         fetcher::FetchResponse,
         gossiper,
         small_network::{
-            EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload, ValidatorSets,
+            EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload,
         },
     },
     effect::{

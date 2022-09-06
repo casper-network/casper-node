@@ -15,8 +15,7 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, DeployFinalizedApprovals, FetcherItem,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, TrieOrChunk,
+        BlockWithMetadata, Deploy, FetcherItem, FinalizedApprovalsWithId, TrieOrChunk,
     },
 };
 
@@ -97,7 +96,7 @@ pub(crate) enum Error {
     DeployWithMetadataFetcher(#[from] FetcherError<Deploy>),
 
     #[error(transparent)]
-    FinalizedApprovalsFetcher(#[from] FetcherError<DeployFinalizedApprovals>),
+    FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
 
     #[error(transparent)]
     FinalitySignatures(

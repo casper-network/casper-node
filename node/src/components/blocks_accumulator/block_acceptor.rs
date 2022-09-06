@@ -1,23 +1,15 @@
-use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
-    convert::Infallible,
-};
+use std::collections::BTreeMap;
 
 use datasize::DataSize;
 use num_rational::Ratio;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use casper_types::{EraId, PublicKey, U512};
 
 use super::{Error, SignaturesFinality};
 use crate::{
-    components::{
-        linear_chain::{self, BlockSignatureError},
-        Component,
-    },
-    effect::{announcements::BlocklistAnnouncement, Effect, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId},
-    NodeRng,
+    components::linear_chain::{self, BlockSignatureError},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature},
 };
 
 #[derive(DataSize, Debug)]
