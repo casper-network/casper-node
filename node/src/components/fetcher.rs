@@ -24,9 +24,9 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, FinalizedApprovalsWithId,
-        Item, NodeId, TrieOrChunk, TrieOrChunkId,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployFinalizedApprovals,
+        DeployHash, DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals,
+        FinalizedApprovalsWithId, Item, NodeId, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -707,6 +707,41 @@ impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
                 id,
                 peer,
                 maybe_item: Box::new(maybe_batch),
+                responder,
+            })
+    }
+}
+
+impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<SyncLeap>>>> {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<SyncLeap>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockHash,
+        peer: NodeId,
+        responder: FetchResponder<SyncLeap>,
+    ) -> Effects<Event<SyncLeap>> {
+        effect_builder
+            .immediately()
+            .event(move |()| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(None),
                 responder,
             })
     }

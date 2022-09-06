@@ -55,8 +55,8 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            NetRequestIncoming, NetResponseIncoming, SyncLeapRequestIncoming,
+            SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -72,7 +72,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId, Item, TrieOrChunk,
+        FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -148,6 +148,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
     #[from]
+    SyncLeapFetcher(#[serde(skip_serializing)] fetcher::Event<SyncLeap>),
+    #[from]
     CompleteBlockSynchronizer(#[serde(skip_serializing)] complete_block_synchronizer::Event),
 
     // Requests
@@ -183,6 +185,9 @@ pub(crate) enum ParticipatingEvent {
     BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
     #[from]
     FinalitySignaturesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockSignatures>),
+    #[from]
+    SyncLeapFetcherRequest(#[serde(skip_serializing)] FetcherRequest<SyncLeap>),
+
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
     #[from]
@@ -254,6 +259,10 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
+    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
+    #[from]
+    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
+    #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
@@ -307,6 +316,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
             ParticipatingEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             ParticipatingEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
+            ParticipatingEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
             ParticipatingEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -328,6 +338,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignaturesFetcherRequest(_) => {
                 "FinalitySignaturesFetcherRequest"
             }
+            ParticipatingEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
@@ -360,6 +371,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             ParticipatingEvent::TrieDemand(_) => "TrieDemand",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            ParticipatingEvent::SyncLeapRequestIncoming(_) => "SyncLeapRequestIncoming",
+            ParticipatingEvent::SyncLeapResponseIncoming(_) => "SyncLeapResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
             ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
@@ -477,6 +490,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::FinalitySignaturesFetcher(event) => {
                 write!(f, "finality signatures fetcher: {}", event)
             }
+            ParticipatingEvent::SyncLeapFetcher(event) => {
+                write!(f, "sync leap fetcher: {}", event)
+            }
             ParticipatingEvent::CompleteBlockSynchronizer(event) => {
                 write!(f, "complete block synchronizer: {}", event)
             }
@@ -525,6 +541,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::FinalitySignaturesFetcherRequest(request) => {
                 write!(f, "finality signatures fetcher request: {}", request)
+            }
+            ParticipatingEvent::SyncLeapFetcherRequest(request) => {
+                write!(f, "sync leap fetcher request: {}", request)
             }
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
@@ -592,6 +611,8 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieDemand(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::SyncLeapRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::SyncLeapResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
         }
@@ -663,6 +684,7 @@ pub(crate) struct Reactor {
     finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
+    sync_leap_fetcher: Fetcher<SyncLeap>,
     complete_block_synchronizer: CompleteBlockSynchronizer,
     diagnostics_port: DiagnosticsPort,
     // Non-components.
@@ -967,6 +989,7 @@ impl reactor::Reactor for Reactor {
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
+        let sync_leap_fetcher = fetcher_builder.build("sync_leap")?;
         let complete_block_synchronizer = CompleteBlockSynchronizer::new(
             config.complete_block_synchronizer,
             chainspec.highway_config.finality_threshold_fraction,
@@ -1011,6 +1034,7 @@ impl reactor::Reactor for Reactor {
                 finalized_approvals_fetcher,
                 block_headers_batch_fetcher,
                 finality_signatures_fetcher,
+                sync_leap_fetcher,
                 diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
@@ -1153,6 +1177,11 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::SyncLeapFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::SyncLeapFetcher,
+                self.sync_leap_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::CompleteBlockSynchronizer(event) => reactor::wrap_effects(
                 ParticipatingEvent::CompleteBlockSynchronizer,
                 self.complete_block_synchronizer
@@ -1228,6 +1257,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::FinalitySignaturesFetcherRequest(request) => reactor::wrap_effects(
                 ParticipatingEvent::FinalitySignaturesFetcher,
                 self.finality_signatures_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::SyncLeapFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::SyncLeapFetcher,
+                self.sync_leap_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
@@ -1657,6 +1691,20 @@ impl reactor::Reactor for Reactor {
                     &message.0,
                 )
             }
+            ParticipatingEvent::SyncLeapRequestIncoming(_req) => {
+                // route to SyncLeaper once it's implemented
+                todo!()
+            }
+            ParticipatingEvent::SyncLeapResponseIncoming(SyncLeapResponseIncoming {
+                sender,
+                message,
+            }) => reactor::handle_fetch_response::<Self, SyncLeap>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                &message.0,
+            ),
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => {
                 todo!(); // route it to both the LinearChain and BlocksAccumulator
                 reactor::wrap_effects(

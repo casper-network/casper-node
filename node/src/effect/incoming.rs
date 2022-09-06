@@ -60,20 +60,26 @@ pub(crate) type GossiperIncoming<T> = MessageIncoming<gossiper::Message<T>>;
 /// A new message requesting various objects arrived.
 pub(crate) type NetRequestIncoming = MessageIncoming<NetRequest>;
 
+/// A new message responding to a request arrived.
+pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
+
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
 
 /// A demand for a try that should be answered.
 pub(crate) type TrieDemand = DemandIncoming<TrieRequest>;
 
-/// A new message responding to a request arrived.
-pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
-
 /// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 
 /// A new finality signature arrived over the network.
 pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
+
+/// A new message requesting a SyncLeap structure.
+pub(crate) type SyncLeapRequestIncoming = MessageIncoming<SyncLeapRequest>;
+
+/// A new message responding to a SyncLeap request.
+pub(crate) type SyncLeapResponseIncoming = MessageIncoming<SyncLeapResponse>;
 
 /// A request for an object out of storage arrived.
 ///
@@ -180,16 +186,6 @@ impl NetRequest {
     }
 }
 
-/// A request for a trie.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
-
-impl Display for TrieRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
-    }
-}
-
 /// A response for a net request.
 ///
 /// See `NetRequest` for notes.
@@ -252,6 +248,16 @@ impl Display for NetResponse {
     }
 }
 
+/// A request for a trie.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
+
+impl Display for TrieRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
+    }
+}
+
 /// A response to a request for a trie.
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
@@ -259,6 +265,26 @@ pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 impl Display for TrieResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("response, trie")
+    }
+}
+
+/// A request for a SyncLeap.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct SyncLeapRequest(pub(crate) Vec<u8>);
+
+impl Display for SyncLeapRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "request for sync leap")
+    }
+}
+
+/// A response to a request for a SyncLeap.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct SyncLeapResponse(pub(crate) Vec<u8>);
+
+impl Display for SyncLeapResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("response, sync leap")
     }
 }
 
