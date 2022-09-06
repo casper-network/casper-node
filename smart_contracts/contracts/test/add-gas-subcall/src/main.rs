@@ -21,22 +21,30 @@ const ADD_GAS_VIA_SUBCALL: &str = "add-gas-via-subcall";
 const ARG_GAS_AMOUNT: &str = "gas_amount";
 const ARG_METHOD_NAME: &str = "method_name";
 
-fn consume_gas(amount: i32) {
+/// This should consume at least `amount * gas_per_byte + C` gas
+/// where C contains wasm overhead and host function calls.
+fn consume_at_least_gas_amount(amount: usize) {
     if amount > 0 {
-        let data = vec![0u8; amount as usize];
-        let data_uref = runtime::get_key(DATA_KEY)
-            .and_then(Key::into_uref)
-            .unwrap_or_else(|| storage::new_uref(()));
+        let data_uref = match runtime::get_key(DATA_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_key) => runtime::revert(ApiError::UnexpectedKeyVariant),
+            None => {
+                let uref = storage::new_uref(());
+                runtime::put_key(DATA_KEY, uref.into());
+                uref
+            }
+        };
 
+        let data = vec![0; amount];
         storage::write(data_uref, data);
     }
 }
 
 #[no_mangle]
 pub extern "C" fn add_gas() {
-    let amount: i32 = runtime::get_named_arg(ARG_GAS_AMOUNT);
+    let amount: u32 = runtime::get_named_arg(ARG_GAS_AMOUNT);
 
-    consume_gas(amount);
+    consume_at_least_gas_amount(amount as usize);
 }
 
 fn store() -> (ContractHash, ContractVersion) {
@@ -63,7 +71,7 @@ pub extern "C" fn call() {
     let method_name: String = runtime::get_named_arg(ARG_METHOD_NAME);
 
     match method_name.as_str() {
-        ADD_GAS_FROM_SESSION => consume_gas(amount),
+        ADD_GAS_FROM_SESSION => consume_at_least_gas_amount(amount as usize),
         ADD_GAS_VIA_SUBCALL => {
             let (contract_hash, _contract_version) = store();
             runtime::call_contract(
