@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use datasize::DataSize;
+use itertools::Itertools;
 use num_rational::Ratio;
 
 use casper_hashing::Digest;
@@ -23,6 +24,7 @@ pub(super) enum NeedNext {
     Deploy(DeployHash),
     ExecutionResults(DeployHash),
     Nothing,
+    Peers,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
@@ -90,20 +92,30 @@ impl CompleteBlockBuilder {
         self.last_progress_time = Some(now);
     }
 
-    pub(super) fn next_needed(&mut self, fault_tolerance_fraction: Ratio<u64>) -> NeedNext {
+    pub(super) fn next_needed(
+        &mut self,
+        fault_tolerance_fraction: Ratio<u64>,
+    ) -> (Vec<NodeId>, NeedNext) {
         if self.builder_state == BlockAcquisitionState::Complete {
-            return NeedNext::Nothing;
+            return (vec![], NeedNext::Nothing);
+        }
+
+        // TODO: Configurable limit, randomize selection
+        let peers = self.peer_list.iter().take(3).copied().collect_vec();
+
+        if peers.is_empty() {
+            return (vec![], NeedNext::Peers);
         }
 
         self.touch();
         if self.has_block() == false {
             self.builder_state = BlockAcquisitionState::GettingBlock;
-            return NeedNext::Block(self.block_hash);
+            return (peers, NeedNext::Block(self.block_hash));
         }
 
         if self.has_sufficient_weight(fault_tolerance_fraction, false) == false {
             self.builder_state = BlockAcquisitionState::GettingFinalitySignatures;
-            return NeedNext::FinalitySignatures(self.block_hash);
+            return (peers, NeedNext::FinalitySignatures(self.block_hash));
         }
 
         if self.should_fetch_execution_state
@@ -112,25 +124,26 @@ impl CompleteBlockBuilder {
         {
             self.builder_state = BlockAcquisitionState::GettingGlobalState;
             // Safe to unwrap as checked immediately above.
-            return NeedNext::GlobalState(
-                self.state_root_hash.expect("should have state root hash"),
+            return (
+                peers,
+                NeedNext::GlobalState(self.state_root_hash.expect("should have state root hash")),
             );
         }
 
         if let Some(deploy_hash) = self.next_deploy() {
             self.builder_state = BlockAcquisitionState::GettingDeploys;
-            return NeedNext::Deploy(deploy_hash);
+            return (peers, NeedNext::Deploy(deploy_hash));
         }
 
         if self.should_fetch_execution_state {
             self.builder_state = BlockAcquisitionState::GettingExecutionResults;
             if let Some(deploy_hash) = self.next_execution_results() {
-                return NeedNext::ExecutionResults(deploy_hash);
+                return (peers, NeedNext::ExecutionResults(deploy_hash));
             }
         }
 
         self.builder_state = BlockAcquisitionState::Complete;
-        NeedNext::Nothing
+        (vec![], NeedNext::Nothing)
     }
 
     pub(super) fn is_syncing_global_state(&self) -> bool {
@@ -240,6 +253,10 @@ impl CompleteBlockBuilder {
 
     pub(super) fn register_peer(&mut self, peer: NodeId) -> bool {
         self.peer_list.insert(peer)
+    }
+
+    pub(super) fn remove_peer(&mut self, peer: NodeId) {
+        self.peer_list.remove(&peer);
     }
 
     pub(super) fn started(&self) -> Option<Timestamp> {

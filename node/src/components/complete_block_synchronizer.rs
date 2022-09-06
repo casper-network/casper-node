@@ -156,28 +156,39 @@ impl CompleteBlockSynchronizer {
     {
         let mut results = Effects::new();
         for builder in self.builders.values_mut() {
-            match builder.next_needed(self.fault_tolerance_fraction) {
+            let (peers, next) = builder.next_needed(self.fault_tolerance_fraction);
+            match next {
                 NeedNext::Block(block_hash) => {
-                    results.extend(builder.peer_list().iter().flat_map(|node_id| {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, *node_id)
+                            .fetch::<Block>(block_hash, node_id)
                             .event(Event::BlockFetched)
                     }))
                 }
                 NeedNext::FinalitySignatures(_) => {}
                 NeedNext::GlobalState(_) => {}
                 NeedNext::Deploy(deploy_hash) => {
-                    results.extend(builder.peer_list().iter().flat_map(|node_id| {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Deploy>(deploy_hash, *node_id)
+                            .fetch::<Deploy>(deploy_hash, node_id)
                             .event(Event::DeployFetched)
                     }))
                 }
                 NeedNext::ExecutionResults(_) => {}
-                NeedNext::Nothing => (),
+                // No further parts of the block are missing. Nothing to do.
+                NeedNext::Nothing => {}
+                // We expect to be told about new peers automatically; do nothing.
+                NeedNext::Peers => {}
             }
         }
         results
+    }
+
+    fn handle_disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
+        for builder in self.builders.values_mut() {
+            builder.remove_peer(node_id);
+        }
+        Effects::new()
     }
 
     /// Reactor instructing this instance to be stopped
@@ -209,6 +220,7 @@ where
             }
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
+            Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
             _ => todo!(),
         }
     }

@@ -1629,11 +1629,23 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
-            ParticipatingEvent::BlocklistAnnouncement(ann) => self.dispatch_event(
-                effect_builder,
-                rng,
-                ParticipatingEvent::SmallNetwork(ann.into()),
-            ),
+            ParticipatingEvent::BlocklistAnnouncement(ann) => {
+                let mut effects = Effects::new();
+                match &ann {
+                    BlocklistAnnouncement::OffenseCommitted(node_id) => {
+                        let event = ParticipatingEvent::CompleteBlockSynchronizer(
+                            complete_block_synchronizer::Event::DisconnectFromPeer(**node_id),
+                        );
+                        effects.extend(self.dispatch_event(effect_builder, rng, event));
+                    }
+                }
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    ParticipatingEvent::SmallNetwork(ann.into()),
+                ));
+                effects
+            }
             ParticipatingEvent::ConsensusMessageIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::Consensus,
                 self.consensus
