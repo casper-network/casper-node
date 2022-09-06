@@ -140,12 +140,13 @@ impl<REv> ReactorEventT for REv where
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
-#[derive(Debug)]
+#[derive(Debug, DataSize)]
 pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
     max_associated_keys: u32,
+    #[data_size(skip)]
     metrics: metrics::Metrics,
 }
 

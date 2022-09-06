@@ -9,26 +9,23 @@ mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    fmt::{self, Debug, Formatter},
-    path::PathBuf,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
 
+use casper_types::EraId;
+
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
-        chain_synchronizer::ChainSynchronizer,
+        chain_synchronizer::{self, ChainSynchronizer},
         chainspec_loader::{self, ChainspecLoader},
         complete_block_synchronizer::{self, CompleteBlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        contract_runtime::{ContractRuntime, ExecutionPreState},
+        contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
@@ -69,61 +66,24 @@ pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
 
-const DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK: Duration = Duration::from_secs(10);
-
-/// The configuration needed to initialize a Participating reactor
-pub(crate) struct ParticipatingInitConfig {
-    pub root: PathBuf,
-    pub config: Config,
-    pub chainspec_loader: ChainspecLoader,
-    pub storage: Storage,
-    pub contract_runtime: ContractRuntime,
-    //pub(super) joining_outcome: JoiningOutcome,
-    //pub(super) chain_sync_metrics: chain_synchronizer::Metrics,
-    //pub(super) event_stream_server: EventStreamServer,
-    pub small_network_identity: SmallNetworkIdentity,
-    pub node_startup_instant: Instant,
-}
-
-#[cfg(test)]
-impl ParticipatingInitConfig {
-    /// Inspect storage.
-    pub(crate) fn storage(&self) -> &Storage {
-        &self.storage
-    }
-
-    /// Inspect the contract runtime.
-    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
-        &self.contract_runtime
-    }
-}
-
-impl Debug for ParticipatingInitConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ParticipatingInitConfig {{ .. }}")
-    }
-}
-
 /// Participating node reactor.
 #[derive(DataSize, Debug)]
 pub(crate) struct Reactor {
-    metrics: Metrics,
-    small_network: SmallNetwork<ParticipatingEvent, Message>,
-    address_gossiper: Gossiper<GossipedAddress, ParticipatingEvent>,
+    chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
+    small_network: SmallNetwork<ParticipatingEvent, Message>,
+    address_gossiper: Gossiper<GossipedAddress, ParticipatingEvent>,
     rpc_server: RpcServer,
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
-    chainspec_loader: ChainspecLoader,
-    consensus: EraSupervisor,
-    #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
     block_gossiper: Gossiper<Block, ParticipatingEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, ParticipatingEvent>,
     block_proposer: BlockProposer,
+    consensus: EraSupervisor,
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent,
     chain_synchronizer: ChainSynchronizer<ParticipatingEvent>,
@@ -140,58 +100,90 @@ pub(crate) struct Reactor {
     complete_block_synchronizer: CompleteBlockSynchronizer,
     diagnostics_port: DiagnosticsPort,
     // Non-components.
+    metrics: Metrics,
     #[data_size(skip)] // Never allocates heap data.
     memory_metrics: MemoryMetrics,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
 }
 
-#[cfg(test)]
 impl Reactor {
-    pub(crate) fn consensus(&self) -> &EraSupervisor {
-        &self.consensus
-    }
-
-    pub(crate) fn storage(&self) -> &Storage {
-        &self.storage
-    }
-
-    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
-        &self.contract_runtime
-    }
-}
-
-impl reactor::Reactor for Reactor {
-    type Event = ParticipatingEvent;
-
-    // The "configuration" is in fact the whole state of the joiner reactor, which we
-    // deconstruct and reuse.
-    type Config = ParticipatingInitConfig;
-    type Error = Error;
-
-    fn new(
-        config: Self::Config,
+    fn new_with_chainspec_loader(
+        config: <Self as reactor::Reactor>::Config,
         registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
+        event_queue: EventQueueHandle<ParticipatingEvent>,
         rng: &mut NodeRng,
+        chainspec_loader: ChainspecLoader,
+        chainspec_effects: Effects<chainspec_loader::Event>,
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
-        let ParticipatingInitConfig {
-            root,
-            config,
-            chainspec_loader,
-            storage,
-            mut contract_runtime,
-            //joining_outcome,
-            //chain_sync_metrics,
-            //event_stream_server,
-            small_network_identity,
-            node_startup_instant,
-        } = config;
-
-        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root)?;
+        let node_startup_instant = Instant::now();
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let mut effects = Effects::new();
+        let mut effects =
+            reactor::wrap_effects(ParticipatingEvent::ChainspecLoader, chainspec_effects);
+
+        let metrics = Metrics::new(registry.clone());
+        let memory_metrics = MemoryMetrics::new(registry.clone())?;
+        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
+
+        let chainspec = chainspec_loader.chainspec();
+        let protocol_version = chainspec.protocol_config.version;
+
+        let (root_dir, config) = config.into_parts();
+        let storage_config = WithDir::new(&root_dir, config.storage.clone());
+
+        let hard_reset_to_start_of_era = chainspec_loader.hard_reset_to_start_of_era();
+        let storage = Storage::new(
+            &storage_config,
+            hard_reset_to_start_of_era,
+            protocol_version,
+            &chainspec.network_config.name,
+            chainspec.core_config.recent_era_count(),
+        )?;
+
+        let contract_runtime = ContractRuntime::new(
+            protocol_version,
+            storage.root_path(),
+            &config.contract_runtime,
+            chainspec.wasm_config,
+            chainspec.system_costs_config,
+            chainspec.core_config.max_associated_keys,
+            chainspec.core_config.max_runtime_call_stack_height,
+            chainspec.core_config.minimum_delegation_amount,
+            chainspec.core_config.strict_argument_checking,
+            chainspec.core_config.vesting_schedule_period.millis(),
+            registry,
+        )?;
+        // contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
+        //     todo!(), //&highest_block_header
+        // ))?;
+
+        let small_network_identity = SmallNetworkIdentity::new()?;
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network.clone(),
+            Some(WithDir::new(&root_dir, &config.consensus)),
+            registry,
+            small_network_identity,
+            chainspec.as_ref(),
+        )?;
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::SmallNetwork,
+            small_network_effects,
+        ));
+
+        // let ParticipatingInitConfig {
+        //     root,
+        //     config,
+        //     chainspec_loader,
+        //     storage,
+        //     mut contract_runtime,
+        //     //joining_outcome,
+        //     //chain_sync_metrics,
+        //     //event_stream_server,
+        //     small_network_identity,
+        //     node_startup_instant,
+        // } = config;
 
         // TODO: Check if we should do any of this things in different place now.
         // info!(?joining_outcome, "handling joining outcome");
@@ -298,25 +290,9 @@ impl reactor::Reactor for Reactor {
         //     }
         // };
 
-        let memory_metrics = MemoryMetrics::new(registry.clone())?;
-
-        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
-
-        let metrics = Metrics::new(registry.clone());
-
-        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
-            &WithDir::new(&root, config.diagnostics_port.clone()),
-            event_queue,
-        )?;
-
-        let effect_builder = EffectBuilder::new(event_queue);
-
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let chainspec = chainspec_loader.chainspec();
-
-        let protocol_version = chainspec.protocol_config.version;
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
             config.speculative_exec_server.clone(),
@@ -342,7 +318,7 @@ impl reactor::Reactor for Reactor {
             registry,
         );
 
-        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec, registry)?;
         let deploy_fetcher = fetcher_builder.build("deploy")?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -366,10 +342,11 @@ impl reactor::Reactor for Reactor {
             registry.clone(),
             effect_builder,
             //highest_block_header.height() + 1,
-            todo!(
-                "possibly a storage call to get the highest block header or initialize it with 0?"
-            ),
-            chainspec.as_ref(),
+            // todo!(
+            //     "possibly a storage call to get the highest block header or initialize it with 0?"
+            // ),
+            0,
+            chainspec,
             config.block_proposer,
         )?;
         effects.extend(reactor::wrap_effects(
@@ -377,30 +354,17 @@ impl reactor::Reactor for Reactor {
             block_proposer_effects,
         ));
 
-        let (small_network, small_network_effects) = SmallNetwork::new(
-            event_queue,
-            config.network.clone(),
-            Some(WithDir::new(&root, &config.consensus)),
-            registry,
-            small_network_identity,
-            chainspec.as_ref(),
-        )?;
-
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::DiagnosticsPort,
-            diagnostics_port_effects,
-        ));
-
+        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
-        let (consensus, init_consensus_effects) = EraSupervisor::new(
-            todo!(), //highest_block_header.next_block_era_id(),
+        let (consensus, consensus_effects) = EraSupervisor::new(
+            EraId::new(0), // todo!(), //highest_block_header.next_block_era_id(),
             storage.root_path(),
             our_secret_key,
             our_public_key,
             config.consensus,
             effect_builder,
             chainspec.clone(),
-            todo!(), //&highest_block_header,
+            // &highest_block_header,
             next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
@@ -409,12 +373,8 @@ impl reactor::Reactor for Reactor {
         )?;
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::Consensus,
-            init_consensus_effects,
+            consensus_effects,
         ));
-
-        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
-            todo!(), //&highest_block_header
-        ))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = LinearChainComponent::new(
@@ -431,7 +391,7 @@ impl reactor::Reactor for Reactor {
                 chainspec.clone(),
                 config.node.clone(),
                 config.network.clone(),
-                todo!(), // chain_sync_metrics,
+                chain_synchronizer::Metrics::new(registry).unwrap(),
                 effect_builder,
             )?;
         effects.extend(reactor::wrap_effects(
@@ -455,53 +415,82 @@ impl reactor::Reactor for Reactor {
             chainspec.highway_config.finality_threshold_fraction,
         );
 
+        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
+            &WithDir::new(&root_dir, config.diagnostics_port.clone()),
+            event_queue,
+        )?;
         effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::SmallNetwork,
-            small_network_effects,
+            ParticipatingEvent::DiagnosticsPort,
+            diagnostics_port_effects,
         ));
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
-        Ok((
-            Reactor {
-                metrics,
-                small_network,
-                address_gossiper,
-                storage,
-                contract_runtime,
-                rpc_server,
-                rest_server,
-                event_stream_server,
-                chainspec_loader,
-                consensus,
-                deploy_acceptor,
-                deploy_fetcher,
-                deploy_gossiper,
-                block_gossiper,
-                finality_signature_gossiper,
-                block_proposer,
-                block_validator,
-                linear_chain,
-                chain_synchronizer,
-                block_by_hash_fetcher,
-                block_header_by_hash_fetcher,
-                trie_or_chunk_fetcher,
-                block_by_height_fetcher,
-                block_header_and_finality_signatures_by_height_fetcher,
-                block_and_deploys_fetcher,
-                finalized_approvals_fetcher,
-                block_headers_batch_fetcher,
-                finality_signatures_fetcher,
-                sync_leap_fetcher,
-                diagnostics_port,
-                memory_metrics,
-                event_queue_metrics,
-                complete_block_synchronizer,
-            },
-            effects,
-        ))
+        let reactor = Reactor {
+            chainspec_loader,
+            storage,
+            contract_runtime,
+            small_network,
+            address_gossiper,
+            rpc_server,
+            rest_server,
+            event_stream_server,
+            deploy_acceptor,
+            deploy_fetcher,
+            deploy_gossiper,
+            block_gossiper,
+            finality_signature_gossiper,
+            block_proposer,
+            consensus,
+            block_validator,
+            linear_chain,
+            chain_synchronizer,
+            block_by_hash_fetcher,
+            block_header_by_hash_fetcher,
+            trie_or_chunk_fetcher,
+            block_by_height_fetcher,
+            block_header_and_finality_signatures_by_height_fetcher,
+            block_and_deploys_fetcher,
+            finalized_approvals_fetcher,
+            block_headers_batch_fetcher,
+            finality_signatures_fetcher,
+            sync_leap_fetcher,
+            complete_block_synchronizer,
+            diagnostics_port,
+            metrics,
+            memory_metrics,
+            event_queue_metrics,
+        };
+        Ok((reactor, effects))
+    }
+}
+
+impl reactor::Reactor for Reactor {
+    type Event = ParticipatingEvent;
+    type Config = WithDir<Config>;
+    type Error = Error;
+
+    fn new(
+        config: Self::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        // Construct the `ChainspecLoader` first so we fail fast if the chainspec is invalid.
+        let (chainspec_loader, chainspec_effects) =
+            ChainspecLoader::new(config.dir(), effect_builder)?;
+        Self::new_with_chainspec_loader(
+            config,
+            registry,
+            event_queue,
+            rng,
+            chainspec_loader,
+            chainspec_effects,
+        )
     }
 
     fn dispatch_event(
@@ -965,8 +954,7 @@ impl reactor::Reactor for Reactor {
                         complete_block_synchronizer::Event::EraValidators {
                             validators: upcoming_era_validators.clone(),
                         },
-                    )
-                    .into(),
+                    ),
                 );
                 events.extend(
                     self.dispatch_event(
@@ -1208,6 +1196,21 @@ impl reactor::Reactor for Reactor {
         self.linear_chain
             .stop_for_upgrade()
             .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
+    }
+}
+
+#[cfg(test)]
+impl Reactor {
+    pub(crate) fn consensus(&self) -> &EraSupervisor {
+        &self.consensus
+    }
+
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
+    }
+
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
     }
 }
 

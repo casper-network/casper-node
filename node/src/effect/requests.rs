@@ -52,7 +52,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalizedApprovals, FinalizedBlock, GossiperItem, Item, NodeId, NodeState, StatusFeed,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed,
         TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},

@@ -150,7 +150,7 @@ impl EraSupervisor {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         chainspec: Arc<Chainspec>,
-        latest_block_header: &BlockHeader,
+        // latest_block_header: &BlockHeader,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor>,
@@ -170,7 +170,7 @@ impl EraSupervisor {
         let metrics =
             Metrics::new(registry).expect("failed to set up and register consensus metrics");
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-        let next_height = latest_block_header.height() + 1;
+        let next_height = todo!(); // latest_block_header.height() + 1;
 
         let mut era_supervisor = Self {
             open_eras: Default::default(),

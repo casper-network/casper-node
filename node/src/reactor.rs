@@ -28,7 +28,6 @@
 //! manner using [`Runner::crank`] or indefinitely using [`Runner::run`].
 
 mod event_queue_metrics;
-pub(crate) mod initializer;
 pub(crate) mod participating;
 mod queue_kind;
 
@@ -59,6 +58,8 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+#[cfg(test)]
+use crate::types::{Chainspec, ChainspecRawBytes};
 use crate::{
     components::{deploy_acceptor, fetcher, fetcher::FetchResponse},
     effect::{
@@ -78,11 +79,6 @@ use crate::{
         SharedFlag, Source, WeightedRoundRobin,
     },
     NodeRng, TERMINATION_REQUESTED,
-};
-#[cfg(test)]
-use crate::{
-    reactor::initializer::Reactor as InitializerReactor,
-    types::{Chainspec, ChainspecRawBytes},
 };
 pub(crate) use queue_kind::QueueKind;
 
@@ -756,16 +752,6 @@ where
                 _ => error!("should be unreachable - bug in signal handler"),
             }
         }
-    }
-
-    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
-    pub(crate) async fn drain_into_inner(self) -> R {
-        self.is_shutting_down.set();
-        self.scheduler.seal();
-        for (ancestor, event) in self.scheduler.drain_queues().await {
-            debug!(?ancestor, %event, "drained event");
-        }
-        self.reactor
     }
 }
 
