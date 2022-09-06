@@ -37,6 +37,8 @@ use crate::{
     NodeRng,
 };
 
+use super::participating::ParticipatingInitConfig;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -179,11 +181,11 @@ pub(crate) enum Error {
 /// Initializer node reactor.
 #[derive(DataSize, Debug)]
 pub(crate) struct Reactor {
-    pub(super) config: WithDir<participating::Config>,
-    pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Storage,
-    pub(super) contract_runtime: ContractRuntime,
-    pub(super) small_network_identity: SmallNetworkIdentity,
+    pub config: WithDir<participating::Config>,
+    pub chainspec_loader: ChainspecLoader,
+    pub storage: Storage,
+    pub contract_runtime: ContractRuntime,
+    pub small_network_identity: SmallNetworkIdentity,
 }
 
 impl Reactor {

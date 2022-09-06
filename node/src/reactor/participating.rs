@@ -621,16 +621,16 @@ impl Display for ParticipatingEvent {
 
 /// The configuration needed to initialize a Participating reactor
 pub(crate) struct ParticipatingInitConfig {
-    pub(super) root: PathBuf,
-    pub(super) config: Config,
-    pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Storage,
-    pub(super) contract_runtime: ContractRuntime,
-    pub(super) joining_outcome: JoiningOutcome,
-    pub(super) chain_sync_metrics: chain_synchronizer::Metrics,
-    pub(super) event_stream_server: EventStreamServer,
-    pub(super) small_network_identity: SmallNetworkIdentity,
-    pub(super) node_startup_instant: Instant,
+    pub root: PathBuf,
+    pub config: Config,
+    pub chainspec_loader: ChainspecLoader,
+    pub storage: Storage,
+    pub contract_runtime: ContractRuntime,
+    //pub(super) joining_outcome: JoiningOutcome,
+    //pub(super) chain_sync_metrics: chain_synchronizer::Metrics,
+    //pub(super) event_stream_server: EventStreamServer,
+    pub small_network_identity: SmallNetworkIdentity,
+    pub node_startup_instant: Instant,
 }
 
 #[cfg(test)]
@@ -732,9 +732,9 @@ impl reactor::Reactor for Reactor {
             chainspec_loader,
             storage,
             mut contract_runtime,
-            joining_outcome,
-            chain_sync_metrics,
-            event_stream_server,
+            //joining_outcome,
+            //chain_sync_metrics,
+            //event_stream_server,
             small_network_identity,
             node_startup_instant,
         } = config;
@@ -743,109 +743,111 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
         let mut effects = Effects::new();
-        info!(?joining_outcome, "handling joining outcome");
-        let highest_block_header = match joining_outcome {
-            JoiningOutcome::ShouldExitForUpgrade => {
-                error!("invalid joining outcome to transition to participating reactor");
-                return Err(Error::InvalidJoiningOutcome);
-            }
-            JoiningOutcome::Synced {
-                highest_block_header,
-            } => {
-                if let Some(BlockAndExecutionEffects {
-                    block,
-                    execution_results,
-                    maybe_step_effect_and_upcoming_era_validators,
-                }) = chainspec_loader
-                    .maybe_immediate_switch_block_data()
-                    .cloned()
-                {
-                    // The outcome of joining in this case caused a new switch block to be created,
-                    // so we need to emit the effects which would have been created by that
-                    // execution, but add them to the participating reactor's event queues so they
-                    // don't get dropped as the joining reactor shuts down.
-                    effects.extend(
-                        effect_builder
-                            .announce_new_linear_chain_block(block.clone(), execution_results)
-                            .ignore(),
-                    );
 
-                    let current_era_id = block.header().era_id();
-                    if let Some(step_effect_and_upcoming_era_validators) =
-                        maybe_step_effect_and_upcoming_era_validators
-                    {
-                        effects.extend(
-                            effect_builder
-                                .announce_commit_step_success(
-                                    current_era_id,
-                                    step_effect_and_upcoming_era_validators.step_execution_journal,
-                                )
-                                .ignore(),
-                        );
-                        effects.extend(
-                            effect_builder
-                                .announce_upcoming_era_validators(
-                                    current_era_id,
-                                    step_effect_and_upcoming_era_validators.upcoming_era_validators,
-                                )
-                                .ignore(),
-                        );
-                    }
+        // TODO: Check if we should do any of this things in different place now.
+        // info!(?joining_outcome, "handling joining outcome");
+        // let highest_block_header = match joining_outcome {
+        //     JoiningOutcome::ShouldExitForUpgrade => {
+        //         error!("invalid joining outcome to transition to participating reactor");
+        //         return Err(Error::InvalidJoiningOutcome);
+        //     }
+        //     JoiningOutcome::Synced {
+        //         highest_block_header,
+        //     } => {
+        //         if let Some(BlockAndExecutionEffects {
+        //             block,
+        //             execution_results,
+        //             maybe_step_effect_and_upcoming_era_validators,
+        //         }) = chainspec_loader
+        //             .maybe_immediate_switch_block_data()
+        //             .cloned()
+        //         {
+        //             // The outcome of joining in this case caused a new switch block to be created,
+        //             // so we need to emit the effects which would have been created by that
+        //             // execution, but add them to the participating reactor's event queues so they
+        //             // don't get dropped as the joining reactor shuts down.
+        //             effects.extend(
+        //                 effect_builder
+        //                     .announce_new_linear_chain_block(block.clone(), execution_results)
+        //                     .ignore(),
+        //             );
 
-                    let secret_key = our_secret_key.clone();
-                    let public_key = our_public_key.clone();
-                    let block_hash = *block.hash();
-                    effects.extend(
-                        async move {
-                            let validator_weights =
-                                match linear_chain::era_validator_weights_for_block(
-                                    block.header(),
-                                    effect_builder,
-                                )
-                                .await
-                                {
-                                    Ok((_era_id, weights)) => weights,
-                                    Err(error) => {
-                                        return fatal!(
-                                            effect_builder,
-                                            "couldn't get era validators for header: {}",
-                                            error
-                                        )
-                                        .await;
-                                    }
-                                };
+        //             let current_era_id = block.header().era_id();
+        //             if let Some(step_effect_and_upcoming_era_validators) =
+        //                 maybe_step_effect_and_upcoming_era_validators
+        //             {
+        //                 effects.extend(
+        //                     effect_builder
+        //                         .announce_commit_step_success(
+        //                             current_era_id,
+        //                             step_effect_and_upcoming_era_validators.step_execution_journal,
+        //                         )
+        //                         .ignore(),
+        //                 );
+        //                 effects.extend(
+        //                     effect_builder
+        //                         .announce_upcoming_era_validators(
+        //                             current_era_id,
+        //                             step_effect_and_upcoming_era_validators.upcoming_era_validators,
+        //                         )
+        //                         .ignore(),
+        //                 );
+        //             }
 
-                            // We're responsible for signing the new block if we're in the provided
-                            // list.
-                            if validator_weights.contains_key(&public_key) {
-                                let signature = FinalitySignature::create(
-                                    block_hash,
-                                    current_era_id,
-                                    &secret_key,
-                                    public_key.clone(),
-                                );
+        //             let secret_key = our_secret_key.clone();
+        //             let public_key = our_public_key.clone();
+        //             let block_hash = *block.hash();
+        //             effects.extend(
+        //                 async move {
+        //                     let validator_weights =
+        //                         match linear_chain::era_validator_weights_for_block(
+        //                             block.header(),
+        //                             effect_builder,
+        //                         )
+        //                         .await
+        //                         {
+        //                             Ok((_era_id, weights)) => weights,
+        //                             Err(error) => {
+        //                                 return fatal!(
+        //                                     effect_builder,
+        //                                     "couldn't get era validators for header: {}",
+        //                                     error
+        //                                 )
+        //                                 .await;
+        //                             }
+        //                         };
 
-                                effect_builder
-                                    .announce_created_finality_signature(signature.clone())
-                                    .await;
-                                // Allow a short period for peers to establish connections. This
-                                // delay can be removed once we move to a single reactor model.
-                                effect_builder
-                                    .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
-                                    .await;
-                                let message = Message::FinalitySignature(Box::new(signature));
-                                effect_builder
-                                    .broadcast_message_to_validators(message, current_era_id)
-                                    .await;
-                            }
-                        }
-                        .ignore(),
-                    );
-                }
+        //                     // We're responsible for signing the new block if we're in the provided
+        //                     // list.
+        //                     if validator_weights.contains_key(&public_key) {
+        //                         let signature = FinalitySignature::create(
+        //                             block_hash,
+        //                             current_era_id,
+        //                             &secret_key,
+        //                             public_key.clone(),
+        //                         );
 
-                *highest_block_header
-            }
-        };
+        //                         effect_builder
+        //                             .announce_created_finality_signature(signature.clone())
+        //                             .await;
+        //                         // Allow a short period for peers to establish connections. This
+        //                         // delay can be removed once we move to a single reactor model.
+        //                         effect_builder
+        //                             .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
+        //                             .await;
+        //                         let message = Message::FinalitySignature(Box::new(signature));
+        //                         effect_builder
+        //                             .broadcast_message_to_validators(message, current_era_id)
+        //                             .await;
+        //                     }
+        //                 }
+        //                 .ignore(),
+        //             );
+        //         }
+
+        //         *highest_block_header
+        //     }
+        // };
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
 
@@ -879,6 +881,11 @@ impl reactor::Reactor for Reactor {
             protocol_version,
             node_startup_instant,
         )?;
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            storage.root_path().to_path_buf(),
+            protocol_version,
+        )?;
 
         let fetcher_builder = FetcherBuilder::new(
             config.fetcher,
@@ -909,7 +916,10 @@ impl reactor::Reactor for Reactor {
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
-            highest_block_header.height() + 1,
+            //highest_block_header.height() + 1,
+            todo!(
+                "possibly a storage call to get the highest block header or initialize it with 0?"
+            ),
             chainspec.as_ref(),
             config.block_proposer,
         )?;
@@ -934,14 +944,14 @@ impl reactor::Reactor for Reactor {
 
         let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            highest_block_header.next_block_era_id(),
+            todo!(), //highest_block_header.next_block_era_id(),
             storage.root_path(),
             our_secret_key,
             our_public_key,
             config.consensus,
             effect_builder,
             chainspec.clone(),
-            &highest_block_header,
+            todo!(), //&highest_block_header,
             next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
@@ -953,8 +963,9 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime
-            .set_initial_state(ExecutionPreState::from_block_header(&highest_block_header))?;
+        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
+            todo!(), //&highest_block_header
+        ))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = LinearChainComponent::new(
@@ -971,7 +982,7 @@ impl reactor::Reactor for Reactor {
                 chainspec.clone(),
                 config.node.clone(),
                 config.network.clone(),
-                chain_sync_metrics,
+                todo!(), // chain_sync_metrics,
                 effect_builder,
             )?;
         effects.extend(reactor::wrap_effects(
@@ -1051,14 +1062,7 @@ impl reactor::Reactor for Reactor {
         event: ParticipatingEvent,
     ) -> Effects<Self::Event> {
         match event {
-            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
-                ParticipatingEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::SmallNetwork(event) => reactor::wrap_effects(
-                ParticipatingEvent::SmallNetwork,
-                self.small_network.handle_event(effect_builder, rng, event),
-            ),
+            // Participating only
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),
@@ -1066,6 +1070,132 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::RpcServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::Consensus(event) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockValidator,
+                self.block_validator
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::LinearChain(event) => reactor::wrap_effects(
+                ParticipatingEvent::LinearChain,
+                self.linear_chain.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::SyncLeapFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::SyncLeapFetcher,
+                self.sync_leap_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::CompleteBlockSynchronizer(event) => reactor::wrap_effects(
+                ParticipatingEvent::CompleteBlockSynchronizer,
+                self.complete_block_synchronizer
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::SyncLeapFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::SyncLeapFetcher,
+                self.sync_leap_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::BlockProposer(req.into()),
+            ),
+            ParticipatingEvent::BlockValidatorRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::BlockValidator(block_validator::Event::from(req)),
+            ),
+            ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::CompleteBlockSynchronizerRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::CompleteBlockSynchronizer,
+                self.complete_block_synchronizer
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
+                deploy,
+                responder,
+            }) => {
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::Client,
+                    maybe_responder: responder,
+                };
+                self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    ParticipatingEvent::DeployAcceptor(event),
+                )
+            }
+            ParticipatingEvent::ConsensusAnnouncement(consensus_announcement) => {
+                match consensus_announcement {
+                    ConsensusAnnouncement::Finalized(block) => {
+                        let reactor_event = ParticipatingEvent::BlockProposer(
+                            block_proposer::Event::FinalizedBlock(block),
+                        );
+                        self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
+                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                        let reactor_finality_signatures_gossiper_event =
+                            ParticipatingEvent::FinalitySignatureGossiper(
+                                gossiper::Event::ItemReceived {
+                                    item_id: fs.id(),
+                                    source: Source::Ourself,
+                                },
+                            );
+                        let mut effects = self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            ParticipatingEvent::LinearChain(
+                                linear_chain::Event::FinalitySignatureReceived(fs, false),
+                            ),
+                        );
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            reactor_finality_signatures_gossiper_event,
+                        ));
+                        effects
+                    }
+                    ConsensusAnnouncement::Fault {
+                        era_id,
+                        public_key,
+                        timestamp,
+                    } => {
+                        let reactor_event = ParticipatingEvent::EventStreamServer(
+                            event_stream_server::Event::Fault {
+                                era_id,
+                                public_key: *public_key,
+                                timestamp,
+                            },
+                        );
+                        self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
+                }
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+            ) => {
+                let reactor_event = ParticipatingEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+
+            // Common for participating and joiner
+            ParticipatingEvent::Storage(event) => reactor::wrap_effects(
+                ParticipatingEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::SmallNetwork(event) => reactor::wrap_effects(
+                ParticipatingEvent::SmallNetwork,
+                self.small_network.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::RestServer(event) => reactor::wrap_effects(
                 ParticipatingEvent::RestServer,
@@ -1080,10 +1210,6 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ChainspecLoader,
                 self.chainspec_loader
                     .handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::Consensus(event) => reactor::wrap_effects(
-                ParticipatingEvent::Consensus,
-                self.consensus.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::DeployAcceptor(event) => reactor::wrap_effects(
                 ParticipatingEvent::DeployAcceptor,
@@ -1117,15 +1243,6 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, req.into()),
-            ),
-            ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockValidator,
-                self.block_validator
-                    .handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::LinearChain(event) => reactor::wrap_effects(
-                ParticipatingEvent::LinearChain,
-                self.linear_chain.handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::ChainSynchronizer(event) => reactor::wrap_effects(
                 ParticipatingEvent::ChainSynchronizer,
@@ -1177,22 +1294,11 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::SyncLeapFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::SyncLeapFetcher,
-                self.sync_leap_fetcher
-                    .handle_event(effect_builder, rng, event),
-            ),
-            ParticipatingEvent::CompleteBlockSynchronizer(event) => reactor::wrap_effects(
-                ParticipatingEvent::CompleteBlockSynchronizer,
-                self.complete_block_synchronizer
-                    .handle_event(effect_builder, rng, event),
-            ),
             ParticipatingEvent::DiagnosticsPort(event) => reactor::wrap_effects(
                 ParticipatingEvent::DiagnosticsPort,
                 self.diagnostics_port
                     .handle_event(effect_builder, rng, event),
             ),
-
             // Requests:
             ParticipatingEvent::ChainSynchronizerRequest(request) => reactor::wrap_effects(
                 ParticipatingEvent::ChainSynchronizer,
@@ -1259,21 +1365,6 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::SyncLeapFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::SyncLeapFetcher,
-                self.sync_leap_fetcher
-                    .handle_event(effect_builder, rng, request.into()),
-            ),
-            ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                ParticipatingEvent::BlockProposer(req.into()),
-            ),
-            ParticipatingEvent::BlockValidatorRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                ParticipatingEvent::BlockValidator(block_validator::Event::from(req)),
-            ),
             ParticipatingEvent::MetricsRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::MetricsRequest,
                 self.metrics.handle_event(effect_builder, rng, req),
@@ -1296,38 +1387,16 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
-                ParticipatingEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, req.into()),
-            ),
             ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, req.into()),
+                // req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
+                //     .ignore()
             ),
-            ParticipatingEvent::CompleteBlockSynchronizerRequest(req) => reactor::wrap_effects(
-                ParticipatingEvent::CompleteBlockSynchronizer,
-                self.complete_block_synchronizer
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
-
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
-                unreachable!("unhandled control announcement: {}", ctrl_ann)
-            }
-            ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
-                deploy,
-                responder,
-            }) => {
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
-                    source: Source::Client,
-                    maybe_responder: responder,
-                };
-                self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    ParticipatingEvent::DeployAcceptor(event),
-                )
+                error!("unhandled control announcement: {}", ctrl_ann);
+                Effects::new()
             }
             ParticipatingEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
@@ -1386,52 +1455,6 @@ impl reactor::Reactor for Reactor {
                     source: _,
                 },
             ) => Effects::new(),
-            ParticipatingEvent::ConsensusAnnouncement(consensus_announcement) => {
-                match consensus_announcement {
-                    ConsensusAnnouncement::Finalized(block) => {
-                        let reactor_event = ParticipatingEvent::BlockProposer(
-                            block_proposer::Event::FinalizedBlock(block),
-                        );
-                        self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
-                        let reactor_finality_signatures_gossiper_event =
-                            ParticipatingEvent::FinalitySignatureGossiper(
-                                gossiper::Event::ItemReceived {
-                                    item_id: fs.id(),
-                                    source: Source::Ourself,
-                                },
-                            );
-                        let mut effects = self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            ParticipatingEvent::LinearChain(
-                                linear_chain::Event::FinalitySignatureReceived(fs, false),
-                            ),
-                        );
-                        effects.extend(self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            reactor_finality_signatures_gossiper_event,
-                        ));
-                        effects
-                    }
-                    ConsensusAnnouncement::Fault {
-                        era_id,
-                        public_key,
-                        timestamp,
-                    } => {
-                        let reactor_event = ParticipatingEvent::EventStreamServer(
-                            event_stream_server::Event::Fault {
-                                era_id,
-                                public_key: *public_key,
-                                timestamp,
-                            },
-                        );
-                        self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                }
-            }
             ParticipatingEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::LinearChainBlock {
                     block,
@@ -1584,14 +1607,6 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            ParticipatingEvent::BlockProposerAnnouncement(
-                BlockProposerAnnouncement::DeploysExpired(hashes),
-            ) => {
-                let reactor_event = ParticipatingEvent::EventStreamServer(
-                    event_stream_server::Event::DeploysExpired(hashes),
-                );
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
             ) => {
@@ -1717,6 +1732,7 @@ impl reactor::Reactor for Reactor {
                 sender,
                 &message.0,
             ),
+
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => {
                 todo!(); // route it to both the LinearChain and BlocksAccumulator
                 reactor::wrap_effects(

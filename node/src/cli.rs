@@ -9,6 +9,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     str::FromStr,
+    time::Instant,
 };
 
 use anyhow::{self, Context};
@@ -20,8 +21,13 @@ use toml::{value::Table, Value};
 use tracing::{error, info};
 
 use crate::{
+    components::small_network::SmallNetworkIdentity,
     logging,
-    reactor::{initializer, joiner, participating, ReactorExit, Runner},
+    reactor::{
+        initializer,
+        participating::{self, ParticipatingInitConfig},
+        ReactorExit, Runner,
+    },
     setup_signal_hooks,
     types::ExitCode,
     utils::WithDir,
@@ -174,23 +180,39 @@ impl Cli {
                     .parent()
                     .map(|path| path.to_owned())
                     .unwrap_or_else(|| "/".into());
-                let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
-                    WithDir::new(root, initializer),
+                // let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
+                //     WithDir::new(root, initializer),
+                //     &mut rng,
+                //     &registry,
+                // )
+                // .await?;
+                // match joiner_runner.run(&mut rng).await {
+                //     ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
+                //     ReactorExit::ProcessShouldContinue => info!("finished joining"),
+                // }
+                //                let joiner_reactor = joiner_runner.drain_into_inner().await;
+
+                let (_, config) = initializer.config.into_parts();
+
+                let participating_config = ParticipatingInitConfig {
+                    root,
+                    config,
+                    chainspec_loader: initializer.chainspec_loader,
+                    storage: initializer.storage,
+                    contract_runtime: initializer.contract_runtime,
+                    //event_stream_server: todo!(),
+                    small_network_identity: initializer.small_network_identity,
+                    node_startup_instant: Instant::now(),
+                };
+
+                //let config = initializer.into_participating_config().await?;
+
+                let mut participating_runner = Runner::<participating::Reactor>::with_metrics(
+                    participating_config,
                     &mut rng,
                     &registry,
                 )
                 .await?;
-                match joiner_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
-                    ReactorExit::ProcessShouldContinue => info!("finished joining"),
-                }
-
-                let joiner_reactor = joiner_runner.drain_into_inner().await;
-                let config = joiner_reactor.into_participating_config().await?;
-
-                let mut participating_runner =
-                    Runner::<participating::Reactor>::with_metrics(config, &mut rng, &registry)
-                        .await?;
 
                 match participating_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
