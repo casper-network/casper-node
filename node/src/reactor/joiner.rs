@@ -48,8 +48,8 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            NetRequestIncoming, NetResponseIncoming, SyncLeapRequestIncoming,
+            SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -215,6 +215,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
+    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
+    #[from]
+    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
+    #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
@@ -297,6 +301,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             JoinerEvent::TrieDemand(_) => "TrieDemand",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            JoinerEvent::SyncLeapRequestIncoming(_) => "SyncLeapRequestIncoming",
+            JoinerEvent::SyncLeapResponseIncoming(_) => "SyncLeapResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             JoinerEvent::DeployGossiper(_) => "DeployGossiper",
@@ -462,6 +468,8 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieDemand(inner) => write!(f, "demand: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::SyncLeapRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::SyncLeapResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::ContractRuntimeRequest(req) => {
                 write!(f, "contract runtime request: {}", req)
@@ -1053,6 +1061,8 @@ impl reactor::Reactor for Reactor {
                     &message.0,
                 )
             }
+            JoinerEvent::SyncLeapRequestIncoming(_) => todo!(),
+            JoinerEvent::SyncLeapResponseIncoming(_) => todo!(),
 
             JoinerEvent::FinalitySignatureIncoming(FinalitySignatureIncoming {
                 sender, ..

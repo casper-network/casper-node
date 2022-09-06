@@ -46,7 +46,8 @@ use crate::{
         },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            NetResponseIncoming, SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand,
+            TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, MarkBlockCompletedRequest},
         Responder,
@@ -125,6 +126,10 @@ enum Event {
     TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
+    #[from]
+    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
+    #[from]
+    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -220,6 +225,8 @@ impl Display for Event {
             Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::SyncLeapRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::SyncLeapResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
     }
@@ -481,7 +488,9 @@ impl reactor::Reactor for Reactor {
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)
-            | Event::TrieResponseIncoming(_)) => {
+            | Event::TrieResponseIncoming(_)
+            | Event::SyncLeapRequestIncoming(_)
+            | Event::SyncLeapResponseIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }
         }

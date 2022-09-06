@@ -26,8 +26,9 @@ use crate::{
     effect::{
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
-            TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, SyncLeapRequest,
+            SyncLeapRequestIncoming, SyncLeapResponse, SyncLeapResponseIncoming, TrieDemand,
+            TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
     },
@@ -328,6 +329,8 @@ where
         + From<TrieRequestIncoming>
         + From<TrieDemand>
         + From<TrieResponseIncoming>
+        + From<SyncLeapRequestIncoming>
+        + From<SyncLeapResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
     // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) ->
@@ -402,9 +405,9 @@ where
                     message: NetRequest::FinalitySignatures(serialized_id),
                 }
                 .into(),
-                Tag::SyncLeap => NetRequestIncoming {
+                Tag::SyncLeap => SyncLeapRequestIncoming {
                     sender,
-                    message: todo!(), // TODO: Add NetRequest::SyncLeap.
+                    message: SyncLeapRequest(serialized_id),
                 }
                 .into(),
             },
@@ -472,9 +475,9 @@ where
                     message: NetResponse::FinalitySignatures(serialized_item),
                 }
                 .into(),
-                Tag::SyncLeap => NetResponseIncoming {
+                Tag::SyncLeap => SyncLeapResponseIncoming {
                     sender,
-                    message: todo!(), // TODO: Add NetResponseIncoming::SyncLeap.
+                    message: SyncLeapResponse(serialized_item.to_vec()),
                 }
                 .into(),
             },

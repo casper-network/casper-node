@@ -131,6 +131,8 @@ reactor!(Reactor {
         // We do not serve any other requests.
         TrieRequestIncoming -> [!];
         TrieResponseIncoming -> [!];
+        SyncLeapRequestIncoming -> [!];
+        SyncLeapResponseIncoming -> [!];
 
         // No consensus component.
         ConsensusMessageIncoming -> [!];
