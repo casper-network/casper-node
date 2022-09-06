@@ -1215,10 +1215,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// The outgoing message sink of an outgoing connection.
-type OutgoingSink = FrameWriter<Bytes, LengthDelimited, Compat<SslStream<TcpStream>>>;
+type OutgoingSink = FrameWriter<Bytes, LengthDelimited, Compat<Transport>>;
 
 /// The incoming message stream of an incoming connection.
-type IncomingStream = FrameReader<LengthDelimited, Compat<SslStream<TcpStream>>>;
+type IncomingStream = FrameReader<LengthDelimited, Compat<Transport>>;
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where
