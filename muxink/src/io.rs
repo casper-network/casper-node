@@ -228,3 +228,50 @@ where
         wpin.poll_close(cx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use futures::{sink::SinkExt, stream::StreamExt};
+
+    use super::{FrameReader, FrameWriter};
+    use crate::framing::length_delimited::LengthDelimited;
+    use tokio_util::compat::TokioAsyncReadCompatExt;
+
+    /// A basic integration test for sending data across an actual TCP stream.
+    #[tokio::test]
+    async fn simple_tcp_send_recv() {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("could not bind");
+        let server_addr = server.local_addr().expect("no local addr");
+        let frame_to_send = b"asdf12345asdf";
+
+        let server_handle = tokio::spawn(async move {
+            let (incoming, _client_peer_addr) = server
+                .accept()
+                .await
+                .expect("could not accept connection on server side");
+
+            let mut frame_reader = FrameReader::new(LengthDelimited, incoming.compat(), 32);
+            let outcome = frame_reader
+                .next()
+                .await
+                .expect("closed unexpectedly")
+                .expect("receive failed");
+
+            assert_eq!(&outcome.to_vec(), frame_to_send);
+        });
+
+        let client = tokio::net::TcpStream::connect(server_addr)
+            .await
+            .expect("failed to connect");
+        let mut frame_writer = FrameWriter::new(LengthDelimited, client.compat());
+        frame_writer
+            .send(Bytes::from(&frame_to_send[..]))
+            .await
+            .expect("could not sendn data");
+
+        server_handle.await.expect("joining failed");
+    }
+}
