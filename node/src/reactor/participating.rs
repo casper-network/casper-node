@@ -15,7 +15,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
 
-use casper_types::EraId;
+use casper_types::{testing::TestRng, EraId};
 
 use crate::{
     components::{
@@ -53,8 +53,8 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
+        FinalitySignature, FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -87,7 +87,6 @@ pub(crate) struct Reactor {
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
     finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
-    finality_signature_fetcher: Fetcher<FinalitySignature>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     sync_leap_fetcher: Fetcher<SyncLeap>,
@@ -410,7 +409,6 @@ impl Reactor {
             fetcher_builder.build("block_header_by_height")?;
         let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
-        let finality_signature_fetcher = fetcher_builder.build("finality_signature")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
         let sync_leap_fetcher = fetcher_builder.build("sync_leap")?;
@@ -458,7 +456,6 @@ impl Reactor {
             block_header_and_finality_signatures_by_height_fetcher,
             block_and_deploys_fetcher,
             finalized_approvals_fetcher,
-            finality_signature_fetcher,
             block_headers_batch_fetcher,
             finality_signatures_fetcher,
             sync_leap_fetcher,
@@ -737,11 +734,6 @@ impl reactor::Reactor for Reactor {
                 self.finalized_approvals_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::FinalitySignatureFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::FinalitySignatureFetcher,
-                self.finality_signature_fetcher
-                    .handle_event(effect_builder, rng, event),
-            ),
             ParticipatingEvent::BlockHeadersBatchFetcher(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockHeadersBatchFetcher,
                 self.block_headers_batch_fetcher
@@ -811,11 +803,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::FinalizedApprovalsFetcherRequest(request) => reactor::wrap_effects(
                 ParticipatingEvent::FinalizedApprovalsFetcher,
                 self.finalized_approvals_fetcher
-                    .handle_event(effect_builder, rng, request.into()),
-            ),
-            ParticipatingEvent::FinalitySignatureFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::FinalitySignatureFetcher,
-                self.finality_signature_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => reactor::wrap_effects(
@@ -1209,6 +1196,8 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::ControlLogicAnnouncement(ann) => self.control_logic(ann),
+            ParticipatingEvent::FinalitySignatureFetcher(_) => todo!(),
+            ParticipatingEvent::FinalitySignatureFetcherRequest(_) => todo!(),
         }
     }
 
@@ -1237,6 +1226,27 @@ impl Reactor {
 
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
+    }
+
+    pub(crate) fn new_with_chainspec(
+        config: <Self as reactor::Reactor>::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<ParticipatingEvent>,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
+        let effect_builder = EffectBuilder::new(event_queue);
+        let (chainspec_loader, chainspec_effects) =
+            ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes, effect_builder);
+        Self::new_with_chainspec_loader(
+            config,
+            registry,
+            event_queue,
+            rng,
+            chainspec_loader,
+            chainspec_effects,
+        )
     }
 }
 

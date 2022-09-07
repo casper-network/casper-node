@@ -1004,8 +1004,10 @@ mod tests {
             .get_trie(&serialized_id)
             .expect("expected a successful read")
         {
-            FetchedOrNotFound::Fetched(found) => found,
-            FetchedOrNotFound::NotFound(_) => panic!("expected to find the trie"),
+            FetchResponse::Fetched(found) => found,
+            FetchResponse::NotProvided(_) | FetchResponse::NotFound(_) => {
+                panic!("expected to find the trie")
+            }
         }
     }
 

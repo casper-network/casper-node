@@ -6,7 +6,6 @@
 mod condition_check_reactor;
 pub(crate) mod fake_deploy_acceptor;
 pub(crate) mod filter_reactor;
-mod multi_stage_test_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
 mod test_rng;
@@ -48,7 +47,6 @@ use crate::{
     types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
-pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 use schemars::schema::RootSchema;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
@@ -285,7 +283,6 @@ impl<REv: 'static> ComponentHarness<REv> {
                         ControlAnnouncement::QueueDumpRequest { .. } => {
                             panic!("queue dumps are not supported in the test harness")
                         }
-                        ControlAnnouncement::MissingValidatorSet { .. } => todo!(),
                     }
                 } else {
                     debug!(?ev, "ignoring event while looking for a fatal")

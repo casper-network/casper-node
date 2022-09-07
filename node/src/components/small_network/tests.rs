@@ -19,7 +19,7 @@ use tracing::{debug, info};
 
 use super::{
     chain_info::ChainInfo, Config, Event as SmallNetworkEvent, FromIncoming, GossipedAddress,
-    MessageKind, Payload, SmallNetwork, ValidatorSets,
+    MessageKind, Payload, SmallNetwork,
 };
 use crate::{
     components::{
