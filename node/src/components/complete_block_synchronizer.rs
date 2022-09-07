@@ -13,7 +13,7 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{crypto, EraId, PublicKey, Signature, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::Component,
@@ -22,7 +22,7 @@ use crate::{
         requests::FetcherRequest,
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Block, BlockHash, Deploy, NodeId},
+    types::{Block, BlockHash, Deploy, FetcherItem, FinalitySignature, Item, NodeId, Tag},
     NodeRng,
 };
 
@@ -108,6 +108,79 @@ impl CompleteBlockSynchronizer {
     }
 }
 
+#[derive(From)]
+enum FinalitySignaturesError {
+    EraOrBlockHashMismatch,
+    #[from]
+    Crypto(crypto::Error),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct FinalitySignatures {
+    /// The signatures associated with the block hash.
+    finality_signatures: Vec<FinalitySignature>,
+}
+
+impl FinalitySignatures {
+    pub(crate) fn verify(&self) -> Result<(), FinalitySignaturesError> {
+        if self.finality_signatures.is_empty() {
+            return Ok(());
+        }
+
+        // let block_hash = self.id();
+        // if self
+        //     .finality_signatures
+        //     .iter()
+        //     .all(|fs| fs.block_hash == block_hash)
+        //     == false
+        // {
+        //     return Err(todo!());
+        // }
+
+        if let Some(fs) = self.finality_signatures.first() {
+            let era_id = fs.era_id;
+            let block_hash = fs.block_hash;
+
+            if self
+                .finality_signatures
+                .iter()
+                .all(|fs| fs.era_id == era_id && fs.block_hash == block_hash)
+                == false
+            {
+                return Err(FinalitySignaturesError::EraOrBlockHashMismatch);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Item for FinalitySignatures {
+    type Id = BlockHash;
+    const TAG: Tag = Tag::FinalitySignaturesByHash;
+
+    fn id(&self) -> Self::Id {
+        self.finality_signatures
+            .first()
+            .map(|fs| fs.block_hash)
+            .unwrap_or_default()
+    }
+}
+
+impl FetcherItem for FinalitySignatures {
+    type ValidationError = crypto::Error;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+}
+
+impl Display for FinalitySignatures {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "block signatures for hash: {}", self.block_hash,)
+    }
+}
+
 pub(crate) enum BlockSyncState {
     Unknown,
     NotYetStarted,
@@ -166,7 +239,13 @@ impl CompleteBlockSynchronizer {
                             .event(Event::BlockFetched)
                     }))
                 }
-                NeedNext::FinalitySignatures(_) => {}
+                NeedNext::FinalitySignatures(block_hash) => {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<FinalitySignatures>(block_hash, node_id)
+                            .event(Event::FinalitySignaturesFetched)
+                    }))
+                }
                 NeedNext::GlobalState(_) => {}
                 NeedNext::Deploy(deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {

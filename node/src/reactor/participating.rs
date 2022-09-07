@@ -469,6 +469,7 @@ impl Reactor {
     }
 
     fn control_logic(&self, announcement: ControlLogicAnnouncement) -> Effects<ParticipatingEvent> {
+        //self.node_status TBD
         match announcement {
             ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
                 return reactor::wrap_effects(ParticipatingEvent::TrieDemand, Effects::new());

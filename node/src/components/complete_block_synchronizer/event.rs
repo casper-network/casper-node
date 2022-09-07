@@ -10,8 +10,12 @@ use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::{complete_block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
-    types::{NodeId, Block, BlockHash, BlockSignatures, Deploy, DeployHash, TrieOrChunk, TrieOrChunkId},
+    types::{
+        Block, BlockHash, BlockSignatures, Deploy, DeployHash, NodeId, TrieOrChunk, TrieOrChunkId,
+    },
 };
+
+use super::FinalitySignatures;
 
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
@@ -42,7 +46,7 @@ pub(crate) enum Event {
         success: bool,
     },
     #[from]
-    FinalitySignaturesFetched(FetchResult<BlockSignatures>),
+    FinalitySignaturesFetched(FetchResult<FinalitySignatures>),
     FinalitySignaturesStored {
         block_hash: BlockHash,
         success: bool,
