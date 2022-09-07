@@ -114,7 +114,10 @@ where
                     }
                 }
                 Poll::Ready(Err(err)) => return Poll::Ready(Some(Err(err))),
-                Poll::Pending => return Poll::Pending,
+                Poll::Pending => {
+                    buffer.truncate(start);
+                    return Poll::Pending;
+                }
             }
         }
     }
