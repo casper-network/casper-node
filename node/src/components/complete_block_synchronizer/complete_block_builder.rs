@@ -19,7 +19,7 @@ use crate::types::{BlockHash, DeployHash, FinalitySignature, NodeId};
 #[derive(DataSize, Debug)]
 pub(super) enum NeedNext {
     Block(BlockHash),
-    FinalitySignatures(BlockHash),
+    FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     GlobalState(Digest),
     Deploy(DeployHash),
     ExecutionResults(DeployHash),
@@ -115,7 +115,19 @@ impl CompleteBlockBuilder {
 
         if self.has_sufficient_weight(fault_tolerance_fraction, false) == false {
             self.builder_state = BlockAcquisitionState::GettingFinalitySignatures;
-            return (peers, NeedNext::FinalitySignatures(self.block_hash));
+            let validators = self
+                .validators
+                .keys()
+                .filter(|public_key| match &self.finality_signatures {
+                    None => true,
+                    Some(finality_signatures) => !finality_signatures.contains_key(public_key),
+                })
+                .cloned()
+                .collect();
+            return (
+                peers,
+                NeedNext::FinalitySignatures(self.block_hash, self.era_id, validators),
+            );
         }
 
         // TODO: only attempt x times or over a period of time - e.g.

@@ -100,6 +100,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
     #[from]
+    FinalitySignatureFetcher(#[serde(skip_serializing)] fetcher::Event<FinalitySignature>),
+    #[from]
     BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
     #[from]
     FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
@@ -137,6 +139,8 @@ pub(crate) enum ParticipatingEvent {
     FinalizedApprovalsFetcherRequest(
         #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
     ),
+    #[from]
+    FinalitySignatureFetcherRequest(#[serde(skip_serializing)] FetcherRequest<FinalitySignature>),
     #[from]
     BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
     #[from]
@@ -272,6 +276,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
             ParticipatingEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
             ParticipatingEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
+            ParticipatingEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
             ParticipatingEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             ParticipatingEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
             ParticipatingEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
@@ -289,6 +294,9 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             ParticipatingEvent::FinalizedApprovalsFetcherRequest(_) => {
                 "FinalizedApprovalsFetcherRequest"
+            }
+            ParticipatingEvent::FinalitySignatureFetcherRequest(_) => {
+                "FinalitySignatureFetcherRequest"
             }
             ParticipatingEvent::BlockHeadersBatchFetcherRequest(_) => {
                 "BlockHeadersBatchFetcherRequest"
@@ -443,6 +451,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::FinalizedApprovalsFetcher(event) => {
                 write!(f, "finalized approvals fetcher: {}", event)
             }
+            ParticipatingEvent::FinalitySignatureFetcher(event) => {
+                write!(f, "finality signature fetcher: {}", event)
+            }
             ParticipatingEvent::BlockHeadersBatchFetcher(event) => {
                 write!(f, "block headers batch fetcher: {}", event)
             }
@@ -494,6 +505,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::FinalizedApprovalsFetcherRequest(request) => {
                 write!(f, "finalized approvals fetcher request: {}", request)
+            }
+            ParticipatingEvent::FinalitySignatureFetcherRequest(request) => {
+                write!(f, "finality signature fetcher request: {}", request)
             }
             ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => {
                 write!(f, "block headers batch fetcher request: {}", request)

@@ -22,7 +22,10 @@ use crate::{
         requests::FetcherRequest,
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Block, BlockHash, Deploy, FetcherItem, FinalitySignature, Item, NodeId, Tag},
+    types::{
+        Block, BlockHash, Deploy, FetcherItem, FinalitySignature, FinalitySignatureId, Item,
+        NodeId, Tag,
+    },
     NodeRng,
 };
 
@@ -108,79 +111,6 @@ impl CompleteBlockSynchronizer {
     }
 }
 
-#[derive(From)]
-enum FinalitySignaturesError {
-    EraOrBlockHashMismatch,
-    #[from]
-    Crypto(crypto::Error),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct FinalitySignatures {
-    /// The signatures associated with the block hash.
-    finality_signatures: Vec<FinalitySignature>,
-}
-
-impl FinalitySignatures {
-    pub(crate) fn verify(&self) -> Result<(), FinalitySignaturesError> {
-        if self.finality_signatures.is_empty() {
-            return Ok(());
-        }
-
-        // let block_hash = self.id();
-        // if self
-        //     .finality_signatures
-        //     .iter()
-        //     .all(|fs| fs.block_hash == block_hash)
-        //     == false
-        // {
-        //     return Err(todo!());
-        // }
-
-        if let Some(fs) = self.finality_signatures.first() {
-            let era_id = fs.era_id;
-            let block_hash = fs.block_hash;
-
-            if self
-                .finality_signatures
-                .iter()
-                .all(|fs| fs.era_id == era_id && fs.block_hash == block_hash)
-                == false
-            {
-                return Err(FinalitySignaturesError::EraOrBlockHashMismatch);
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl Item for FinalitySignatures {
-    type Id = BlockHash;
-    const TAG: Tag = Tag::FinalitySignaturesByHash;
-
-    fn id(&self) -> Self::Id {
-        self.finality_signatures
-            .first()
-            .map(|fs| fs.block_hash)
-            .unwrap_or_default()
-    }
-}
-
-impl FetcherItem for FinalitySignatures {
-    type ValidationError = crypto::Error;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
-}
-
-impl Display for FinalitySignatures {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "block signatures for hash: {}", self.block_hash,)
-    }
-}
-
 pub(crate) enum BlockSyncState {
     Unknown,
     NotYetStarted,
@@ -226,7 +156,10 @@ impl CompleteBlockSynchronizer {
 
     fn next<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
-        REv: From<FetcherRequest<Block>> + From<FetcherRequest<Deploy>> + Send,
+        REv: From<FetcherRequest<Block>>
+            + From<FetcherRequest<Deploy>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
     {
         let mut results = Effects::new();
         for builder in self.builders.values_mut() {
@@ -239,11 +172,18 @@ impl CompleteBlockSynchronizer {
                             .event(Event::BlockFetched)
                     }))
                 }
-                NeedNext::FinalitySignatures(block_hash) => {
+                NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
-                        effect_builder
-                            .fetch::<FinalitySignatures>(block_hash, node_id)
-                            .event(Event::FinalitySignaturesFetched)
+                        validators.iter().flat_map(move |public_key| {
+                            let id = FinalitySignatureId {
+                                block_hash,
+                                era_id,
+                                public_key: public_key.clone(),
+                            };
+                            effect_builder
+                                .fetch::<FinalitySignature>(id, node_id)
+                                .event(Event::FinalitySignatureFetched)
+                        })
                     }))
                 }
                 NeedNext::GlobalState(_) => {}
@@ -282,6 +222,7 @@ where
     REv: From<ControlLogicAnnouncement>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<FinalitySignature>>
         + Send,
 {
     type Event = Event;

@@ -25,8 +25,9 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployWithFinalizedApprovals, FetcherItem, FinalizedApprovals, FinalizedApprovalsWithId,
-        Item, NodeId, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalitySignatureId,
+        FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId, SyncLeap, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -584,6 +585,51 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
             )
             .await
             .then_some(block_header_with_metadata.block_signatures)
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
+    }
+}
+
+impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, Vec<FetchResponder<FinalitySignature>>>>
+    {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<FinalitySignature>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: FinalitySignatureId,
+        peer: NodeId,
+        responder: FetchResponder<FinalitySignature>,
+    ) -> Effects<Event<FinalitySignature>> {
+        let block_hash = id.block_hash;
+        let public_key = id.public_key.clone();
+        async move {
+            // TODO: Get a single signature from storage.
+            let block_header_with_metadata = effect_builder
+                .get_block_header_with_metadata_from_storage(block_hash, false)
+                .await?;
+            block_header_with_metadata
+                .block_signatures
+                .get_finality_signature(&public_key)
         }
         .event(move |result| Event::GetFromStorageResult {
             id,

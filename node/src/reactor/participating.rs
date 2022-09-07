@@ -87,6 +87,7 @@ pub(crate) struct Reactor {
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
     finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
+    finality_signature_fetcher: Fetcher<FinalitySignature>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     sync_leap_fetcher: Fetcher<SyncLeap>,
@@ -409,6 +410,7 @@ impl Reactor {
             fetcher_builder.build("block_header_by_height")?;
         let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
+        let finality_signature_fetcher = fetcher_builder.build("finality_signature")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
         let sync_leap_fetcher = fetcher_builder.build("sync_leap")?;
@@ -456,6 +458,7 @@ impl Reactor {
             block_header_and_finality_signatures_by_height_fetcher,
             block_and_deploys_fetcher,
             finalized_approvals_fetcher,
+            finality_signature_fetcher,
             block_headers_batch_fetcher,
             finality_signatures_fetcher,
             sync_leap_fetcher,
@@ -734,6 +737,11 @@ impl reactor::Reactor for Reactor {
                 self.finalized_approvals_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::FinalitySignatureFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::FinalitySignatureFetcher,
+                self.finality_signature_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::BlockHeadersBatchFetcher(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockHeadersBatchFetcher,
                 self.block_headers_batch_fetcher
@@ -803,6 +811,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::FinalizedApprovalsFetcherRequest(request) => reactor::wrap_effects(
                 ParticipatingEvent::FinalizedApprovalsFetcher,
                 self.finalized_approvals_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::FinalitySignatureFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::FinalitySignatureFetcher,
+                self.finality_signature_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => reactor::wrap_effects(
