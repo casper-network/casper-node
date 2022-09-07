@@ -334,9 +334,10 @@ impl Reactor {
             gossiper::get_block_from_storage::<Block, ParticipatingEvent>,
             registry,
         )?;
-        let finality_signature_gossiper = Gossiper::new_for_complete_items(
+        let finality_signature_gossiper = Gossiper::new_for_partial_items(
             "finality_signature_gossiper",
             config.gossip,
+            gossiper::get_finality_signature_from_storage::<FinalitySignature, ParticipatingEvent>,
             registry,
         )?;
 

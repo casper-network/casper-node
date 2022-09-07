@@ -28,8 +28,8 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, GossiperItem, Item,
-        NodeId,
+        Block, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalitySignatureId, GossiperItem, Item, NodeId,
     },
     utils::Source,
     NodeRng,
@@ -95,6 +95,18 @@ pub(crate) fn get_deploy_from_storage<T: GossiperItem + 'static, REv: ReactorEve
                 result: Box::new(result),
             }
         })
+}
+
+pub(crate) fn get_finality_signature_from_storage<
+    T: GossiperItem + 'static,
+    REv: ReactorEventT<T>,
+>(
+    effect_builder: EffectBuilder<REv>,
+    fs_id: FinalitySignatureId,
+    sender: NodeId,
+) -> Effects<Event<FinalitySignature>> {
+    // TODO: Needs proper implementation
+    Effects::new()
 }
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
