@@ -5,13 +5,33 @@
 //! channel, then the Stream will never poll as Ready.
 
 use std::{
+    error::Error,
     pin::Pin,
+    result::Result,
     sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
-use bytes::Bytes;
-use futures::{stream::Fuse, Stream, StreamExt};
+use bytes::{Buf, Bytes};
+use futures::{ready, stream::Fuse, Stream, StreamExt};
+use thiserror::Error as ThisError;
+
+const CHANNEL_BYTE_COUNT: usize = MAX_CHANNELS / CHANNELS_PER_BYTE;
+const CHANNEL_BYTE_SHIFT: usize = 3;
+const CHANNELS_PER_BYTE: usize = 8;
+const MAX_CHANNELS: usize = 256;
+
+#[derive(Debug, ThisError)]
+pub enum DemultiplexerError<E> {
+    #[error("Channel {0} is already in use")]
+    ChannelUnavailable(u8),
+    #[error("Received a message of length 0")]
+    EmptyMessage,
+    #[error("Message on channel {0} has no frame")]
+    MissingFrame(u8),
+    #[error("Stream error: {0}")]
+    Stream(E),
+}
 
 /// A frame demultiplexer.
 ///
@@ -24,7 +44,7 @@ pub struct Demultiplexer<S> {
     /// corresponding to a different channel.
     next_frame: Option<(u8, Bytes)>,
     /// A bit-field representing the channels which have had `DemultiplexerHandle`s constructed.
-    active_channels: [u8; 32],
+    active_channels: [u8; CHANNEL_BYTE_COUNT],
 }
 
 impl<S: Stream> Demultiplexer<S> {
@@ -36,7 +56,7 @@ impl<S: Stream> Demultiplexer<S> {
             // Initially, we have no next frame
             next_frame: None,
             // Initially, all channels are inactive
-            active_channels: [0b00000000; 32],
+            active_channels: [0b00000000; CHANNEL_BYTE_COUNT],
         }
     }
 }
@@ -45,50 +65,45 @@ impl<S: Stream> Demultiplexer<S> {
 // channels.
 impl<S> Demultiplexer<S> {
     fn activate_channel(&mut self, channel: u8) {
-        self.active_channels[(channel / 8) as usize] |=
-            2u8.checked_pow((channel % 8) as u32).unwrap();
+        self.active_channels[(channel >> CHANNEL_BYTE_SHIFT) as usize] |=
+            1 << (channel & (CHANNELS_PER_BYTE as u8 - 1));
     }
 
     fn deactivate_channel(&mut self, channel: u8) {
-        // TODO Single operation instead of two.
-        if self.channel_is_active(channel) {
-            self.active_channels[(channel / 8) as usize] ^=
-                2u8.checked_pow((channel % 8) as u32).unwrap();
-        }
+        self.active_channels[(channel >> CHANNEL_BYTE_SHIFT) as usize] &=
+            !(1 << (channel & (CHANNELS_PER_BYTE as u8 - 1)));
     }
 
     fn channel_is_active(&self, channel: u8) -> bool {
-        (self.active_channels[(channel / 8) as usize]
-            & 2u8.checked_pow((channel % 8) as u32).unwrap())
-        .count_ones()
-            == 1
+        (self.active_channels[(channel >> CHANNEL_BYTE_SHIFT) as usize]
+            & (1 << (channel & (CHANNELS_PER_BYTE as u8 - 1))))
+            != 0
     }
 }
 
 impl<S: Stream> Demultiplexer<S> {
     /// Creates a handle listening for frames on the given channel.
     ///
-    /// Any item on this channel sent to the `Stream` underlying the `Demultiplexer` we used to
-    /// create this handle will be read only when all other messages for other channels have been
-    /// read first. If one has handles on the same channel created via the same underlying
-    /// `Demultiplexer`, each message on that channel will only be received by one of the handles.
-    /// Unless this is desired behavior, this should be avoided.
-    pub fn create_handle(demux: Arc<Mutex<Self>>, channel: u8) -> DemultiplexerHandle<S> {
-        let mut guard = match demux.as_ref().try_lock() {
-            Err(_err) => panic!("TODO"),
-            Ok(guard) => guard,
-        };
+    /// Items received through a given handle may be blocked if other handles on the same
+    /// Demultiplexer are not polled at the same time. If one has handles on the same
+    /// channel created via the same underlying `Demultiplexer`, each message on that channel
+    /// will only be received by one of the handles.
+    pub fn create_handle<E: Error>(
+        demux: Arc<Mutex<Self>>,
+        channel: u8,
+    ) -> Result<DemultiplexerHandle<S>, DemultiplexerError<E>> {
+        let mut demux_guard = demux.lock().expect("poisoned lock");
 
-        if guard.channel_is_active(channel) {
-            panic!("TODO")
+        if demux_guard.channel_is_active(channel) {
+            return Err(DemultiplexerError::ChannelUnavailable(channel));
         }
 
-        guard.activate_channel(channel);
+        demux_guard.activate_channel(channel);
 
-        DemultiplexerHandle {
+        Ok(DemultiplexerHandle {
             channel,
             demux: demux.clone(),
-        }
+        })
     }
 }
 
@@ -96,7 +111,7 @@ impl<S: Stream> Demultiplexer<S> {
 ///
 /// A handle is bound to a specific channel, see [`Demultiplexer::create_handle`] for details.
 pub struct DemultiplexerHandle<S> {
-    /// Which channel this handle is listening on
+    /// Which channel this handle is listening on.
     channel: u8,
     /// A reference to the underlying demultiplexer.
     demux: Arc<Mutex<Demultiplexer<S>>>,
@@ -104,70 +119,66 @@ pub struct DemultiplexerHandle<S> {
 
 impl<S> Drop for DemultiplexerHandle<S> {
     fn drop(&mut self) {
-        let mut demux = match self.demux.as_ref().try_lock() {
-            Err(_err) => {
-                return;
-            } // TODO What do? Perhaps try_lock is wrong here, but still what about poisoning? Not doing anything seems like the
-            // only sane option
-            Ok(guard) => guard,
-        };
-
-        demux.deactivate_channel(self.channel);
+        self.demux
+            .lock()
+            .expect("poisoned lock")
+            .deactivate_channel(self.channel);
     }
 }
 
-impl<S> Stream for DemultiplexerHandle<S>
+impl<S, E> Stream for DemultiplexerHandle<S>
 where
-    S: Stream<Item = Bytes> + Unpin,
+    S: Stream<Item = Result<Bytes, E>> + Unpin,
+    E: Error,
 {
-    // TODO Result<Bytes, Error>
-    type Item = Bytes;
+    type Item = Result<Bytes, DemultiplexerError<E>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // Lock the demultiplexer
-        let mut demux = match self.demux.as_ref().try_lock() {
-            Err(_err) => panic!("TODO"), // TODO return Err("TODO")
-            Ok(guard) => guard,
-        };
+        // Lock the demultiplexer.
+        let mut demux = self.demux.lock().expect("poisoned lock");
 
-        // If next_frame has a suitable frame for this channel, return it in a Poll::Ready. If it has
-        // an unsuitable frame, return Poll::Pending. Otherwise, we attempt to read from the stream.
+        // If next_frame has a suitable frame for this channel, return it in a `Poll::Ready`. If it
+        // has an unsuitable frame, return `Poll::Pending`. Otherwise, we attempt to read
+        // from the stream.
         if let Some((ref channel, ref bytes)) = demux.next_frame {
             if *channel == self.channel {
                 let bytes = bytes.clone();
                 demux.next_frame = None;
-                return Poll::Ready(Some(bytes));
+                return Poll::Ready(Some(Ok(bytes)));
             } else {
                 return Poll::Pending;
             }
         }
 
-        // Try to read from the stream, placing the frame into next_frame and returning
-        // Poll::Pending if its in the wrong channel, otherwise returning it in a Poll::Ready.
-        match demux.stream.poll_next_unpin(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Some(bytes)) => {
-                let channel: u8 = *&bytes[0..1][0];
-                let frame = bytes.slice(1..).clone();
+        // Try to read from the stream, placing the frame into `next_frame` and returning
+        // `Poll::Pending` if it's in the wrong channel, otherwise returning it in a `Poll::Ready`.
+        match ready!(demux.stream.poll_next_unpin(cx)) {
+            Some(Ok(mut bytes)) => {
+                if bytes.is_empty() {
+                    return Poll::Ready(Some(Err(DemultiplexerError::EmptyMessage)));
+                }
+
+                let channel = bytes.get_u8();
+                if bytes.is_empty() {
+                    return Poll::Ready(Some(Err(DemultiplexerError::MissingFrame(channel))));
+                }
+
                 if channel == self.channel {
-                    Poll::Ready(Some(frame))
+                    Poll::Ready(Some(Ok(bytes)))
                 } else {
-                    demux.next_frame = Some((channel, frame));
+                    demux.next_frame = Some((channel, bytes));
                     Poll::Pending
                 }
             }
-            Poll::Ready(None) => Poll::Ready(None),
+            Some(Err(err)) => return Poll::Ready(Some(Err(DemultiplexerError::Stream(err)))),
+            None => Poll::Ready(None),
         }
-
-        // TODO: figure out when we are being polled again, does it work correctly (see waker) or
-        //       will it cause inefficient races? do we need to call wake? probably. (possibly
-        //       necessary) can have table of wakers to only wake the right one.
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::marker::Unpin;
+    use std::{io::Error as IoError, marker::Unpin};
 
     use super::*;
     use futures::{FutureExt, Stream, StreamExt};
@@ -221,7 +232,7 @@ mod tests {
 
     #[test]
     fn channel_activation() {
-        let items: Vec<Bytes> = vec![];
+        let items: Vec<Result<Bytes, DemultiplexerError<IoError>>> = vec![];
         let stream = TestStream::new(items);
         let mut demux = Demultiplexer::new(stream);
 
@@ -242,18 +253,21 @@ mod tests {
     #[test]
     fn demultiplexing_two_channels() {
         // We demultiplex two channels, 0 and 1
-        let items = vec![
+        let items: Vec<Result<Bytes, DemultiplexerError<IoError>>> = [
             Bytes::copy_from_slice(&[0, 1, 2, 3, 4]),
             Bytes::copy_from_slice(&[0, 4]),
             Bytes::copy_from_slice(&[1, 2]),
             Bytes::copy_from_slice(&[1, 5]),
-        ];
+        ]
+        .into_iter()
+        .map(Result::Ok)
+        .collect();
         let stream = TestStream::new(items);
         let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
 
         // We make two handles, one for the 0 channel and another for the 1 channel
-        let mut zero_handle = Demultiplexer::create_handle(demux.clone(), 0);
-        let mut one_handle = Demultiplexer::create_handle(demux.clone(), 1);
+        let mut zero_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 0).unwrap();
+        let mut one_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 1).unwrap();
 
         // We know the order that these things have to be awaited, so we can make sure that exactly
         // what we expects happens using the `now_or_never` function.
@@ -265,6 +279,7 @@ mod tests {
                 .now_or_never()
                 .expect("not ready")
                 .expect("stream ended")
+                .expect("item is error")
                 .as_ref(),
             &[1, 2, 3, 4]
         );
@@ -285,6 +300,7 @@ mod tests {
                 .now_or_never()
                 .expect("not ready")
                 .expect("stream ended")
+                .expect("item is error")
                 .as_ref(),
             &[4]
         );
@@ -297,6 +313,7 @@ mod tests {
                 .now_or_never()
                 .expect("not ready")
                 .expect("stream ended")
+                .expect("item is error")
                 .as_ref(),
             &[2]
         );
@@ -312,6 +329,7 @@ mod tests {
                 .now_or_never()
                 .expect("not ready")
                 .expect("stream ended")
+                .expect("item is error")
                 .as_ref(),
             &[5]
         );
