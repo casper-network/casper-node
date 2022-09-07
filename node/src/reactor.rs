@@ -807,26 +807,38 @@ where
     pub(crate) fn reactor_mut(&mut self) -> &mut R {
         &mut self.reactor
     }
+
+    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
+    pub(crate) async fn drain_into_inner(self) -> R {
+        self.is_shutting_down.set();
+        self.scheduler.seal();
+        for (ancestor, event) in self.scheduler.drain_queues().await {
+            debug!(?ancestor, %event, "drained event");
+        }
+        self.reactor
+    }
 }
 
 #[cfg(test)]
-impl Runner<InitializerReactor> {
+impl Runner<participating::Reactor> {
     pub(crate) async fn new_with_chainspec(
-        cfg: <InitializerReactor as Reactor>::Config,
+        cfg: <participating::Reactor as Reactor>::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-    ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
+        rng: &mut NodeRng,
+    ) -> Result<Self, <participating::Reactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) = InitializerReactor::new_with_chainspec(
+        let (reactor, initial_effects) = participating::Reactor::new_with_chainspec(
             cfg,
             &registry,
             event_queue,
             chainspec,
             chainspec_raw_bytes,
+            rng,
         )?;
 
         // Run all effects from component instantiation.

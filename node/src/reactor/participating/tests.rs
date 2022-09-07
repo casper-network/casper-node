@@ -4,6 +4,7 @@ use anyhow::bail;
 use either::Either;
 use num::Zero;
 use num_rational::Ratio;
+use prometheus::Registry;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
@@ -26,17 +27,16 @@ use crate::{
     },
     protocol::Message,
     reactor::{
-        initializer,
         participating::{self, ParticipatingEvent},
         Reactor, ReactorExit, Runner,
     },
     testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, NodeRng,
     },
-    utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
-    NodeRng,
+    utils::{External, Loadable, Source, RESOURCES_PATH},
+    WithDir,
 };
 
 struct TestChain {
@@ -174,33 +174,17 @@ impl TestChain {
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
-            let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
+            let _ = Runner::<participating::Reactor>::new_with_chainspec(
                 WithDir::new(root.clone(), cfg),
                 Arc::clone(&self.chainspec),
                 Arc::clone(&self.chainspec_raw_bytes),
+                rng,
             )
             .await?;
-            let reactor_exit = initializer_runner.run(rng).await;
-            if reactor_exit != ReactorExit::ProcessShouldContinue {
-                bail!("failed to initialize successfully");
-            }
 
-            // Now we can construct the actual node.
-            let initializer = initializer_runner.drain_into_inner().await;
-            let mut joiner_runner =
-                Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
-                    .await?;
-            let _ = joiner_runner.run(rng).await;
-
-            let config = joiner_runner
-                .drain_into_inner()
-                .await
-                .into_participating_config()
-                .await?;
-            info!("node {} finished joining", idx);
-
+            let cfg = self.create_node_config(idx, first_node_port);
             network
-                .add_node_with_config(config, rng)
+                .add_node_with_config(WithDir::new(root.clone(), cfg), rng)
                 .await
                 .expect("could not add node to reactor");
         }
