@@ -227,18 +227,15 @@ impl CompleteBlockSynchronizer {
                 return Effects::new();
             }
         };
-        let applied = match self.builders.get_mut(block.hash()) {
+
+        match self.builders.get_mut(block.hash()) {
             Some(builder) => builder.apply_block(&block),
             None => {
                 debug!("unexpected block");
                 return Effects::new();
             }
         };
-        if applied {
-            effect_builder.put_block_to_storage(block).ignore()
-        } else {
-            Effects::new()
-        }
+        Effects::new()
     }
 
     /// Reactor instructing this instance to be stopped

@@ -39,6 +39,7 @@ enum DeployState {
 pub(crate) enum BlockAcquisitionState {
     Initialized,
     GettingBlock,
+    StoringBlock,
     GettingFinalitySignatures,
     GettingGlobalState,
     GettingDeploys,
@@ -257,10 +258,10 @@ impl CompleteBlockBuilder {
             >= total_weight * U512::from(*threshold.numer())
     }
 
-    pub(super) fn apply_block(&mut self, block: &Block) -> bool {
+    pub(super) fn apply_block(&mut self, block: &Block) {
         if self.era_id != block.header().era_id() || self.block_hash != *block.hash() {
             error!("trying to apply block with wrong hash");
-            return false;
+            return;
         }
         self.state_root_hash = Some(*block.header().state_root_hash());
         self.deploys = Some(
@@ -273,7 +274,6 @@ impl CompleteBlockBuilder {
                 .collect(),
         );
         self.touch();
-        true
     }
 
     pub(super) fn builder_state(&self) -> BlockAcquisitionState {

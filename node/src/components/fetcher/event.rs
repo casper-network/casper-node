@@ -71,6 +71,8 @@ pub(crate) enum Event<T: FetcherItem> {
     },
     /// An announcement from a different component that we have accepted and stored the given item.
     GotRemotely { item: Box<T>, source: Source },
+    /// The result of putting the item to storage.
+    PutToStorage { item: Box<T>, peer: NodeId },
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
@@ -163,6 +165,9 @@ impl<T: FetcherItem> Display for Event<T> {
                     "request to fetch item {} was rejected by {}",
                     id, peer
                 )
+            }
+            Event::PutToStorage { item, .. } => {
+                write!(formatter, "item {} was put to storage", item.id())
             }
         }
     }

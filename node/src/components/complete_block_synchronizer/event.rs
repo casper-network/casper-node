@@ -32,10 +32,6 @@ pub(crate) enum Event {
 
     #[from]
     BlockFetched(FetchResult<Block>),
-    BlockStored {
-        block_hash: BlockHash,
-        success: bool,
-    },
     #[from]
     DeployFetched(FetchResult<Deploy>),
     DeployStored {

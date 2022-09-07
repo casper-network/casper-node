@@ -5,8 +5,8 @@ use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 /// termination signal.
 const SIGNAL_OFFSET: u8 = 128;
 
-/// Exit codes which should be used by the casper-node binary, and provided by the initializer
-/// reactor to the binary.
+/// Exit codes which should be used by the casper-node binary, and provided by the reactor to the
+/// binary.
 ///
 /// Note that a panic will result in the Rust process producing an exit code of 101.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]

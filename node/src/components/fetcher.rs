@@ -251,6 +251,15 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
         effects
     }
 
+    fn put_to_storage<REv: ReactorEventT<T>>(
+        &self,
+        _item: T,
+        _peer: NodeId,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Option<Effects<Event<T>>> {
+        todo!()
+    }
+
     /// Handles signalling responders with the item or an error.
     fn signal(
         &mut self,
@@ -372,6 +381,20 @@ impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
                 maybe_item: Box::new(result),
                 responder,
             })
+    }
+
+    fn put_to_storage<REv: ReactorEventT<BlockAndDeploys>>(
+        &self,
+        item: BlockAndDeploys,
+        peer: NodeId,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Option<Effects<Event<BlockAndDeploys>>> {
+        let item = Box::new(item);
+        Some(
+            effect_builder
+                .put_block_and_deploys_to_storage(item.clone())
+                .event(move |_| Event::PutToStorage { item, peer }),
+        )
     }
 }
 
@@ -835,7 +858,10 @@ where
                         warn!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
                         effect_builder.announce_disconnect_from_peer(peer).ignore()
                     } else {
-                        self.signal(item.id(), Ok(*item), peer)
+                        match self.put_to_storage(*item.clone(), peer, effect_builder) {
+                            None => self.signal(item.id(), Ok(*item), peer),
+                            Some(effects) => effects,
+                        }
                     }
                 }
                 Source::Client | Source::Ourself => Effects::new(),
@@ -852,6 +878,7 @@ where
             Event::TimeoutPeer { id, peer } => {
                 self.signal(id.clone(), Err(FetcherError::TimedOut { id, peer }), peer)
             }
+            Event::PutToStorage { item, peer } => self.signal(item.id().clone(), Ok(*item), peer),
         }
     }
 }
