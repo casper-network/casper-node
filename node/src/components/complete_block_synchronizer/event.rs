@@ -33,18 +33,9 @@ pub(crate) enum Event {
     #[from]
     BlockFetched(FetchResult<Block>),
     #[from]
-    DeployFetched(FetchResult<Deploy>),
-    DeployStored {
-        block_hash: BlockHash,
-        deploy_hash: DeployHash,
-        success: bool,
-    },
-    #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
-    FinalitySignaturesStored {
-        block_hash: BlockHash,
-        success: bool,
-    },
+    #[from]
+    DeployFetched(FetchResult<Deploy>),
     TrieOrChunkFetched {
         block_hash: BlockHash,
         id: TrieOrChunkId,

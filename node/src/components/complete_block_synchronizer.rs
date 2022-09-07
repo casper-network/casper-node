@@ -211,14 +211,10 @@ impl CompleteBlockSynchronizer {
         Effects::new()
     }
 
-    fn handle_block_fetched<REv>(
+    fn handle_block_fetched(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         result: Result<FetchedData<Block>, FetcherError<Block>>,
-    ) -> Effects<Event>
-    where
-        REv: From<StorageRequest> + Send,
-    {
+    ) -> Effects<Event> {
         let block = match result {
             Ok(FetchedData::FromPeer { item, peer: _ } | FetchedData::FromStorage { item }) => item,
             Err(err) => {
@@ -230,6 +226,29 @@ impl CompleteBlockSynchronizer {
 
         match self.builders.get_mut(block.hash()) {
             Some(builder) => builder.apply_block(&block),
+            None => {
+                debug!("unexpected block");
+                return Effects::new();
+            }
+        };
+        Effects::new()
+    }
+
+    fn handle_finality_signature_fetched(
+        &mut self,
+        result: Result<FetchedData<FinalitySignature>, FetcherError<FinalitySignature>>,
+    ) -> Effects<Event> {
+        let finality_signature = match result {
+            Ok(FetchedData::FromPeer { item, peer: _ } | FetchedData::FromStorage { item }) => item,
+            Err(err) => {
+                debug!(%err, "failed to fetch finality signature");
+                // TODO: Remove peer?
+                return Effects::new();
+            }
+        };
+
+        match self.builders.get_mut(&finality_signature.block_hash) {
+            Some(builder) => builder.apply_finality_signature(*finality_signature),
             None => {
                 debug!("unexpected block");
                 return Effects::new();
@@ -270,7 +289,10 @@ where
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
             Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
-            Event::BlockFetched(result) => self.handle_block_fetched(effect_builder, result),
+            Event::BlockFetched(result) => self.handle_block_fetched(result),
+            Event::FinalitySignatureFetched(result) => {
+                self.handle_finality_signature_fetched(result)
+            }
             _ => todo!(),
         }
     }

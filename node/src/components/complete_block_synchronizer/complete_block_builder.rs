@@ -6,7 +6,7 @@ use num_rational::Ratio;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp, U512};
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, NodeId};
 
@@ -273,6 +273,50 @@ impl CompleteBlockBuilder {
                 .map(|hash| (*hash, DeployState::Vacant))
                 .collect(),
         );
+        self.touch();
+    }
+
+    pub(super) fn apply_finality_signature(&mut self, finality_signature: FinalitySignature) {
+        if self.era_id != finality_signature.era_id {
+            error!(
+                builder_era = %self.era_id,
+                sig_era = %finality_signature.era_id,
+                "finality signature for wrong era"
+            );
+            return;
+        }
+
+        if self.block_hash != finality_signature.block_hash {
+            error!(
+                builder_block_hash = %self.block_hash,
+                sig_block_hash = %finality_signature.block_hash,
+                "finality signature for wrong block"
+            );
+            return;
+        }
+
+        if self.validators.contains_key(&finality_signature.public_key) == false {
+            error!(
+                block_hash = %self.block_hash,
+                era = %self.era_id,
+                "finality signature not by validator"
+            );
+            return;
+        }
+
+        if finality_signature.is_verified().is_err() {
+            error!(
+                block_hash = %finality_signature.block_hash,
+                public_key = %finality_signature.public_key,
+                "finality signature is not verified"
+            );
+            return;
+        }
+
+        self.finality_signatures
+            .get_or_insert_with(BTreeMap::new)
+            .insert(finality_signature.public_key.clone(), finality_signature);
+
         self.touch();
     }
 

@@ -1772,7 +1772,7 @@ impl Storage {
         Ok(txn.get_value(self.block_metadata_db, block_hash)?)
     }
 
-    /// Retrieves block signatures for a block with a given block hash.
+    /// Retrieves a finality signature for a block with a given block hash.
     fn get_block_signature<Tx: Transaction>(
         &self,
         txn: &mut Tx,
