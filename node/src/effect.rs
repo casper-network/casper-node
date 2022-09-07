@@ -159,8 +159,8 @@ use crate::{
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
     ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
-    RpcServerAnnouncement,
+    ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+    LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -2153,11 +2153,11 @@ impl<REv> EffectBuilder<REv> {
 
     pub(crate) async fn control_announce_missing_validator_set(self, era_id: EraId)
     where
-        REv: From<ControlAnnouncement>,
+        REv: From<ControlLogicAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ControlAnnouncement::MissingValidatorSet { era_id },
+                ControlLogicAnnouncement::MissingValidatorSet { era_id },
                 QueueKind::Control,
             )
             .await

@@ -626,7 +626,6 @@ where
                     // Do nothing on queue dump otherwise.
                     (Default::default(), true)
                 }
-                Some(ControlAnnouncement::MissingValidatorSet { .. }) => todo!(),
             }
         } else {
             (
@@ -723,7 +722,6 @@ where
                                         // Maybe return an error instead, something like "reactor is
                                         // shutting down"?
                                     }
-                                    ControlAnnouncement::MissingValidatorSet { .. } => todo!(),
                                 }
                             } else {
                                 debug!(?ancestor, %event, "found non-control announcement while draining queue")

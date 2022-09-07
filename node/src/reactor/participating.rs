@@ -43,8 +43,8 @@ use crate::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
             ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            RpcServerAnnouncement,
+            ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, RpcServerAnnouncement,
         },
         incoming::{NetResponseIncoming, SyncLeapResponseIncoming, TrieResponseIncoming},
         EffectBuilder, Effects,
@@ -71,22 +71,15 @@ use memory_metrics::MemoryMetrics;
 pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
-    contract_runtime: ContractRuntime,
-    small_network: SmallNetwork<ParticipatingEvent, Message>,
+    contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
+    small_network: SmallNetwork<ParticipatingEvent, Message>, // TODO: handle setting the `is_syncing_peer`
     address_gossiper: Gossiper<GossipedAddress, ParticipatingEvent>,
-    rpc_server: RpcServer,
+    rpc_server: RpcServer, // TODO: make sure the handling in "Initialize & CatchUp" phase is correct (explicit error messages, etc.)
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
-    deploy_acceptor: DeployAcceptor,
+    deploy_acceptor: DeployAcceptor, // TODO: should use `get_highest_COMPLETE_block_header_from_storage()`
+
     deploy_fetcher: Fetcher<Deploy>,
-    deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
-    block_gossiper: Gossiper<Block, ParticipatingEvent>,
-    finality_signature_gossiper: Gossiper<FinalitySignature, ParticipatingEvent>,
-    block_proposer: BlockProposer,
-    consensus: EraSupervisor,
-    block_validator: BlockValidator,
-    linear_chain: LinearChainComponent,
-    chain_synchronizer: ChainSynchronizer<ParticipatingEvent>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
@@ -97,8 +90,19 @@ pub(crate) struct Reactor {
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     sync_leap_fetcher: Fetcher<SyncLeap>,
+
+    deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
+    block_gossiper: Gossiper<Block, ParticipatingEvent>,
+    finality_signature_gossiper: Gossiper<FinalitySignature, ParticipatingEvent>,
+
+    block_proposer: BlockProposer, // TODO: handle providing highest block, etc.
+    consensus: EraSupervisor, // TODO: Update constructor (provide less state) and extend handler for the "block added" ann.
+    block_validator: BlockValidator,
+    linear_chain: LinearChainComponent, // TODO: Maybe redundant.
+    chain_synchronizer: ChainSynchronizer<ParticipatingEvent>, // TODO: To be removed.
     complete_block_synchronizer: CompleteBlockSynchronizer,
     diagnostics_port: DiagnosticsPort,
+
     // Non-components.
     metrics: Metrics,
     #[data_size(skip)] // Never allocates heap data.
@@ -462,6 +466,15 @@ impl Reactor {
             event_queue_metrics,
         };
         Ok((reactor, effects))
+    }
+
+    fn control_logic(&self, announcement: ControlLogicAnnouncement) -> Effects<ParticipatingEvent> {
+        match announcement {
+            ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
+                return reactor::wrap_effects(ParticipatingEvent::TrieDemand, Effects::new());
+            }
+        }
+        Effects::new()
     }
 }
 
@@ -1181,6 +1194,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::ControlLogicAnnouncement(ann) => self.control_logic(ann),
         }
     }
 

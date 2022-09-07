@@ -18,8 +18,9 @@ use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 use crate::{
     components::Component,
     effect::{
-        announcements::ControlAnnouncement, requests::FetcherRequest, EffectBuilder, EffectExt,
-        Effects,
+        announcements::{ControlAnnouncement, ControlLogicAnnouncement},
+        requests::FetcherRequest,
+        EffectBuilder, EffectExt, Effects,
     },
     types::{Block, BlockHash, Deploy, NodeId},
     NodeRng,
@@ -72,7 +73,7 @@ impl CompleteBlockSynchronizer {
         request: CompleteBlockSyncRequest,
     ) -> Effects<Event>
     where
-        REv: From<ControlAnnouncement> + From<FetcherRequest<Block>> + Send,
+        REv: From<ControlLogicAnnouncement> + From<FetcherRequest<Block>> + Send,
     {
         match self.builders.entry(request.block_hash) {
             Entry::Occupied(mut entry) => {
@@ -199,7 +200,7 @@ impl CompleteBlockSynchronizer {
 
 impl<REv> Component<REv> for CompleteBlockSynchronizer
 where
-    REv: From<ControlAnnouncement>
+    REv: From<ControlLogicAnnouncement>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<Deploy>>
         + Send,

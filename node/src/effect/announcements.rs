@@ -26,6 +26,32 @@ use crate::{
     utils::Source,
 };
 
+#[derive(Serialize)]
+pub(crate) enum ControlLogicAnnouncement {
+    MissingValidatorSet { era_id: EraId },
+}
+
+impl Display for ControlLogicAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
+                write!(f, "missing validator set for era {}", era_id)
+            }
+        }
+    }
+}
+
+impl Debug for ControlLogicAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingValidatorSet { era_id } => f
+                .debug_struct("MissingValidatorSet")
+                .field("era_id", era_id)
+                .finish(),
+        }
+    }
+}
+
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
 /// Reactors are never passed control announcements back in and every reactor event must be able to
@@ -55,9 +81,6 @@ pub(crate) enum ControlAnnouncement {
         dump_format: QueueDumpFormat,
         /// Responder called when the dump has been finished.
         finished: Responder<()>,
-    },
-    MissingValidatorSet {
-        era_id: EraId,
     },
 }
 
@@ -92,10 +115,6 @@ impl Debug for ControlAnnouncement {
                 .field("msg", msg)
                 .finish(),
             Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
-            Self::MissingValidatorSet { era_id } => f
-                .debug_struct("MissingValidatorSet")
-                .field("era_id", era_id)
-                .finish(),
         }
     }
 }
@@ -108,9 +127,6 @@ impl Display for ControlAnnouncement {
             }
             ControlAnnouncement::QueueDumpRequest { .. } => {
                 write!(f, "dump event queue")
-            }
-            ControlAnnouncement::MissingValidatorSet { era_id } => {
-                write!(f, "missing validator set for era {}", era_id)
             }
         }
     }

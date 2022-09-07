@@ -16,8 +16,8 @@ use crate::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
             ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, ControlLogicAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -222,6 +222,8 @@ pub(crate) enum ParticipatingEvent {
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
+    #[from]
+    ControlLogicAnnouncement(ControlLogicAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -340,6 +342,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
                 "CompleteBlockSynchronizerRequest"
             }
+            ParticipatingEvent::ControlLogicAnnouncement(_) => "ControlLogicAnnouncement",
         }
     }
 }
@@ -556,6 +559,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::ChainSynchronizerAnnouncement(ann) => {
                 write!(f, "chain synchronizer announcement: {}", ann)
+            }
+            ParticipatingEvent::ControlLogicAnnouncement(ann) => {
+                write!(f, "control logic announcement: {}", ann)
             }
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
