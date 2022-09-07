@@ -1165,6 +1165,26 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested signature for a given block hash.
+    pub(crate) async fn get_signature_from_storage(
+        self,
+        block_hash: BlockHash,
+        public_key: PublicKey,
+    ) -> Option<FinalitySignature>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockSignature {
+                block_hash,
+                public_key,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts a block header to storage.
     pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
     where

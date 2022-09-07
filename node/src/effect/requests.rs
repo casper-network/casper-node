@@ -52,8 +52,8 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed,
-        TrieOrChunk, TrieOrChunkId,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
+        StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -475,6 +475,15 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<Option<BlockSignatures>>,
     },
+    /// Get a single finality signature for a block hash.
+    GetBlockSignature {
+        /// The hash for the request.
+        block_hash: BlockHash,
+        /// The public key of the signer.
+        public_key: PublicKey,
+        /// Responder to call with the result.
+        responder: Responder<Option<FinalitySignature>>,
+    },
     /// Store finality signatures.
     PutBlockSignatures {
         /// Signatures that are to be stored.
@@ -607,6 +616,17 @@ impl Display for StorageRequest {
                     formatter,
                     "get finality signatures for block hash {}",
                     block_hash
+                )
+            }
+            StorageRequest::GetBlockSignature {
+                block_hash,
+                public_key,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get finality signature for block hash {} from {}",
+                    block_hash, public_key
                 )
             }
             StorageRequest::PutBlockSignatures { .. } => {

@@ -645,21 +645,14 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
     ) -> Effects<Event<FinalitySignature>> {
         let block_hash = id.block_hash;
         let public_key = id.public_key.clone();
-        async move {
-            // TODO: Get a single signature from storage.
-            let block_header_with_metadata = effect_builder
-                .get_block_header_with_metadata_from_storage(block_hash, false)
-                .await?;
-            block_header_with_metadata
-                .block_signatures
-                .get_finality_signature(&public_key)
-        }
-        .event(move |result| Event::GetFromStorageResult {
-            id,
-            peer,
-            maybe_item: Box::new(result),
-            responder,
-        })
+        effect_builder
+            .get_signature_from_storage(block_hash, public_key)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result),
+                responder,
+            })
     }
 }
 

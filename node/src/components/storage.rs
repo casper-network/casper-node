@@ -64,7 +64,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, TimeDiff, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -1122,6 +1122,16 @@ impl Storage {
                     .respond(self.get_block_signatures(&mut txn, &block_hash)?)
                     .ignore()
             }
+            StorageRequest::GetBlockSignature {
+                block_hash,
+                public_key,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                responder
+                    .respond(self.get_block_signature(&mut txn, &block_hash, &public_key)?)
+                    .ignore()
+            }
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
@@ -1760,6 +1770,18 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         Ok(txn.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Retrieves block signatures for a block with a given block hash.
+    fn get_block_signature<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+        public_key: &PublicKey,
+    ) -> Result<Option<FinalitySignature>, FatalStorageError> {
+        let maybe_signatures: Option<BlockSignatures> =
+            txn.get_value(self.block_metadata_db, block_hash)?;
+        Ok(maybe_signatures.and_then(|signatures| signatures.get_finality_signature(public_key)))
     }
 
     /// Retrieves block signatures for a block with a given block hash.
