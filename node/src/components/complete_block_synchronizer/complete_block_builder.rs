@@ -6,8 +6,9 @@ use num_rational::Ratio;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp, U512};
+use tracing::error;
 
-use crate::types::{BlockHash, DeployHash, FinalitySignature, NodeId};
+use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, NodeId};
 
 /// given a block hash we fetch
 ///     * block,
@@ -107,7 +108,6 @@ impl CompleteBlockBuilder {
             return (vec![], NeedNext::Peers);
         }
 
-        self.touch();
         if self.has_block() == false {
             self.builder_state = BlockAcquisitionState::GettingBlock;
             return (peers, NeedNext::Block(self.block_hash));
@@ -255,6 +255,25 @@ impl CompleteBlockBuilder {
         };
         signature_weight * U512::from(*threshold.denom())
             >= total_weight * U512::from(*threshold.numer())
+    }
+
+    pub(super) fn apply_block(&mut self, block: &Block) -> bool {
+        if self.era_id != block.header().era_id() || self.block_hash != *block.hash() {
+            error!("trying to apply block with wrong hash");
+            return false;
+        }
+        self.state_root_hash = Some(*block.header().state_root_hash());
+        self.deploys = Some(
+            block
+                .body()
+                .deploy_hashes()
+                .iter()
+                .chain(block.body().transfer_hashes())
+                .map(|hash| (*hash, DeployState::Vacant))
+                .collect(),
+        );
+        self.touch();
+        true
     }
 
     pub(super) fn builder_state(&self) -> BlockAcquisitionState {

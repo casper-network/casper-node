@@ -13,19 +13,19 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use casper_types::{crypto, EraId, PublicKey, Signature, TimeDiff, Timestamp, U512};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
-    components::Component,
+    components::{
+        fetcher::{FetchedData, FetcherError},
+        Component,
+    },
     effect::{
-        announcements::{ControlAnnouncement, ControlLogicAnnouncement},
-        requests::FetcherRequest,
-        EffectBuilder, EffectExt, Effects,
+        announcements::ControlLogicAnnouncement, requests::FetcherRequest, EffectBuilder,
+        EffectExt, Effects,
     },
-    types::{
-        Block, BlockHash, Deploy, FetcherItem, FinalitySignature, FinalitySignatureId, Item,
-        NodeId, Tag,
-    },
+    storage::StorageRequest,
+    types::{Block, BlockHash, Deploy, FinalitySignature, FinalitySignatureId, NodeId},
     NodeRng,
 };
 
@@ -211,6 +211,36 @@ impl CompleteBlockSynchronizer {
         Effects::new()
     }
 
+    fn handle_block_fetched<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        result: Result<FetchedData<Block>, FetcherError<Block>>,
+    ) -> Effects<Event>
+    where
+        REv: From<StorageRequest> + Send,
+    {
+        let block = match result {
+            Ok(FetchedData::FromPeer { item, peer: _ } | FetchedData::FromStorage { item }) => item,
+            Err(err) => {
+                debug!(%err, "failed to fetch block");
+                // TODO: Remove peer?
+                return Effects::new();
+            }
+        };
+        let applied = match self.builders.get_mut(block.hash()) {
+            Some(builder) => builder.apply_block(&block),
+            None => {
+                debug!("unexpected block");
+                return Effects::new();
+            }
+        };
+        if applied {
+            effect_builder.put_block_to_storage(block).ignore()
+        } else {
+            Effects::new()
+        }
+    }
+
     /// Reactor instructing this instance to be stopped
     fn stop(&mut self, block_hash: &BlockHash) {
         todo!();
@@ -223,6 +253,7 @@ where
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
+        + From<StorageRequest>
         + Send,
 {
     type Event = Event;
@@ -242,7 +273,7 @@ where
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
             Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
-            Event::BlockFetched(block) => todo!(), // self.builders.get(block.unwrap().hash()).unwrap().touch(),
+            Event::BlockFetched(result) => self.handle_block_fetched(effect_builder, result),
             _ => todo!(),
         }
     }
