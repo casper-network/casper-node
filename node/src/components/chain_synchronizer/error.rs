@@ -245,6 +245,9 @@ pub(crate) enum FetchBlockEffectsError {
     /// Deserialization error.
     #[error("Failed to deserialize chunks into Vec<ExecutionResult>: {0}")]
     DeserializationError(String),
+
+    #[error("Missing block in storage when syncing block effects: {0}")]
+    MissingBlock(BlockHash),
 }
 
 impl From<bytesrepr::Error> for FetchBlockEffectsError {

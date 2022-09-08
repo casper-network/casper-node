@@ -410,6 +410,13 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
+    /// Retrieves deploy hashes for block.
+    GetDeployHashesForBlock {
+        /// The hash of the block.
+        block_hash: BlockHash,
+        /// The responder.
+        responder: Responder<Option<Vec<DeployHash>>>,
+    },
     /// Retrieve block header and its metadata by its hash.
     GetBlockHeaderAndMetadataByHash {
         /// The hash of the block.
@@ -613,6 +620,10 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
             }
+            StorageRequest::GetDeployHashesForBlock {
+                block_hash,
+                responder,
+            } => write!(formatter, "get deploy hashes for block {}", block_hash),
         }
     }
 }

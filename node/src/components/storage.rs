@@ -1186,6 +1186,12 @@ impl Storage {
             } => responder
                 .respond(self.read_block_headers_batch(&block_headers_id)?)
                 .ignore(),
+            StorageRequest::GetDeployHashesForBlock {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.get_block_deploy_hashes(block_hash)?)
+                .ignore(),
         })
     }
 
@@ -1909,6 +1915,20 @@ impl Storage {
             Some(&seq) => seq.into(),
             None => AvailableBlockRange::RANGE_0_0,
         }
+    }
+
+    /// Reads transactions hashes for the `block_hash`.
+    /// Any storage errors are returned to the caller in the error channel.
+    /// Returns `None` if no block can be found under `block_hash`.
+    fn get_block_deploy_hashes(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<Vec<DeployHash>>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+
+        Ok(self
+            .get_single_block(&mut txn, &block_hash)?
+            .map(|block| block.body().transaction_hashes().cloned().collect()))
     }
 }
 

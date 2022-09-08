@@ -1853,16 +1853,33 @@ where
     REv:
         From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + From<StorageRequest>,
 {
-    let fetched_block_effects = fetch_block_effects(&ctx, block_header.hash(), fetch_id).await?;
+    let block_hash = block_header.hash();
+    let fetched_block_effects = fetch_block_effects(&ctx, block_hash, fetch_id).await?;
     match fetched_block_effects {
         AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
         AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
-            let execution_results: HashMap<DeployHash, ExecutionResult> =
-                todo!("needs zipping these block effects with deploys :/");
-            ctx.effect_builder
-                .put_execution_results_to_storage(block_header.hash(), execution_results)
-                .await;
-            Ok(())
+            match ctx
+                .effect_builder
+                .get_deploy_hashes_for_block(block_hash)
+                .await
+            {
+                None => {
+                    // We failed to find the block (body) for `block_hash` in the local storage.
+                    // We can't zip execution results with deploy hashes b/c we don't know the latter.
+                    error!(?block_hash, "missing block body for block hash in storage");
+                    Err(Error::FetchBlockEffects(
+                        FetchBlockEffectsError::MissingBlock(block_hash),
+                    ))
+                }
+                Some(deploy_hashes) => {
+                    let execution_results: HashMap<DeployHash, ExecutionResult> =
+                        deploy_hashes.into_iter().zip(block_effects).collect();
+                    ctx.effect_builder
+                        .put_execution_results_to_storage(block_hash, execution_results)
+                        .await;
+                    Ok(())
+                }
+            }
         }
     }
 }

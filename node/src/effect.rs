@@ -2216,7 +2216,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests block effects (or chunk).
+    /// Reads block effects (or chunk) from ContractRuntime component.
     pub(crate) async fn get_block_effects_or_chunk(
         &self,
         id: BlockEffectsOrChunkId,
@@ -2225,6 +2225,24 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         todo!()
+    }
+
+    /// Reads deploy hashes for a specific block from the storage.
+    pub(crate) async fn get_deploy_hashes_for_block(
+        &self,
+        block_hash: BlockHash,
+    ) -> Option<Vec<DeployHash>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetDeployHashesForBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 }
 
