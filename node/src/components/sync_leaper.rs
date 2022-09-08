@@ -38,7 +38,6 @@ pub(crate) struct SyncLeaper {
 
 struct PullRequestInProgress {
     trusted_hash: BlockHash,
-    // Stores whether we already asked the given peer
     peers: HashMap<NodeId, PeerState>,
 }
 

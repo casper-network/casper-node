@@ -287,6 +287,7 @@ where
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
     metrics: Metrics,
+    #[data_size(skip)]
     validation_metadata: T::ValidationMetadata,
 }
 
@@ -518,26 +519,27 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockWithMetadata>,
     ) -> Effects<Event<BlockWithMetadata>> {
-        let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        async move {
-            let block_with_metadata = effect_builder
-                .get_block_with_metadata_from_storage_by_height(id, false)
-                .await?;
-            has_enough_block_signatures(
-                effect_builder,
-                block_with_metadata.block.header(),
-                &block_with_metadata.block_signatures,
-                fault_tolerance_fraction,
-            )
-            .await
-            .then_some(block_with_metadata)
-        }
-        .event(move |result| Event::GetFromStorageResult {
-            id,
-            peer,
-            maybe_item: Box::new(result),
-            responder,
-        })
+        todo!()
+        // let fault_tolerance_fraction = self.fault_tolerance_fraction;
+        // async move {
+        //     let block_with_metadata = effect_builder
+        //         .get_block_with_metadata_from_storage_by_height(id, false)
+        //         .await?;
+        //     has_enough_block_signatures(
+        //         effect_builder,
+        //         block_with_metadata.block.header(),
+        //         &block_with_metadata.block_signatures,
+        //         fault_tolerance_fraction,
+        //     )
+        //     .await
+        //     .then_some(block_with_metadata)
+        // }
+        // .event(move |result| Event::GetFromStorageResult {
+        //     id,
+        //     peer,
+        //     maybe_item: Box::new(result),
+        //     responder,
+        // })
     }
 }
 
@@ -565,26 +567,27 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockHeaderWithMetadata>,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
-        let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        async move {
-            let block_header_with_metadata = effect_builder
-                .get_block_header_with_metadata_from_storage_by_height(id, false)
-                .await?;
-            has_enough_block_signatures(
-                effect_builder,
-                &block_header_with_metadata.block_header,
-                &block_header_with_metadata.block_signatures,
-                fault_tolerance_fraction,
-            )
-            .await
-            .then_some(block_header_with_metadata)
-        }
-        .event(move |result| Event::GetFromStorageResult {
-            id,
-            peer,
-            maybe_item: Box::new(result),
-            responder,
-        })
+        todo!()
+        // let fault_tolerance_fraction = self.fault_tolerance_fraction;
+        // async move {
+        //     let block_header_with_metadata = effect_builder
+        //         .get_block_header_with_metadata_from_storage_by_height(id, false)
+        //         .await?;
+        //     has_enough_block_signatures(
+        //         effect_builder,
+        //         &block_header_with_metadata.block_header,
+        //         &block_header_with_metadata.block_signatures,
+        //         fault_tolerance_fraction,
+        //     )
+        //     .await
+        //     .then_some(block_header_with_metadata)
+        // }
+        // .event(move |result| Event::GetFromStorageResult {
+        //     id,
+        //     peer,
+        //     maybe_item: Box::new(result),
+        //     responder,
+        // })
     }
 }
 
@@ -612,26 +615,27 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         peer: NodeId,
         responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>> {
-        let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        async move {
-            let block_header_with_metadata = effect_builder
-                .get_block_header_with_metadata_from_storage(id, false)
-                .await?;
-            has_enough_block_signatures(
-                effect_builder,
-                &block_header_with_metadata.block_header,
-                &block_header_with_metadata.block_signatures,
-                fault_tolerance_fraction,
-            )
-            .await
-            .then_some(block_header_with_metadata.block_signatures)
-        }
-        .event(move |result| Event::GetFromStorageResult {
-            id,
-            peer,
-            maybe_item: Box::new(result),
-            responder,
-        })
+        todo!()
+        // let fault_tolerance_fraction = self.fault_tolerance_fraction;
+        // async move {
+        //     let block_header_with_metadata = effect_builder
+        //         .get_block_header_with_metadata_from_storage(id, false)
+        //         .await?;
+        //     has_enough_block_signatures(
+        //         effect_builder,
+        //         &block_header_with_metadata.block_header,
+        //         &block_header_with_metadata.block_signatures,
+        //         fault_tolerance_fraction,
+        //     )
+        //     .await
+        //     .then_some(block_header_with_metadata.block_signatures)
+        // }
+        // .event(move |result| Event::GetFromStorageResult {
+        //     id,
+        //     peer,
+        //     maybe_item: Box::new(result),
+        //     responder,
+        // })
     }
 }
 
@@ -867,7 +871,7 @@ where
             Event::GotRemotely { item, source } => match source {
                 Source::Peer(peer) => {
                     self.metrics().found_on_peer.inc();
-                    if let Err(err) = item.validate(self.validation_metadata) {
+                    if let Err(err) = item.validate(&self.validation_metadata) {
                         warn!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
                         effect_builder.announce_disconnect_from_peer(peer).ignore()
                     } else {
@@ -898,33 +902,22 @@ where
 
 pub(crate) struct FetcherBuilder<'a> {
     config: FetcherConfig,
-    fault_tolerance_fraction: Ratio<u64>,
     registry: &'a Registry,
 }
 
 impl<'a> FetcherBuilder<'a> {
-    pub(crate) fn new(
-        config: FetcherConfig,
-        fault_tolerance_fraction: Ratio<u64>,
-        registry: &'a Registry,
-    ) -> Self {
-        Self {
-            config,
-            fault_tolerance_fraction,
-            registry,
-        }
+    pub(crate) fn new(config: FetcherConfig, registry: &'a Registry) -> Self {
+        Self { config, registry }
     }
 
     pub(crate) fn build<T: FetcherItem + 'static>(
         &self,
         name: &str,
-    ) -> Result<Fetcher<T>, prometheus::Error> {
-        Fetcher::new(
-            name,
-            self.config,
-            self.fault_tolerance_fraction,
-            self.registry,
-        )
+    ) -> Result<Fetcher<T>, prometheus::Error>
+    where
+        T::ValidationMetadata: Default,
+    {
+        Fetcher::new(name, self.config, self.registry)
     }
 }
 

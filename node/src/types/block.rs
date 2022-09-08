@@ -1011,7 +1011,7 @@ impl FetcherItem for BlockHeaderWithMetadata {
     type ValidationError = BlockHeaderWithMetadataValidationError;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
     }
 }
@@ -1207,7 +1207,7 @@ impl FetcherItem for BlockHeadersBatch {
     type ValidationError = BlockHeadersBatchValidationError;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         if self.inner().is_empty() {
             return Err(BlockHeadersBatchValidationError::BatchEmpty);
         }
@@ -1270,7 +1270,7 @@ impl FetcherItem for SyncLeap {
 
     fn validate(
         &self,
-        finality_threshold_fraction: Ratio<u64>,
+        finality_threshold_fraction: &Ratio<u64>,
     ) -> Result<(), Self::ValidationError> {
         // TODO: Possibly check the size of the collections.
 
@@ -1335,14 +1335,14 @@ impl FetcherItem for SyncLeap {
             }
             match linear_chain::check_sufficient_block_signatures(
                 &validator_weights,
-                finality_threshold_fraction,
+                *finality_threshold_fraction,
                 Some(&signed_header.block_signatures),
             ) {
                 Ok(()) | Err(BlockSignatureError::TooManySignatures { .. }) => (),
                 Err(err) => return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(err)),
             }
             signed_header
-                .validate()
+                .validate(&())
                 .map_err(SyncLeapValidationError::BlockWithMetadata)?;
             signed_header
                 .block_signatures
@@ -1529,7 +1529,7 @@ impl FetcherItem for BlockSignatures {
     type ValidationError = crypto::Error;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
@@ -1810,7 +1810,7 @@ impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
@@ -1879,7 +1879,7 @@ impl FetcherItem for BlockWithMetadata {
     type ValidationError = BlockWithMetadataValidationError;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
         validate_block_header_and_signature_hash(self.block.header(), &self.block_signatures)?;
         Ok(())
@@ -1915,7 +1915,7 @@ impl FetcherItem for BlockAndDeploys {
     type ValidationError = BlockValidationError;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
         // Validate that we've got all of the deploys we should have gotten, and that their hashes
         // are valid.
@@ -2425,7 +2425,7 @@ impl FetcherItem for FinalitySignature {
     type ValidationError = crypto::Error;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         self.is_verified()
     }
 }
@@ -2602,7 +2602,7 @@ mod tests {
         let block_and_deploys = BlockAndDeploys { block, deploys };
 
         block_and_deploys
-            .validate()
+            .validate(&())
             .unwrap_or_else(|error| panic!("expected to be valid: {:?}", error));
     }
 
@@ -2636,7 +2636,7 @@ mod tests {
                 .collect(),
         };
 
-        match block_and_deploys.validate().unwrap_err() {
+        match block_and_deploys.validate(&()).unwrap_err() {
             BlockValidationError::ExtraDeploys {
                 extra_deploys_count,
                 ..
@@ -2673,7 +2673,7 @@ mod tests {
             deploys: deploys1,
         };
 
-        match block_and_deploys.validate().unwrap_err() {
+        match block_and_deploys.validate(&()).unwrap_err() {
             BlockValidationError::MissingDeploy { missing_deploy, .. } => {
                 assert!(deploys2.iter().any(|deploy| *deploy.id() == missing_deploy))
             }
@@ -2701,7 +2701,7 @@ mod tests {
         let block_and_deploys = BlockAndDeploys { block, deploys };
 
         assert!(matches!(
-            block_and_deploys.validate().unwrap_err(),
+            block_and_deploys.validate(&()).unwrap_err(),
             BlockValidationError::UnexpectedBlockHash { .. }
         ));
     }
@@ -2729,7 +2729,7 @@ mod tests {
 
         let block_and_deploys = BlockAndDeploys { block, deploys };
 
-        match block_and_deploys.validate().unwrap_err() {
+        match block_and_deploys.validate(&()).unwrap_err() {
             BlockValidationError::UnexpectedDeployHash { invalid_deploy, .. } => {
                 assert_eq!(*invalid_deploy, bad_deploy);
             }
@@ -3018,7 +3018,7 @@ mod tests {
     fn block_headers_batch_item_validate() {
         let empty_batch = BlockHeadersBatch::new(vec![]);
         assert_eq!(
-            FetcherItem::validate(&empty_batch),
+            FetcherItem::validate(&empty_batch, &()),
             Err(BlockHeadersBatchValidationError::BatchEmpty)
         );
 
@@ -3035,7 +3035,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            FetcherItem::validate(&BlockHeadersBatch::new(invalid_batch.clone()),),
+            FetcherItem::validate(&BlockHeadersBatch::new(invalid_batch.clone()), &()),
             Err(BlockHeadersBatchValidationError::BatchNotContinuous)
         );
 
@@ -3046,13 +3046,13 @@ mod tests {
         };
 
         assert_eq!(
-            FetcherItem::validate(&BlockHeadersBatch::new(valid_batch.clone()),),
+            FetcherItem::validate(&BlockHeadersBatch::new(valid_batch.clone()), &()),
             Ok(())
         );
 
         let single_el_valid = vec![valid_batch[0].clone()];
         assert_eq!(
-            FetcherItem::validate(&BlockHeadersBatch::new(single_el_valid),),
+            FetcherItem::validate(&BlockHeadersBatch::new(single_el_valid), &()),
             Ok(())
         );
     }

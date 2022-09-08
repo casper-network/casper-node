@@ -314,11 +314,7 @@ impl Reactor {
             protocol_version,
         )?;
 
-        let fetcher_builder = FetcherBuilder::new(
-            config.fetcher,
-            chainspec.highway_config.finality_threshold_fraction,
-            registry,
-        );
+        let fetcher_builder = FetcherBuilder::new(config.fetcher, registry);
 
         let deploy_acceptor = DeployAcceptor::new(chainspec, registry)?;
         let deploy_fetcher = fetcher_builder.build("deploy")?;
@@ -412,7 +408,13 @@ impl Reactor {
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
-        let sync_leap_fetcher = fetcher_builder.build("sync_leap")?;
+        let sync_leap_fetcher = Fetcher::new_with_metadata(
+            "sync_leap",
+            config.fetcher,
+            registry,
+            chainspec.highway_config.finality_threshold_fraction,
+        )?;
+
         let complete_block_synchronizer = CompleteBlockSynchronizer::new(
             config.complete_block_synchronizer,
             chainspec.highway_config.finality_threshold_fraction,

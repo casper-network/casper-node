@@ -694,7 +694,7 @@ impl FetcherItem for FinalizedApprovalsWithId {
     type ValidationError = FinalizedApprovalsVerificationError;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         for approval in &self.approvals.0 {
             crypto::verify(&self.id, approval.signature(), approval.signer()).map_err(|err| {
                 FinalizedApprovalsVerificationError {
@@ -1621,7 +1621,7 @@ impl FetcherItem for Deploy {
     type ValidationError = DeployConfigurationFailure;
     type ValidationMetadata = ();
 
-    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!
         validate_deploy(self)
     }
