@@ -83,9 +83,10 @@ pub(crate) trait Item:
 pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug;
+    type ValidationMetadata;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
+    fn validate(&self, metadata: Self::ValidationMetadata) -> Result<(), Self::ValidationError>;
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
@@ -121,8 +122,9 @@ impl Item for TrieOrChunk {
 
 impl FetcherItem for TrieOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         match self {
             TrieOrChunk::Value(_) => Ok(()),
             TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
@@ -141,8 +143,9 @@ impl Item for BlockHeader {
 
 impl FetcherItem for BlockHeader {
     type ValidationError = Infallible;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 }

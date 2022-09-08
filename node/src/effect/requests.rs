@@ -43,6 +43,7 @@ use crate::{
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
+        sync_leaper::{ConstructSyncLeapError, PullSyncLeapError},
     },
     contract_runtime::SpeculativeExecutionState,
     effect::{AutoClosingResponder, Responder},
@@ -53,7 +54,7 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
-        StatusFeed, TrieOrChunk, TrieOrChunkId,
+        StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -1265,5 +1266,18 @@ pub(crate) struct NodeStateRequest(pub(crate) Responder<NodeState>);
 impl Display for NodeStateRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "node state request")
+    }
+}
+
+/// A request for a sync leap
+#[derive(Debug, Serialize)]
+pub(crate) struct SyncLeapRequest {
+    pub(crate) trusted_hash: BlockHash,
+    pub(crate) responder: Responder<Result<SyncLeap, ConstructSyncLeapError>>,
+}
+
+impl Display for SyncLeapRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "sync leap request")
     }
 }

@@ -1009,8 +1009,9 @@ impl Item for BlockHeaderWithMetadata {
 
 impl FetcherItem for BlockHeaderWithMetadata {
     type ValidationError = BlockHeaderWithMetadataValidationError;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
     }
 }
@@ -1204,8 +1205,9 @@ impl Item for BlockHeadersBatch {
 
 impl FetcherItem for BlockHeadersBatch {
     type ValidationError = BlockHeadersBatchValidationError;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         if self.inner().is_empty() {
             return Err(BlockHeadersBatchValidationError::BatchEmpty);
         }
@@ -1230,10 +1232,16 @@ pub(crate) struct SyncLeap {
     /// The headers of all switch blocks known to the sender, after the trusted block but before
     /// their highest block, with signatures, plus the signed highest block.
     signed_block_headers: Vec<BlockHeaderWithMetadata>,
-    /// The fraction of total validator weight required to sign each block.
-    // TODO: Make sure the message is only accepted if this matches the value in the chainspec,
-    //       or pass it into `validate`, or find a better solution.
-    finality_threshold_fraction: Ratio<u64>,
+}
+
+impl SyncLeap {
+    pub(crate) fn highest_era(&self) -> EraId {
+        self.signed_block_headers
+            .iter()
+            .map(|header_with_metadata| header_with_metadata.block_header.era_id())
+            .max()
+            .unwrap_or_else(|| self.trusted_block_header.era_id())
+    }
 }
 
 impl Display for SyncLeap {
@@ -1258,8 +1266,12 @@ impl Item for SyncLeap {
 
 impl FetcherItem for SyncLeap {
     type ValidationError = SyncLeapValidationError;
+    type ValidationMetadata = Ratio<u64>;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(
+        &self,
+        finality_threshold_fraction: Ratio<u64>,
+    ) -> Result<(), Self::ValidationError> {
         // TODO: Possibly check the size of the collections.
 
         // The oldest provided block must be a switch block, so that we know the validators
@@ -1323,7 +1335,7 @@ impl FetcherItem for SyncLeap {
             }
             match linear_chain::check_sufficient_block_signatures(
                 &validator_weights,
-                self.finality_threshold_fraction,
+                finality_threshold_fraction,
                 Some(&signed_header.block_signatures),
             ) {
                 Ok(()) | Err(BlockSignatureError::TooManySignatures { .. }) => (),
@@ -1515,8 +1527,9 @@ impl Item for BlockSignatures {
 
 impl FetcherItem for BlockSignatures {
     type ValidationError = crypto::Error;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
@@ -1795,8 +1808,9 @@ impl Item for Block {
 
 impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
@@ -1863,8 +1877,9 @@ impl Item for BlockWithMetadata {
 
 impl FetcherItem for BlockWithMetadata {
     type ValidationError = BlockWithMetadataValidationError;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
         validate_block_header_and_signature_hash(self.block.header(), &self.block_signatures)?;
         Ok(())
@@ -1898,8 +1913,9 @@ impl Item for BlockAndDeploys {
 
 impl FetcherItem for BlockAndDeploys {
     type ValidationError = BlockValidationError;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
         // Validate that we've got all of the deploys we should have gotten, and that their hashes
         // are valid.
@@ -2407,8 +2423,9 @@ impl GossiperItem for FinalitySignature {
 
 impl FetcherItem for FinalitySignature {
     type ValidationError = crypto::Error;
+    type ValidationMetadata = ();
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: ()) -> Result<(), Self::ValidationError> {
         self.is_verified()
     }
 }

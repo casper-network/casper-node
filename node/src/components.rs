@@ -66,6 +66,7 @@ pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
+pub(crate) mod sync_leaper;
 // TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
 //       remove once the macro is deleted.
 #[cfg(test)]

@@ -284,25 +284,42 @@ where
     T: FetcherItem + 'static,
 {
     get_from_peer_timeout: Duration,
-    #[data_size(skip)]
-    fault_tolerance_fraction: Ratio<u64>,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
     metrics: Metrics,
+    validation_metadata: T::ValidationMetadata,
 }
 
-impl<T: FetcherItem> Fetcher<T> {
+impl<T: FetcherItem> Fetcher<T>
+where
+    T::ValidationMetadata: Default,
+{
     pub(crate) fn new(
         name: &str,
         config: Config,
-        fault_tolerance_fraction: Ratio<u64>,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            fault_tolerance_fraction,
             responders: HashMap::new(),
             metrics: Metrics::new(name, registry)?,
+            validation_metadata: Default::default(),
+        })
+    }
+}
+
+impl<T: FetcherItem> Fetcher<T> {
+    pub(crate) fn new_with_metadata(
+        name: &str,
+        config: Config,
+        registry: &Registry,
+        validation_metadata: T::ValidationMetadata,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(Fetcher {
+            get_from_peer_timeout: config.get_from_peer_timeout().into(),
+            responders: HashMap::new(),
+            metrics: Metrics::new(name, registry)?,
+            validation_metadata,
         })
     }
 }
@@ -774,7 +791,10 @@ impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
 }
 
 impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+    // We want the fetcher to ask all the peers we give to it separately, and return their
+    // responses separately, not just respond with the first SyncLeap it successfully gets from a
+    // single peer.
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
     fn responders(
         &mut self,
@@ -847,7 +867,7 @@ where
             Event::GotRemotely { item, source } => match source {
                 Source::Peer(peer) => {
                     self.metrics().found_on_peer.inc();
-                    if let Err(err) = item.validate() {
+                    if let Err(err) = item.validate(self.validation_metadata) {
                         warn!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
                         effect_builder.announce_disconnect_from_peer(peer).ignore()
                     } else {

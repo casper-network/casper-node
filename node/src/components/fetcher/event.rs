@@ -31,6 +31,20 @@ where
     CouldNotConstructGetRequest { id: T::Id, peer: NodeId },
 }
 
+impl<T> FetcherError<T>
+where
+    T: FetcherItem,
+{
+    pub(crate) fn peer(&self) -> &NodeId {
+        match self {
+            FetcherError::Absent { peer, .. }
+            | FetcherError::Rejected { peer, .. }
+            | FetcherError::TimedOut { peer, .. }
+            | FetcherError::CouldNotConstructGetRequest { peer, .. } => peer,
+        }
+    }
+}
+
 #[derive(Clone, DataSize, Debug, PartialEq, Serialize)]
 pub(crate) enum FetchedData<T> {
     FromStorage { item: Box<T> },
