@@ -4,6 +4,7 @@ RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
+PINNED_STABLE  := $(shell sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)
 
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
@@ -202,8 +203,8 @@ setup-audit:
 .PHONY: setup-rs
 setup-rs: smart_contracts/rust-toolchain
 	$(RUSTUP) update
-	$(RUSTUP) toolchain install stable $(PINNED_NIGHTLY)
-	$(RUSTUP) target add --toolchain stable wasm32-unknown-unknown
+	$(RUSTUP) toolchain install $(PINNED_STABLE) $(PINNED_NIGHTLY)
+	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32-unknown-unknown
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 
 .PHONY: setup-nightly-rs
