@@ -81,11 +81,11 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
-        ValueOrChunk,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockEffectsOrChunk,
+        BlockEffectsOrChunkId, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy,
+        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -681,6 +681,19 @@ impl Storage {
                     opt_item,
                 )?)
             }
+            NetRequest::BlockEffects(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockEffectsOrChunk>(serialized_id)?;
+
+                let opt_item = self.read_block_effects_or_chunk(&item_id)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    item_id,
+                    opt_item,
+                )?)
+            }
         }
     }
 
@@ -770,73 +783,9 @@ impl Storage {
                     )
                     .ignore()
             }
-            StorageRequest::GetBlockEffectsOrChunk {
-                id: request,
-                responder,
-            } => {
-                // There's no mapping between block_hash -> execution results.
-                // We store execution results under the deploy hash for the txn.
-                // In order to pull it out, we have to:
-                // 1. Find the block header for `block_hash`.
-                // 2. Find the block body for `block_header.body_hash`.
-                // 3. For every txns in the block's body, we load its deploy metadata.
-                // 4. We extract txn's execution results from the `deploy_metadata` for the block
-                // we're interested in.
-                let mut txn = self.env.begin_rw_txn()?;
-                let block_header: BlockHeader =
-                    match self.get_single_block_header(&mut txn, request.block_hash())? {
-                        Some(block_header) => block_header,
-                        None => return Ok(responder.respond(None).ignore()),
-                    };
-                let maybe_block_body =
-                    get_body_for_block_header(&mut txn, &block_header, self.block_body_db);
-                let block_body = match maybe_block_body? {
-                    Some(block_body) => block_body,
-                    None => {
-                        info!(
-                            ?block_header,
-                            "retrieved block header but block body is missing from database"
-                        );
-                        return Ok(responder.respond(None).ignore());
-                    }
-                };
-
-                let mut execution_results = vec![];
-                for deploy_hash in block_body.transaction_hashes() {
-                    match self.get_deploy_metadata(&mut txn, &deploy_hash)? {
-                        None => {
-                            // We have the block and the body but not the deploy. This could happen
-                            // for a node that is still syncing and probably shouldn't be a fatal
-                            // error.
-                            return Ok(responder.respond(None).ignore());
-                        }
-                        Some(metadata) => {
-                            match metadata.execution_results.remove(request.block_hash()) {
-                                Some(results) => {
-                                    execution_results.push(results);
-                                }
-                                None => {
-                                    // We have the block, we've got the deploy but its metadata
-                                    // doesn't include the reference to the block.
-                                    // This is an error b/c even though types seem to allow for a
-                                    // single deploy map to multiple blocks, it shouldn't happen in
-                                    // practice.
-                                    error!(block_hash=?request.block_hash(), ?deploy_hash, "missing execution results for a deploy in particular block");
-                                    return Ok(responder.respond(None).ignore());
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // TODO: get rid of unwrap
-                let value_or_chunk =
-                    ValueOrChunk::new(execution_results, request.chunk_index()).unwrap();
-
-                responder
-                    .respond(Some(request.response(value_or_chunk)))
-                    .ignore()
-            }
+            StorageRequest::GetBlockEffectsOrChunk { id, responder } => responder
+                .respond(self.read_block_effects_or_chunk(&id)?)
+                .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
                 execution_results,
@@ -1936,6 +1885,70 @@ impl Storage {
         Ok(self
             .get_single_block(&mut txn, &block_hash)?
             .map(|block| block.body().transaction_hashes().cloned().collect()))
+    }
+
+    fn read_block_effects_or_chunk(
+        &self,
+        request: &BlockEffectsOrChunkId,
+    ) -> Result<Option<BlockEffectsOrChunk>, FatalStorageError> {
+        // There's no mapping between block_hash -> execution results.
+        // We store execution results under the deploy hash for the txn.
+        // In order to pull it out, we have to:
+        // 1. Find the block header for `block_hash`.
+        // 2. Find the block body for `block_header.body_hash`.
+        // 3. For every txns in the block's body, we load its deploy metadata.
+        // 4. We extract txn's execution results from the `deploy_metadata` for the block
+        // we're interested in.
+        let mut txn = self.env.begin_rw_txn()?;
+        let block_header: BlockHeader =
+            match self.get_single_block_header(&mut txn, request.block_hash())? {
+                Some(block_header) => block_header,
+                None => return Ok(None),
+            };
+        let maybe_block_body =
+            get_body_for_block_header(&mut txn, &block_header, self.block_body_db);
+        let block_body = match maybe_block_body? {
+            Some(block_body) => block_body,
+            None => {
+                info!(
+                    ?block_header,
+                    "retrieved block header but block body is missing from database"
+                );
+                return Ok(None);
+            }
+        };
+
+        let mut execution_results = vec![];
+        for deploy_hash in block_body.transaction_hashes() {
+            match self.get_deploy_metadata(&mut txn, &deploy_hash)? {
+                None => {
+                    // We have the block and the body but not the deploy. This could happen
+                    // for a node that is still syncing and probably shouldn't be a fatal
+                    // error.
+                    return Ok(None);
+                }
+                Some(metadata) => {
+                    match metadata.execution_results.remove(request.block_hash()) {
+                        Some(results) => {
+                            execution_results.push(results);
+                        }
+                        None => {
+                            // We have the block, we've got the deploy but its metadata
+                            // doesn't include the reference to the block.
+                            // This is an error b/c even though types seem to allow for a
+                            // single deploy map to multiple blocks, it shouldn't happen in
+                            // practice.
+                            error!(block_hash=?request.block_hash(), ?deploy_hash, "missing execution results for a deploy in particular block");
+                            return Ok(None);
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODO: get rid of unwrap
+        let value_or_chunk = ValueOrChunk::new(execution_results, request.chunk_index()).unwrap();
+        Ok(Some(request.response(value_or_chunk)))
     }
 }
 

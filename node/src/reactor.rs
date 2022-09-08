@@ -68,9 +68,9 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, FinalizedApprovalsWithId,
-        Item, NodeId,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode,
+        FinalizedApprovalsWithId, Item, NodeId,
     },
     unregister_metric,
     utils::{
@@ -969,6 +969,7 @@ where
         + From<fetcher::Event<BlockAndDeploys>>
         + From<fetcher::Event<BlockHeadersBatch>>
         + From<fetcher::Event<BlockSignatures>>
+        + From<fetcher::Event<BlockEffectsOrChunk>>
         + From<fetcher::Event<Deploy>>
         + From<BlocklistAnnouncement>,
 {
@@ -1076,6 +1077,15 @@ where
         }
         NetResponse::FinalitySignatures(ref serialized_item) => {
             handle_fetch_response::<R, BlockSignatures>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
+        }
+        NetResponse::BlockEffects(ref serialized_item) => {
+            handle_fetch_response::<R, BlockEffectsOrChunk>(
                 reactor,
                 effect_builder,
                 rng,

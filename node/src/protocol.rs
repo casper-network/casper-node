@@ -20,10 +20,9 @@ use crate::{
     },
     effect::{
         incoming::{
-            BlockEffectsRequest, BlockEffectsRequestIncoming, BlockEffectsResponse,
-            BlockEffectsResponseIncoming, ConsensusMessageIncoming, FinalitySignatureIncoming,
-            GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
-            TrieDemand, TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
+            TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
     },
@@ -243,8 +242,6 @@ where
         + From<NetResponseIncoming>
         + From<TrieResponseIncoming>
         + From<TrieRequestIncoming>
-        + From<BlockEffectsRequestIncoming>
-        + From<BlockEffectsResponseIncoming>
         + From<TrieDemand>
         + From<FinalitySignatureIncoming>,
 {
@@ -311,9 +308,9 @@ where
                     message: NetRequest::FinalitySignatures(serialized_id),
                 }
                 .into(),
-                Tag::BlockEffects => BlockEffectsRequestIncoming {
+                Tag::BlockEffects => NetRequestIncoming {
                     sender,
-                    message: BlockEffectsRequest::BlockEffectsLegacyRequest(serialized_id),
+                    message: NetRequest::BlockEffects(serialized_id),
                 }
                 .into(),
             },
@@ -376,11 +373,9 @@ where
                     message: NetResponse::FinalitySignatures(serialized_item),
                 }
                 .into(),
-                Tag::BlockEffects => BlockEffectsResponseIncoming {
+                Tag::BlockEffects => NetResponseIncoming {
                     sender,
-                    message: BlockEffectsResponse::BlockEffectsResponseLegacy(
-                        serialized_item.to_vec(),
-                    ),
+                    message: NetResponse::BlockEffects(serialized_item.to_vec()),
                 }
                 .into(),
             },

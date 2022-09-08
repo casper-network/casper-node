@@ -72,10 +72,6 @@ pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
 /// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 
-pub(crate) type BlockEffectsRequestIncoming = MessageIncoming<BlockEffectsRequest>;
-
-pub(crate) type BlockEffectsResponseIncoming = MessageIncoming<BlockEffectsResponse>;
-
 /// A new finality signature arrived over the network.
 pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
 
@@ -108,6 +104,8 @@ pub(crate) enum NetRequest {
     BlockHeadersBatch(Vec<u8>),
     /// Request for finality signatures for a block.
     FinalitySignatures(Vec<u8>),
+    /// Request for block effects.
+    BlockEffects(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -127,6 +125,7 @@ impl Display for NetRequest {
             NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
             NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
             NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
+            NetRequest::BlockEffects(_) => f.write_str("request for block effects"),
         }
     }
 }
@@ -149,6 +148,7 @@ impl NetRequest {
             NetRequest::BlockAndDeploys(ref id) => id,
             NetRequest::BlockHeadersBatch(ref id) => id,
             NetRequest::FinalitySignatures(ref id) => id,
+            NetRequest::BlockEffects(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -172,6 +172,7 @@ impl NetRequest {
             NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
             NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
+            NetRequest::BlockEffects(_) => Tag::BlockEffects,
         }
     }
 }
@@ -239,6 +240,8 @@ pub(crate) enum NetResponse {
     BlockHeadersBatch(Arc<[u8]>),
     /// Response of finality signatures.
     FinalitySignatures(Arc<[u8]>),
+    /// Request for block effects.
+    BlockEffects(Vec<u8>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -269,6 +272,7 @@ impl Display for NetResponse {
             NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
             NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
             NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
+            NetResponse::BlockEffects(_) => f.write_str("response for block effects"),
         }
     }
 }

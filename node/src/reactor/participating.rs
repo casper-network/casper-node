@@ -53,9 +53,9 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            BlockEffectsRequestIncoming, BlockEffectsResponseIncoming, ConsensusMessageIncoming,
-            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponseIncoming,
-            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -142,6 +142,8 @@ pub(crate) enum ParticipatingEvent {
     BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
     #[from]
     FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
+    #[from]
+    BlockEffectsFetcher(#[serde(skip_serializing)] fetcher::Event<BlockEffectsOrChunk>),
 
     // Requests
     #[from]
@@ -233,13 +235,9 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
-    BlockEffectsRequestIncoming(BlockEffectsRequestIncoming),
-    #[from]
     TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    BlockEffectsResponseIncoming(BlockEffectsResponseIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
@@ -345,8 +343,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
             ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
-            ParticipatingEvent::BlockEffectsRequestIncoming(_) => "BlockEffectsRequestIncoming",
-            ParticipatingEvent::BlockEffectsResponseIncoming(_) => "BlockEffectsResponseIncoming",
+            ParticipatingEvent::BlockEffectsFetcher(_) => "BlockEffectsFetcher",
         }
     }
 }
@@ -543,8 +540,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
-            ParticipatingEvent::BlockEffectsRequestIncoming(inner) => Display::fmt(inner, f),
-            ParticipatingEvent::BlockEffectsResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::BlockEffectsFetcher(event) => {
+                write!(f, "block effects fetcher event: {}", event)
+            }
         }
     }
 }
@@ -612,6 +610,7 @@ pub(crate) struct Reactor {
     finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
+    block_effects_fetcher: Fetcher<BlockEffectsOrChunk>,
     diagnostics_port: DiagnosticsPort,
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -902,6 +901,7 @@ impl reactor::Reactor for Reactor {
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
+        let block_effects_fetcher = fetcher_builder.build("block_effects")?;
 
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::SmallNetwork,
@@ -940,6 +940,7 @@ impl reactor::Reactor for Reactor {
                 finalized_approvals_fetcher,
                 block_headers_batch_fetcher,
                 finality_signatures_fetcher,
+                block_effects_fetcher,
                 diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
@@ -1144,9 +1145,11 @@ impl reactor::Reactor for Reactor {
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::BlockEffectsFetcherRequest(request) => {
-                todo!()
-            }
+            ParticipatingEvent::BlockEffectsFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                ParticipatingEvent::BlockEffectsFetcher(request.into()),
+            ),
             ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -1480,16 +1483,6 @@ impl reactor::Reactor for Reactor {
                     &message.0,
                 )
             }
-            ParticipatingEvent::BlockEffectsResponseIncoming(BlockEffectsResponseIncoming {
-                sender,
-                message,
-            }) => reactor::handle_fetch_response::<Self, BlockEffectsOrChunk>(
-                self,
-                effect_builder,
-                rng,
-                sender,
-                &message.message(),
-            ),
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
                 self.linear_chain
@@ -1505,9 +1498,11 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockEffectsRequestIncoming(request) => {
-                todo!("should be routed to Storage as it's the component that can answer requests for block effects")
-            }
+            ParticipatingEvent::BlockEffectsFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockEffectsFetcher,
+                self.block_effects_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
         }
     }
 
