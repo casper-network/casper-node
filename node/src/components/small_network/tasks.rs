@@ -413,7 +413,7 @@ fn bincode_config() -> impl Options {
 /// Network message reader.
 ///
 /// Schedules all received messages until the stream is closed or an error occurs.
-pub(super) async fn message_reader<REv, P>(
+pub(super) async fn message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     mut stream: IncomingStream,
     limiter: Box<dyn LimiterHandle>,
