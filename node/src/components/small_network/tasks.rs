@@ -3,6 +3,7 @@
 use std::{
     fmt::Display,
     net::SocketAddr,
+    num::NonZeroUsize,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc, Weak},
 };
@@ -14,6 +15,7 @@ use futures::{
     SinkExt, StreamExt,
 };
 use muxink::{
+    fragmented::{Defragmentizer, Fragmentizer},
     framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
 };
@@ -56,6 +58,9 @@ use crate::{
     types::NodeId,
     utils::display_error,
 };
+
+/// The size of a single message fragment sent over the wire.
+const MESSAGE_FRAGMENT_SIZE: usize = 4096;
 
 /// An item on the internal outgoing message queue.
 ///
@@ -157,7 +162,11 @@ where
             let compat_stream =
                 tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
 
-            let sink: OutgoingSink = FrameWriter::new(LengthDelimited, compat_stream);
+            let sink: OutgoingSink = Fragmentizer::new(
+                // TOOD: Replace with `NonZeroUsize::new(_).unwrap()` in const once stabilized.
+                NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap(),
+                FrameWriter::new(LengthDelimited, compat_stream),
+            );
 
             OutgoingConnection::Established {
                 peer_addr,
@@ -275,7 +284,10 @@ where
 
             // TODO: We need to split the stream here eventually. Right now, this is safe since the
             //       reader only uses one direction.
-            let stream: IncomingStream = FrameReader::new(LengthDelimited, compat_stream, 4096);
+            let stream: IncomingStream = Defragmentizer::new(
+                context.chain_info.maximum_net_message_size as usize,
+                FrameReader::new(LengthDelimited, compat_stream, 4096),
+            );
 
             IncomingConnection::Established {
                 peer_addr,

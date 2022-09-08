@@ -56,6 +56,7 @@ use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use muxink::{
+    fragmented::{Fragmentizer, SingleFragment, Defragmentizer},
     framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
 };
@@ -1215,10 +1216,11 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// The outgoing message sink of an outgoing connection.
-type OutgoingSink = FrameWriter<Bytes, LengthDelimited, Compat<Transport>>;
+type OutgoingSink =
+    Fragmentizer<FrameWriter<SingleFragment, LengthDelimited, Compat<Transport>>, Bytes>;
 
 /// The incoming message stream of an incoming connection.
-type IncomingStream = FrameReader<LengthDelimited, Compat<Transport>>;
+type IncomingStream = Defragmentizer<FrameReader<LengthDelimited, Compat<Transport>>>;
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where
