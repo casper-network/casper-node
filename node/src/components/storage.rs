@@ -84,7 +84,7 @@ use crate::{
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
         BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
         DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalizedApprovals,
-        FinalizedApprovalsWithId, Item, NodeId,
+        FinalizedApprovalsWithId, Item, NodeId, SyncLeap,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1511,6 +1511,34 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves the highest block header from storage, if one exists. May return an LMDB error.
+    fn get_highest_block_header_with_metadata_with_sufficient_finality_signatures<
+        Tx: Transaction,
+    >(
+        &self,
+        txn: &mut Tx,
+        finality_threshold_fraction: usize,
+    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
+        for (index, block_hash) in self.block_height_index.iter().rev() {
+            let maybe_block = self.get_single_block_header_with_metadata(txn, block_hash)?;
+            match maybe_block {
+                Some(highest_block) => {
+                    //if highest_block.block_signatures.are_signatures(finality_threshold_fraction) {
+                    if true {
+                        return Ok(Some(highest_block));
+                    }
+                }
+                None => {
+                    warn!("no highest block found");
+                    return Ok(None);
+                }
+            }
+        }
+
+        warn!("no highest block with sufficient finality signatures found");
+        return Ok(None);
+    }
+
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
     /// the ancestry chain.
     fn get_blocks_while<F, Tx: Transaction>(
@@ -1569,6 +1597,122 @@ impl Storage {
         Ok(Some(block_header))
     }
 
+    // TODO: Docs
+    // TODO: Could be optimized to use `get_blocks_while`
+    fn get_trusted_ancestor_headers<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+        allowed_era_diff: u64,
+    ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
+        let mut block_header: BlockHeader =
+            match txn.get_value(self.block_header_db, &block_hash)? {
+                Some(block_header) => block_header,
+                None => return Ok(None),
+            };
+
+        if block_header.is_switch_block() {
+            return Ok(Some(vec![]));
+        }
+
+        let initial_block_header_era = block_header.era_id();
+
+        let mut result = vec![];
+        loop {
+            let parent_hash = block_header.parent_hash();
+            let parent_block_header: BlockHeader =
+                match txn.get_value(self.block_header_db, &parent_hash)? {
+                    Some(block_header) => block_header,
+                    None => {
+                        warn!(?parent_hash, "block header not found");
+                        todo!()
+                    }
+                };
+
+            let era_diff =
+                initial_block_header_era.saturating_sub(parent_block_header.era_id().into());
+            if allowed_era_diff <= era_diff.into() {
+                // TODO: Is it even possible when we stop at the first switch block?
+                // Diff between requested header and our current fully signed tip.
+                break;
+            }
+
+            result.push(parent_block_header.clone());
+            if parent_block_header.is_switch_block() {
+                break;
+            }
+            block_header = parent_block_header;
+        }
+
+        Ok(Some(result))
+    }
+
+    // TODO: Docs
+    // TODO: Should this also use the "allowed_era_diff",
+    fn get_signed_block_headers_with_metadata<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+        finality_threshold_fraction: usize, // TODO: Also needs "total_weight total weight?"
+    ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
+        // TODO: Could use that: switch_block_era_id_index
+
+        // TODO: This is highest complete block (disjoint sequences - top).
+        let maybe_highest_block_header_with_sufficient_signatures = self
+            .get_highest_block_header_with_metadata_with_sufficient_finality_signatures(
+                txn,
+                finality_threshold_fraction,
+            )?;
+
+        if let Some(mut current_block_header_with_sufficient_signatures) =
+            maybe_highest_block_header_with_sufficient_signatures
+        {
+            if current_block_header_with_sufficient_signatures
+                .block_header
+                .hash()
+                == *block_hash
+            {
+                return Ok(Some(vec![]));
+            }
+
+            let mut result = vec![];
+            result.push(current_block_header_with_sufficient_signatures.clone());
+            loop {
+                let parent_hash = current_block_header_with_sufficient_signatures
+                    .block_header
+                    .parent_hash();
+                let parent_block_header: BlockHeader =
+                    match txn.get_value(self.block_header_db, &parent_hash)? {
+                        Some(block_header) => block_header,
+                        None => {
+                            warn!(?parent_hash, "block header not found");
+                            todo!()
+                        }
+                    };
+                if parent_block_header.hash() == *block_hash {
+                    // Don't go back further, we're already at the block being requested.
+                    return Ok(Some(result));
+                }
+
+                // TODO: We could do better with the clone()'s
+                let body_hash = BlockHash::new(*parent_block_header.body_hash());
+                let era_id = parent_block_header.era_id();
+                let parent_block_header_with_metadata = BlockHeaderWithMetadata {
+                    block_header: parent_block_header.clone(),
+                    // TODO: Stick correct finality signatures in here.
+                    block_signatures: BlockSignatures::new(body_hash, era_id),
+                };
+
+                if parent_block_header.is_switch_block() {
+                    result.push(parent_block_header_with_metadata.clone());
+                }
+                current_block_header_with_sufficient_signatures = parent_block_header_with_metadata;
+            }
+        }
+
+        Ok(None)
+    }
+
     fn get_block_header_by_height_restricted<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1595,6 +1739,25 @@ impl Storage {
         };
         self.validate_block_header_hash(&block_header, block_hash)?;
         Ok(Some(block_header))
+    }
+
+    /// Retrieves a single block header in a given transaction from storage.
+    fn get_single_block_header_with_metadata<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
+        let block_header: BlockHeader = match txn.get_value(self.block_header_db, &block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
+        let body_hash = BlockHash::new(*block_header.body_hash());
+        let era_id = block_header.era_id();
+        Ok(Some(BlockHeaderWithMetadata {
+            block_header,
+            // TODO: Stick correct finality signatures in here.
+            block_signatures: BlockSignatures::new(body_hash, era_id),
+        }))
     }
 
     /// Validates the block header hash against the expected block hash.
@@ -2139,6 +2302,41 @@ impl Config {
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
+    // TODO: Need a test in other component that will verify if the generated SyncLeap verifies
+    pub(crate) fn get_sync_leap(
+        &self,
+        block_hash: BlockHash,
+        allowed_era_diff: u64,
+        finality_threshold_fraction: usize,
+    ) -> Result<Option<SyncLeap>, FatalStorageError> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+
+        let trusted_block_header =
+            self.get_single_block_header_restricted(&mut txn, &block_hash, false)?;
+        let trusted_block_header = trusted_block_header.unwrap(); // TODO
+
+        let trusted_ancestor_headers =
+            self.get_trusted_ancestor_headers(&mut txn, &block_hash, allowed_era_diff)?;
+        let trusted_ancestor_headers = trusted_ancestor_headers.unwrap(); // TODO
+
+        let signed_block_headers = self.get_signed_block_headers_with_metadata(
+            &mut txn,
+            &block_hash,
+            finality_threshold_fraction,
+        )?;
+        let signed_block_headers = signed_block_headers.unwrap(); // TODO
+
+        todo!()
+        // Ok(Some(SyncLeap {
+        //     trusted_block_header,
+        //     trusted_ancestor_headers,
+        //     signed_block_headers,
+        // }))
+    }
+
     /// Directly returns a deploy from internal store.
     ///
     /// # Panics

@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    f32::consts::E,
     fs::{self, File},
     iter,
 };
@@ -24,8 +25,9 @@ use crate::{
     storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
+        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalitySignature,
     },
     utils::WithDir,
 };
@@ -1195,6 +1197,141 @@ fn can_put_and_get_block() {
     });
 
     assert_eq!(response.as_ref(), Some(block.header()));
+}
+
+#[test]
+fn should_get_trusted_ancestor_headers() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Test chain:
+    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
+    // era 0  | era 1  | era 2  | era 3
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent(
+                &mut harness.rng,
+                EraId::from(*height / 3),
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 2 || *height == 5 || *height == 8,
+                None,
+                parent,
+            );
+            blocks.push(block.clone());
+        });
+
+    blocks.iter().for_each(|block| {
+        storage.write_block(&block).unwrap();
+        storage.completed_blocks.insert(block.height());
+    });
+
+    let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let requested_block_hash = blocks.get(requested_height).unwrap().header().hash();
+        storage
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_hash, 100)
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|block_header| block_header.height())
+            .collect()
+    };
+
+    {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let requested_block_hash = blocks.get(5).unwrap().header().hash();
+        let results = storage
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_hash, 100)
+            .unwrap()
+            .unwrap();
+        assert!(results.is_empty(), "should be empty for switch blocks");
+    }
+
+    // TODO: Possibly the order returned results should change
+    assert_eq!(get_results(7, 100), &[6, 5]);
+    assert_eq!(get_results(3, 100), &[2]);
+
+    // TODO: test if we respect the `allowed_era_diff`...
+}
+
+#[test]
+fn should_get_signed_block_headers_with_metadata() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Test chain:
+    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
+    // era 0  | era 1  | era 2  | era 3
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent(
+                &mut harness.rng,
+                EraId::from(*height / 3),
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 2 || *height == 5 || *height == 8,
+                None,
+                parent,
+            );
+            blocks.push(block.clone());
+        });
+
+    blocks.iter().for_each(|block| {
+        storage.write_block(&block).unwrap();
+        storage.completed_blocks.insert(block.height());
+    });
+
+    let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let requested_block_hash = blocks.get(requested_height).unwrap().header().hash();
+        storage
+            .get_signed_block_headers_with_metadata(&mut txn, &requested_block_hash, 100)
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|block_header_with_metadata| block_header_with_metadata.block_header.height())
+            .collect()
+    };
+
+    // TODO: Possibly the order returned results should change
+    assert_eq!(
+        get_results(10, 100),
+        Vec::<u64>::new(),
+        "should return empty set if asked for a tip"
+    );
+    assert_eq!(get_results(3, 100), &[10, 8, 5]);
+    assert_eq!(get_results(0, 100), &[10, 8, 5, 2]);
+    assert_eq!(
+        get_results(8, 100),
+        &[10],
+        "should return only tip if asked for a most recent switch block"
+    );
+    assert_eq!(
+        get_results(5, 100),
+        &[10, 8],
+        "should not include switch block that was directly requested"
+    );
 }
 
 #[test]

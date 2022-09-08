@@ -1709,6 +1709,11 @@ impl Block {
         )
     }
 
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_parent_hash(&mut self, hash: BlockHash) {
+        self.header.parent_hash = hash;
+    }
+
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(any(feature = "testing", test))]
     pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
@@ -1720,6 +1725,40 @@ impl Block {
         deploys_iter: I,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
+        let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
+        let finalized_block =
+            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
+        let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
+        let next_era_validator_weights = finalized_block
+            .clone()
+            .era_report
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
+
+        Block::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            finalized_block,
+            next_era_validator_weights,
+            protocol_version,
+        )
+        .expect("Could not create random block with specifics")
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_with_specifics_and_parent<'a, I: IntoIterator<Item = &'a Deploy>>(
+        rng: &mut TestRng,
+        era_id: EraId,
+        height: u64,
+        protocol_version: ProtocolVersion,
+        is_switch: bool,
+        deploys_iter: I,
+        parent_block: Option<&Block>,
+    ) -> Self {
+        let parent_hash = match parent_block {
+            Some(parent) => parent.hash().clone(),
+            None => BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
+        };
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         let finalized_block =
             FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
