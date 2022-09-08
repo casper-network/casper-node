@@ -1836,16 +1836,19 @@ where
     if let Some(block_execution_results_merkle_root_hash) = block_execution_results {
         let fetch_id = BlockEffectsOrChunkId::new(block_hash);
         let verify_chunk_fn = move |block_effects_or_chunk: &BlockEffectsOrChunk| {
-            block_effects_or_chunk.validate(block_execution_results_merkle_root_hash)
+            block_effects_or_chunk
+                .validate(block_execution_results_merkle_root_hash)
+                .map_err(|error| FetchBlockEffectsError::ChunkValidationError {
+                    block_hash,
+                    error: format!("{:?}", error),
+                })
         };
-        fetch_and_store_block_effects(block_header, fetch_id, ctx, Box::new(verify_chunk_fn))
-            .await?;
+        fetch_and_store_block_effects(block_header, fetch_id, ctx, &verify_chunk_fn).await?;
     } else {
         let fetch_id = BlockEffectsOrChunkId::legacy(block_hash);
         // Nothing to verify for legacy blocks.
-        let verify_chunk_fn = |value_or_chunk: &BlockEffectsOrChunk| -> bool { true };
-        fetch_and_store_block_effects(block_header, fetch_id, ctx, Box::new(verify_chunk_fn))
-            .await?;
+        let verify_chunk_fn = move |value_or_chunk: &BlockEffectsOrChunk| Ok(true);
+        fetch_and_store_block_effects(block_header, fetch_id, ctx, &verify_chunk_fn).await?;
     };
 
     Ok(())
@@ -1857,7 +1860,7 @@ async fn fetch_and_store_block_effects<REv>(
     block_header: &BlockHeader,
     fetch_id: BlockEffectsOrChunkId,
     ctx: &ChainSyncContext<'_, REv>,
-    validate_chunk_fn: Box<dyn Fn(&BlockEffectsOrChunk) -> bool>,
+    validate_chunk_fn: &(dyn Fn(&BlockEffectsOrChunk) -> Result<bool, FetchBlockEffectsError>),
 ) -> Result<(), Error>
 where
     REv:
@@ -1907,7 +1910,7 @@ async fn fetch_block_effects<REv>(
     ctx: &ChainSyncContext<'_, REv>,
     block_hash: BlockHash,
     fetch_id: BlockEffectsOrChunkId,
-    validate_chunk_fn: Box<dyn Fn(&BlockEffectsOrChunk) -> bool>,
+    validate_chunk_fn: &(dyn Fn(&BlockEffectsOrChunk) -> Result<bool, FetchBlockEffectsError>),
 ) -> Result<BlockEffectsFetchResult, FetchBlockEffectsError>
 where
     REv: From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest>,
@@ -1926,10 +1929,7 @@ where
             } => *effects_or_chunk,
         };
 
-    if !validate_chunk_fn(&effects_or_chunk) {
-        //
-        todo!("return error")
-    }
+    validate_chunk_fn(&effects_or_chunk)?;
 
     let chunk_with_proof = match effects_or_chunk.flatten() {
         ValueOrChunk::Value(block_effects) => {
@@ -1949,7 +1949,7 @@ where
     // Start from 1 because proof.index() == 0.
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
-        .map(|index| async move {
+        .map(move |index| async move {
             match fetch_retry_forever::<_, BlockEffectsOrChunk>(
                 &ctx,
                 fetch_id.next_chunk(index),
@@ -1960,10 +1960,7 @@ where
                     return Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage)
                 }
                 FetchedData::FromPeer { item, .. } => {
-                    // if !validate_chunk_fn(&*item) {
-                    //     //
-                    //     todo!("return error")
-                    // }
+                    validate_chunk_fn(&*item)?;
                     match item.flatten() {
                         ValueOrChunk::Value(_) =>
                             return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer(block_hash)),

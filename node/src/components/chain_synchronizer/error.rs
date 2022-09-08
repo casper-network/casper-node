@@ -248,6 +248,12 @@ pub(crate) enum FetchBlockEffectsError {
 
     #[error("Missing block in storage when syncing block effects: {0}")]
     MissingBlock(BlockHash),
+
+    #[error("Failed to validate chunk for block {block_hash} when syncing: {error}")]
+    ChunkValidationError {
+        block_hash: BlockHash,
+        error: String,
+    },
 }
 
 impl From<bytesrepr::Error> for FetchBlockEffectsError {
