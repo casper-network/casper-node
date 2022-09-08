@@ -69,6 +69,8 @@ pub fn execute_finalized_block(
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
 
+    // WARNING: Do not change the order of `deploys` and `transfers` as it will result in a
+    // different root hash.
     for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();

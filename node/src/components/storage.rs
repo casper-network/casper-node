@@ -41,7 +41,7 @@ mod tests;
 use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
-    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, mem,
@@ -85,6 +85,7 @@ use crate::{
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
         BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId,
+        ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -769,8 +770,8 @@ impl Storage {
                     )
                     .ignore()
             }
-            StorageRequest::GetExecutionResults {
-                block_hash,
+            StorageRequest::GetBlockEffectsOrChunk {
+                id: request,
                 responder,
             } => {
                 // There's no mapping between block_hash -> execution results.
@@ -783,7 +784,7 @@ impl Storage {
                 // we're interested in.
                 let mut txn = self.env.begin_rw_txn()?;
                 let block_header: BlockHeader =
-                    match self.get_single_block_header(&mut txn, &*block_hash)? {
+                    match self.get_single_block_header(&mut txn, request.block_hash())? {
                         Some(block_header) => block_header,
                         None => return Ok(responder.respond(None).ignore()),
                     };
@@ -800,7 +801,7 @@ impl Storage {
                     }
                 };
 
-                let mut execution_results = HashMap::new();
+                let mut execution_results = vec![];
                 for deploy_hash in block_body.transaction_hashes() {
                     match self.get_deploy_metadata(&mut txn, &deploy_hash)? {
                         None => {
@@ -810,9 +811,9 @@ impl Storage {
                             return Ok(responder.respond(None).ignore());
                         }
                         Some(metadata) => {
-                            match metadata.execution_results.remove(&*block_hash) {
+                            match metadata.execution_results.remove(request.block_hash()) {
                                 Some(results) => {
-                                    execution_results.insert(*deploy_hash, results);
+                                    execution_results.push(results);
                                 }
                                 None => {
                                     // We have the block, we've got the deploy but its metadata
@@ -820,7 +821,7 @@ impl Storage {
                                     // This is an error b/c even though types seem to allow for a
                                     // single deploy map to multiple blocks, it shouldn't happen in
                                     // practice.
-                                    error!(?block_hash, ?deploy_hash, "missing execution results for a deploy in particular block");
+                                    error!(block_hash=?request.block_hash(), ?deploy_hash, "missing execution results for a deploy in particular block");
                                     return Ok(responder.respond(None).ignore());
                                 }
                             }
@@ -828,7 +829,13 @@ impl Storage {
                     }
                 }
 
-                responder.respond(Some(execution_results)).ignore()
+                // TODO: get rid of unwrap
+                let value_or_chunk =
+                    ValueOrChunk::new(execution_results, request.chunk_index()).unwrap();
+
+                responder
+                    .respond(Some(request.response(value_or_chunk)))
+                    .ignore()
             }
             StorageRequest::PutExecutionResults {
                 block_hash,

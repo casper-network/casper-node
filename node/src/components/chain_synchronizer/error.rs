@@ -238,9 +238,9 @@ pub(crate) enum FetchBlockEffectsError {
     /// somehow.
     #[error(
         "BlockEffects was being fetched from peers by chunks but it was retrieved whole \
-         by a peer somehow. Block hash: {block_hash:?}"
+         by a peer somehow. Block hash: {0}"
     )]
-    BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash: BlockHash },
+    BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer(BlockHash),
 
     /// Deserialization error.
     #[error("Failed to deserialize chunks into Vec<ExecutionResult>: {0}")]

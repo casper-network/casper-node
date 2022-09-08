@@ -190,7 +190,7 @@ impl Display for TrieRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) enum BlockEffectsRequest {
     BlockEffectsLegacyRequest(Vec<u8>),
-    // BlockEffectsRequest(Vec<u8>),
+    BlockEffectsRequest(Vec<u8>),
 }
 
 impl Display for BlockEffectsRequest {
@@ -199,10 +199,17 @@ impl Display for BlockEffectsRequest {
             BlockEffectsRequest::BlockEffectsLegacyRequest(serialized_request) => {
                 write!(
                     f,
+                    "request for legacy block effects: {}",
+                    BlockEffectsOrChunkIdDisplay(&serialized_request)
+                )
+            }
+            BlockEffectsRequest::BlockEffectsRequest(serialized_request) => {
+                write!(
+                    f,
                     "request for block effects: {}",
                     BlockEffectsOrChunkIdDisplay(&serialized_request)
                 )
-            } // BlockEffectsRequest::BlockEffectsRequest(_) => todo!(),
+            }
         }
     }
 }
@@ -270,7 +277,16 @@ impl Display for NetResponse {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) enum BlockEffectsResponse {
     BlockEffectsResponseLegacy(Vec<u8>),
-    // BLockEffectsResponse(Vec<u8>)
+    BLockEffectsResponse(Vec<u8>),
+}
+
+impl BlockEffectsResponse {
+    pub(crate) fn message(&self) -> &Vec<u8> {
+        match self {
+            BlockEffectsResponse::BlockEffectsResponseLegacy(msg)
+            | BlockEffectsResponse::BLockEffectsResponse(msg) => msg,
+        }
+    }
 }
 
 impl Display for BlockEffectsResponse {
@@ -278,6 +294,9 @@ impl Display for BlockEffectsResponse {
         match self {
             BlockEffectsResponse::BlockEffectsResponseLegacy(_) => {
                 write!(f, "block effects legacy response")
+            }
+            BlockEffectsResponse::BLockEffectsResponse(_) => {
+                write!(f, "block effects response")
             }
         }
     }

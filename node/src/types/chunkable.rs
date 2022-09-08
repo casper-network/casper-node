@@ -62,3 +62,11 @@ impl Chunkable for &Vec<ExecutionResult> {
         Ok(Cow::Owned((*self).to_bytes()?))
     }
 }
+
+impl Chunkable for Vec<ExecutionResult> {
+    type Error = bytesrepr::Error;
+
+    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+        Ok(Cow::Owned((*self).to_bytes()?))
+    }
+}

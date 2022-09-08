@@ -49,11 +49,12 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockEffectsOrChunk, BlockEffectsOrChunkId,
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo,
+        ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -386,12 +387,12 @@ pub(crate) enum StorageRequest {
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
-    GetExecutionResults {
-        /// Hash of block.
-        block_hash: Box<BlockHash>,
+    GetBlockEffectsOrChunk {
+        /// Request ID.
+        id: BlockEffectsOrChunkId,
         /// Responder to call with the execution results.
         /// None is returned when we don't have the block in the storage.
-        responder: Responder<Option<HashMap<DeployHash, ExecutionResult>>>,
+        responder: Responder<Option<BlockEffectsOrChunk>>,
     },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
@@ -552,8 +553,8 @@ impl Display for StorageRequest {
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
-            StorageRequest::GetExecutionResults { block_hash, .. } => {
-                write!(formatter, "get execution results for {}", block_hash)
+            StorageRequest::GetBlockEffectsOrChunk { id, .. } => {
+                write!(formatter, "get execution results for {}", id)
             }
 
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {

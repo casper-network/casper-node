@@ -1831,12 +1831,21 @@ where
     let block_execution_results =
         read_block_execution_results_root_hash(&block_header, ctx).await?;
 
+    let block_hash = block_header.hash();
+
     if let Some(block_execution_results_merkle_root_hash) = block_execution_results {
-        let fetch_id = BlockEffectsOrChunkId::new(block_execution_results_merkle_root_hash);
-        fetch_and_store_block_effects(block_header, fetch_id, ctx).await?;
+        let fetch_id = BlockEffectsOrChunkId::new(block_hash);
+        let verify_chunk_fn = move |block_effects_or_chunk: &BlockEffectsOrChunk| {
+            block_effects_or_chunk.validate(block_execution_results_merkle_root_hash)
+        };
+        fetch_and_store_block_effects(block_header, fetch_id, ctx, Box::new(verify_chunk_fn))
+            .await?;
     } else {
-        let fetch_id = BlockEffectsOrChunkId::legacy(block_header.hash());
-        fetch_and_store_block_effects(block_header, fetch_id, ctx).await?;
+        let fetch_id = BlockEffectsOrChunkId::legacy(block_hash);
+        // Nothing to verify for legacy blocks.
+        let verify_chunk_fn = |value_or_chunk: &BlockEffectsOrChunk| -> bool { true };
+        fetch_and_store_block_effects(block_header, fetch_id, ctx, Box::new(verify_chunk_fn))
+            .await?;
     };
 
     Ok(())
@@ -1848,13 +1857,15 @@ async fn fetch_and_store_block_effects<REv>(
     block_header: &BlockHeader,
     fetch_id: BlockEffectsOrChunkId,
     ctx: &ChainSyncContext<'_, REv>,
+    validate_chunk_fn: Box<dyn Fn(&BlockEffectsOrChunk) -> bool>,
 ) -> Result<(), Error>
 where
     REv:
         From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + From<StorageRequest>,
 {
     let block_hash = block_header.hash();
-    let fetched_block_effects = fetch_block_effects(&ctx, block_hash, fetch_id).await?;
+    let fetched_block_effects =
+        fetch_block_effects(&ctx, block_hash, fetch_id, validate_chunk_fn).await?;
     match fetched_block_effects {
         AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
         AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
@@ -1865,7 +1876,8 @@ where
             {
                 None => {
                     // We failed to find the block (body) for `block_hash` in the local storage.
-                    // We can't zip execution results with deploy hashes b/c we don't know the latter.
+                    // We can't zip execution results with deploy hashes b/c we don't know the
+                    // latter.
                     error!(?block_hash, "missing block body for block hash in storage");
                     Err(Error::FetchBlockEffects(
                         FetchBlockEffectsError::MissingBlock(block_hash),
@@ -1895,6 +1907,7 @@ async fn fetch_block_effects<REv>(
     ctx: &ChainSyncContext<'_, REv>,
     block_hash: BlockHash,
     fetch_id: BlockEffectsOrChunkId,
+    validate_chunk_fn: Box<dyn Fn(&BlockEffectsOrChunk) -> bool>,
 ) -> Result<BlockEffectsFetchResult, FetchBlockEffectsError>
 where
     REv: From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest>,
@@ -1902,9 +1915,7 @@ where
     //TODO: The code that follows could probably be generalized with what we do for `TrieOrChunk`.
     // Although, there, `TrieOrChunk` is direct alias for `ValueOrChunk` which we CANNOT do here
     // b/c in the `ChunkWithProof` enum variant there would be no information about what piece of
-    // data (which block) that chunk refers to. See `Item` implementation for
-    // `BlockEffectsOrChunk`. If we can't compute `id` we won't be able to look up the requesting
-    // process in the `Fetcher`.
+    // data (which block) that chunk refers to.
 
     let effects_or_chunk =
         match fetch_retry_forever::<_, BlockEffectsOrChunk>(&ctx, fetch_id).await? {
@@ -1914,21 +1925,17 @@ where
                 ..
             } => *effects_or_chunk,
         };
-    let chunk_with_proof = match effects_or_chunk {
-        BlockEffectsOrChunk::BlockEffectsLegacy {
-            block_hash: _,
-            value: ValueOrChunk::Value(block_effects),
-        }
-        | BlockEffectsOrChunk::BlockEffects(ValueOrChunk::Value(block_effects)) => {
+
+    if !validate_chunk_fn(&effects_or_chunk) {
+        //
+        todo!("return error")
+    }
+
+    let chunk_with_proof = match effects_or_chunk.flatten() {
+        ValueOrChunk::Value(block_effects) => {
             return Ok(BlockEffectsFetchResult::Downloaded(block_effects))
         }
-        BlockEffectsOrChunk::BlockEffectsLegacy {
-            block_hash: _,
-            value: ValueOrChunk::ChunkWithProof(chunk_with_proof),
-        }
-        | BlockEffectsOrChunk::BlockEffects(ValueOrChunk::ChunkWithProof(chunk_with_proof)) => {
-            chunk_with_proof
-        }
+        ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
     };
 
     debug_assert!(
@@ -1952,24 +1959,21 @@ where
                 FetchedData::FromStorage { .. } => {
                     return Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage)
                 }
-                FetchedData::FromPeer { item, .. } => match *item {
-                    BlockEffectsOrChunk::BlockEffectsLegacy { block_hash, value } => match value {
-                        ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash }),
+                FetchedData::FromPeer { item, .. } => {
+                    // if !validate_chunk_fn(&*item) {
+                    //     //
+                    //     todo!("return error")
+                    // }
+                    match item.flatten() {
+                        ValueOrChunk::Value(_) =>
+                            return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer(block_hash)),
                         ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
                             let index = chunk_with_proof.proof().index();
                             let chunk = chunk_with_proof.into_chunk();
                             Ok((index, chunk))
                         }
-                    },
-                    BlockEffectsOrChunk::BlockEffects(value) => match value {
-                        ValueOrChunk::Value(_) => return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer { block_hash }),
-                        ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
-                            let index = chunk_with_proof.proof().index();
-                            let chunk = chunk_with_proof.into_chunk();
-                            Ok((index, chunk))
-                        }
-                    },
-                },
+                    }
+                }
             }
         })
         // Do not try to fetch all of the chunks at once; only fetch at most

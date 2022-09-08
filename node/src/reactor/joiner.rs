@@ -615,6 +615,7 @@ impl reactor::Reactor for Reactor {
         let block_and_deploys_fetcher = fetcher_builder.build("block_and_deploys")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
+        let block_effects_fetcher = fetcher_builder.build("block_effects")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
@@ -650,6 +651,7 @@ impl reactor::Reactor for Reactor {
                 block_header_by_hash_fetcher,
                 block_headers_batch_fetcher,
                 finality_signatures_fetcher,
+                block_effects_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
                 block_and_deploys_fetcher,
                 trie_or_chunk_fetcher,

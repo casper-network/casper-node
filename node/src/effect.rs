@@ -1364,24 +1364,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Reads the execution results from the storage for particular `block_hash`.
-    pub(crate) async fn get_execution_results_from_storage(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<HashMap<DeployHash, ExecutionResult>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetExecutionResults {
-                block_hash: Box::new(block_hash),
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested deploys from the deploy store.
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
@@ -2216,15 +2198,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Reads block effects (or chunk) from ContractRuntime component.
+    /// Reads block effects (or chunk) from Storage component.
     pub(crate) async fn get_block_effects_or_chunk(
         &self,
         id: BlockEffectsOrChunkId,
-    ) -> Result<Option<BlockEffectsOrChunk>, ContractRuntimeError>
+    ) -> Option<BlockEffectsOrChunk>
     where
-        REv: From<ContractRuntimeRequest>,
+        REv: From<StorageRequest>, // TODO: Extract to a separate component for caching.
     {
-        todo!()
+        self.make_request(
+            |responder| StorageRequest::GetBlockEffectsOrChunk { id, responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Reads deploy hashes for a specific block from the storage.

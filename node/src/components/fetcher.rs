@@ -737,13 +737,7 @@ impl ItemFetcher<BlockEffectsOrChunk> for Fetcher<BlockEffectsOrChunk> {
         responder: FetchResponder<BlockEffectsOrChunk>,
     ) -> Effects<Event<BlockEffectsOrChunk>> {
         async move {
-            let maybe_block_effects = match effect_builder.get_block_effects_or_chunk(id).await {
-                Ok(maybe_block_effects) => maybe_block_effects,
-                Err(error) => {
-                    error!(?error, "get_block_effects");
-                    None
-                }
-            };
+            let maybe_block_effects = effect_builder.get_block_effects_or_chunk(id).await;
             Event::GetFromStorageResult {
                 id,
                 peer,

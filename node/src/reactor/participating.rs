@@ -1480,6 +1480,16 @@ impl reactor::Reactor for Reactor {
                     &message.0,
                 )
             }
+            ParticipatingEvent::BlockEffectsResponseIncoming(BlockEffectsResponseIncoming {
+                sender,
+                message,
+            }) => reactor::handle_fetch_response::<Self, BlockEffectsOrChunk>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                &message.message(),
+            ),
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
                 self.linear_chain
@@ -1498,16 +1508,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::BlockEffectsRequestIncoming(request) => {
                 todo!("should be routed to Storage as it's the component that can answer requests for block effects")
             }
-            ParticipatingEvent::BlockEffectsResponseIncoming(BlockEffectsResponseIncoming {
-                sender,
-                message,
-            }) => reactor::handle_fetch_response::<Self, BlockEffectsOrChunk>(
-                self,
-                effect_builder,
-                rng,
-                sender,
-                &message.0,
-            ),
         }
     }
 

@@ -241,11 +241,11 @@ where
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
+        + From<TrieResponseIncoming>
         + From<TrieRequestIncoming>
         + From<BlockEffectsRequestIncoming>
         + From<BlockEffectsResponseIncoming>
         + From<TrieDemand>
-        + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
     // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) ->
