@@ -8,7 +8,7 @@ use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp, U512};
 use tracing::error;
 
-use crate::types::{Block, BlockAdded, BlockHash, DeployHash, FinalitySignature, NodeId};
+use crate::types::{BlockAdded, BlockHash, DeployHash, FinalitySignature, NodeId};
 
 /// given a block hash we fetch
 ///     * block,

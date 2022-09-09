@@ -29,8 +29,7 @@ use tracing::{error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Signature, StoredValue, Timestamp,
-    U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, StoredValue, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{
@@ -55,7 +54,7 @@ use crate::{
     },
     utils::{ds, DisplayIter},
 };
-pub use block_added::BlockAdded;
+pub(crate) use block_added::{BlockAdded, BlockAddedValidationError};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();

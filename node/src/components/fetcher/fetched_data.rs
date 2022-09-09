@@ -1,7 +1,9 @@
+use std::fmt::{self, Display, Formatter};
+
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::types::NodeId;
+use crate::types::{FetcherItem, NodeId};
 
 #[derive(Clone, DataSize, Debug, PartialEq, Serialize)]
 pub(crate) enum FetchedData<T> {
@@ -20,6 +22,19 @@ impl<T> FetchedData<T> {
         FetchedData::FromPeer {
             item: Box::new(item),
             peer,
+        }
+    }
+}
+
+impl<T: FetcherItem> Display for FetchedData<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            FetchedData::FromStorage { item } => {
+                write!(f, "fetched {} from storage", item.id())
+            }
+            FetchedData::FromPeer { item, peer } => {
+                write!(f, "fetched {} from {}", item.id(), peer)
+            }
         }
     }
 }

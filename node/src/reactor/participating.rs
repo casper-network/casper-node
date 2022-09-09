@@ -21,6 +21,7 @@ use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
+        blocks_accumulator::{self, BlocksAccumulator},
         chain_synchronizer::{self, ChainSynchronizer},
         chainspec_loader::{self, ChainspecLoader},
         complete_block_synchronizer::{self, CompleteBlockSynchronizer},
@@ -321,10 +322,11 @@ pub(crate) struct Reactor {
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent, // TODO: Maybe redundant.
     chain_synchronizer: ChainSynchronizer<ParticipatingEvent>, // TODO: To be removed.
+    blocks_accumulator: BlocksAccumulator,
     complete_block_synchronizer: CompleteBlockSynchronizer,
-    diagnostics_port: DiagnosticsPort,
 
     // Non-components.
+    diagnostics_port: DiagnosticsPort,
     metrics: Metrics,
     #[data_size(skip)] // Never allocates heap data.
     memory_metrics: MemoryMetrics,
@@ -616,9 +618,10 @@ impl Reactor {
             chain_synchronizer_effects,
         ));
 
-        // one and done
         let fetchinator = Fetchinator::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
+        let blocks_accumulator =
+            BlocksAccumulator::new(chainspec.highway_config.finality_threshold_fraction);
         let complete_block_synchronizer = CompleteBlockSynchronizer::new(
             config.complete_block_synchronizer,
             chainspec.highway_config.finality_threshold_fraction,
@@ -656,6 +659,7 @@ impl Reactor {
             block_validator,
             linear_chain,
             chain_synchronizer,
+            blocks_accumulator,
             complete_block_synchronizer,
             diagnostics_port,
             metrics,
@@ -760,6 +764,11 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChain(event) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlocksAccumulator(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlocksAccumulator,
+                self.blocks_accumulator
+                    .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::CompleteBlockSynchronizer(event) => reactor::wrap_effects(
                 ParticipatingEvent::CompleteBlockSynchronizer,

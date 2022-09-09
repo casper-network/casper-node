@@ -26,11 +26,12 @@ pub use available_block_range::AvailableBlockRange;
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockAndDeploys, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
-    FinalizedBlock, BlockAdded,
+    FinalizedBlock,
 };
 pub(crate) use block::{
-    BlockHashAndHeight, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-    BlockPayload, BlockWithMetadata, FinalitySignatureId, SyncLeap,
+    BlockAdded, BlockAddedValidationError, BlockHashAndHeight, BlockHeaderWithMetadata,
+    BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockWithMetadata, FinalitySignatureId,
+    SyncLeap,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};

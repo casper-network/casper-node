@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::effect::incoming::{BlockAddedRequestIncoming, BlockAddedResponseIncoming};
 use crate::{
     components::{
-        block_proposer, block_validator, chain_synchronizer, chainspec_loader,
+        block_proposer, block_validator, blocks_accumulator, chain_synchronizer, chainspec_loader,
         complete_block_synchronizer::{self, CompleteBlockSyncRequest},
         consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
         fetcher, gossiper, linear_chain, rest_server, rpc_server,
@@ -110,6 +110,8 @@ pub(crate) enum ParticipatingEvent {
     SyncLeapFetcher(#[serde(skip_serializing)] fetcher::Event<SyncLeap>),
     #[from]
     BlockAddedFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAdded>),
+    #[from]
+    BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
     #[from]
     CompleteBlockSynchronizer(#[serde(skip_serializing)] complete_block_synchronizer::Event),
 
@@ -359,6 +361,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
             }
+            ParticipatingEvent::BlocksAccumulator(_) => "BlocksAccumulator",
             ParticipatingEvent::CompleteBlockSynchronizer(_) => "CompleteBlockSynchronizer",
             ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
                 "CompleteBlockSynchronizerRequest"
@@ -478,6 +481,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::BlockAddedFetcher(event) => {
                 write!(f, "block added fetcher: {}", event)
+            }
+            ParticipatingEvent::BlocksAccumulator(event) => {
+                write!(f, "blocks accumulator: {}", event)
             }
             ParticipatingEvent::CompleteBlockSynchronizer(event) => {
                 write!(f, "complete block synchronizer: {}", event)

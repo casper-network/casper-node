@@ -28,7 +28,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, BlockAdded, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
+    types::{BlockAdded, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
 };
 
 /// Reactor message.

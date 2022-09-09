@@ -13,7 +13,6 @@ use casper_types::bytesrepr::ToBytes;
 use casper_types::{bytesrepr, Key, StoredValue};
 
 use super::{Block, BlockHash};
-use crate::types::error::BlockCreationError;
 use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
@@ -23,7 +22,7 @@ use crate::{
 /// An error that can arise when validating a `BlockAdded`.
 #[derive(Error, Debug, Serialize)]
 #[non_exhaustive]
-pub enum BlockAddedValidationError {
+pub(crate) enum BlockAddedValidationError {
     /// The key provided in the proof is not a `Key::ChecksumRegistry`.
     #[error("key provided in proof is not a Key::ChecksumRegistry")]
     InvalidKeyType,
@@ -61,7 +60,7 @@ pub enum BlockAddedValidationError {
 
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BlockAdded {
+pub(crate) struct BlockAdded {
     /// The block.
     pub block: Block,
     /// The set of all deploys' finalized approvals in the order in which they appear in the block.
@@ -131,6 +130,8 @@ impl FetcherItem for BlockAdded {
             });
         }
 
+        todo!("memoize this");
+
         Ok(())
     }
 }
@@ -148,7 +149,3 @@ impl Display for BlockAdded {
         write!(f, "block added: {}", self.block.hash())
     }
 }
-
-// on receipt of gossiped ^
-// * check if we have the deploys - if we do, add the finalized approvals to storage
-// * if missing deploy, fetch deploy and store

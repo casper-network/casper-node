@@ -16,7 +16,7 @@ use casper_types::PublicKey;
 use crate::{
     components::Component,
     effect::{announcements::BlocklistAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, FinalitySignature, NodeId},
+    types::{BlockAdded, BlockHash, FetcherItem, FinalitySignature, NodeId},
     NodeRng,
 };
 
@@ -49,25 +49,29 @@ impl BlocksAccumulator {
         }
     }
 
-    fn handle_block<REv>(
+    fn handle_block_added<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: Block,
+        block_added: BlockAdded,
         sender: NodeId,
     ) -> Effects<Event>
     where
         REv: Send + From<BlocklistAnnouncement>,
     {
-        let block_hash = *block.hash();
+        // TODO
+        // * check if we have the deploys - if we do, add the finalized approvals to storage
+        // * if missing deploy, fetch deploy and store
+
+        let block_hash = *block_added.block.hash();
         let has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                if let Err(err) = block.verify() {
+                if let Err(err) = block_added.validate(&()) {
                     warn!(%err, "received invalid block");
                     return effect_builder
                         .announce_disconnect_from_peer(sender)
                         .ignore();
                 }
-                match BlockAcceptor::new_from_block_added(block) {
+                match BlockAcceptor::new_from_block_added(block_added) {
                     Ok(block_acceptor) => entry.insert(block_acceptor),
                     Err(_error) => {
                         return effect_builder
@@ -79,7 +83,7 @@ impl BlocksAccumulator {
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
-                if let Err(_error) = accumulated_block.register_block(block) {
+                if let Err(_error) = accumulated_block.register_block(block_added) {
                     return Effects::new();
                 }
                 accumulated_block
@@ -261,7 +265,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::ReceivedBlock { block, sender } => {
-                self.handle_block(effect_builder, block, sender)
+                self.handle_block_added(effect_builder, block, sender)
             }
             Event::ReceivedFinalitySignature {
                 finality_signature,

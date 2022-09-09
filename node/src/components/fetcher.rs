@@ -28,7 +28,7 @@ use crate::{
     protocol::Message,
     types::{BlockHeader, BlockSignatures, FetcherItem, NodeId},
     utils::Source,
-    FetcherConfig, NodeRng,
+    NodeRng,
 };
 
 pub(crate) use config::Config;

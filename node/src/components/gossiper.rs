@@ -28,8 +28,8 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        Block, BlockAdded, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalitySignatureId, GossiperItem, Item, NodeId,
+        BlockAdded, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalitySignatureId, GossiperItem, Item, NodeId,
     },
     utils::Source,
     NodeRng,

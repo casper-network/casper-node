@@ -9,28 +9,28 @@ use casper_types::{EraId, PublicKey, U512};
 use super::{Error, SignaturesFinality};
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature},
+    types::{BlockAdded, BlockHash, BlockSignatures, FetcherItem, FinalitySignature},
 };
 
 #[derive(DataSize, Debug)]
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
-    block: Option<Block>,
+    block_added: Option<BlockAdded>,
     era_id: EraId,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
 }
 
 impl BlockAcceptor {
-    pub(super) fn new_from_block_added(block: Block) -> Result<Self, Error> {
-        if let Err(error) = block.verify() {
-            warn!(%error, "received invalid block");
-            return Err(Error::InvalidBlock(error));
+    pub(super) fn new_from_block_added(block_added: BlockAdded) -> Result<Self, Error> {
+        if let Err(error) = block_added.validate(&()) {
+            warn!(%error, "received invalid block-added");
+            return Err(Error::InvalidBlockAdded(error));
         }
         Ok(Self {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            block: Some(block),
-            signatures: Default::default(),
+            block_hash: *block_added.block.hash(),
+            era_id: block_added.block.header().era_id(),
+            block_added: Some(block_added),
+            signatures: BTreeMap::default(),
         })
     }
 
@@ -48,7 +48,7 @@ impl BlockAcceptor {
         signatures.insert(finality_signature.public_key.clone(), finality_signature);
         Ok(Self {
             block_hash,
-            block: None,
+            block_added: None,
             era_id,
             signatures,
         })
@@ -62,7 +62,11 @@ impl BlockAcceptor {
         // TODO: What to do when we receive multiple valid finality_signature from single
         // public_key? TODO: What to do when we receive too many finality_signature from
         // single peer?
-        if let Some(block) = self.block.as_ref() {
+        if let Some(block) = self
+            .block_added
+            .as_ref()
+            .map(|block_added| &block_added.block)
+        {
             if block.header().era_id() != finality_signature.era_id {
                 warn!(block_hash = %block.hash(), "received finality signature with invalid era");
                 // We should not add this signature.
@@ -78,22 +82,23 @@ impl BlockAcceptor {
         Ok(())
     }
 
-    pub(super) fn register_block(&mut self, block: Block) -> Result<(), Error> {
-        if self.block.is_some() {
-            debug!(block_hash = %block.hash(), "received duplicate block");
+    pub(super) fn register_block(&mut self, block_added: BlockAdded) -> Result<(), Error> {
+        if self.block_added.is_some() {
+            debug!(block_hash = %block_added.block.hash(), "received duplicate block-added");
             return Ok(());
         }
 
-        if let Err(error) = block.verify() {
+        if let Err(error) = block_added.validate(&()) {
             warn!(%error, "received invalid block");
-            return Err(Error::InvalidBlock(error));
+            return Err(Error::InvalidBlockAdded(error));
         }
 
         // TODO: Maybe disconnect from senders of the incorrect signatures.
-        self.signatures
-            .retain(|_, finality_signature| finality_signature.era_id == block.header().era_id());
+        self.signatures.retain(|_, finality_signature| {
+            finality_signature.era_id == block_added.block.header().era_id()
+        });
 
-        self.block = Some(block);
+        self.block_added = Some(block_added);
         Ok(())
     }
 
