@@ -1,13 +1,11 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fs::{self, File},
     iter,
 };
 
-use lmdb::Transaction;
-use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
@@ -22,14 +20,12 @@ use super::{
     Storage,
 };
 use crate::{
-    components::{consensus::EraReport, storage::lmdb_ext::WriteTransactionExt},
     effect::{requests::StorageRequest, Multiple},
     storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockPayload, BlockSignatures, Deploy,
-        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedBlock,
+        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Deploy, DeployHash,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
     },
     utils::WithDir,
 };
@@ -63,7 +59,6 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
-        Ratio::new(1, 3),
     )
     .expect("could not create storage component fixture")
 }
@@ -85,7 +80,6 @@ fn storage_fixture_with_hard_reset(
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
-        Ratio::new(1, 3),
     )
     .expect("could not create storage component fixture")
 }
@@ -325,175 +319,6 @@ fn get_block_of_non_existing_block_returns_none() {
 
     assert!(response.is_none());
     assert!(harness.is_idle());
-}
-
-/// Creates a switch block immediately before block header.
-fn switch_block_for_block_header(
-    block_header: &BlockHeader,
-    validator_weights: BTreeMap<PublicKey, U512>,
-) -> Block {
-    let finalized_block = FinalizedBlock::new(
-        BlockPayload::new(vec![], vec![], vec![], false),
-        Some(EraReport {
-            equivocators: vec![],
-            rewards: BTreeMap::default(),
-            inactive_validators: vec![],
-        }),
-        block_header
-            .timestamp()
-            .checked_sub(1.into())
-            .expect("Time must not be epoch"),
-        block_header
-            .era_id()
-            .checked_sub(1)
-            .expect("EraId must not be 0"),
-        block_header
-            .height()
-            .checked_sub(1)
-            .expect("Height must not be 0"),
-        PublicKey::System,
-    );
-    Block::new(
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        finalized_block,
-        Some(validator_weights),
-        block_header.protocol_version(),
-    )
-    .expect("Could not create block")
-}
-
-#[test]
-fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
-    let mut harness = ComponentHarness::default();
-
-    let mut storage = storage_fixture(&harness);
-
-    // Create a random block, store and load it.
-    //
-    // We need the block to be of an era > 0.
-    let block = {
-        let era_id = EraId::from(harness.rng.gen_range(1..6));
-
-        // Height must be at least 1, otherwise it'll be rejected in
-        // `switch_block_for_block_header()`
-        let height = harness.rng.gen_range(1..10);
-
-        let is_switch = harness.rng.gen_bool(0.1);
-        Block::random_with_specifics(
-            &mut harness.rng,
-            era_id,
-            height,
-            ProtocolVersion::V1_0_0,
-            is_switch,
-            None,
-        )
-    };
-
-    let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
-
-    // Secret and Public Keys
-    let alice_secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
-    let alice_public_key = PublicKey::from(&alice_secret_key);
-    let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
-    let bob_public_key = PublicKey::from(&bob_secret_key);
-    {
-        let FinalitySignature {
-            public_key,
-            signature,
-            ..
-        } = FinalitySignature::new(
-            block.header().hash(),
-            block.header().era_id(),
-            &alice_secret_key,
-            alice_public_key.clone(),
-        );
-        block_signatures.insert_proof(public_key, signature);
-    }
-
-    {
-        let FinalitySignature {
-            public_key,
-            signature,
-            ..
-        } = FinalitySignature::new(
-            block.header().hash(),
-            block.header().era_id(),
-            &bob_secret_key,
-            bob_public_key.clone(),
-        );
-        block_signatures.insert_proof(public_key, signature);
-    }
-
-    let was_new = put_block(&mut harness, &mut storage, Box::new(block.clone()));
-    assert!(was_new, "putting block should have returned `true`");
-
-    let mut txn = storage
-        .env
-        .begin_rw_txn()
-        .expect("Could not start transaction");
-    let was_new = txn
-        .put_value(
-            storage.block_metadata_db,
-            &block.hash(),
-            &block_signatures,
-            true,
-        )
-        .expect("should put value into LMDB");
-    assert!(
-        was_new,
-        "putting block signatures should have returned `true`"
-    );
-    txn.commit().expect("Could not commit transaction");
-
-    {
-        let block_header = storage
-            .read_block_header_by_hash(block.hash())
-            .expect("should not throw exception")
-            .expect("should not be None");
-        assert_eq!(
-            block_header,
-            block.header().clone(),
-            "Should have retrieved expected block header"
-        );
-    }
-
-    let genesis_validator_weights: BTreeMap<PublicKey, U512> =
-        vec![(alice_public_key, 123.into()), (bob_public_key, 123.into())]
-            .into_iter()
-            .collect();
-    let switch_block = switch_block_for_block_header(block.header(), genesis_validator_weights);
-    let was_new = put_block(&mut harness, &mut storage, Box::new(switch_block));
-    assert!(was_new, "putting switch block should have returned `true`");
-    {
-        let block_header_with_metadata = storage
-            .read_block_header_and_sufficient_finality_signatures_by_height(block.header().height())
-            .expect("should not throw exception")
-            .expect("should not be None");
-        assert_eq!(
-            block_header_with_metadata.block_header,
-            block.header().clone(),
-            "Should have retrieved expected block header"
-        );
-        assert_eq!(
-            block_header_with_metadata.block_signatures, block_signatures,
-            "Should have retrieved expected block signatures"
-        );
-        let block_with_metadata = storage
-            .read_block_and_sufficient_finality_signatures_by_height(block.header().height())
-            .expect("should not throw exception")
-            .expect("should not be None");
-        assert_eq!(
-            block_with_metadata.block.header(),
-            block.header(),
-            "Should have retrieved expected block header"
-        );
-        assert_eq!(
-            block_with_metadata.finality_signatures, block_signatures,
-            "Should have retrieved expected block signatures"
-        );
-    }
 }
 
 #[test]
@@ -1231,7 +1056,6 @@ fn should_create_subdir_named_after_network() {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
-        Ratio::new(1, 3),
     )
     .unwrap();
 

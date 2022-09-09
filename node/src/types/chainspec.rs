@@ -110,6 +110,11 @@ impl Chainspec {
         Digest::hash(&serialized_chainspec)
     }
 
+    /// Returns true if this chainspec has an activation_point specifying era ID 0.
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.protocol_config.activation_point.is_genesis()
+    }
+
     /// Returns the protocol version of the chainspec.
     pub(crate) fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_config.version

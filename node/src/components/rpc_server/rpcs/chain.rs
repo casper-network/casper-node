@@ -159,14 +159,14 @@ impl RpcWithOptionalParams for GetBlock {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let BlockWithMetadata {
             block,
-            finality_signatures,
+            block_signatures,
         } = get_block_with_metadata(
             maybe_block_id,
             only_from_available_block_range,
             effect_builder,
         )
         .await?;
-        let json_block = JsonBlock::new(block, Some(finality_signatures));
+        let json_block = JsonBlock::new(block, Some(block_signatures));
 
         // Return the result.
         let result = Self::ResponseResult {

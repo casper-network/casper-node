@@ -7,12 +7,8 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr, crypto, EraId};
 
 use super::lmdb_ext::LmdbExtError;
-use crate::{
-    components::consensus::error::FinalitySignatureError,
-    types::{
-        error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
-        DeployHash,
-    },
+use crate::types::{
+    error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
 };
 
 /// A fatal storage component error.
@@ -124,9 +120,6 @@ pub enum FatalStorageError {
     /// Switch block does not contain era end.
     #[error("switch block does not contain era end: {0:?}")]
     InvalidSwitchBlock(Box<BlockHeader>),
-    /// Insufficient or wrong finality signatures.
-    #[error(transparent)]
-    FinalitySignature(#[from] FinalitySignatureError),
     /// A block body was found to have more parts than expected.
     #[error(
         "Found an unexpected part of a block body in the database: \

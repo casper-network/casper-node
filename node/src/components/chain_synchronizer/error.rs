@@ -13,14 +13,16 @@ use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{
-        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError,
+        contract_runtime::BlockExecutionError, fetcher::FetcherError, linear_chain,
+        linear_chain::BlockSignatureError,
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, Item,
     },
 };
+
+use super::operations::FetchWithRetryError;
 
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
@@ -30,6 +32,9 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         engine_state::Error,
     ),
+
+    #[error(transparent)]
+    LinearChain(#[from] linear_chain::Error),
 
     #[error(
         "trusted header is from before the last upgrade and isn't the last header before \
@@ -44,11 +49,18 @@ pub(crate) enum Error {
         activation_point: EraId,
     },
 
-    #[error("cannot get switch block for era: {era_id}")]
-    NoSwitchBlockForEra { era_id: EraId },
+    #[error("no blocks have been found in storage (should provide recent trusted hash)")]
+    NoBlocksInStorage,
 
-    #[error("switch block at height {height} for era {era_id} contains no validator weights")]
-    MissingNextEraValidators { height: u64, era_id: EraId },
+    #[error(
+        "configured trusted block is different from the stored block at the same height \
+         configured block header: {config_header:?}, \
+         stored block header: {stored_header_at_same_height:?}"
+    )]
+    TrustedHeaderOnDifferentFork {
+        config_header: Box<BlockHeader>,
+        stored_header_at_same_height: Box<BlockHeader>,
+    },
 
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
@@ -93,7 +105,7 @@ pub(crate) enum Error {
     FinalitySignatures(
         #[from]
         #[serde(skip_serializing)]
-        FinalitySignatureError,
+        BlockSignatureError,
     ),
 
     #[error(transparent)]
@@ -164,6 +176,12 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         AcquireError,
     ),
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
+
+    #[error(transparent)]
+    FetchAndStoreBlockError(#[from] super::operations::FetchAndStoreBlockError),
 }
 
 #[derive(Error, Debug)]
@@ -185,6 +203,50 @@ pub(crate) enum FetchTrieError {
          by a peer somehow. Trie digest: {digest:?}"
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
+}
+
+impl<T> From<FetchWithRetryError<T>> for FetchTrieError
+where
+    FetchTrieError: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => FetchTrieError::AttemptsExhausted,
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
+}
+
+impl<T> From<FetchWithRetryError<T>> for FetchBlockHeadersBatchError
+where
+    FetchBlockHeadersBatchError: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => {
+                FetchBlockHeadersBatchError::AttemptsExhausted
+            }
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
+}
+
+impl<T> From<FetchWithRetryError<T>> for Error
+where
+    Error: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => Error::AttemptsExhausted,
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -195,4 +257,7 @@ pub(crate) enum FetchBlockHeadersBatchError {
 
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
 }

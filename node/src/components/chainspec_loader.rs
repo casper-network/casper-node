@@ -26,21 +26,33 @@ use serde::{Deserialize, Serialize};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{file_utils, EraId, ProtocolVersion};
+use casper_execution_engine::core::engine_state::{
+    self, ChainspecRegistry, GenesisSuccess, UpgradeConfig, UpgradeSuccess,
+};
+use casper_types::{bytesrepr, crypto::PublicKey, file_utils, EraId, ProtocolVersion, Timestamp};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::Component,
+    components::{
+        consensus::EraReport,
+        contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState},
+        Component,
+    },
     effect::{
-        announcements::ChainspecLoaderAnnouncement, requests::ChainspecLoaderRequest,
+        announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, MarkBlockCompletedRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
     reactor::ReactorExit,
-    storage::StorageRequest,
     types::{
         chainspec::{ChainspecRawBytes, Error, ProtocolConfig, CHAINSPEC_FILENAME},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecInfo, ExitCode,
+        FinalizedBlock,
     },
     utils::Loadable,
     NodeRng,
@@ -53,7 +65,19 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) enum Event {
     /// The result of getting the highest block from storage.
     Initialize {
-        maybe_highest_block: Option<Box<BlockHeader>>,
+        maybe_highest_block_header: Option<Box<BlockHeader>>,
+    },
+    /// The result of contract runtime running the genesis process.
+    CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
+    /// The result of contract runtime running the upgrade process.
+    UpgradeResult {
+        previous_block_header: Box<BlockHeader>,
+        #[serde(skip_serializing)]
+        upgrade_result: Result<UpgradeSuccess, engine_state::Error>,
+    },
+    ExecuteImmediateSwitchBlockResult {
+        #[serde(skip_serializing)]
+        result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     },
     #[from]
     Request(ChainspecLoaderRequest),
@@ -67,14 +91,27 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Initialize {
-                maybe_highest_block,
+                maybe_highest_block_header,
             } => {
                 write!(
                     formatter,
-                    "initialize(maybe_highest_block: {})",
-                    maybe_highest_block
+                    "initialize(maybe_highest_block_header: {})",
+                    maybe_highest_block_header
                         .as_ref()
-                        .map_or_else(|| "None".to_string(), |block| block.to_string())
+                        .map_or_else(|| "None".to_string(), |header| header.to_string())
+                )
+            }
+            Event::CommitGenesisResult(result) => {
+                write!(formatter, "commit genesis result: {:?}", result)
+            }
+            Event::UpgradeResult { upgrade_result, .. } => {
+                write!(formatter, "upgrade result: {:?}", upgrade_result)
+            }
+            Event::ExecuteImmediateSwitchBlockResult { result } => {
+                write!(
+                    formatter,
+                    "execute immediate switch block result = {:?}",
+                    result
                 )
             }
             Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
@@ -142,6 +179,7 @@ pub(crate) struct ChainspecLoader {
     root_dir: PathBuf,
     reactor_exit: Option<ReactorExit>,
     next_upgrade: Option<NextUpgrade>,
+    maybe_immediate_switch_block_data: Option<BlockAndExecutionEffects>,
 }
 
 impl ChainspecLoader {
@@ -206,6 +244,7 @@ impl ChainspecLoader {
                 root_dir,
                 reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
                 next_upgrade: None,
+                maybe_immediate_switch_block_data: None,
             };
             return (chainspec_loader, Effects::new());
         }
@@ -229,8 +268,8 @@ impl ChainspecLoader {
         } else {
             effect_builder
                 .get_highest_block_header_from_storage()
-                .event(|highest_block| Event::Initialize {
-                    maybe_highest_block: highest_block.map(Box::new),
+                .event(|highest_block_header| Event::Initialize {
+                    maybe_highest_block_header: highest_block_header.map(Box::new),
                 })
         };
 
@@ -249,6 +288,7 @@ impl ChainspecLoader {
             root_dir,
             reactor_exit,
             next_upgrade,
+            maybe_immediate_switch_block_data: None,
         };
 
         (chainspec_loader, effects)
@@ -256,25 +296,111 @@ impl ChainspecLoader {
 
     fn handle_initialize<REv>(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
-        maybe_highest_block: Option<Box<BlockHeader>>,
+        effect_builder: EffectBuilder<REv>,
+        maybe_highest_block_header: Option<Box<BlockHeader>>,
     ) -> Effects<Event>
     where
-        REv: Send,
+        REv: From<Event> + From<ContractRuntimeRequest> + Send,
     {
-        self.reactor_exit = Some(
-            Self::should_exit_for_upgrade(
-                maybe_highest_block,
-                self.next_upgrade_activation_point(),
-            )
-            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
-            .unwrap_or(ReactorExit::ProcessShouldContinue),
+        // Check if we're not running a version that's already outdated - if it is, we should exit
+        // and upgrade.
+        if Self::should_exit_for_upgrade(
+            maybe_highest_block_header.as_deref(),
+            self.next_upgrade_activation_point(),
+        ) {
+            self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Success));
+            return Effects::new();
+        }
+
+        match maybe_highest_block_header {
+            Some(header)
+                if self
+                    .chainspec
+                    .protocol_config
+                    .is_last_block_before_activation(&header) =>
+            {
+                // This is a valid run immediately after upgrading the node version, we'll need to
+                // create an immediate switch block.
+                info!("valid run immediately after upgrade");
+                let upgrade_config_result =
+                    self.new_upgrade_config(&header, Arc::clone(&self.chainspec_raw_bytes));
+                async move {
+                    match upgrade_config_result {
+                        Ok(upgrade_config) => {
+                            effect_builder
+                                .upgrade_contract_runtime(upgrade_config)
+                                .await
+                        }
+                        Err(error) => Err(error.into()),
+                    }
+                }
+                .event(move |upgrade_result| Event::UpgradeResult {
+                    previous_block_header: header,
+                    upgrade_result,
+                })
+            }
+            None if self.chainspec.is_genesis() => {
+                // This is a valid initial run on a new network at genesis.
+                trace!("valid initial run at genesis");
+                // unwrap is safe as `chainspec.is_genesis()` is true
+                if Timestamp::now()
+                    < self
+                        .chainspec
+                        .protocol_config
+                        .activation_point
+                        .genesis_timestamp()
+                        .unwrap()
+                {
+                    info!("creating genesis immediate switch block");
+                    effect_builder
+                        .commit_genesis(
+                            Arc::clone(&self.chainspec),
+                            Arc::clone(&self.chainspec_raw_bytes),
+                        )
+                        .event(Event::CommitGenesisResult)
+                } else {
+                    info!("started after genesis; not creating the switch block");
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                    Effects::new()
+                }
+            }
+            _ => {
+                // We're neither at genesis nor right after an upgrade - proceed to fast sync
+                info!("valid run ready to be passed to the joiner reactor");
+                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                Effects::new()
+            }
+        }
+    }
+
+    fn new_upgrade_config(
+        &self,
+        upgrade_block_header: &BlockHeader,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    ) -> Result<Box<UpgradeConfig>, bytesrepr::Error> {
+        let global_state_update = self.chainspec.protocol_config.get_update_mapping()?;
+        let chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes.maybe_global_state_bytes(),
         );
-        Effects::new()
+        let upgrade_config = UpgradeConfig::new(
+            *upgrade_block_header.state_root_hash(),
+            upgrade_block_header.protocol_version(),
+            self.chainspec.protocol_version(),
+            Some(self.chainspec.protocol_config.activation_point.era_id()),
+            Some(self.chainspec.core_config.validator_slots),
+            Some(self.chainspec.core_config.auction_delay),
+            Some(self.chainspec.core_config.locked_funds_period.millis()),
+            Some(self.chainspec.core_config.round_seigniorage_rate),
+            Some(self.chainspec.core_config.unbonding_delay),
+            global_state_update,
+            chainspec_registry,
+        );
+        Ok(Box::new(upgrade_config))
     }
 
     fn should_exit_for_upgrade(
-        maybe_highest_block_header: Option<Box<BlockHeader>>,
+        maybe_highest_block_header: Option<&BlockHeader>,
         maybe_next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> bool {
         maybe_highest_block_header.map_or(false, |highest_block_header| {
@@ -298,6 +424,187 @@ impl ChainspecLoader {
         })
     }
 
+    fn handle_commit_genesis_result<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        result: Result<GenesisSuccess, engine_state::Error>,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<StorageRequest>
+            + From<MarkBlockCompletedRequest>
+            + From<ControlAnnouncement>
+            + Send,
+    {
+        match result {
+            Ok(GenesisSuccess {
+                post_state_hash, ..
+            }) => {
+                info!(
+                    "genesis chainspec name {}",
+                    self.chainspec.network_config.name
+                );
+                info!("genesis state root hash {}", post_state_hash);
+
+                let genesis_timestamp = match self
+                    .chainspec
+                    .protocol_config
+                    .activation_point
+                    .genesis_timestamp()
+                {
+                    None => {
+                        return fatal!(effect_builder, "must have genesis timestamp").ignore();
+                    }
+                    Some(timestamp) => timestamp,
+                };
+
+                let next_block_height = 0;
+                let initial_pre_state = ExecutionPreState::new(
+                    next_block_height,
+                    post_state_hash,
+                    Default::default(),
+                    Default::default(),
+                );
+                let finalized_block = FinalizedBlock::new(
+                    BlockPayload::default(),
+                    Some(EraReport::default()),
+                    genesis_timestamp,
+                    EraId::default(),
+                    next_block_height,
+                    PublicKey::System,
+                );
+
+                self.execute_immediate_switch_block(
+                    effect_builder,
+                    initial_pre_state,
+                    finalized_block,
+                )
+            }
+            Err(error) => {
+                error!(%error, "failed to commit genesis");
+                fatal!(effect_builder, "{}", error).ignore()
+            }
+        }
+    }
+
+    fn handle_upgrade_result<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        previous_block_header: Box<BlockHeader>,
+        result: Result<UpgradeSuccess, engine_state::Error>,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<StorageRequest>
+            + From<MarkBlockCompletedRequest>
+            + Send,
+    {
+        match result {
+            Ok(UpgradeSuccess {
+                post_state_hash, ..
+            }) => {
+                info!(
+                    network_name = %self.chainspec.network_config.name,
+                    %post_state_hash,
+                    "upgrade committed"
+                );
+
+                let initial_pre_state = ExecutionPreState::new(
+                    previous_block_header.height() + 1,
+                    post_state_hash,
+                    previous_block_header.hash(),
+                    previous_block_header.accumulated_seed(),
+                );
+                let finalized_block = FinalizedBlock::new(
+                    BlockPayload::default(),
+                    Some(EraReport::default()),
+                    previous_block_header.timestamp(),
+                    previous_block_header.next_block_era_id(),
+                    initial_pre_state.next_block_height(),
+                    PublicKey::System,
+                );
+
+                self.execute_immediate_switch_block(
+                    effect_builder,
+                    initial_pre_state,
+                    finalized_block,
+                )
+            }
+            Err(error) => {
+                error!("failed to upgrade contract runtime: {}", error);
+                self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
+                Effects::new()
+            }
+        }
+    }
+
+    /// Creates a switch block after an upgrade or genesis. This block has the system public key as
+    /// a proposer and doesn't contain any deploys or transfers. It is the only block in its era,
+    /// and no consensus instance is run for era 0 or an upgrade point era.
+    fn execute_immediate_switch_block<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        initial_pre_state: ExecutionPreState,
+        finalized_block: FinalizedBlock,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<StorageRequest>
+            + From<MarkBlockCompletedRequest>
+            + Send,
+    {
+        let protocol_version = self.chainspec.protocol_version();
+        async move {
+            let block_and_execution_effects = effect_builder
+                .execute_finalized_block(
+                    protocol_version,
+                    initial_pre_state,
+                    finalized_block,
+                    vec![],
+                    vec![],
+                )
+                .await?;
+            // We need to store the block now so that the era supervisor can be properly
+            // initialized in the participating reactor's constructor.
+            effect_builder
+                .put_block_to_storage(block_and_execution_effects.block.clone())
+                .await;
+            effect_builder
+                .mark_block_completed(block_and_execution_effects.block.height())
+                .await;
+            info!(
+                immediate_switch_block = ?block_and_execution_effects.block.clone(),
+                "immediate switch block after upgrade/genesis stored"
+            );
+            Ok(block_and_execution_effects)
+        }
+        .event(move |result| Event::ExecuteImmediateSwitchBlockResult { result })
+    }
+
+    fn handle_execute_immediate_switch_block_result<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        result: Result<BlockAndExecutionEffects, BlockExecutionError>,
+    ) -> Effects<Event>
+    where
+        REv: From<ControlAnnouncement> + Send,
+    {
+        let immediate_switch_block_and_exec_effects = match result {
+            Ok(block_and_execution_effects) => block_and_execution_effects,
+            Err(error) => {
+                error!(%error, "failed to execute block");
+                return fatal!(effect_builder, "{}", error).ignore();
+            }
+        };
+
+        self.maybe_immediate_switch_block_data = Some(immediate_switch_block_and_exec_effects);
+
+        // We can proceed to the joiner.
+        self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+
+        Effects::new()
+    }
+
     /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
     /// participating reactors' constructors to start the recurring task of checking for upgrades.
     /// The recurring tasks of the previous reactors will be cancelled when the relevant reactor
@@ -314,6 +621,10 @@ impl ChainspecLoader {
 
     pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
         self.reactor_exit
+    }
+
+    pub(crate) fn maybe_immediate_switch_block_data(&self) -> Option<&BlockAndExecutionEffects> {
+        self.maybe_immediate_switch_block_data.as_ref()
     }
 
     pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
@@ -391,7 +702,13 @@ impl ChainspecLoader {
 
 impl<REv> Component<REv> for ChainspecLoader
 where
-    REv: From<Event> + From<ChainspecLoaderAnnouncement> + Send,
+    REv: From<Event>
+        + From<ChainspecLoaderAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<MarkBlockCompletedRequest>
+        + From<ControlAnnouncement>
+        + Send,
 {
     type Event = Event;
     type ConstructionError = Error;
@@ -405,8 +722,18 @@ where
         trace!("{}", event);
         match event {
             Event::Initialize {
-                maybe_highest_block,
-            } => self.handle_initialize(effect_builder, maybe_highest_block),
+                maybe_highest_block_header,
+            } => self.handle_initialize(effect_builder, maybe_highest_block_header),
+            Event::CommitGenesisResult(result) => {
+                self.handle_commit_genesis_result(effect_builder, result)
+            }
+            Event::UpgradeResult {
+                previous_block_header,
+                upgrade_result,
+            } => self.handle_upgrade_result(effect_builder, previous_block_header, upgrade_result),
+            Event::ExecuteImmediateSwitchBlockResult { result } => {
+                self.handle_execute_immediate_switch_block_result(effect_builder, result)
+            }
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }
@@ -571,7 +898,7 @@ mod tests {
         ));
         let next_upgrade_activation_point = None;
         assert!(!ChainspecLoader::should_exit_for_upgrade(
-            highest_block_header,
+            highest_block_header.as_deref(),
             next_upgrade_activation_point
         ));
 
@@ -596,7 +923,7 @@ mod tests {
         ));
         let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
         assert!(!ChainspecLoader::should_exit_for_upgrade(
-            highest_block_header,
+            highest_block_header.as_deref(),
             next_upgrade_activation_point
         ));
 
@@ -614,7 +941,7 @@ mod tests {
         ));
         let next_upgrade_activation_point = Some(ActivationPoint::EraId(2.into()));
         assert!(ChainspecLoader::should_exit_for_upgrade(
-            highest_block_header,
+            highest_block_header.as_deref(),
             next_upgrade_activation_point
         ));
 
@@ -632,7 +959,7 @@ mod tests {
         ));
         let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
         assert!(ChainspecLoader::should_exit_for_upgrade(
-            highest_block_header,
+            highest_block_header.as_deref(),
             next_upgrade_activation_point
         ));
     }
