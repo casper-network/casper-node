@@ -277,35 +277,6 @@ impl Display for NetResponse {
     }
 }
 
-/// A response to a block effects request.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) enum BlockEffectsResponse {
-    BlockEffectsResponseLegacy(Vec<u8>),
-    BLockEffectsResponse(Vec<u8>),
-}
-
-impl BlockEffectsResponse {
-    pub(crate) fn message(&self) -> &Vec<u8> {
-        match self {
-            BlockEffectsResponse::BlockEffectsResponseLegacy(msg)
-            | BlockEffectsResponse::BLockEffectsResponse(msg) => msg,
-        }
-    }
-}
-
-impl Display for BlockEffectsResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BlockEffectsResponse::BlockEffectsResponseLegacy(_) => {
-                write!(f, "block effects legacy response")
-            }
-            BlockEffectsResponse::BLockEffectsResponse(_) => {
-                write!(f, "block effects response")
-            }
-        }
-    }
-}
-
 /// A response to a request for a trie.
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
