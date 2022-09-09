@@ -1229,13 +1229,13 @@ impl FetcherItem for BlockHeadersBatch {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct SyncLeap {
     /// The header of the trusted block specified by hash by the requester.
-    trusted_block_header: BlockHeader,
+    pub trusted_block_header: BlockHeader,
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.
     /// If the trusted one is already a switch block, this is empty.
-    trusted_ancestor_headers: Vec<BlockHeader>,
+    pub trusted_ancestor_headers: Vec<BlockHeader>,
     /// The headers of all switch blocks known to the sender, after the trusted block but before
     /// their highest block, with signatures, plus the signed highest block.
-    signed_block_headers: Vec<BlockHeaderWithMetadata>,
+    pub signed_block_headers: Vec<BlockHeaderWithMetadata>,
 }
 
 impl SyncLeap {
@@ -1713,6 +1713,11 @@ impl Block {
         )
     }
 
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_parent_hash(&mut self, hash: BlockHash) {
+        self.header.parent_hash = hash;
+    }
+
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(any(feature = "testing", test))]
     pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
@@ -1724,6 +1729,40 @@ impl Block {
         deploys_iter: I,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
+        let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
+        let finalized_block =
+            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
+        let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
+        let next_era_validator_weights = finalized_block
+            .clone()
+            .era_report
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
+
+        Block::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            finalized_block,
+            next_era_validator_weights,
+            protocol_version,
+        )
+        .expect("Could not create random block with specifics")
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_with_specifics_and_parent<'a, I: IntoIterator<Item = &'a Deploy>>(
+        rng: &mut TestRng,
+        era_id: EraId,
+        height: u64,
+        protocol_version: ProtocolVersion,
+        is_switch: bool,
+        deploys_iter: I,
+        parent_block: Option<&Block>,
+    ) -> Self {
+        let parent_hash = match parent_block {
+            Some(parent) => parent.hash().clone(),
+            None => BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
+        };
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         let finalized_block =
             FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
