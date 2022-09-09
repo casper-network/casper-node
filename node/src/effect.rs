@@ -147,7 +147,7 @@ use crate::{
     effect::announcements::{BlocksAccumulatorAnnouncement, ChainSynchronizerAnnouncement},
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        AvailableBlockRange, Block, BlockAdded, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
@@ -1077,6 +1077,25 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Gets the requested `BlockAdded` from the linear block store.
+    pub(crate) async fn get_block_added_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockAdded>
+    where
+        REv: From<StorageRequest>,
+    {
+        // self.make_request(
+        //     |responder| StorageRequest::GetBlock {
+        //         block_hash,
+        //         responder,
+        //     },
+        //     QueueKind::Regular,
+        // )
+        // .await
+        todo!()
     }
 
     /// Gets the requested block and its deploys from the store.

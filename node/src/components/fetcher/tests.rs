@@ -133,6 +133,8 @@ reactor!(Reactor {
         TrieResponseIncoming -> [!];
         SyncLeapRequestIncoming -> [!];
         SyncLeapResponseIncoming -> [!];
+        BlockAddedRequestIncoming -> [!];
+        BlockAddedResponseIncoming -> [!];
 
         // No consensus component.
         ConsensusMessageIncoming -> [!];

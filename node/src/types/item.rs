@@ -61,6 +61,8 @@ pub enum Tag {
     /// correct chain, then so is a later header, which should be the most recent one according
     /// to the sender.
     SyncLeap,
+    /// A `BlockAdded`: a block which has been created by validators.
+    BlockAdded,
 }
 
 /// A trait unifying the common pieces of the `FetcherItem` and `GossiperItem` traits.

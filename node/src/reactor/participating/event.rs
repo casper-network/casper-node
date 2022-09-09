@@ -3,6 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use derive_more::From;
 use serde::Serialize;
 
+use crate::effect::incoming::{BlockAddedRequestIncoming, BlockAddedResponseIncoming};
 use crate::{
     components::{
         block_proposer, block_validator, chain_synchronizer, chainspec_loader,
@@ -35,9 +36,9 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, FinalitySignature, FinalizedApprovalsWithId,
-        SyncLeap, TrieOrChunk,
+        Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, FinalitySignature,
+        FinalizedApprovalsWithId, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -108,6 +109,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     SyncLeapFetcher(#[serde(skip_serializing)] fetcher::Event<SyncLeap>),
     #[from]
+    BlockAddedFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAdded>),
+    #[from]
     CompleteBlockSynchronizer(#[serde(skip_serializing)] complete_block_synchronizer::Event),
 
     // Requests
@@ -147,6 +150,8 @@ pub(crate) enum ParticipatingEvent {
     FinalitySignaturesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockSignatures>),
     #[from]
     SyncLeapFetcherRequest(#[serde(skip_serializing)] FetcherRequest<SyncLeap>),
+    #[from]
+    BlockAddedFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAdded>),
 
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
@@ -223,6 +228,10 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     SyncLeapResponseIncoming(SyncLeapResponseIncoming),
     #[from]
+    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
+    #[from]
+    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
+    #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
@@ -280,6 +289,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             ParticipatingEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
             ParticipatingEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
+            ParticipatingEvent::BlockAddedFetcher(_) => "BlockAddedFetcher",
             ParticipatingEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -305,6 +315,7 @@ impl ReactorEvent for ParticipatingEvent {
                 "FinalitySignaturesFetcherRequest"
             }
             ParticipatingEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
+            ParticipatingEvent::BlockAddedFetcherRequest(_) => "BlockAddedFetcherRequest",
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
@@ -339,6 +350,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::SyncLeapRequestIncoming(_) => "SyncLeapRequestIncoming",
             ParticipatingEvent::SyncLeapResponseIncoming(_) => "SyncLeapResponseIncoming",
+            ParticipatingEvent::BlockAddedRequestIncoming(_) => "BlockAddedRequestIncoming",
+            ParticipatingEvent::BlockAddedResponseIncoming(_) => "BlockAddedResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
             ParticipatingEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
@@ -463,6 +476,9 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::SyncLeapFetcher(event) => {
                 write!(f, "sync leap fetcher: {}", event)
             }
+            ParticipatingEvent::BlockAddedFetcher(event) => {
+                write!(f, "block added fetcher: {}", event)
+            }
             ParticipatingEvent::CompleteBlockSynchronizer(event) => {
                 write!(f, "complete block synchronizer: {}", event)
             }
@@ -517,6 +533,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::SyncLeapFetcherRequest(request) => {
                 write!(f, "sync leap fetcher request: {}", request)
+            }
+            ParticipatingEvent::BlockAddedFetcherRequest(request) => {
+                write!(f, "block added fetcher request: {}", request)
             }
             ParticipatingEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
@@ -589,6 +608,8 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::SyncLeapRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::SyncLeapResponseIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::BlockAddedRequestIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::BlockAddedResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
         }

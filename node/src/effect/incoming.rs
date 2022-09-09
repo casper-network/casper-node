@@ -81,6 +81,12 @@ pub(crate) type SyncLeapRequestIncoming = MessageIncoming<SyncLeapRequest>;
 /// A new message responding to a SyncLeap request.
 pub(crate) type SyncLeapResponseIncoming = MessageIncoming<SyncLeapResponse>;
 
+/// A new message requesting a BlockAdded structure.
+pub(crate) type BlockAddedRequestIncoming = MessageIncoming<BlockAddedRequest>;
+
+/// A new message responding to a BlockAdded request.
+pub(crate) type BlockAddedResponseIncoming = MessageIncoming<BlockAddedResponse>;
+
 /// A request for an object out of storage arrived.
 ///
 /// Note: The variants here are grouped under a common enum, since they are usually handled by the
@@ -285,6 +291,26 @@ pub(crate) struct SyncLeapResponse(pub(crate) Vec<u8>);
 impl Display for SyncLeapResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("response, sync leap")
+    }
+}
+
+/// A request for a BlockAdded.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct BlockAddedRequest(pub(crate) Vec<u8>);
+
+impl Display for BlockAddedRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "request for block added")
+    }
+}
+
+/// A response to a request for a BlockAdded.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct BlockAddedResponse(pub(crate) Vec<u8>);
+
+impl Display for BlockAddedResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("response, block added")
     }
 }
 

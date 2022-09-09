@@ -45,9 +45,10 @@ use crate::{
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand,
-            TrieRequestIncoming, TrieResponseIncoming,
+            BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
+            FinalitySignatureIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
+            SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, MarkBlockCompletedRequest},
         Responder,
@@ -130,6 +131,10 @@ enum Event {
     SyncLeapRequestIncoming(SyncLeapRequestIncoming),
     #[from]
     SyncLeapResponseIncoming(SyncLeapResponseIncoming),
+    #[from]
+    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
+    #[from]
+    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -227,6 +232,8 @@ impl Display for Event {
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::SyncLeapRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::SyncLeapResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::BlockAddedRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::BlockAddedResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
     }
@@ -490,7 +497,9 @@ impl reactor::Reactor for Reactor {
             | Event::TrieDemand(_)
             | Event::TrieResponseIncoming(_)
             | Event::SyncLeapRequestIncoming(_)
-            | Event::SyncLeapResponseIncoming(_)) => {
+            | Event::SyncLeapResponseIncoming(_)
+            | Event::BlockAddedRequestIncoming(_)
+            | Event::BlockAddedResponseIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }
         }

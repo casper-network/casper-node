@@ -1,6 +1,8 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+mod block_added;
+
 use std::{
     array::TryFromSliceError,
     cmp::{Ord, Ordering, PartialOrd},
@@ -22,17 +24,18 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::{error, warn};
 
 use casper_hashing::Digest;
-#[cfg(any(feature = "testing", test))]
-use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
+    crypto, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Signature, StoredValue, Timestamp,
+    U512,
 };
 #[cfg(any(feature = "testing", test))]
-use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
-use tracing::{error, warn};
+use casper_types::{
+    crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
+};
 
 use crate::{
     components::{
@@ -52,6 +55,7 @@ use crate::{
     },
     utils::{ds, DisplayIter},
 };
+pub use block_added::BlockAdded;
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -2266,40 +2270,17 @@ pub struct FinalitySignature {
     #[data_size(with = ds::once_cell)]
     is_verified: OnceCell<Result<(), crypto::Error>>,
 }
-//
-// #[derive(Debug, Clone, Serialize, Deserialize, DataSize, Eq, JsonSchema)]
-// pub struct FinalitySignatureV2 {
-//     /// Hash of a block this signature is for.
-//     pub block_hash: BlockHash,
-//     /// Era in which the block was created in.
-//     pub era_id: EraId,
-//     /// The checksum of the deploys' approvals.
-//     pub approvals_checksum: Digest,
-//     /// The checksum of the execution results of the deploys.
-//     pub execution_results_checksum: Digest,
-//     /// Signature over the block hash.
-//     pub signature: Signature,
-//     /// Public key of the signing validator.
-//     pub public_key: PublicKey,
-//     #[serde(skip)]
-//     #[data_size(with = ds::once_cell)]
-//     is_verified: OnceCell<Result<(), crypto::Error>>,
-// }
 
 impl FinalitySignature {
     /// Create an instance of `FinalitySignature`.
     pub fn create(
         block_hash: BlockHash,
         era_id: EraId,
-        // approvals_checksum: Digest,
-        // execution_results_checksum: Digest,
         secret_key: &SecretKey,
         public_key: PublicKey,
     ) -> Self {
         let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        // bytes.extend_from_slice(&approvals_checksum.into_vec());
-        // bytes.extend_from_slice(&execution_results_checksum.into_vec());
         let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
             block_hash,

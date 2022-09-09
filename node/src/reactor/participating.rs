@@ -46,14 +46,17 @@ use crate::{
             ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
             LinearChainAnnouncement, RpcServerAnnouncement,
         },
-        incoming::{NetResponseIncoming, SyncLeapResponseIncoming, TrieResponseIncoming},
+        incoming::{
+            BlockAddedResponseIncoming, NetResponseIncoming, SyncLeapResponseIncoming,
+            TrieResponseIncoming,
+        },
         EffectBuilder, Effects,
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
+        Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
         FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
@@ -82,6 +85,7 @@ struct Fetchinator {
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     sync_leap_fetcher: Fetcher<SyncLeap>,
+    block_added_fetcher: Fetcher<BlockAdded>,
 }
 
 impl Fetchinator {
@@ -97,6 +101,7 @@ impl Fetchinator {
             block_header_by_hash_fetcher: fetcher_builder.build("block_header")?,
             trie_or_chunk_fetcher: fetcher_builder.build("trie_or_chunk")?,
             sync_leap_fetcher: fetcher_builder.build("sync_leap_fetcher")?,
+            block_added_fetcher: fetcher_builder.build("block_added_fetcher")?,
 
             // MAYBE WE NEED THESE
             block_and_deploys_fetcher: fetcher_builder.build("block_and_deploys")?,
@@ -127,6 +132,16 @@ impl Fetchinator {
             ParticipatingEvent::BlockFetcherRequest(request) => reactor::wrap_effects(
                 ParticipatingEvent::BlockFetcher,
                 self.block_by_hash_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            ParticipatingEvent::BlockAddedFetcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockAddedFetcher,
+                self.block_added_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::BlockAddedFetcherRequest(request) => reactor::wrap_effects(
+                ParticipatingEvent::BlockAddedFetcher,
+                self.block_added_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             ParticipatingEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
@@ -697,6 +712,8 @@ impl reactor::Reactor for Reactor {
             | ParticipatingEvent::FinalitySignaturesFetcherRequest(..)
             | ParticipatingEvent::SyncLeapFetcher(..)
             | ParticipatingEvent::SyncLeapFetcherRequest(..)
+            | ParticipatingEvent::BlockAddedFetcher(..)
+            | ParticipatingEvent::BlockAddedFetcherRequest(..)
             | ParticipatingEvent::FinalitySignatureFetcher(..)
             | ParticipatingEvent::FinalitySignatureFetcherRequest(..) => self
                 .fetchinator
@@ -1259,6 +1276,20 @@ impl reactor::Reactor for Reactor {
                 sender,
                 message,
             }) => reactor::handle_fetch_response::<Self, SyncLeap>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                &message.0,
+            ),
+            ParticipatingEvent::BlockAddedRequestIncoming(_req) => {
+                // route to ... once it's implemented
+                todo!()
+            }
+            ParticipatingEvent::BlockAddedResponseIncoming(BlockAddedResponseIncoming {
+                sender,
+                message,
+            }) => reactor::handle_fetch_response::<Self, BlockAdded>(
                 self,
                 effect_builder,
                 rng,

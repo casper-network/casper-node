@@ -25,7 +25,7 @@ use crate::{
         EffectExt, Effects,
     },
     storage::StorageRequest,
-    types::{Block, BlockHash, Deploy, FinalitySignature, FinalitySignatureId, NodeId},
+    types::{Block, BlockAdded, BlockHash, Deploy, FinalitySignature, FinalitySignatureId, NodeId},
     NodeRng,
 };
 

@@ -1,3 +1,4 @@
+mod block_added_fetcher;
 mod block_and_deploys_fetcher;
 mod block_fetcher;
 mod block_header_fetcher;

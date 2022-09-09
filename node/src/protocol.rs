@@ -20,10 +20,11 @@ use crate::{
     },
     effect::{
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, SyncLeapRequest,
-            SyncLeapRequestIncoming, SyncLeapResponse, SyncLeapResponseIncoming, TrieDemand,
-            TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+            BlockAddedRequest, BlockAddedRequestIncoming, BlockAddedResponse,
+            BlockAddedResponseIncoming, ConsensusMessageIncoming, FinalitySignatureIncoming,
+            GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
+            SyncLeapRequest, SyncLeapRequestIncoming, SyncLeapResponse, SyncLeapResponseIncoming,
+            TrieDemand, TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
     },
@@ -98,6 +99,7 @@ impl Payload for Message {
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                     Tag::SyncLeap => MessageKind::BlockTransfer,
+                    Tag::BlockAdded => MessageKind::BlockTransfer,
 
                     // The following tags should be unreachable.
                     Tag::FinalitySignature => MessageKind::Other,
@@ -146,6 +148,7 @@ impl Payload for Message {
                 Tag::BlockHeaderBatch => weights.block_requests,
                 Tag::FinalitySignaturesByHash => weights.block_requests,
                 Tag::SyncLeap => weights.block_requests,
+                Tag::BlockAdded => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -161,6 +164,7 @@ impl Payload for Message {
                 Tag::BlockHeaderBatch => weights.block_responses,
                 Tag::FinalitySignaturesByHash => weights.block_responses,
                 Tag::SyncLeap => weights.block_responses,
+                Tag::BlockAdded => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -326,6 +330,8 @@ where
         + From<TrieResponseIncoming>
         + From<SyncLeapRequestIncoming>
         + From<SyncLeapResponseIncoming>
+        + From<BlockAddedRequestIncoming>
+        + From<BlockAddedResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
     // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) ->
@@ -405,6 +411,11 @@ where
                     message: SyncLeapRequest(serialized_id),
                 }
                 .into(),
+                Tag::BlockAdded => BlockAddedRequestIncoming {
+                    sender,
+                    message: BlockAddedRequest(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -473,6 +484,11 @@ where
                 Tag::SyncLeap => SyncLeapResponseIncoming {
                     sender,
                     message: SyncLeapResponse(serialized_item.to_vec()),
+                }
+                .into(),
+                Tag::BlockAdded => BlockAddedResponseIncoming {
+                    sender,
+                    message: BlockAddedResponse(serialized_item.to_vec()),
                 }
                 .into(),
             },
