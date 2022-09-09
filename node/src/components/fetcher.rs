@@ -1,5 +1,11 @@
 mod config;
+mod error;
 mod event;
+mod fetch_response;
+mod fetched_data;
+mod fetcher_impls;
+mod item_fetcher;
+mod item_handle;
 mod metrics;
 mod tests;
 
@@ -8,7 +14,6 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 use datasize::DataSize;
 use num_rational::Ratio;
 use prometheus::Registry;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
@@ -19,282 +24,39 @@ use crate::{
     effect::{
         announcements::BlocklistAnnouncement,
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalitySignatureId,
-        FinalizedApprovals, FinalizedApprovalsWithId, Item, NodeId, SyncLeap, TrieOrChunk,
-        TrieOrChunkId,
-    },
+    types::{BlockHeader, BlockSignatures, FetcherItem, NodeId},
     utils::Source,
     FetcherConfig, NodeRng,
 };
 
 pub(crate) use config::Config;
-pub(crate) use event::{Event, FetchResponder, FetchResult, FetchedData, FetcherError};
+pub(crate) use error::Error;
+pub(crate) use event::Event;
+pub(crate) use fetch_response::FetchResponse;
+pub(crate) use fetched_data::FetchedData;
+pub(crate) use item_fetcher::ItemFetcher;
+use item_handle::ItemHandle;
 use metrics::Metrics;
 
-/// A helper trait constraining `Fetcher` compatible reactor events.
-pub(crate) trait ReactorEventT<T>:
-    From<Event<T>>
-    + From<NetworkRequest<Message>>
-    + From<StorageRequest>
-    + From<ContractRuntimeRequest>
-    + From<BlocklistAnnouncement>
-    + Send
-    + 'static
-where
-    T: FetcherItem + 'static,
-    <T as Item>::Id: 'static,
-{
-}
-
-impl<REv, T> ReactorEventT<T> for REv
-where
-    T: FetcherItem + 'static,
-    <T as Item>::Id: 'static,
-    REv: From<Event<T>>
-        + From<NetworkRequest<Message>>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + From<BlocklistAnnouncement>
-        + Send
-        + 'static,
-{
-}
-
-/// Message to be returned by a peer. Indicates if the item could be fetched or not.
-#[derive(Serialize, Deserialize)]
-pub enum FetchResponse<T, Id> {
-    /// The requested item.
-    Fetched(T),
-    /// The sender does not have the requested item available.
-    NotFound(Id),
-    /// The sender chose to not provide the requested item.
-    NotProvided(Id),
-}
-
-impl<T, Id> FetchResponse<T, Id> {
-    /// Constructs a fetched or not found from an option and an id.
-    pub(crate) fn from_opt(id: Id, item: Option<T>) -> Self {
-        match item {
-            Some(item) => FetchResponse::Fetched(item),
-            None => FetchResponse::NotFound(id),
-        }
-    }
-
-    /// Returns whether this response is a positive (fetched / "found") one.
-    pub(crate) fn was_found(&self) -> bool {
-        matches!(self, FetchResponse::Fetched(_))
-    }
-}
-
-impl<T, Id> FetchResponse<T, Id>
-where
-    Self: Serialize,
-{
-    /// The canonical serialization for the inner encoding of the `FetchResponse` response (see
-    /// [`Message::GetResponse`]).
-    pub(crate) fn to_serialized(&self) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(self)
-    }
-}
-
-pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
-    /// Indicator on whether it is safe to respond to all of our responders. For example, [Deploy]s
-    /// and [BlockHeader]s are safe because their [Item::id] is all that is needed for
-    /// authentication. But other structures have _finality signatures_ or have substructures that
-    /// require validation. These are not infallible, and only the responders corresponding to the
-    /// node queried may be responded to.
-    const SAFE_TO_RESPOND_TO_ALL: bool;
-
-    fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
-
-    fn metrics(&mut self) -> &Metrics;
-
-    fn peer_timeout(&self) -> Duration;
-
-    /// We've been asked to fetch the item by another component of this node.  We'll try to get it
-    /// from our own storage component first, and if that fails, we'll send a request to `peer` for
-    /// the item.
-    fn fetch<REv: ReactorEventT<T>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: T::Id,
-        peer: NodeId,
-        responder: FetchResponder<T>,
-    ) -> Effects<Event<T>> {
-        // Get the item from the storage component.
-        self.get_from_storage(effect_builder, id, peer, responder)
-    }
-
-    // Handles attempting to get the item from storage.
-    fn get_from_storage<REv: ReactorEventT<T>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: T::Id,
-        peer: NodeId,
-        responder: FetchResponder<T>,
-    ) -> Effects<Event<T>>;
-
-    /// Handles the `Err` case for a `Result` of attempting to get the item from the storage
-    /// component.
-    fn failed_to_get_from_storage<REv: ReactorEventT<T>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: T::Id,
-        peer: NodeId,
-        responder: FetchResponder<T>,
-    ) -> Effects<Event<T>> {
-        let peer_timeout = self.peer_timeout();
-        // Capture responder for later signalling.
-        let responders = self.responders();
-        responders
-            .entry(id.clone())
-            .or_default()
-            .entry(peer)
-            .or_default()
-            .push(responder);
-        match Message::new_get_request::<T>(&id) {
-            Ok(message) => {
-                self.metrics().fetch_total.inc();
-                async move {
-                    effect_builder.send_message(peer, message).await;
-
-                    effect_builder.set_timeout(peer_timeout).await
-                }
-            }
-            .event(move |_| Event::TimeoutPeer { id, peer }),
-            Err(error) => {
-                error!(
-                    "failed to construct get request for peer {}: {}",
-                    peer, error
-                );
-                self.signal(
-                    id.clone(),
-                    Err(FetcherError::CouldNotConstructGetRequest { id, peer }),
-                    peer,
-                )
-            }
-        }
-    }
-
-    /// Sends fetched data to all responders
-    fn respond_to_all(&mut self, id: T::Id, fetched_data: FetchedData<T>) -> Effects<Event<T>> {
-        let mut effects = Effects::new();
-        let all_responders = self.responders().remove(&id).unwrap_or_default();
-        for (_peer, responders) in all_responders {
-            for responder in responders {
-                effects.extend(responder.respond(Ok(fetched_data.clone())).ignore());
-            }
-        }
-        effects
-    }
-
-    /// Responds to all responders corresponding to a specific item-peer combination with a result.
-    fn send_response_from_peer(
-        &mut self,
-        id: T::Id,
-        result: Result<T, FetcherError<T>>,
-        peer: NodeId,
-    ) -> Effects<Event<T>> {
-        let mut effects = Effects::new();
-        let mut all_responders = self.responders().remove(&id).unwrap_or_default();
-        match result {
-            Ok(item) => {
-                // Since this is a success, we can safely respond to all awaiting processes.
-                for responder in all_responders.remove(&peer).into_iter().flatten() {
-                    effects.extend(
-                        responder
-                            .respond(Ok(FetchedData::from_peer(item.clone(), peer)))
-                            .ignore(),
-                    );
-                }
-            }
-            Err(error @ FetcherError::TimedOut { .. }) => {
-                let mut responders = all_responders.remove(&peer).into_iter().flatten();
-                // We take just one responder as only one request had timed out. We want to avoid
-                // prematurely failing too many waiting processes since other requests may still
-                // succeed before timing out.
-                if let Some(responder) = responders.next() {
-                    effects.extend(responder.respond(Err(error)).ignore());
-                    // Only if there's still a responder waiting for the item we increment the
-                    // metric. Otherwise we will count every request as timed out, even if the item
-                    // had been fetched.
-                    trace!(TAG=%T::TAG, %id, %peer, "request timed out");
-                    self.metrics().timeouts.inc();
-                }
-
-                let responders: Vec<_> = responders.collect();
-                if !responders.is_empty() {
-                    all_responders.insert(peer, responders);
-                }
-            }
-            Err(
-                error @ FetcherError::Absent { .. }
-                | error @ FetcherError::Rejected { .. }
-                | error @ FetcherError::CouldNotConstructGetRequest { .. },
-            ) => {
-                // For all other error variants we can safely respond with failure as there's no
-                // chance for the request to succeed.
-                for responder in all_responders.remove(&peer).into_iter().flatten() {
-                    effects.extend(responder.respond(Err(error.clone())).ignore());
-                }
-            }
-        }
-        if !all_responders.is_empty() {
-            self.responders().insert(id, all_responders);
-        }
-        effects
-    }
-
-    fn put_to_storage<REv: ReactorEventT<T>>(
-        &self,
-        _item: T,
-        _peer: NodeId,
-        _effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<T>>> {
-        todo!()
-    }
-
-    /// Handles signalling responders with the item or an error.
-    fn signal(
-        &mut self,
-        id: T::Id,
-        result: Result<T, FetcherError<T>>,
-        peer: NodeId,
-    ) -> Effects<Event<T>> {
-        match result {
-            Ok(fetched_item) if Self::SAFE_TO_RESPOND_TO_ALL => {
-                self.respond_to_all(id, FetchedData::from_peer(fetched_item, peer))
-            }
-            Ok(_) => self.send_response_from_peer(id, result, peer),
-            Err(_) => self.send_response_from_peer(id, result, peer),
-        }
-    }
-}
+pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
+pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
 
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
 #[derive(DataSize, Debug)]
 pub(crate) struct Fetcher<T>
 where
-    T: FetcherItem + 'static,
+    T: FetcherItem,
 {
     get_from_peer_timeout: Duration,
-    responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
+    item_handles: HashMap<T::Id, HashMap<NodeId, ItemHandle<T>>>,
     #[data_size(skip)]
     metrics: Metrics,
-    #[data_size(skip)]
-    validation_metadata: T::ValidationMetadata,
 }
 
-impl<T: FetcherItem> Fetcher<T>
-where
-    T::ValidationMetadata: Default,
-{
+impl<T: FetcherItem> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: Config,
@@ -302,533 +64,9 @@ where
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            responders: HashMap::new(),
+            item_handles: HashMap::new(),
             metrics: Metrics::new(name, registry)?,
-            validation_metadata: Default::default(),
         })
-    }
-}
-
-impl<T: FetcherItem> Fetcher<T> {
-    pub(crate) fn new_with_metadata(
-        name: &str,
-        config: Config,
-        registry: &Registry,
-        validation_metadata: T::ValidationMetadata,
-    ) -> Result<Self, prometheus::Error> {
-        Ok(Fetcher {
-            get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            responders: HashMap::new(),
-            metrics: Metrics::new(name, registry)?,
-            validation_metadata,
-        })
-    }
-}
-
-impl ItemFetcher<Deploy> for Fetcher<Deploy> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<Deploy>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    /// Gets a `Deploy` from the storage component.
-    fn get_from_storage<REv: ReactorEventT<Deploy>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: DeployHash,
-        peer: NodeId,
-        responder: FetchResponder<Deploy>,
-    ) -> Effects<Event<Deploy>> {
-        effect_builder
-            .get_deploys_from_storage(vec![id])
-            .event(move |mut results| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(
-                    results
-                        .pop()
-                        .expect("can only contain one result")
-                        .map(DeployWithFinalizedApprovals::into_naive),
-                ),
-                responder,
-            })
-    }
-}
-
-impl ItemFetcher<BlockAndDeploys> for Fetcher<BlockAndDeploys> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockAndDeploys>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    /// Gets a `BlockAndDeploys` from the storage component.
-    fn get_from_storage<REv: ReactorEventT<BlockAndDeploys>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
-        responder: FetchResponder<BlockAndDeploys>,
-    ) -> Effects<Event<BlockAndDeploys>> {
-        effect_builder
-            .get_block_and_deploys_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
-    }
-
-    fn put_to_storage<REv: ReactorEventT<BlockAndDeploys>>(
-        &self,
-        item: BlockAndDeploys,
-        peer: NodeId,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<BlockAndDeploys>>> {
-        let item = Box::new(item);
-        Some(
-            effect_builder
-                .put_block_and_deploys_to_storage(item.clone())
-                .event(move |_| Event::PutToStorage { item, peer }),
-        )
-    }
-}
-
-impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<FinalizedApprovalsWithId>>>>
-    {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    /// Gets the finalized approvals for a deploy from the storage component.
-    fn get_from_storage<REv: ReactorEventT<FinalizedApprovalsWithId>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: DeployHash,
-        peer: NodeId,
-        responder: FetchResponder<FinalizedApprovalsWithId>,
-    ) -> Effects<Event<FinalizedApprovalsWithId>> {
-        effect_builder
-            .get_deploys_from_storage(vec![id])
-            .event(move |mut results| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(results.pop().expect("can only contain one result").map(
-                    |deploy| {
-                        FinalizedApprovalsWithId::new(
-                            id,
-                            FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
-                        )
-                    },
-                )),
-                responder,
-            })
-    }
-}
-
-impl ItemFetcher<Block> for Fetcher<Block> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<Block>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<Block>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
-        responder: FetchResponder<Block>,
-    ) -> Effects<Event<Block>> {
-        effect_builder
-            .get_block_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
-    }
-}
-
-impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockWithMetadata>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<BlockWithMetadata>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: u64,
-        peer: NodeId,
-        responder: FetchResponder<BlockWithMetadata>,
-    ) -> Effects<Event<BlockWithMetadata>> {
-        todo!()
-        // let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        // async move {
-        //     let block_with_metadata = effect_builder
-        //         .get_block_with_metadata_from_storage_by_height(id, false)
-        //         .await?;
-        //     has_enough_block_signatures(
-        //         effect_builder,
-        //         block_with_metadata.block.header(),
-        //         &block_with_metadata.block_signatures,
-        //         fault_tolerance_fraction,
-        //     )
-        //     .await
-        //     .then_some(block_with_metadata)
-        // }
-        // .event(move |result| Event::GetFromStorageResult {
-        //     id,
-        //     peer,
-        //     maybe_item: Box::new(result),
-        //     responder,
-        // })
-    }
-}
-
-impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockHeaderWithMetadata>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<BlockHeaderWithMetadata>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: u64,
-        peer: NodeId,
-        responder: FetchResponder<BlockHeaderWithMetadata>,
-    ) -> Effects<Event<BlockHeaderWithMetadata>> {
-        todo!()
-        // let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        // async move {
-        //     let block_header_with_metadata = effect_builder
-        //         .get_block_header_with_metadata_from_storage_by_height(id, false)
-        //         .await?;
-        //     has_enough_block_signatures(
-        //         effect_builder,
-        //         &block_header_with_metadata.block_header,
-        //         &block_header_with_metadata.block_signatures,
-        //         fault_tolerance_fraction,
-        //     )
-        //     .await
-        //     .then_some(block_header_with_metadata)
-        // }
-        // .event(move |result| Event::GetFromStorageResult {
-        //     id,
-        //     peer,
-        //     maybe_item: Box::new(result),
-        //     responder,
-        // })
-    }
-}
-
-impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockSignatures>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<BlockSignatures>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
-        responder: FetchResponder<BlockSignatures>,
-    ) -> Effects<Event<BlockSignatures>> {
-        todo!()
-        // let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        // async move {
-        //     let block_header_with_metadata = effect_builder
-        //         .get_block_header_with_metadata_from_storage(id, false)
-        //         .await?;
-        //     has_enough_block_signatures(
-        //         effect_builder,
-        //         &block_header_with_metadata.block_header,
-        //         &block_header_with_metadata.block_signatures,
-        //         fault_tolerance_fraction,
-        //     )
-        //     .await
-        //     .then_some(block_header_with_metadata.block_signatures)
-        // }
-        // .event(move |result| Event::GetFromStorageResult {
-        //     id,
-        //     peer,
-        //     maybe_item: Box::new(result),
-        //     responder,
-        // })
-    }
-}
-
-impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, Vec<FetchResponder<FinalitySignature>>>>
-    {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<FinalitySignature>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: FinalitySignatureId,
-        peer: NodeId,
-        responder: FetchResponder<FinalitySignature>,
-    ) -> Effects<Event<FinalitySignature>> {
-        let block_hash = id.block_hash;
-        let public_key = id.public_key.clone();
-        effect_builder
-            .get_signature_from_storage(block_hash, public_key)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
-    }
-}
-
-impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, Vec<FetchResponder<TrieOrChunk>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<TrieOrChunk>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: TrieOrChunkId,
-        peer: NodeId,
-        responder: FetchResponder<TrieOrChunk>,
-    ) -> Effects<Event<TrieOrChunk>> {
-        async move {
-            let maybe_trie = match effect_builder.get_trie(id).await {
-                Ok(maybe_trie) => maybe_trie,
-                Err(error) => {
-                    error!(?error, "get_trie_request");
-                    None
-                }
-            };
-            Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(maybe_trie),
-                responder,
-            }
-        }
-        .event(std::convert::identity)
-    }
-}
-
-impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockHeader>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<BlockHeader>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
-        responder: FetchResponder<BlockHeader>,
-    ) -> Effects<Event<BlockHeader>> {
-        // Requests from fetcher are not restricted by the block availability index.
-        let only_from_available_block_range = false;
-
-        effect_builder
-            .get_block_header_from_storage(id, only_from_available_block_range)
-            .event(move |maybe_block_header| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(maybe_block_header),
-                responder,
-            })
-    }
-}
-
-impl ItemFetcher<BlockHeadersBatch> for Fetcher<BlockHeadersBatch> {
-    const SAFE_TO_RESPOND_TO_ALL: bool = true;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHeadersBatchId, HashMap<NodeId, Vec<FetchResponder<BlockHeadersBatch>>>>
-    {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<BlockHeadersBatch>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHeadersBatchId,
-        peer: NodeId,
-        responder: FetchResponder<BlockHeadersBatch>,
-    ) -> Effects<Event<BlockHeadersBatch>> {
-        effect_builder
-            .get_block_header_batch_from_storage(id)
-            .event(move |maybe_batch| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(maybe_batch),
-                responder,
-            })
-    }
-}
-
-impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
-    // We want the fetcher to ask all the peers we give to it separately, and return their
-    // responses separately, not just respond with the first SyncLeap it successfully gets from a
-    // single peer.
-    const SAFE_TO_RESPOND_TO_ALL: bool = false;
-
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<SyncLeap>>>> {
-        &mut self.responders
-    }
-
-    fn metrics(&mut self) -> &Metrics {
-        &self.metrics
-    }
-
-    fn peer_timeout(&self) -> Duration {
-        self.get_from_peer_timeout
-    }
-
-    fn get_from_storage<REv: ReactorEventT<SyncLeap>>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
-        responder: FetchResponder<SyncLeap>,
-    ) -> Effects<Event<SyncLeap>> {
-        effect_builder
-            .immediately()
-            .event(move |()| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(None),
-                responder,
-            })
     }
 }
 
@@ -836,7 +74,11 @@ impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
     T: FetcherItem + 'static,
-    REv: ReactorEventT<T>,
+    REv: From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<NetworkRequest<Message>>
+        + From<BlocklistAnnouncement>
+        + Send,
 {
     type Event = Event<T>;
     type ConstructionError = prometheus::Error;
@@ -852,11 +94,13 @@ where
             Event::Fetch(FetcherRequest {
                 id,
                 peer,
+                validation_metadata,
                 responder,
-            }) => self.fetch(effect_builder, id, peer, responder),
+            }) => self.fetch(effect_builder, id, peer, validation_metadata, responder),
             Event::GetFromStorageResult {
                 id,
                 peer,
+                validation_metadata,
                 maybe_item,
                 responder,
             } => match *maybe_item {
@@ -866,36 +110,31 @@ where
                         .respond(Ok(FetchedData::from_storage(item)))
                         .ignore()
                 }
-                None => self.failed_to_get_from_storage(effect_builder, id, peer, responder),
+                None => self.failed_to_get_from_storage(
+                    effect_builder,
+                    id,
+                    peer,
+                    validation_metadata,
+                    responder,
+                ),
             },
             Event::GotRemotely { item, source } => match source {
-                Source::Peer(peer) => {
-                    self.metrics().found_on_peer.inc();
-                    if let Err(err) = item.validate(&self.validation_metadata) {
-                        warn!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
-                        effect_builder.announce_disconnect_from_peer(peer).ignore()
-                    } else {
-                        match self.put_to_storage(*item.clone(), peer, effect_builder) {
-                            None => self.signal(item.id(), Ok(*item), peer),
-                            Some(effects) => effects,
-                        }
-                    }
-                }
+                Source::Peer(peer) => self.got_from_peer(peer, item, effect_builder),
                 Source::Client | Source::Ourself => Effects::new(),
             },
             Event::GotInvalidRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
                 trace!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
-                self.signal(id.clone(), Err(FetcherError::Absent { id, peer }), peer)
+                self.signal(id.clone(), Err(Error::Absent { id, peer }), peer)
             }
             Event::RejectedRemotely { id, peer } => {
                 trace!(TAG=%T::TAG, %id, %peer, "peer rejected fetch request");
-                self.signal(id.clone(), Err(FetcherError::Rejected { id, peer }), peer)
+                self.signal(id.clone(), Err(Error::Rejected { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
-                self.signal(id.clone(), Err(FetcherError::TimedOut { id, peer }), peer)
+                self.signal(id.clone(), Err(Error::TimedOut { id, peer }), peer)
             }
-            Event::PutToStorage { item, peer } => self.signal(item.id().clone(), Ok(*item), peer),
+            Event::PutToStorage { item, peer } => self.signal(item.id(), Ok(*item), peer),
         }
     }
 }

@@ -2266,17 +2266,40 @@ pub struct FinalitySignature {
     #[data_size(with = ds::once_cell)]
     is_verified: OnceCell<Result<(), crypto::Error>>,
 }
+//
+// #[derive(Debug, Clone, Serialize, Deserialize, DataSize, Eq, JsonSchema)]
+// pub struct FinalitySignatureV2 {
+//     /// Hash of a block this signature is for.
+//     pub block_hash: BlockHash,
+//     /// Era in which the block was created in.
+//     pub era_id: EraId,
+//     /// The checksum of the deploys' approvals.
+//     pub approvals_checksum: Digest,
+//     /// The checksum of the execution results of the deploys.
+//     pub execution_results_checksum: Digest,
+//     /// Signature over the block hash.
+//     pub signature: Signature,
+//     /// Public key of the signing validator.
+//     pub public_key: PublicKey,
+//     #[serde(skip)]
+//     #[data_size(with = ds::once_cell)]
+//     is_verified: OnceCell<Result<(), crypto::Error>>,
+// }
 
 impl FinalitySignature {
     /// Create an instance of `FinalitySignature`.
     pub fn create(
         block_hash: BlockHash,
         era_id: EraId,
+        // approvals_checksum: Digest,
+        // execution_results_checksum: Digest,
         secret_key: &SecretKey,
         public_key: PublicKey,
     ) -> Self {
         let mut bytes = block_hash.inner().into_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
+        // bytes.extend_from_slice(&approvals_checksum.into_vec());
+        // bytes.extend_from_slice(&execution_results_checksum.into_vec());
         let signature = crypto::sign(bytes, secret_key, &public_key);
         FinalitySignature {
             block_hash,

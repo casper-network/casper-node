@@ -9,6 +9,7 @@ use std::{
     fs::File,
 };
 
+use casper_hashing::Digest;
 use itertools::Itertools;
 use serde::Serialize;
 
@@ -290,7 +291,11 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
 #[derive(Debug)]
 pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
-    BlockAdded(Box<Block>),
+    BlockAdded {
+        block: Box<Block>,
+        approvals_checksum: Digest,
+        execution_results_checksum: Digest,
+    },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -298,7 +303,7 @@ pub(crate) enum LinearChainAnnouncement {
 impl Display for LinearChainAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinearChainAnnouncement::BlockAdded(block) => {
+            LinearChainAnnouncement::BlockAdded { block, .. } => {
                 write!(f, "block added {}", block.hash())
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
@@ -332,6 +337,10 @@ pub(crate) enum ContractRuntimeAnnouncement {
     LinearChainBlock {
         /// The block.
         block: Box<Block>,
+        /// The checksum of the deploys' approvals.
+        approvals_checksum: Digest,
+        /// The checksum of the execution results of the deploys.
+        execution_results_checksum: Digest,
         /// The results of executing the deploys in this block.
         // #[serde(skip_serializing)]
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,

@@ -10,9 +10,7 @@ use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::{complete_block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
-    types::{
-        Block, BlockHash, Deploy, DeployHash, FinalitySignature, NodeId, TrieOrChunk, TrieOrChunkId,
-    },
+    types::{Block, BlockHash, Deploy, FinalitySignature, NodeId, TrieOrChunk, TrieOrChunkId},
 };
 
 #[derive(From, Debug, Serialize)]

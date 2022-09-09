@@ -17,7 +17,7 @@ use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
-        fetcher::{FetchedData, FetcherError},
+        fetcher::{self, FetchedData},
         Component,
     },
     effect::{
@@ -168,7 +168,7 @@ impl CompleteBlockSynchronizer {
                 NeedNext::Block(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, node_id)
+                            .fetch::<Block>(block_hash, node_id, ())
                             .event(Event::BlockFetched)
                     }))
                 }
@@ -181,7 +181,7 @@ impl CompleteBlockSynchronizer {
                                 public_key: public_key.clone(),
                             };
                             effect_builder
-                                .fetch::<FinalitySignature>(id, node_id)
+                                .fetch::<FinalitySignature>(id, node_id, ())
                                 .event(Event::FinalitySignatureFetched)
                         })
                     }))
@@ -190,7 +190,7 @@ impl CompleteBlockSynchronizer {
                 NeedNext::Deploy(deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Deploy>(deploy_hash, node_id)
+                            .fetch::<Deploy>(deploy_hash, node_id, ())
                             .event(Event::DeployFetched)
                     }))
                 }
@@ -213,7 +213,7 @@ impl CompleteBlockSynchronizer {
 
     fn handle_block_fetched(
         &mut self,
-        result: Result<FetchedData<Block>, FetcherError<Block>>,
+        result: Result<FetchedData<Block>, fetcher::Error<Block>>,
     ) -> Effects<Event> {
         let block = match result {
             Ok(FetchedData::FromPeer { item, peer: _ } | FetchedData::FromStorage { item }) => item,
@@ -236,7 +236,7 @@ impl CompleteBlockSynchronizer {
 
     fn handle_finality_signature_fetched(
         &mut self,
-        result: Result<FetchedData<FinalitySignature>, FetcherError<FinalitySignature>>,
+        result: Result<FetchedData<FinalitySignature>, fetcher::Error<FinalitySignature>>,
     ) -> Effects<Event> {
         let finality_signature = match result {
             Ok(FetchedData::FromPeer { item, peer: _ } | FetchedData::FromStorage { item }) => item,

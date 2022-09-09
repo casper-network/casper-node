@@ -3,11 +3,12 @@ mod error;
 
 use std::{collections::HashMap, convert::Infallible};
 
+use num_rational::Ratio;
 use tracing::{error, info, warn};
 
 use crate::{
     components::{
-        fetcher::{FetchResult, FetchedData, FetcherError},
+        fetcher::{self, FetchResult, FetchedData},
         Component,
     },
     effect::{
@@ -34,6 +35,7 @@ pub(crate) enum Event {
 
 pub(crate) struct SyncLeaper {
     maybe_pull_request_in_progress: Option<PullRequestInProgress>,
+    finality_threshold_fraction: Ratio<u64>,
 }
 
 struct PullRequestInProgress {
@@ -105,9 +107,10 @@ enum PeerState {
 }
 
 impl SyncLeaper {
-    pub(crate) fn new() -> SyncLeaper {
+    pub(crate) fn new(finality_threshold_fraction: Ratio<u64>) -> SyncLeaper {
         SyncLeaper {
             maybe_pull_request_in_progress: None,
+            finality_threshold_fraction,
         }
     }
 
@@ -154,12 +157,14 @@ impl SyncLeaper {
         let peers = peers_to_ask
             .into_iter()
             .map(|peer| {
-                effects.extend(effect_builder.fetch::<SyncLeap>(trusted_hash, peer).event(
-                    move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                        trusted_hash,
-                        fetch_result,
-                    },
-                ));
+                effects.extend(
+                    effect_builder
+                        .fetch::<SyncLeap>(trusted_hash, peer, self.finality_threshold_fraction)
+                        .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
+                            trusted_hash,
+                            fetch_result,
+                        }),
+                );
                 // note the peer states
                 (peer, PeerState::RequestSent)
             })
@@ -224,7 +229,7 @@ impl SyncLeaper {
                 };
                 *peer_state = PeerState::Fetched(*item);
             }
-            Err(FetcherError::Rejected { peer, .. }) => {
+            Err(fetcher::Error::Rejected { peer, .. }) => {
                 let peer_state = match request_in_progress.peers.get_mut(&peer) {
                     Some(state) => state,
                     None => {

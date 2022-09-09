@@ -408,12 +408,7 @@ impl Reactor {
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_headers_batch_fetcher = fetcher_builder.build("block_headers_batch")?;
         let finality_signatures_fetcher = fetcher_builder.build("finality_signatures")?;
-        let sync_leap_fetcher = Fetcher::new_with_metadata(
-            "sync_leap",
-            config.fetcher,
-            registry,
-            chainspec.highway_config.finality_threshold_fraction,
-        )?;
+        let sync_leap_fetcher = fetcher_builder.build("sync_leap")?;
 
         let complete_block_synchronizer = CompleteBlockSynchronizer::new(
             config.complete_block_synchronizer,
@@ -911,6 +906,8 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::LinearChainBlock {
                     block,
+                    approvals_checksum,
+                    execution_results_checksum,
                     execution_results,
                 },
             ) => {
@@ -921,6 +918,8 @@ impl reactor::Reactor for Reactor {
                 let reactor_event =
                     ParticipatingEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
                         block,
+                        approvals_checksum,
+                        execution_results_checksum,
                         execution_results: execution_results
                             .iter()
                             .map(|(hash, _header, results)| (*hash, results.clone()))
@@ -1033,13 +1032,17 @@ impl reactor::Reactor for Reactor {
                 // We don't care about completion of gossiping an address.
                 Effects::new()
             }
-            ParticipatingEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
+            ParticipatingEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
                 block,
-            )) => {
+                approvals_checksum,
+                execution_results_checksum,
+            }) => {
                 let reactor_event_consensus =
                     ParticipatingEvent::Consensus(consensus::Event::BlockAdded {
                         header: Box::new(block.header().clone()),
                         header_hash: *block.hash(),
+                        approvals_checksum,
+                        execution_results_checksum,
                     });
                 let reactor_block_gossiper_event =
                     ParticipatingEvent::BlockGossiper(gossiper::Event::ItemReceived {

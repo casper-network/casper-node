@@ -445,7 +445,10 @@ where
 {
     async move {
         let deploy_hash: DeployHash = dt_hash.into();
-        let deploy = match effect_builder.fetch::<Deploy>(deploy_hash, sender).await {
+        let deploy = match effect_builder
+            .fetch::<Deploy>(deploy_hash, sender, ())
+            .await
+        {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => item,
             Err(fetcher_error) => {
                 warn!(

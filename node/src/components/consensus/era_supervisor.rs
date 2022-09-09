@@ -667,18 +667,22 @@ impl EraSupervisor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
+        approvals_checksum: Digest,
+        execution_results_checksum: Digest,
     ) -> Effects<Event> {
-        let our_pk = self.public_signing_key.clone();
-        let our_sk = self.secret_signing_key.clone();
+        let our_public_key = self.public_signing_key.clone();
+        let our_secret_key = self.secret_signing_key.clone();
         let era_id = block_header.era_id();
         self.executed_block(&block_header);
-        let mut effects = if self.is_validator_in(&our_pk, era_id) {
+        let mut effects = if self.is_validator_in(&our_public_key, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::create(
                     block_header.hash(),
                     era_id,
-                    &our_sk,
-                    our_pk,
+                    // approvals_checksum,
+                    // execution_results_checksum,
+                    &our_secret_key,
+                    our_public_key,
                 ))
                 .ignore()
         } else {

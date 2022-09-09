@@ -1,74 +1,15 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use datasize::DataSize;
 use serde::Serialize;
-use thiserror::Error;
 use tracing::error;
 
-use super::FetcherItem;
+use super::FetchResponder;
 use crate::{
     components::fetcher::FetchResponse,
-    effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
-    types::{Deploy, NodeId},
+    effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest},
+    types::{Deploy, FetcherItem, NodeId},
     utils::Source,
 };
-
-#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize)]
-pub(crate) enum FetcherError<T>
-where
-    T: FetcherItem,
-{
-    #[error("Could not fetch item with id {id:?} from peer {peer:?}")]
-    Absent { id: T::Id, peer: NodeId },
-
-    #[error("Peer {peer:?} rejected fetch request for item with id {id:?}")]
-    Rejected { id: T::Id, peer: NodeId },
-
-    #[error("Timed out getting item with id {id:?} from peer {peer:?}")]
-    TimedOut { id: T::Id, peer: NodeId },
-
-    #[error("Could not construct get request for item with id {id:?} for peer {peer:?}")]
-    CouldNotConstructGetRequest { id: T::Id, peer: NodeId },
-}
-
-impl<T> FetcherError<T>
-where
-    T: FetcherItem,
-{
-    pub(crate) fn peer(&self) -> &NodeId {
-        match self {
-            FetcherError::Absent { peer, .. }
-            | FetcherError::Rejected { peer, .. }
-            | FetcherError::TimedOut { peer, .. }
-            | FetcherError::CouldNotConstructGetRequest { peer, .. } => peer,
-        }
-    }
-}
-
-#[derive(Clone, DataSize, Debug, PartialEq, Serialize)]
-pub(crate) enum FetchedData<T> {
-    FromStorage { item: Box<T> },
-    FromPeer { item: Box<T>, peer: NodeId },
-}
-
-impl<T> FetchedData<T> {
-    pub(crate) fn from_storage(item: T) -> Self {
-        FetchedData::FromStorage {
-            item: Box::new(item),
-        }
-    }
-
-    pub(crate) fn from_peer(item: T, peer: NodeId) -> Self {
-        FetchedData::FromPeer {
-            item: Box::new(item),
-            peer,
-        }
-    }
-}
-
-pub(crate) type FetchResult<T> = Result<FetchedData<T>, FetcherError<T>>;
-
-pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
@@ -80,6 +21,7 @@ pub(crate) enum Event<T: FetcherItem> {
     GetFromStorageResult {
         id: T::Id,
         peer: NodeId,
+        validation_metadata: T::ValidationMetadata,
         maybe_item: Box<Option<T>>,
         responder: FetchResponder<T>,
     },

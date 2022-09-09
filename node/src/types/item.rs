@@ -77,21 +77,17 @@ pub(crate) trait Item:
     fn id(&self) -> Self::Id;
 }
 
-/// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
-/// furthermore allows generic network messages to include this type due to the provision of the
-/// type-identifying `TAG`.
+/// A trait which allows an implementing type to be used by a fetcher component.
 pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug;
-    type ValidationMetadata;
+    type ValidationMetadata: Clone + Serialize + Debug;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;
 }
 
-/// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
-/// furthermore allows generic network messages to include this type due to the provision of the
-/// type-identifying `TAG`.
+/// A trait which allows an implementing type to be used by a gossiper component.
 pub(crate) trait GossiperItem: Item {
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;

@@ -790,6 +790,8 @@ impl ContractRuntime {
             block,
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
+            approvals_checksum,
+            execution_results_checksum,
         } = match run_intensive_task(move || {
             execute_finalized_block(
                 engine_state.as_ref(),
@@ -832,7 +834,12 @@ impl ContractRuntime {
         }
 
         effect_builder
-            .announce_new_linear_chain_block(block, execution_results)
+            .announce_new_linear_chain_block(
+                block,
+                approvals_checksum,
+                execution_results_checksum,
+                execution_results,
+            )
             .await;
 
         // If the child is already finalized, start execution.
