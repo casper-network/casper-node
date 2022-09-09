@@ -66,19 +66,6 @@ use super::error::{FetchBlockEffectsError, GlobalStateQueryError};
 const FINALITY_SIGNATURE_FETCH_RETRY_COUNT: usize = 3;
 const MAX_HEADERS_BATCH_SIZE: u64 = 1024;
 
-/// The outcome of `run_fast_sync_task`.
-#[derive(Debug, Serialize)]
-pub(crate) enum FastSyncOutcome {
-    ShouldCommitGenesis,
-    ShouldCommitUpgrade {
-        switch_block_header_before_upgrade: BlockHeader,
-        is_emergency_upgrade: bool,
-    },
-    Synced {
-        highest_block_header: BlockHeader,
-    },
-}
-
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
 /// is dropped, the specified gauge is updated with the duration since the scope was entered.
