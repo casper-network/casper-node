@@ -10,7 +10,7 @@ use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{
-        contract_runtime::BlockExecutionError, fetcher::FetcherError, linear_chain,
+        contract_runtime::BlockExecutionError, fetcher, linear_chain,
         linear_chain::BlockSignatureError,
     },
     types::{
@@ -69,7 +69,7 @@ pub(crate) enum Error {
     },
 
     #[error(transparent)]
-    BlockFetcher(#[from] FetcherError<Block>),
+    BlockFetcher(#[from] fetcher::Error<Block>),
 
     #[error("no such block hash: {bogus_block_hash}")]
     NoSuchBlockHash { bogus_block_hash: BlockHash },
@@ -81,22 +81,22 @@ pub(crate) enum Error {
     NoHighestBlockHeader,
 
     #[error(transparent)]
-    BlockHeaderFetcher(#[from] FetcherError<BlockHeader>),
+    BlockHeaderFetcher(#[from] fetcher::Error<BlockHeader>),
 
     #[error(transparent)]
-    BlockHeaderWithMetadataFetcher(#[from] FetcherError<BlockHeaderWithMetadata>),
+    BlockHeaderWithMetadataFetcher(#[from] fetcher::Error<BlockHeaderWithMetadata>),
 
     #[error(transparent)]
-    BlockWithMetadataFetcher(#[from] FetcherError<BlockWithMetadata>),
+    BlockWithMetadataFetcher(#[from] fetcher::Error<BlockWithMetadata>),
 
     #[error(transparent)]
-    BlockAndDeploysFetcher(#[from] FetcherError<BlockAndDeploys>),
+    BlockAndDeploysFetcher(#[from] fetcher::Error<BlockAndDeploys>),
 
     #[error(transparent)]
-    DeployWithMetadataFetcher(#[from] FetcherError<Deploy>),
+    DeployWithMetadataFetcher(#[from] fetcher::Error<Deploy>),
 
     #[error(transparent)]
-    FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
+    FinalizedApprovalsFetcher(#[from] fetcher::Error<FinalizedApprovalsWithId>),
 
     #[error(transparent)]
     FinalitySignatures(
@@ -182,7 +182,7 @@ pub(crate) enum Error {
 pub(crate) enum FetchTrieError {
     /// Fetcher error.
     #[error(transparent)]
-    FetcherError(#[from] FetcherError<TrieOrChunk>),
+    FetcherError(#[from] fetcher::Error<TrieOrChunk>),
 
     /// Trie was being fetched from peers by chunks but was somehow fetch from storage.
     #[error(
@@ -204,7 +204,7 @@ pub(crate) enum FetchTrieError {
 
 impl<T> From<FetchWithRetryError<T>> for FetchTrieError
 where
-    FetchTrieError: From<FetcherError<T>>,
+    FetchTrieError: From<fetcher::Error<T>>,
     T: FetcherItem,
 {
     fn from(err: FetchWithRetryError<T>) -> Self {
@@ -217,7 +217,7 @@ where
 
 impl<T> From<FetchWithRetryError<T>> for FetchBlockHeadersBatchError
 where
-    FetchBlockHeadersBatchError: From<FetcherError<T>>,
+    FetchBlockHeadersBatchError: From<fetcher::Error<T>>,
     T: FetcherItem,
 {
     fn from(err: FetchWithRetryError<T>) -> Self {
@@ -232,7 +232,7 @@ where
 
 impl<T> From<FetchWithRetryError<T>> for Error
 where
-    Error: From<FetcherError<T>>,
+    Error: From<fetcher::Error<T>>,
     T: FetcherItem,
 {
     fn from(err: FetchWithRetryError<T>) -> Self {
@@ -247,7 +247,7 @@ where
 pub(crate) enum FetchBlockHeadersBatchError {
     /// Fetcher error
     #[error(transparent)]
-    FetchError(#[from] FetcherError<BlockHeadersBatch>),
+    FetchError(#[from] fetcher::Error<BlockHeadersBatch>),
 
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,

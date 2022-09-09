@@ -4,13 +4,11 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
 use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
@@ -35,7 +33,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    protocol::{self, Validity},
+    protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     testing::{
         self, init_logging,

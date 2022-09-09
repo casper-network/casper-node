@@ -9,7 +9,7 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher::FetcherError},
+    components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::{BlockPayload, ChainspecRawBytes, DeployWithApprovals},
     utils::{self, Loadable},
@@ -61,13 +61,14 @@ impl MockReactor {
         if let ReactorEvent::Fetcher(FetcherRequest {
             id,
             peer,
+            validation_metadata: _,
             responder,
         }) = reactor_event
         {
             match deploy.into() {
                 None => {
                     responder
-                        .respond(Err(FetcherError::Absent { id, peer }))
+                        .respond(Err(fetcher::Error::Absent { id, peer }))
                         .await
                 }
                 Some(deploy) => {

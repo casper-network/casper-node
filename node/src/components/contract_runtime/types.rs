@@ -102,6 +102,10 @@ pub struct BlockAndExecutionEffects {
     pub execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
+    /// The Merkle root hash of the deploys' approvals.
+    pub approvals_checksum: Digest,
+    /// The Merkle root hash of the execution results.
+    pub execution_results_checksum: Digest,
 }
 
 impl BlockAndExecutionEffects {

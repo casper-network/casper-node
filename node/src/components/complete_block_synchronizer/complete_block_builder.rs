@@ -6,7 +6,7 @@ use num_rational::Ratio;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp, U512};
-use tracing::{error, warn};
+use tracing::error;
 
 use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, NodeId};
 

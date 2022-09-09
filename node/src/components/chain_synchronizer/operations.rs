@@ -33,7 +33,7 @@ use crate::{
             Config, Metrics, ProgressHolder,
         },
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
-        fetcher::{FetchedData, FetcherError},
+        fetcher::{self, FetchedData},
         linear_chain::{self, BlockSignatureError},
     },
     effect::{
@@ -390,7 +390,7 @@ where
     },
 
     #[error(transparent)]
-    FetcherError(#[from] FetcherError<T>),
+    FetcherError(#[from] fetcher::Error<T>),
 }
 
 /// Fetches an item.
@@ -400,6 +400,7 @@ where
 async fn fetch_with_retries<REv, T>(
     ctx: &ChainSyncContext<'_, REv>,
     id: T::Id,
+    validation_metadata: T::ValidationMetadata,
 ) -> Result<FetchedData<T>, FetchWithRetryError<T>>
 where
     T: FetcherItem + CanUseSyncingNodes + 'static,
@@ -422,7 +423,9 @@ where
             );
         }
 
-        if let Some(value) = fetch_from_peers(new_peer_list, id.clone(), ctx).await {
+        if let Some(value) =
+            fetch_from_peers(new_peer_list, id.clone(), validation_metadata.clone(), ctx).await
+        {
             return value.map_err(Into::into);
         }
 
@@ -451,8 +454,9 @@ where
 async fn fetch_from_peers<REv, T>(
     new_peer_list: Vec<NodeId>,
     id: <T as Item>::Id,
+    validation_metadata: T::ValidationMetadata,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Option<Result<FetchedData<T>, FetcherError<T>>>
+) -> Option<Result<FetchedData<T>, fetcher::Error<T>>>
 where
     T: FetcherItem + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
@@ -464,7 +468,11 @@ where
             id,
             peer
         );
-        match ctx.effect_builder.fetch::<T>(id.clone(), peer).await {
+        match ctx
+            .effect_builder
+            .fetch::<T>(id.clone(), peer, validation_metadata.clone())
+            .await
+        {
             Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                 trace!(
                     "did not get {:?} with id {:?} from {:?}, got from storage instead",
@@ -478,7 +486,7 @@ where
                 trace!("fetched {:?} with id {:?} from {:?}", T::TAG, id, peer);
                 return Some(Ok(fetched_data));
             }
-            Err(FetcherError::Absent { .. }) => {
+            Err(fetcher::Error::Absent { .. }) => {
                 warn!(
                     ?id,
                     tag = ?T::TAG,
@@ -487,8 +495,8 @@ where
                 );
                 ctx.mark_bad_peer(peer);
             }
-            Err(FetcherError::Rejected { .. }) => todo!(),
-            Err(FetcherError::TimedOut { .. }) => {
+            Err(fetcher::Error::Rejected { .. }) => todo!(),
+            Err(fetcher::Error::TimedOut { .. }) => {
                 warn!(
                     ?id,
                     tag = ?T::TAG,
@@ -497,7 +505,7 @@ where
                 );
                 ctx.mark_bad_peer(peer);
             }
-            Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => {
+            Err(error @ fetcher::Error::CouldNotConstructGetRequest { .. }) => {
                 return Some(Err(error))
             }
         }
@@ -518,7 +526,7 @@ where
     REv: From<FetcherRequest<TrieOrChunk>> + From<NetworkInfoRequest>,
 {
     let trie_or_chunk =
-        match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
+        match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(0, id), ()).await? {
             FetchedData::FromStorage { .. } => {
                 return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
             }
@@ -545,7 +553,7 @@ where
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
+            match fetch_with_retries::<_, TrieOrChunk>(ctx, TrieOrChunkId(index, id), ()).await? {
                 FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
@@ -618,7 +626,7 @@ where
         return Ok(Box::new(stored_block_header));
     }
 
-    match fetch_with_retries::<_, BlockHeader>(ctx, block_hash).await? {
+    match fetch_with_retries::<_, BlockHeader>(ctx, block_hash, ()).await? {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
             item: block_header, ..
@@ -652,7 +660,7 @@ where
     }
 
     Ok(
-        match fetch_with_retries::<_, Deploy>(ctx, deploy_or_transfer_hash).await? {
+        match fetch_with_retries::<_, Deploy>(ctx, deploy_or_transfer_hash, ()).await? {
             FetchedData::FromStorage { item: deploy } => deploy,
             FetchedData::FromPeer { item: deploy, .. } => {
                 ctx.effect_builder
@@ -671,13 +679,13 @@ async fn fetch_finalized_approvals<REv>(
     deploy_hash: DeployHash,
     peer: NodeId,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>>
+) -> Result<FinalizedApprovalsWithId, fetcher::Error<FinalizedApprovalsWithId>>
 where
     REv: From<FetcherRequest<FinalizedApprovalsWithId>>,
 {
     let fetched_approvals = ctx
         .effect_builder
-        .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer)
+        .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer, ())
         .await?;
     match fetched_approvals {
         FetchedData::FromStorage { item: approvals } => Ok(*approvals),
@@ -797,6 +805,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 async fn fetch_and_store_next<REv, I>(
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
+    validation_metadata: I::ValidationMetadata,
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<Option<Box<I>>, Error>
 where
@@ -806,7 +815,7 @@ where
         + From<BlocklistAnnouncement>
         + From<StorageRequest>
         + Send,
-    Error: From<FetcherError<I>>,
+    Error: From<fetcher::Error<I>>,
 {
     let height = parent_header
         .height()
@@ -824,6 +833,7 @@ where
             height,
             parent_header,
             key_block_info,
+            validation_metadata.clone(),
         )
         .await?;
         match maybe_item {
@@ -879,18 +889,23 @@ async fn try_fetch_block_or_block_header_by_height<REv, I>(
     height: u64,
     parent_header: &BlockHeader,
     key_block_info: &KeyBlockInfo,
+    validation_metadata: I::ValidationMetadata,
 ) -> Result<Option<Box<I>>, Error>
 where
     I: BlockOrHeaderWithMetadata,
     REv: From<FetcherRequest<I>> + From<BlocklistAnnouncement> + From<StorageRequest> + Send,
-    Error: From<FetcherError<I>>,
+    Error: From<fetcher::Error<I>>,
 {
     Ok(loop {
         let peer = match peers.pop() {
             Some(peer) => peer,
             None => return Ok(None),
         };
-        match ctx.effect_builder.fetch::<I>(height, peer).await {
+        match ctx
+            .effect_builder
+            .fetch::<I>(height, peer, validation_metadata.clone())
+            .await
+        {
             Ok(FetchedData::FromStorage { item }) => {
                 if *item.header().parent_hash() != parent_header.hash() {
                     return Err(Error::UnexpectedParentHash {
@@ -965,12 +980,12 @@ where
 
                 break Some(item);
             }
-            Err(FetcherError::Absent { .. }) => {
+            Err(fetcher::Error::Absent { .. }) => {
                 warn!(height, tag = ?I::TAG, ?peer, "block by height absent from peer");
                 // If the peer we requested doesn't have the item, continue with the next peer
                 continue;
             }
-            Err(FetcherError::TimedOut { .. }) => {
+            Err(fetcher::Error::TimedOut { .. }) => {
                 warn!(height, tag = ?I::TAG, ?peer, "peer timed out");
                 // Peer timed out fetching the item, continue with the next peer
                 continue;
@@ -1032,7 +1047,7 @@ async fn fetch_and_store_block_by_hash<REv>(
 where
     REv: From<StorageRequest> + From<FetcherRequest<Block>> + From<NetworkInfoRequest>,
 {
-    match fetch_with_retries::<_, Block>(ctx, block_hash).await? {
+    match fetch_with_retries::<_, Block>(ctx, block_hash, ()).await? {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
             ctx.effect_builder.put_block_to_storage(block.clone()).await;
@@ -1050,7 +1065,7 @@ where
     REv: From<NetworkInfoRequest> + From<FetcherRequest<BlockAndDeploys>> + From<StorageRequest>,
 {
     let start = Timestamp::now();
-    let res = match fetch_with_retries::<_, BlockAndDeploys>(ctx, block_hash).await? {
+    let res = match fetch_with_retries::<_, BlockAndDeploys>(ctx, block_hash, ()).await? {
         FetchedData::FromStorage {
             item: block_and_deploys,
             ..
@@ -1312,6 +1327,7 @@ where
         let maybe_fetched_block = fetch_and_store_next::<_, BlockHeaderWithMetadata>(
             &highest_synced_block_header,
             &highest_synced_key_block_info,
+            (),
             ctx,
         )
         .await?;
@@ -1498,7 +1514,7 @@ where
         BlockHeadersBatchId::from_known(lowest_trusted_block_header, MAX_HEADERS_BATCH_SIZE);
 
     loop {
-        match fetch_with_retries::<_, BlockHeadersBatch>(ctx, batch_id).await? {
+        match fetch_with_retries::<_, BlockHeadersBatch>(ctx, batch_id, ()).await? {
             FetchedData::FromStorage { item } => {
                 return item
                     .lowest()
@@ -1760,23 +1776,23 @@ async fn fetch_finality_signatures_with_retry<REv>(
     peer: NodeId,
     retries: usize,
     ctx: &ChainSyncContext<'_, REv>,
-) -> Result<FetchedData<BlockSignatures>, FetcherError<BlockSignatures>>
+) -> Result<FetchedData<BlockSignatures>, fetcher::Error<BlockSignatures>>
 where
     REv: From<FetcherRequest<BlockSignatures>>,
 {
     for _ in 0..retries {
         let maybe_signatures = ctx
             .effect_builder
-            .fetch::<BlockSignatures>(block_hash, peer)
+            .fetch::<BlockSignatures>(block_hash, peer, ())
             .await;
         match maybe_signatures {
             Ok(result) => return Ok(result),
-            Err(FetcherError::TimedOut { .. }) => continue,
+            Err(fetcher::Error::TimedOut { .. }) => continue,
             Err(_) => return maybe_signatures,
         }
     }
 
-    Err(FetcherError::TimedOut {
+    Err(fetcher::Error::TimedOut {
         id: block_hash,
         peer,
     })
@@ -2093,6 +2109,7 @@ where
         let result = fetch_and_store_next::<_, BlockWithMetadata>(
             &highest_synced_block_header,
             &key_block_info,
+            (),
             ctx,
         )
         .await?;

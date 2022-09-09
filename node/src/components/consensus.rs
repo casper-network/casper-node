@@ -30,6 +30,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
+use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -113,6 +114,8 @@ pub(crate) enum Event {
     BlockAdded {
         header: Box<BlockHeader>,
         header_hash: BlockHash,
+        approvals_checksum: Digest,
+        execution_results_checksum: Digest,
     },
     /// The proto-block has been validated.
     ResolveValidity(ResolveValidity),
@@ -199,6 +202,7 @@ impl Display for Event {
             Event::BlockAdded {
                 header: _,
                 header_hash,
+                ..
             } => write!(
                 f,
                 "A block has been added to the linear chain: {}",
@@ -303,7 +307,14 @@ where
             Event::BlockAdded {
                 header,
                 header_hash: _,
-            } => self.handle_block_added(effect_builder, *header),
+                approvals_checksum,
+                execution_results_checksum,
+            } => self.handle_block_added(
+                effect_builder,
+                *header,
+                approvals_checksum,
+                execution_results_checksum,
+            ),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
             }

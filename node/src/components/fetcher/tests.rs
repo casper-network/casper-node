@@ -12,8 +12,8 @@ use thiserror::Error;
 use super::*;
 use crate::{
     components::{
-        deploy_acceptor, in_memory_network::NetworkController, small_network::GossipedAddress,
-        storage,
+        deploy_acceptor, fetcher, in_memory_network::NetworkController,
+        small_network::GossipedAddress, storage,
     },
     effect::{
         announcements::DeployAcceptorAnnouncement,
@@ -227,7 +227,7 @@ fn fetch_deploy(
 ) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
     move |effect_builder: EffectBuilder<ReactorEvent>| {
         effect_builder
-            .fetch::<Deploy>(deploy_hash, node_id)
+            .fetch::<Deploy>(deploy_hash, node_id, ())
             .then(move |deploy| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
@@ -309,7 +309,7 @@ async fn assert_settled(
         // Timed-out case: despite the delayed response causing a timeout, the response does arrive,
         // and the TestDeployAcceptor unconditionally accepts the deploy and stores it. For the
         // test, we don't care whether it was stored or not, just that the TimedOut event fired.
-        (ExpectedFetchedDeployResult::TimedOut, Some(Err(FetcherError::TimedOut { .. })), _) => {}
+        (ExpectedFetchedDeployResult::TimedOut, Some(Err(fetcher::Error::TimedOut { .. })), _) => {}
         // FromStorage case: expect deploy to correspond to item fetched, as well as stored item
         (
             ExpectedFetchedDeployResult::FromStorage { expected_deploy },

@@ -1188,14 +1188,13 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) struct FetcherRequest<T>
-where
-    T: FetcherItem,
-{
+pub(crate) struct FetcherRequest<T: FetcherItem> {
     /// The ID of the item to be retrieved.
     pub(crate) id: T::Id,
     /// The peer id of the peer to be asked if the item is not held locally
     pub(crate) peer: NodeId,
+    /// Metadata used during validation of the fetched item.
+    pub(crate) validation_metadata: T::ValidationMetadata,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
 }

@@ -985,6 +985,8 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_new_linear_chain_block(
         self,
         block: Box<Block>,
+        approvals_checksum: Digest,
+        execution_results_checksum: Digest,
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
@@ -993,6 +995,8 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 ContractRuntimeAnnouncement::LinearChainBlock {
                     block,
+                    approvals_checksum,
+                    execution_results_checksum,
                     execution_results,
                 },
                 QueueKind::Regular,
@@ -1563,7 +1567,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Fetches an item from a fetcher.
-    pub(crate) async fn fetch<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
+    pub(crate) async fn fetch<T>(
+        self,
+        id: T::Id,
+        peer: NodeId,
+        validation_metadata: T::ValidationMetadata,
+    ) -> FetchResult<T>
     where
         REv: From<FetcherRequest<T>>,
         T: FetcherItem + 'static,
@@ -1572,6 +1581,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| FetcherRequest {
                 id,
                 peer,
+                validation_metadata,
                 responder,
             },
             QueueKind::Regular,
@@ -1752,13 +1762,21 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block: Box<Block>)
-    where
+    pub(crate) async fn announce_block_added(
+        self,
+        block: Box<Block>,
+        approvals_checksum: Digest,
+        execution_results_checksum: Digest,
+    ) where
         REv: From<LinearChainAnnouncement>,
     {
         self.event_queue
             .schedule(
-                LinearChainAnnouncement::BlockAdded(block),
+                LinearChainAnnouncement::BlockAdded {
+                    block,
+                    approvals_checksum,
+                    execution_results_checksum,
+                },
                 QueueKind::Regular,
             )
             .await
