@@ -18,6 +18,7 @@ use casper_types::{
     PublicKey, U512,
 };
 
+use crate::contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME};
 use crate::{
     components::{
         consensus::EraReport,
@@ -32,7 +33,6 @@ use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
     storage::global_state::{CommitProvider, StateProvider},
 };
-use crate::contract_runtime::{APPROVALS_CHECKSUM_INDEX, EXECUTION_RESULTS_CHECKSUM_INDEX};
 
 use super::SpeculativeExecutionState;
 
@@ -110,8 +110,8 @@ pub fn execute_finalized_block(
 
     let mut effects = AdditiveMap::new();
     let mut checksum_registry = BTreeMap::new();
-    let _ = checksum_registry.insert(APPROVALS_CHECKSUM_INDEX, approvals_checksum);
-    let _ = checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_INDEX, execution_results_checksum);
+    let _ = checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
+    let _ = checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
     let _ = effects.insert(
         Key::ChecksumRegistry,
         Transform::Write(

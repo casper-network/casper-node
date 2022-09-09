@@ -83,8 +83,8 @@ pub(crate) enum ContractRuntimeError {
 /// TODO: Fine tune this constant to the machine executing the node.
 const MAX_PARALLEL_INTENSIVE_TASKS: usize = 4;
 
-pub const APPROVALS_CHECKSUM_INDEX: u8 = 0;
-pub const EXECUTION_RESULTS_CHECKSUM_INDEX: u8 = 1;
+pub const APPROVALS_CHECKSUM_NAME: &str = "approvals_checksum";
+pub const EXECUTION_RESULTS_CHECKSUM_NAME: &str = "execution_results_checksum";
 
 /// Semaphore enforcing maximum number of parallel resource intensive tasks.
 static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =

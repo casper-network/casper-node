@@ -15,7 +15,7 @@ use casper_types::{bytesrepr, Key, StoredValue};
 use super::{Block, BlockHash};
 use crate::types::error::BlockCreationError;
 use crate::{
-    components::contract_runtime::APPROVALS_CHECKSUM_INDEX,
+    components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
     types::{Approval, BlockValidationError, FetcherItem, GossiperItem, Item, Tag},
 };
@@ -108,8 +108,8 @@ impl FetcherItem for BlockAdded {
             .value()
             .as_cl_value()
             .and_then(|cl_value| cl_value.clone().into_t().ok())
-            .and_then(|registry: BTreeMap<u8, Digest>| {
-                registry.get(&APPROVALS_CHECKSUM_INDEX).copied()
+            .and_then(|registry: BTreeMap<String, Digest>| {
+                registry.get(APPROVALS_CHECKSUM_NAME).copied()
             })
             .ok_or_else(|| BlockAddedValidationError::InvalidChecksumRegistry)?;
 
