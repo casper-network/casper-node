@@ -81,9 +81,7 @@ impl Payload for Message {
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
-                    Tag::BlockEffects => MessageKind::BlockTransfer, /* TODO: Do we need a
-                                                                      * specialized
-                                                                      * MessageKind? */
+                    Tag::BlockEffects => MessageKind::BlockTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
