@@ -1576,17 +1576,9 @@ impl Storage {
             let maybe_block = self.get_single_block_header_with_metadata(txn, block_hash)?;
             match maybe_block {
                 Some(highest_block) => {
-                    let block_signatures = match self.get_block_signatures(txn, &block_hash)? {
-                        Some(signatures) => signatures,
-                        None => BlockSignatures::new(
-                            highest_block.block_header.hash(),
-                            highest_block.block_header.era_id(),
-                        ),
-                    };
-
                     if matches!(
                         Self::has_sufficient_signatures(
-                            &block_signatures,
+                            &highest_block.block_signatures,
                             fault_tolerance_fraction,
                             trusted_validator_weights.clone(),
                         ),
@@ -1720,6 +1712,7 @@ impl Storage {
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
+        block_height: u64,
         fault_tolerance_fraction: Ratio<u64>,
         trusted_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
@@ -1737,8 +1730,8 @@ impl Storage {
         {
             if current_block_header_with_sufficient_signatures
                 .block_header
-                .hash()
-                == *block_hash
+                .height()
+                <= block_height
             {
                 return Ok(Some(vec![]));
             }
@@ -1749,28 +1742,23 @@ impl Storage {
                 let parent_hash = current_block_header_with_sufficient_signatures
                     .block_header
                     .parent_hash();
-                let parent_block_header: BlockHeader =
-                    match txn.get_value(self.block_header_db, &parent_hash)? {
-                        Some(block_header) => block_header,
+                let parent_block_header_with_metadata =
+                    match self.get_single_block_header_with_metadata(txn, parent_hash)? {
+                        Some(block_header_with_metadata) => block_header_with_metadata,
                         None => {
                             warn!(?parent_hash, "block header not found");
                             todo!()
                         }
                     };
-                if parent_block_header.hash() == *block_hash {
+                if parent_block_header_with_metadata.block_header.hash() == *block_hash {
                     // Don't go back further, we're already at the block being requested.
                     return Ok(Some(result));
                 }
 
-                // TODO: We could do better with the clone()'s
-                let parent_hash = parent_block_header.hash();
-                let block_signatures = self.get_block_signatures(txn, &parent_hash)?.unwrap(); // TODO: Fix that
-                let parent_block_header_with_metadata = BlockHeaderWithMetadata {
-                    block_header: parent_block_header.clone(),
-                    block_signatures,
-                };
-
-                if parent_block_header.is_switch_block() {
+                if parent_block_header_with_metadata
+                    .block_header
+                    .is_switch_block()
+                {
                     result.push(parent_block_header_with_metadata.clone());
                 }
                 current_block_header_with_sufficient_signatures = parent_block_header_with_metadata;
@@ -2397,6 +2385,7 @@ impl Storage {
         let signed_block_headers = self.get_signed_block_headers_with_metadata(
             &mut txn,
             &block_hash,
+            trusted_block_header.height(),
             fault_tolerance_fraction,
             trusted_validator_weights,
         )?;
