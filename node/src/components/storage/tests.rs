@@ -1,19 +1,20 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     f32::consts::E,
     fs::{self, File},
     iter,
 };
 
+use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
     system::auction::UnbondingPurse, testing::TestRng, AccessRights, EraId, ExecutionResult,
-    ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    ProtocolVersion, PublicKey, SecretKey, Signature, URef, U512,
 };
 
 use super::{
@@ -1297,16 +1298,50 @@ fn should_get_signed_block_headers_with_metadata() {
             blocks.push(block.clone());
         });
 
+    let validator_1_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let validator_2_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+
     blocks.iter().for_each(|block| {
         storage.write_block(&block).unwrap();
+
+        let mut proofs = BTreeMap::new();
+        proofs.insert(validator_1_public_key.clone(), Signature::System);
+        proofs.insert(validator_2_public_key.clone(), Signature::System);
+
+        let block_signatures = BlockSignatures {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            proofs,
+        };
+
+        storage
+            .write_finality_signatures(&block_signatures)
+            .unwrap();
+
         storage.completed_blocks.insert(block.height());
     });
+
+    let fault_tolerance_fraction = Ratio::new(1, 1000);
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key, U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key, U512::from(2000000000000u64));
 
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_hash = blocks.get(requested_height).unwrap().header().hash();
         storage
-            .get_signed_block_headers_with_metadata(&mut txn, &requested_block_hash, 100)
+            .get_signed_block_headers_with_metadata(
+                &mut txn,
+                &requested_block_hash,
+                fault_tolerance_fraction,
+                trusted_validator_weights.clone(),
+            )
             .unwrap()
             .unwrap()
             .iter()

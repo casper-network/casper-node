@@ -1225,13 +1225,13 @@ impl FetcherItem for BlockHeadersBatch {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct SyncLeap {
     /// The header of the trusted block specified by hash by the requester.
-    trusted_block_header: BlockHeader,
+    pub trusted_block_header: BlockHeader,
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.
     /// If the trusted one is already a switch block, this is empty.
-    trusted_ancestor_headers: Vec<BlockHeader>,
+    pub trusted_ancestor_headers: Vec<BlockHeader>,
     /// The headers of all switch blocks known to the sender, after the trusted block but before
     /// their highest block, with signatures, plus the signed highest block.
-    signed_block_headers: Vec<BlockHeaderWithMetadata>,
+    pub signed_block_headers: Vec<BlockHeaderWithMetadata>,
 }
 
 impl SyncLeap {

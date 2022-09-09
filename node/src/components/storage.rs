@@ -55,6 +55,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
+use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 #[cfg(test)]
@@ -64,7 +65,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform, U512,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -94,6 +95,8 @@ pub use error::FatalStorageError;
 use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
+
+use super::linear_chain::{self, BlockSignatureError};
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -276,6 +279,13 @@ where
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
     }
+}
+
+// TODO: Copy&Paste from `block_acceptor.rs` - should not be here
+pub enum SignaturesFinality {
+    Sufficient,
+    NotSufficient,
+    BogusValidators(Vec<PublicKey>),
 }
 
 impl Storage {
@@ -1275,6 +1285,20 @@ impl Storage {
         Ok(wrote)
     }
 
+    #[cfg(test)]
+    pub fn write_finality_signatures(
+        &mut self,
+        signatures: &BlockSignatures,
+    ) -> Result<(), FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let block_hash = signatures.block_hash;
+        if let Err(_) = txn.put_value(self.block_metadata_db, &block_hash, signatures, true) {
+            panic!("write_finality_signatures() failed");
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
     /// Writes a block which has already been verified to storage, updating indices as necessary.
     ///
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
@@ -1511,20 +1535,56 @@ impl Storage {
             .transpose()
     }
 
+    // TODO: Copy&Paste from `block_acceptor.rs` - should not be here
+    pub(super) fn has_sufficient_signatures(
+        block_signatures: &BlockSignatures,
+        fault_tolerance_fraction: Ratio<u64>,
+        trusted_validator_weights: BTreeMap<PublicKey, U512>, // TODO: Should borrow that?
+    ) -> SignaturesFinality {
+        match linear_chain::check_sufficient_block_signatures(
+            &trusted_validator_weights,
+            fault_tolerance_fraction,
+            Some(&block_signatures),
+        ) {
+            Ok(_) => SignaturesFinality::Sufficient,
+            Err(err) => match err {
+                BlockSignatureError::BogusValidators {
+                    bogus_validators, ..
+                } => SignaturesFinality::BogusValidators(*bogus_validators),
+                BlockSignatureError::InsufficientWeightForFinality { .. } => {
+                    return SignaturesFinality::NotSufficient
+                }
+                BlockSignatureError::TooManySignatures { .. } => {
+                    // This error is returned only when the signatures are proven to be sufficient.
+                    SignaturesFinality::Sufficient
+                }
+            },
+        }
+    }
+
     /// Retrieves the highest block header from storage, if one exists. May return an LMDB error.
     fn get_highest_block_header_with_metadata_with_sufficient_finality_signatures<
         Tx: Transaction,
     >(
         &self,
         txn: &mut Tx,
-        finality_threshold_fraction: usize,
+        fault_tolerance_fraction: Ratio<u64>,
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
-        for (index, block_hash) in self.block_height_index.iter().rev() {
+        // TODO: Use GetBlockHeaderAndMetadataByHash
+        for (_, block_hash) in self.block_height_index.iter().rev() {
             let maybe_block = self.get_single_block_header_with_metadata(txn, block_hash)?;
             match maybe_block {
                 Some(highest_block) => {
-                    //if highest_block.block_signatures.are_signatures(finality_threshold_fraction) {
-                    if true {
+                    let block_signatures = self.get_block_signatures(txn, &block_hash)?.unwrap(); // TODO: Fix that
+                    if matches!(
+                        Self::has_sufficient_signatures(
+                            &block_signatures,
+                            fault_tolerance_fraction,
+                            trusted_validator_weights.clone(),
+                        ),
+                        SignaturesFinality::Sufficient
+                    ) {
                         return Ok(Some(highest_block));
                     }
                 }
@@ -1653,15 +1713,16 @@ impl Storage {
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
-        finality_threshold_fraction: usize, // TODO: Also needs "total_weight total weight?"
+        fault_tolerance_fraction: Ratio<u64>,
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
         // TODO: Could use that: switch_block_era_id_index
-
-        // TODO: This is highest complete block (disjoint sequences - top).
+        // TODO: Replace with `disjoint_sequences::top`.
         let maybe_highest_block_header_with_sufficient_signatures = self
             .get_highest_block_header_with_metadata_with_sufficient_finality_signatures(
                 txn,
-                finality_threshold_fraction,
+                fault_tolerance_fraction,
+                trusted_validator_weights,
             )?;
 
         if let Some(mut current_block_header_with_sufficient_signatures) =
@@ -1695,12 +1756,11 @@ impl Storage {
                 }
 
                 // TODO: We could do better with the clone()'s
-                let body_hash = BlockHash::new(*parent_block_header.body_hash());
-                let era_id = parent_block_header.era_id();
+                let parent_hash = parent_block_header.hash();
+                let block_signatures = self.get_block_signatures(txn, &parent_hash)?.unwrap(); // TODO: Fix that
                 let parent_block_header_with_metadata = BlockHeaderWithMetadata {
                     block_header: parent_block_header.clone(),
-                    // TODO: Stick correct finality signatures in here.
-                    block_signatures: BlockSignatures::new(body_hash, era_id),
+                    block_signatures,
                 };
 
                 if parent_block_header.is_switch_block() {
@@ -1751,12 +1811,10 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let body_hash = BlockHash::new(*block_header.body_hash());
-        let era_id = block_header.era_id();
+        let block_header_hash = block_header.hash();
         Ok(Some(BlockHeaderWithMetadata {
             block_header,
-            // TODO: Stick correct finality signatures in here.
-            block_signatures: BlockSignatures::new(body_hash, era_id),
+            block_signatures: self.get_block_signatures(txn, &block_header_hash)?.unwrap(), // TODO: Fix unwrap
         }))
     }
 
@@ -2307,7 +2365,8 @@ impl Storage {
         &self,
         block_hash: BlockHash,
         allowed_era_diff: u64,
-        finality_threshold_fraction: usize,
+        fault_tolerance_fraction: Ratio<u64>,
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Option<SyncLeap>, FatalStorageError> {
         let mut txn = self
             .env
@@ -2325,16 +2384,16 @@ impl Storage {
         let signed_block_headers = self.get_signed_block_headers_with_metadata(
             &mut txn,
             &block_hash,
-            finality_threshold_fraction,
+            fault_tolerance_fraction,
+            trusted_validator_weights,
         )?;
         let signed_block_headers = signed_block_headers.unwrap(); // TODO
 
-        todo!()
-        // Ok(Some(SyncLeap {
-        //     trusted_block_header,
-        //     trusted_ancestor_headers,
-        //     signed_block_headers,
-        // }))
+        Ok(Some(SyncLeap {
+            trusted_block_header,
+            trusted_ancestor_headers,
+            signed_block_headers,
+        }))
     }
 
     /// Directly returns a deploy from internal store.
