@@ -1576,7 +1576,14 @@ impl Storage {
             let maybe_block = self.get_single_block_header_with_metadata(txn, block_hash)?;
             match maybe_block {
                 Some(highest_block) => {
-                    let block_signatures = self.get_block_signatures(txn, &block_hash)?.unwrap(); // TODO: Fix that
+                    let block_signatures = match self.get_block_signatures(txn, &block_hash)? {
+                        Some(signatures) => signatures,
+                        None => BlockSignatures::new(
+                            highest_block.block_header.hash(),
+                            highest_block.block_header.era_id(),
+                        ),
+                    };
+
                     if matches!(
                         Self::has_sufficient_signatures(
                             &block_signatures,
@@ -1812,9 +1819,15 @@ impl Storage {
             None => return Ok(None),
         };
         let block_header_hash = block_header.hash();
+
+        let block_signatures = match self.get_block_signatures(txn, &block_header_hash)? {
+            Some(signatures) => signatures,
+            None => BlockSignatures::new(block_header_hash, block_header.era_id()),
+        };
+
         Ok(Some(BlockHeaderWithMetadata {
             block_header,
-            block_signatures: self.get_block_signatures(txn, &block_header_hash)?.unwrap(), // TODO: Fix unwrap
+            block_signatures,
         }))
     }
 
