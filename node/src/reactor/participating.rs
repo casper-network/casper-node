@@ -313,7 +313,7 @@ pub(crate) struct Reactor {
     fetchinator: Fetchinator,
 
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
-    block_gossiper: Gossiper<Block, ParticipatingEvent>,
+    block_added_gossiper: Gossiper<BlockAdded, ParticipatingEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, ParticipatingEvent>,
 
     block_proposer: BlockProposer, // TODO: handle providing highest block, etc.
@@ -542,10 +542,10 @@ impl Reactor {
             gossiper::get_deploy_from_storage::<Deploy, ParticipatingEvent>,
             registry,
         )?;
-        let block_gossiper = Gossiper::new_for_partial_items(
-            "block_gossiper",
+        let block_added_gossiper = Gossiper::new_for_partial_items(
+            "block_added_gossiper",
             config.gossip,
-            gossiper::get_block_from_storage::<Block, ParticipatingEvent>,
+            gossiper::get_block_added_from_storage::<BlockAdded, ParticipatingEvent>,
             registry,
         )?;
         let finality_signature_gossiper = Gossiper::new_for_partial_items(
@@ -649,7 +649,7 @@ impl Reactor {
             deploy_acceptor,
             fetchinator,
             deploy_gossiper,
-            block_gossiper,
+            block_added_gossiper,
             finality_signature_gossiper,
             block_proposer,
             consensus,
@@ -888,9 +888,10 @@ impl reactor::Reactor for Reactor {
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockGossiper(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockGossiper,
-                self.block_gossiper.handle_event(effect_builder, rng, event),
+            ParticipatingEvent::BlockAddedGossiper(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockAddedGossiper,
+                self.block_added_gossiper
+                    .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
                 ParticipatingEvent::FinalitySignatureGossiper,
@@ -1115,14 +1116,14 @@ impl reactor::Reactor for Reactor {
                 // self.dispatch_event(effect_builder, rng, reactor_event)
                 Effects::new()
             }
-            ParticipatingEvent::BlockGossiperAnnouncement(
-                GossiperAnnouncement::NewCompleteItem(gossiped_block_id),
+            ParticipatingEvent::BlockAddedGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(gossiped_block_added_id),
             ) => {
-                error!(%gossiped_block_id, "gossiper should not announce new block");
+                error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
                 Effects::new()
             }
-            ParticipatingEvent::BlockGossiperAnnouncement(
-                GossiperAnnouncement::FinishedGossiping(_gossiped_block_id),
+            ParticipatingEvent::BlockAddedGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(_gossiped_block_added_id),
             ) => Effects::new(),
             ParticipatingEvent::FinalitySignatureGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
@@ -1160,7 +1161,7 @@ impl reactor::Reactor for Reactor {
                         execution_results_checksum,
                     });
                 let reactor_block_gossiper_event =
-                    ParticipatingEvent::BlockGossiper(gossiper::Event::ItemReceived {
+                    ParticipatingEvent::BlockAddedGossiper(gossiper::Event::ItemReceived {
                         item_id: *block.hash(),
                         source: Source::Ourself,
                     });
@@ -1241,9 +1242,9 @@ impl reactor::Reactor for Reactor {
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            ParticipatingEvent::BlockGossiperIncoming(incoming) => reactor::wrap_effects(
-                ParticipatingEvent::BlockGossiper,
-                self.block_gossiper
+            ParticipatingEvent::BlockAddedGossiperIncoming(incoming) => reactor::wrap_effects(
+                ParticipatingEvent::BlockAddedGossiper,
+                self.block_added_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::FinalitySignatureGossiperIncoming(incoming) => {
@@ -1289,6 +1290,9 @@ impl reactor::Reactor for Reactor {
                 )
             }
             ParticipatingEvent::SyncLeapRequestIncoming(_req) => {
+                // if this gets routed to storage, we can remove this SyncLeapRequestIncoming
+                // variant and just use the NetRequestIncoming
+                //    OR
                 // route to SyncLeaper once it's implemented
                 todo!()
             }
@@ -1303,19 +1307,27 @@ impl reactor::Reactor for Reactor {
                 &message.0,
             ),
             ParticipatingEvent::BlockAddedRequestIncoming(_req) => {
-                // route to ... once it's implemented
+                // if this gets routed to storage, we can remove this BlockAddedRequestIncoming
+                // variant and just use the NetRequestIncoming
+                //    OR
+                // route to blocks-accumulator? to construct and send the network response
                 todo!()
             }
             ParticipatingEvent::BlockAddedResponseIncoming(BlockAddedResponseIncoming {
                 sender,
                 message,
-            }) => reactor::handle_fetch_response::<Self, BlockAdded>(
-                self,
-                effect_builder,
-                rng,
-                sender,
-                &message.0,
-            ),
+            }) => {
+                // route to blocks-accumulator and announce once validated to route to gossiper
+                // AND
+                // route to fetcher
+                reactor::handle_fetch_response::<Self, BlockAdded>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    &message.0,
+                )
+            }
 
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => {
                 todo!(); // route it to both the LinearChain and BlocksAccumulator

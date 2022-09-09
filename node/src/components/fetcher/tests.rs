@@ -29,7 +29,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::{Block, Deploy, DeployHash, FinalitySignature, NodeId},
+    types::{BlockAdded, Deploy, DeployHash, FinalitySignature, NodeId},
     utils::{WithDir, RESOURCES_PATH},
 };
 
@@ -122,7 +122,7 @@ reactor!(Reactor {
 
         // There is no deploy or block gossiping going on.
         GossiperIncoming<Deploy> -> [!];
-        GossiperIncoming<Block> -> [!];
+        GossiperIncoming<BlockAdded> -> [!];
         GossiperIncoming<FinalitySignature> -> [!];
 
         // We are using an in-memory network, so we do not expect any gossiping of addresses.

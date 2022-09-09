@@ -48,4 +48,21 @@ impl ItemFetcher<BlockAdded> for Fetcher<BlockAdded> {
                 responder,
             })
     }
+
+    fn put_to_storage<REv>(
+        &self,
+        item: BlockAdded,
+        peer: NodeId,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Option<Effects<Event<BlockAdded>>>
+    where
+        REv: From<StorageRequest> + Send,
+    {
+        let item = Box::new(item);
+        Some(
+            effect_builder
+                .put_block_added_to_storage(item.clone())
+                .event(move |_| Event::PutToStorage { item, peer }),
+        )
+    }
 }

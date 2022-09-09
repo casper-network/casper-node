@@ -1052,6 +1052,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Puts the given BlockAdded into the linear block store.
+    pub(crate) async fn put_block_added_to_storage(self, block_added: Box<BlockAdded>) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        // self.make_request(
+        //     |responder| StorageRequest::PutBlockAdded {
+        //         block_added,
+        //         responder,
+        //     },
+        //     QueueKind::Regular,
+        // )
+        // .await
+        todo!()
+    }
+
     /// Puts the given block and its deploys into the store.
     pub(crate) async fn put_block_and_deploys_to_storage(self, block: Box<BlockAndDeploys>)
     where
@@ -1088,7 +1104,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         // self.make_request(
-        //     |responder| StorageRequest::GetBlock {
+        //     |responder| StorageRequest::GetBlockAdded {
         //         block_hash,
         //         responder,
         //     },

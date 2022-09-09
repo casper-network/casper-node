@@ -8,7 +8,7 @@ use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp, U512};
 use tracing::error;
 
-use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, NodeId};
+use crate::types::{Block, BlockAdded, BlockHash, DeployHash, FinalitySignature, NodeId};
 
 /// given a block hash we fetch
 ///     * block,
@@ -258,18 +258,21 @@ impl CompleteBlockBuilder {
             >= total_weight * U512::from(*threshold.numer())
     }
 
-    pub(super) fn apply_block(&mut self, block: &Block) {
-        if self.era_id != block.header().era_id() || self.block_hash != *block.hash() {
+    pub(super) fn apply_block(&mut self, block_added: &BlockAdded) {
+        if self.era_id != block_added.block.header().era_id()
+            || self.block_hash != *block_added.block.hash()
+        {
             error!("trying to apply block with wrong hash");
             return;
         }
-        self.state_root_hash = Some(*block.header().state_root_hash());
+        self.state_root_hash = Some(*block_added.block.header().state_root_hash());
         self.deploys = Some(
-            block
+            block_added
+                .block
                 .body()
                 .deploy_hashes()
                 .iter()
-                .chain(block.body().transfer_hashes())
+                .chain(block_added.block.body().transfer_hashes())
                 .map(|hash| (*hash, DeployState::Vacant))
                 .collect(),
         );

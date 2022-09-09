@@ -76,7 +76,7 @@ impl CompleteBlockSynchronizer {
         request: CompleteBlockSyncRequest,
     ) -> Effects<Event>
     where
-        REv: From<ControlLogicAnnouncement> + From<FetcherRequest<Block>> + Send,
+        REv: From<ControlLogicAnnouncement> + From<FetcherRequest<BlockAdded>> + Send,
     {
         match self.builders.entry(request.block_hash) {
             Entry::Occupied(mut entry) => {
@@ -156,7 +156,7 @@ impl CompleteBlockSynchronizer {
 
     fn next<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
-        REv: From<FetcherRequest<Block>>
+        REv: From<FetcherRequest<BlockAdded>>
             + From<FetcherRequest<Deploy>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
@@ -168,8 +168,8 @@ impl CompleteBlockSynchronizer {
                 NeedNext::Block(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, node_id, ())
-                            .event(Event::BlockFetched)
+                            .fetch::<BlockAdded>(block_hash, node_id, ())
+                            .event(Event::BlockAddedFetched)
                     }))
                 }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
@@ -211,21 +211,21 @@ impl CompleteBlockSynchronizer {
         Effects::new()
     }
 
-    fn handle_block_fetched(
+    fn handle_block_added_fetched(
         &mut self,
-        result: Result<FetchedData<Block>, fetcher::Error<Block>>,
+        result: Result<FetchedData<BlockAdded>, fetcher::Error<BlockAdded>>,
     ) -> Effects<Event> {
-        let block = match result {
+        let block_added = match result {
             Ok(FetchedData::FromPeer { item, peer: _ } | FetchedData::FromStorage { item }) => item,
             Err(err) => {
-                debug!(%err, "failed to fetch block");
+                debug!(%err, "failed to fetch block-added");
                 // TODO: Remove peer?
                 return Effects::new();
             }
         };
 
-        match self.builders.get_mut(block.hash()) {
-            Some(builder) => builder.apply_block(&block),
+        match self.builders.get_mut(block_added.block.hash()) {
+            Some(builder) => builder.apply_block(&block_added),
             None => {
                 debug!("unexpected block");
                 return Effects::new();
@@ -266,7 +266,7 @@ impl CompleteBlockSynchronizer {
 impl<REv> Component<REv> for CompleteBlockSynchronizer
 where
     REv: From<ControlLogicAnnouncement>
-        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockAdded>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<StorageRequest>
@@ -289,7 +289,7 @@ where
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder),
             Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
-            Event::BlockFetched(result) => self.handle_block_fetched(result),
+            Event::BlockAddedFetched(result) => self.handle_block_added_fetched(result),
             Event::FinalitySignatureFetched(result) => {
                 self.handle_finality_signature_fetched(result)
             }
