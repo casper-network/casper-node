@@ -1,9 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use crate::{
-    components::fetcher::{
-        metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher, ItemHandle,
-    },
+    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     types::{FinalitySignature, FinalitySignatureId, NodeId},
 };
@@ -11,10 +9,15 @@ use crate::{
 impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn item_handles(
+    fn responders(
         &mut self,
-    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, ItemHandle<FinalitySignature>>> {
-        &mut self.item_handles
+    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, Vec<FetchResponder<FinalitySignature>>>>
+    {
+        &mut self.responders
+    }
+
+    fn validation_metadata(&self) -> &() {
+        &()
     }
 
     fn metrics(&mut self) -> &Metrics {

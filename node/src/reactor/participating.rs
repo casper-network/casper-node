@@ -29,7 +29,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
-        fetcher::{self, Fetcher, FetcherBuilder},
+        fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain::{self, LinearChainComponent},
         metrics::Metrics,
@@ -56,8 +56,8 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
-        FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, Deploy, ExitCode,
+        FinalitySignature, FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
     FetcherConfig, NodeRng,
@@ -65,7 +65,7 @@ use crate::{
 #[cfg(test)]
 use crate::{
     testing::network::NetworkedReactor,
-    types::{Chainspec, ChainspecRawBytes, NodeId},
+    types::{ChainspecRawBytes, NodeId},
 };
 pub(crate) use config::Config;
 pub(crate) use error::Error;
@@ -90,29 +90,49 @@ struct Fetchinator {
 
 impl Fetchinator {
     fn new(
-        fetcher_config: FetcherConfig,
+        config: &FetcherConfig,
+        chainspec: &Chainspec,
         metrics_registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        let fetcher_builder = FetcherBuilder::new(fetcher_config, metrics_registry);
         Ok(Fetchinator {
             // WE NEED THESE:
-            deploy_fetcher: fetcher_builder.build("deploy")?,
-            block_by_hash_fetcher: fetcher_builder.build("block")?,
-            block_header_by_hash_fetcher: fetcher_builder.build("block_header")?,
-            trie_or_chunk_fetcher: fetcher_builder.build("trie_or_chunk")?,
-            sync_leap_fetcher: fetcher_builder.build("sync_leap_fetcher")?,
-            block_added_fetcher: fetcher_builder.build("block_added_fetcher")?,
+            deploy_fetcher: Fetcher::new("deploy", config, metrics_registry)?,
+            block_by_hash_fetcher: Fetcher::new("block", config, metrics_registry)?,
+            block_header_by_hash_fetcher: Fetcher::new("block_header", config, metrics_registry)?,
+            trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
+            sync_leap_fetcher: Fetcher::new_with_metadata(
+                "sync_leap_fetcher",
+                config,
+                metrics_registry,
+                chainspec.highway_config.finality_threshold_fraction,
+            )?,
+            block_added_fetcher: Fetcher::new("block_added_fetcher", config, metrics_registry)?,
 
             // MAYBE WE NEED THESE
-            block_and_deploys_fetcher: fetcher_builder.build("block_and_deploys")?,
-            finalized_approvals_fetcher: fetcher_builder.build("finalized_approvals")?,
-            finality_signatures_fetcher: fetcher_builder.build("finality_signatures")?,
-            block_headers_batch_fetcher: fetcher_builder.build("block_headers_batch")?,
+            block_and_deploys_fetcher: Fetcher::new("block_and_deploys", config, metrics_registry)?,
+            finalized_approvals_fetcher: Fetcher::new(
+                "finalized_approvals",
+                config,
+                metrics_registry,
+            )?,
+            finality_signatures_fetcher: Fetcher::new(
+                "finality_signatures",
+                config,
+                metrics_registry,
+            )?,
+            block_headers_batch_fetcher: Fetcher::new(
+                "block_headers_batch",
+                config,
+                metrics_registry,
+            )?,
 
             // WOULD LIKE TO DELETE THESE
-            block_by_height_fetcher: fetcher_builder.build("block_by_height")?,
-            block_header_and_finality_signatures_by_height_fetcher: fetcher_builder
-                .build("block_header_by_height")?,
+            block_by_height_fetcher: Fetcher::new("block_by_height", config, metrics_registry)?,
+            block_header_and_finality_signatures_by_height_fetcher: Fetcher::new(
+                "block_header_by_height",
+                config,
+                metrics_registry,
+            )?,
         })
     }
 
@@ -597,7 +617,7 @@ impl Reactor {
         ));
 
         // one and done
-        let fetchinator = Fetchinator::new(config.fetcher, registry)?;
+        let fetchinator = Fetchinator::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
         let complete_block_synchronizer = CompleteBlockSynchronizer::new(
             config.complete_block_synchronizer,

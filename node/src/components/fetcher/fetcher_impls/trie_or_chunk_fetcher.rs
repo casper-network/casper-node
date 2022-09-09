@@ -3,9 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use tracing::error;
 
 use crate::{
-    components::fetcher::{
-        metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher, ItemHandle,
-    },
+    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
     types::{NodeId, TrieOrChunk, TrieOrChunkId},
 };
@@ -13,10 +11,14 @@ use crate::{
 impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn item_handles(
+    fn responders(
         &mut self,
-    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, ItemHandle<TrieOrChunk>>> {
-        &mut self.item_handles
+    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, Vec<FetchResponder<TrieOrChunk>>>> {
+        &mut self.responders
+    }
+
+    fn validation_metadata(&self) -> &() {
+        &()
     }
 
     fn metrics(&mut self) -> &Metrics {

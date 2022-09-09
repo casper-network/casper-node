@@ -5,7 +5,6 @@ mod fetch_response;
 mod fetched_data;
 mod fetcher_impls;
 mod item_fetcher;
-mod item_handle;
 mod metrics;
 mod tests;
 
@@ -38,7 +37,6 @@ pub(crate) use event::Event;
 pub(crate) use fetch_response::FetchResponse;
 pub(crate) use fetched_data::FetchedData;
 pub(crate) use item_fetcher::ItemFetcher;
-use item_handle::ItemHandle;
 use metrics::Metrics;
 
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
@@ -51,21 +49,43 @@ where
     T: FetcherItem,
 {
     get_from_peer_timeout: Duration,
-    item_handles: HashMap<T::Id, HashMap<NodeId, ItemHandle<T>>>,
+    responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
     metrics: Metrics,
+    #[data_size(skip)]
+    validation_metadata: T::ValidationMetadata,
 }
 
-impl<T: FetcherItem> Fetcher<T> {
+impl<T: FetcherItem> Fetcher<T>
+where
+    T::ValidationMetadata: Default,
+{
     pub(crate) fn new(
         name: &str,
-        config: Config,
+        config: &Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            item_handles: HashMap::new(),
+            responders: HashMap::new(),
             metrics: Metrics::new(name, registry)?,
+            validation_metadata: Default::default(),
+        })
+    }
+}
+
+impl<T: FetcherItem> Fetcher<T> {
+    pub(crate) fn new_with_metadata(
+        name: &str,
+        config: &Config,
+        registry: &Registry,
+        validation_metadata: T::ValidationMetadata,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(Fetcher {
+            get_from_peer_timeout: config.get_from_peer_timeout().into(),
+            responders: HashMap::new(),
+            metrics: Metrics::new(name, registry)?,
+            validation_metadata,
         })
     }
 }
@@ -136,27 +156,6 @@ where
             }
             Event::PutToStorage { item, peer } => self.signal(item.id(), Ok(*item), peer),
         }
-    }
-}
-
-pub(crate) struct FetcherBuilder<'a> {
-    config: FetcherConfig,
-    registry: &'a Registry,
-}
-
-impl<'a> FetcherBuilder<'a> {
-    pub(crate) fn new(config: FetcherConfig, registry: &'a Registry) -> Self {
-        Self { config, registry }
-    }
-
-    pub(crate) fn build<T: FetcherItem + 'static>(
-        &self,
-        name: &str,
-    ) -> Result<Fetcher<T>, prometheus::Error>
-    where
-        T::ValidationMetadata: Default,
-    {
-        Fetcher::new(name, self.config, self.registry)
     }
 }
 

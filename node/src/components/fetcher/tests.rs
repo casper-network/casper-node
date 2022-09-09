@@ -85,7 +85,7 @@ reactor!(Reactor {
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(
             "deploy",
-            cfg.fetcher_config,
+            &cfg.fetcher_config,
             registry);
     }
 

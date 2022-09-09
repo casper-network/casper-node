@@ -1,9 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use crate::{
-    components::fetcher::{
-        metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher, ItemHandle,
-    },
+    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     types::{BlockHash, BlockHeader, NodeId},
 };
@@ -11,10 +9,14 @@ use crate::{
 impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn item_handles(
+    fn responders(
         &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<BlockHeader>>> {
-        &mut self.item_handles
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockHeader>>>> {
+        &mut self.responders
+    }
+
+    fn validation_metadata(&self) -> &() {
+        &()
     }
 
     fn metrics(&mut self) -> &Metrics {

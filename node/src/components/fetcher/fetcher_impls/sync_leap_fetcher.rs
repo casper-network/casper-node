@@ -3,9 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use num_rational::Ratio;
 
 use crate::{
-    components::fetcher::{
-        metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher, ItemHandle,
-    },
+    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     types::{BlockHash, NodeId, SyncLeap},
 };
@@ -16,8 +14,14 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
     // single peer.
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn item_handles(&mut self) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<SyncLeap>>> {
-        &mut self.item_handles
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<SyncLeap>>>> {
+        &mut self.responders
+    }
+
+    fn validation_metadata(&self) -> &Ratio<u64> {
+        &self.validation_metadata
     }
 
     fn metrics(&mut self) -> &Metrics {
