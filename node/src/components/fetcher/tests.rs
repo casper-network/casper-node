@@ -3,11 +3,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use casper_node_macros::reactor;
-use casper_types::testing::TestRng;
 use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
+
+use casper_node_macros::reactor;
+use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{
@@ -23,12 +24,12 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
-    testing,
     testing::{
+        self,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::{Deploy, DeployHash, FinalitySignature, NodeId},
+    types::{Block, Deploy, DeployHash, FinalitySignature, NodeId},
     utils::{WithDir, RESOURCES_PATH},
 };
 

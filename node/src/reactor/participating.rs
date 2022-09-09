@@ -17,49 +17,60 @@ use tracing::error;
 
 use casper_types::EraId;
 
-use crate::{components::{
-    block_proposer::{self, BlockProposer},
-    block_validator::{self, BlockValidator},
-    chain_synchronizer::{self, ChainSynchronizer},
-    chainspec_loader::{self, ChainspecLoader},
-    complete_block_synchronizer::{self, CompleteBlockSynchronizer},
-    consensus::{self, EraSupervisor, HighwayProtocol},
-    contract_runtime::ContractRuntime,
-    deploy_acceptor::{self, DeployAcceptor},
-    diagnostics_port::DiagnosticsPort,
-    event_stream_server::{self, EventStreamServer},
-    fetcher::{self, Fetcher, FetcherBuilder},
-    gossiper::{self, Gossiper},
-    linear_chain::{self, LinearChainComponent},
-    metrics::Metrics,
-    rest_server::RestServer,
-    rpc_server::RpcServer,
-    small_network::{self, GossipedAddress, SmallNetwork},
-    storage::Storage,
-    Component,
-}, effect::{
-    announcements::{
-        BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
-        ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-        ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-        LinearChainAnnouncement, RpcServerAnnouncement,
+use crate::{
+    components::{
+        block_proposer::{self, BlockProposer},
+        block_validator::{self, BlockValidator},
+        chain_synchronizer::{self, ChainSynchronizer},
+        chainspec_loader::{self, ChainspecLoader},
+        complete_block_synchronizer::{self, CompleteBlockSynchronizer},
+        consensus::{self, EraSupervisor, HighwayProtocol},
+        contract_runtime::ContractRuntime,
+        deploy_acceptor::{self, DeployAcceptor},
+        diagnostics_port::DiagnosticsPort,
+        event_stream_server::{self, EventStreamServer},
+        fetcher::{self, Fetcher, FetcherBuilder},
+        gossiper::{self, Gossiper},
+        linear_chain::{self, LinearChainComponent},
+        metrics::Metrics,
+        rest_server::RestServer,
+        rpc_server::RpcServer,
+        small_network::{self, GossipedAddress, SmallNetwork},
+        storage::Storage,
+        Component,
     },
-    incoming::{NetResponseIncoming, SyncLeapResponseIncoming, TrieResponseIncoming},
-    EffectBuilder, Effects,
-}, protocol::Message, reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit}, types::{
-    Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-    BlockSignatures, BlockWithMetadata, Deploy, ExitCode,
-    FinalitySignature, FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
-}, utils::{Source, WithDir}, NodeRng, FetcherConfig};
+    effect::{
+        announcements::{
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
+            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, RpcServerAnnouncement,
+        },
+        incoming::{NetResponseIncoming, SyncLeapResponseIncoming, TrieResponseIncoming},
+        EffectBuilder, Effects,
+    },
+    protocol::Message,
+    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    types::{
+        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockSignatures, BlockWithMetadata, Deploy, ExitCode, FinalitySignature,
+        FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
+    },
+    utils::{Source, WithDir},
+    FetcherConfig, NodeRng,
+};
 #[cfg(test)]
-use crate::{testing::network::NetworkedReactor, types::NodeId};
+use crate::{
+    testing::network::NetworkedReactor,
+    types::{Chainspec, ChainspecRawBytes, NodeId},
+};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
 
 #[derive(DataSize, Debug)]
-pub struct Fetchinator {
+struct Fetchinator {
     deploy_fetcher: Fetcher<Deploy>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -79,27 +90,25 @@ impl Fetchinator {
         metrics_registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         let fetcher_builder = FetcherBuilder::new(fetcher_config, metrics_registry);
-        Ok(
-            Fetchinator {
-                // WE NEED THESE:
-                deploy_fetcher: fetcher_builder.build("deploy") ?,
-                block_by_hash_fetcher: fetcher_builder.build("block") ?,
-                block_header_by_hash_fetcher: fetcher_builder.build("block_header") ?,
-                trie_or_chunk_fetcher: fetcher_builder.build("trie_or_chunk") ?,
-                sync_leap_fetcher: fetcher_builder.build("sync_leap_fetcher") ?,
+        Ok(Fetchinator {
+            // WE NEED THESE:
+            deploy_fetcher: fetcher_builder.build("deploy")?,
+            block_by_hash_fetcher: fetcher_builder.build("block")?,
+            block_header_by_hash_fetcher: fetcher_builder.build("block_header")?,
+            trie_or_chunk_fetcher: fetcher_builder.build("trie_or_chunk")?,
+            sync_leap_fetcher: fetcher_builder.build("sync_leap_fetcher")?,
 
-                // MAYBE WE NEED THESE
-                block_and_deploys_fetcher: fetcher_builder.build("block_and_deploys") ?,
-                finalized_approvals_fetcher: fetcher_builder.build("finalized_approvals") ?,
-                finality_signatures_fetcher: fetcher_builder.build("finality_signatures") ?,
-                block_headers_batch_fetcher: fetcher_builder.build("block_headers_batch") ?,
+            // MAYBE WE NEED THESE
+            block_and_deploys_fetcher: fetcher_builder.build("block_and_deploys")?,
+            finalized_approvals_fetcher: fetcher_builder.build("finalized_approvals")?,
+            finality_signatures_fetcher: fetcher_builder.build("finality_signatures")?,
+            block_headers_batch_fetcher: fetcher_builder.build("block_headers_batch")?,
 
-                // WOULD LIKE TO DELETE THESE
-                block_by_height_fetcher: fetcher_builder.build("block_by_height") ?,
-                block_header_and_finality_signatures_by_height_fetcher:
-                   fetcher_builder.build("block_header_by_height") ?,
-            }
-        )
+            // WOULD LIKE TO DELETE THESE
+            block_by_height_fetcher: fetcher_builder.build("block_by_height")?,
+            block_header_and_finality_signatures_by_height_fetcher: fetcher_builder
+                .build("block_header_by_height")?,
+        })
     }
 
     fn dispatch_fetcher_event(
@@ -210,16 +219,17 @@ impl Fetchinator {
             // MISC DISPATCHING
             ParticipatingEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-            ) => {
-                reactor::wrap_effects(
-                    ParticipatingEvent::DeployFetcher,
-                    self.deploy_fetcher
-                        .handle_event(effect_builder, rng, fetcher::Event::GotRemotely {
-                            item: deploy,
-                            source,
-                        }),
-                )
-            }
+            ) => reactor::wrap_effects(
+                ParticipatingEvent::DeployFetcher,
+                self.deploy_fetcher.handle_event(
+                    effect_builder,
+                    rng,
+                    fetcher::Event::GotRemotely {
+                        item: deploy,
+                        source,
+                    },
+                ),
+            ),
 
             // TODO: KILL BY HEIGHT FETCHING WITH FIRE
             ParticipatingEvent::BlockByHeightFetcher(event) => reactor::wrap_effects(
@@ -246,11 +256,10 @@ impl Fetchinator {
             }
 
             // YEAH YEAH, I KNOW
-            _ => Effects::new()
+            _ => Effects::new(),
         }
     }
 }
-
 
 /// Participating node reactor.
 #[derive(DataSize, Debug)]
@@ -666,33 +675,32 @@ impl reactor::Reactor for Reactor {
     ) -> Effects<Self::Event> {
         match event {
             // delegate all fetcher activity to self.fetchinator.dispatch_fetcher_event(..)
-            ParticipatingEvent::DeployFetcher( .. )
-            | ParticipatingEvent::DeployFetcherRequest ( .. )
-            | ParticipatingEvent::BlockFetcher( .. )
-            | ParticipatingEvent::BlockFetcherRequest ( .. )
-            | ParticipatingEvent::BlockHeaderFetcher ( .. )
-            | ParticipatingEvent::BlockHeaderFetcherRequest ( .. )
-            | ParticipatingEvent::TrieOrChunkFetcher( .. )
-            | ParticipatingEvent::TrieOrChunkFetcherRequest ( .. )
-            | ParticipatingEvent::BlockByHeightFetcher( .. )
-            | ParticipatingEvent::BlockByHeightFetcherRequest ( .. )
-            | ParticipatingEvent::BlockHeaderByHeightFetcher( .. )
-            | ParticipatingEvent::BlockHeaderByHeightFetcherRequest ( .. )
-            | ParticipatingEvent::BlockAndDeploysFetcher( .. )
-            | ParticipatingEvent::BlockAndDeploysFetcherRequest ( .. )
-            | ParticipatingEvent::FinalizedApprovalsFetcher( .. )
-            | ParticipatingEvent::FinalizedApprovalsFetcherRequest ( .. )
-            | ParticipatingEvent::BlockHeadersBatchFetcher( .. )
-            | ParticipatingEvent::BlockHeadersBatchFetcherRequest ( .. )
-            | ParticipatingEvent::FinalitySignaturesFetcher ( .. )
-            | ParticipatingEvent::FinalitySignaturesFetcherRequest ( .. )
-            | ParticipatingEvent::SyncLeapFetcher ( .. )
-            | ParticipatingEvent::SyncLeapFetcherRequest ( .. )
-            | ParticipatingEvent::FinalitySignatureFetcher ( .. )
-            | ParticipatingEvent::FinalitySignatureFetcherRequest ( .. )
-            => {
-                self.fetchinator.dispatch_fetcher_event(effect_builder, rng, event)
-            },
+            ParticipatingEvent::DeployFetcher(..)
+            | ParticipatingEvent::DeployFetcherRequest(..)
+            | ParticipatingEvent::BlockFetcher(..)
+            | ParticipatingEvent::BlockFetcherRequest(..)
+            | ParticipatingEvent::BlockHeaderFetcher(..)
+            | ParticipatingEvent::BlockHeaderFetcherRequest(..)
+            | ParticipatingEvent::TrieOrChunkFetcher(..)
+            | ParticipatingEvent::TrieOrChunkFetcherRequest(..)
+            | ParticipatingEvent::BlockByHeightFetcher(..)
+            | ParticipatingEvent::BlockByHeightFetcherRequest(..)
+            | ParticipatingEvent::BlockHeaderByHeightFetcher(..)
+            | ParticipatingEvent::BlockHeaderByHeightFetcherRequest(..)
+            | ParticipatingEvent::BlockAndDeploysFetcher(..)
+            | ParticipatingEvent::BlockAndDeploysFetcherRequest(..)
+            | ParticipatingEvent::FinalizedApprovalsFetcher(..)
+            | ParticipatingEvent::FinalizedApprovalsFetcherRequest(..)
+            | ParticipatingEvent::BlockHeadersBatchFetcher(..)
+            | ParticipatingEvent::BlockHeadersBatchFetcherRequest(..)
+            | ParticipatingEvent::FinalitySignaturesFetcher(..)
+            | ParticipatingEvent::FinalitySignaturesFetcherRequest(..)
+            | ParticipatingEvent::SyncLeapFetcher(..)
+            | ParticipatingEvent::SyncLeapFetcherRequest(..)
+            | ParticipatingEvent::FinalitySignatureFetcher(..)
+            | ParticipatingEvent::FinalitySignatureFetcherRequest(..) => self
+                .fetchinator
+                .dispatch_fetcher_event(effect_builder, rng, event),
 
             // Participating only
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
@@ -949,16 +957,21 @@ impl reactor::Reactor for Reactor {
                     }),
                 ));
 
-
                 effects.extend(self.dispatch_event(
                     effect_builder,
                     rng,
-                    ParticipatingEvent::EventStreamServer(event_stream_server::Event::DeployAccepted(deploy.clone())),
+                    ParticipatingEvent::EventStreamServer(
+                        event_stream_server::Event::DeployAccepted(deploy.clone()),
+                    ),
                 ));
 
-                effects.extend(self.fetchinator.dispatch_fetcher_event(effect_builder, rng, ParticipatingEvent::DeployAcceptorAnnouncement(
-                    DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-                )));
+                effects.extend(self.fetchinator.dispatch_fetcher_event(
+                    effect_builder,
+                    rng,
+                    ParticipatingEvent::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+                    ),
+                ));
 
                 effects
             }
