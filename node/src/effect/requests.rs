@@ -621,10 +621,9 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
             }
-            StorageRequest::GetDeployHashesForBlock {
-                block_hash,
-                responder,
-            } => write!(formatter, "get deploy hashes for block {}", block_hash),
+            StorageRequest::GetDeployHashesForBlock { block_hash, .. } => {
+                write!(formatter, "get deploy hashes for block {}", block_hash)
+            }
         }
     }
 }

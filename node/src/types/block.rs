@@ -1790,7 +1790,7 @@ impl Item for BlockAndDeploys {
 }
 
 /// Represents block effects or chunk of complete value.
-#[derive(Clone, Serialize, Deserialize, Debug, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum BlockEffectsOrChunk {
     /// Represents legacy block effects.
     /// Legacy meaning their merkle root can't be verified against what is expected.
@@ -1800,6 +1800,7 @@ pub enum BlockEffectsOrChunk {
         /// Complete block effects for the block or a chunk of the complete data.
         value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
     },
+    /// Represents post-1.5.0 block effects.
     BlockEffects {
         /// Block to which this value or chunk refers to.
         block_hash: BlockHash,
@@ -1815,7 +1816,7 @@ impl BlockEffectsOrChunk {
             // For "legacy" block effects we can't verify their correctness as there's no reference,
             // expected value to compare against.
             BlockEffectsOrChunk::BlockEffectsLegacy { .. } => Ok(true),
-            BlockEffectsOrChunk::BlockEffects { block_hash, value } => match value {
+            BlockEffectsOrChunk::BlockEffects { value, .. } => match value {
                 ValueOrChunk::Value(block_effects) => {
                     Ok(Chunkable::hash(&block_effects)? == expected_merkle_root)
                 }
@@ -1832,23 +1833,6 @@ impl BlockEffectsOrChunk {
         match self {
             BlockEffectsOrChunk::BlockEffectsLegacy { value, .. }
             | BlockEffectsOrChunk::BlockEffects { value, .. } => value,
-        }
-    }
-}
-
-impl PartialEq for BlockEffectsOrChunk {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, &other) {
-            (
-                BlockEffectsOrChunk::BlockEffectsLegacy {
-                    block_hash,
-                    value: _,
-                },
-                BlockEffectsOrChunk::BlockEffectsLegacy {
-                    block_hash: other_block_hash,
-                    value: _,
-                },
-            ) => block_hash == other_block_hash,
         }
     }
 }
@@ -1918,20 +1902,18 @@ impl BlockEffectsOrChunkId {
 
     pub fn next_chunk(&self, next_chunk: u64) -> Self {
         match self {
-            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
-                chunk_index: _,
-                block_hash,
-            } => BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
-                chunk_index: next_chunk,
-                block_hash: *block_hash,
-            },
-            BlockEffectsOrChunkId::BlockEffectsOrChunkId {
-                chunk_index,
-                block_hash,
-            } => BlockEffectsOrChunkId::BlockEffectsOrChunkId {
-                chunk_index: next_chunk,
-                block_hash: *block_hash,
-            },
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId { block_hash, .. } => {
+                BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                    chunk_index: next_chunk,
+                    block_hash: *block_hash,
+                }
+            }
+            BlockEffectsOrChunkId::BlockEffectsOrChunkId { block_hash, .. } => {
+                BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                    chunk_index: next_chunk,
+                    block_hash: *block_hash,
+                }
+            }
         }
     }
 

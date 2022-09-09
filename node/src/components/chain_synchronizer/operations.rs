@@ -1834,7 +1834,7 @@ where
     } else {
         let fetch_id = BlockEffectsOrChunkId::legacy(block_hash);
         // Nothing to verify for legacy blocks.
-        let verify_chunk_fn = move |value_or_chunk: &BlockEffectsOrChunk| Ok(true);
+        let verify_chunk_fn = move |_: &BlockEffectsOrChunk| Ok(true);
         fetch_and_store_block_effects(block_header, fetch_id, ctx, &verify_chunk_fn).await?;
     };
 

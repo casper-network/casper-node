@@ -107,7 +107,11 @@ pub fn execute_finalized_block(
     let block_height = finalized_block.height();
     if let Some(deploy_approvals_root_hash) = maybe_deploy_approvals_root_hash {
         let execution_results_root_hash = compute_execution_results_root_hash(
-            &mut execution_results.iter().map(|(_, _, result)| result),
+            execution_results
+                .iter()
+                .map(|(_, _, result)| result)
+                .cloned()
+                .collect(),
         )?;
 
         let mut effects = AdditiveMap::new();
@@ -408,9 +412,8 @@ where
 /// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
 /// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
 fn compute_execution_results_root_hash<'a>(
-    results: &impl Iterator<Item = &'a ExecutionResult>,
+    execution_results: Vec<ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
-    let execution_results: Vec<ExecutionResult> = results.cloned().collect::<Vec<_>>();
     (&execution_results)
         .hash()
         .map_err(BlockCreationError::BytesRepr)

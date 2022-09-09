@@ -1927,7 +1927,7 @@ impl Storage {
                     // error.
                     return Ok(None);
                 }
-                Some(metadata) => {
+                Some(mut metadata) => {
                     match metadata.execution_results.remove(request.block_hash()) {
                         Some(results) => {
                             execution_results.push(results);
