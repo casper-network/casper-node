@@ -1946,8 +1946,20 @@ impl Storage {
             }
         }
 
-        // TODO: get rid of unwrap
-        let value_or_chunk = ValueOrChunk::new(execution_results, request.chunk_index()).unwrap();
+        let value_or_chunk = match ValueOrChunk::new(execution_results, request.chunk_index()) {
+            Ok(value_or_chunk) => value_or_chunk,
+            Err(error) => {
+                // Failure shouldn't be fatal as the node can continue operating but won't be able
+                // to answer this particular query. We choose to return `None`
+                // instead, signaling other nodes to not query this one for that data.
+                error!(
+                    ?request,
+                    ?error,
+                    "failed to construct `BlockEffectsOrChunk`"
+                );
+                return Ok(None);
+            }
+        };
         Ok(Some(request.response(value_or_chunk)))
     }
 }
