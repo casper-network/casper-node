@@ -234,12 +234,52 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::{mem, pin::Pin};
+
     use bytes::Bytes;
-    use futures::{sink::SinkExt, stream::StreamExt};
+    use futures::{
+        io::Cursor, sink::SinkExt, stream::StreamExt, AsyncRead, AsyncReadExt, AsyncWriteExt,
+        FutureExt,
+    };
+    use tokio::io::DuplexStream;
+    use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 
     use super::{FrameReader, FrameWriter};
     use crate::framing::length_delimited::LengthDelimited;
-    use tokio_util::compat::TokioAsyncReadCompatExt;
+
+    /// Async reader used by a test below to gather all underlying
+    /// read calls and their results.
+    struct AsyncReadCounter<S> {
+        stream: S,
+        reads: Vec<usize>,
+    }
+
+    impl<S: AsyncRead + Unpin> AsyncReadCounter<S> {
+        pub fn new(stream: S) -> Self {
+            Self {
+                stream,
+                reads: vec![],
+            }
+        }
+
+        pub fn reads(&self) -> &[usize] {
+            &self.reads
+        }
+    }
+
+    impl<S: AsyncRead + Unpin> AsyncRead for AsyncReadCounter<S> {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            buf: &mut [u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            let read_result = Pin::new(&mut self.stream).poll_read(cx, buf);
+            if let std::task::Poll::Ready(Ok(len)) = read_result {
+                self.reads.push(len);
+            }
+            read_result
+        }
+    }
 
     /// A basic integration test for sending data across an actual TCP stream.
     #[tokio::test]
@@ -276,5 +316,166 @@ mod tests {
             .expect("could not sendn data");
 
         server_handle.await.expect("joining failed");
+    }
+
+    #[test]
+    fn frame_reader_reads_without_consuming_extra_bytes() {
+        const FRAME: &[u8; 16] = b"abcdef0123456789";
+        const COPIED_FRAME_LEN: u16 = 8;
+        let mut encoded_longer_frame = COPIED_FRAME_LEN.to_le_bytes().to_vec();
+        encoded_longer_frame.extend_from_slice(FRAME.as_slice());
+
+        let cursor = Cursor::new(encoded_longer_frame.as_slice());
+        let mut reader = FrameReader::new(LengthDelimited, cursor, 1000);
+
+        let first_frame = reader.next().now_or_never().unwrap().unwrap().unwrap();
+        assert_eq!(&first_frame, &FRAME[..COPIED_FRAME_LEN as usize]);
+
+        let (_, mut cursor, mut buffer) = reader.into_parts();
+        let mut unread_cursor_buf = vec![];
+        let unread_cursor_len = cursor
+            .read_to_end(&mut unread_cursor_buf)
+            .now_or_never()
+            .unwrap()
+            .unwrap();
+        buffer.extend_from_slice(&unread_cursor_buf[..unread_cursor_len]);
+        assert_eq!(&buffer, &FRAME[COPIED_FRAME_LEN as usize..]);
+    }
+
+    #[test]
+    fn frame_reader_does_not_allow_exceeding_maximum_size() {
+        const FRAME: &[u8; 16] = b"abcdef0123456789";
+        const COPIED_FRAME_LEN: u16 = 16;
+        const MAX_READ_BUF_INCREMENT: usize = 5;
+        let mut encoded_longer_frame = COPIED_FRAME_LEN.to_le_bytes().to_vec();
+        encoded_longer_frame.extend_from_slice(FRAME.as_slice());
+
+        let cursor = AsyncReadCounter::new(Cursor::new(encoded_longer_frame.as_slice()));
+        let mut reader = FrameReader::new(LengthDelimited, cursor, MAX_READ_BUF_INCREMENT);
+
+        let first_frame = reader.next().now_or_never().unwrap().unwrap().unwrap();
+        assert_eq!(&first_frame, &FRAME[..COPIED_FRAME_LEN as usize]);
+
+        let (_, counter, _) = reader.into_parts();
+        // Considering we have a `max_read_buffer_increment` of 5, the encoded length
+        // is a `u16`, `sizeof(u16)` is 2, and the length of the original frame is 16,
+        // reads should be:
+        // [2 + (5 - 2), 5, 5, 5 - 2]
+        assert_eq!(
+            counter.reads(),
+            [
+                MAX_READ_BUF_INCREMENT,
+                MAX_READ_BUF_INCREMENT,
+                MAX_READ_BUF_INCREMENT,
+                MAX_READ_BUF_INCREMENT - mem::size_of::<u16>()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn frame_reader_handles_0_sized_read() {
+        const FRAME: &[u8; 16] = b"abcdef0123456789";
+        const COPIED_FRAME_LEN: u16 = 16;
+        const MAX_READ_BUF_INCREMENT: usize = 6;
+        let mut encoded_longer_frame = COPIED_FRAME_LEN.to_le_bytes().to_vec();
+        encoded_longer_frame.extend_from_slice(FRAME.as_slice());
+
+        let (sender, receiver) = tokio::io::duplex(1000);
+        let mut reader = FrameReader::new(
+            LengthDelimited,
+            receiver.compat(),
+            (COPIED_FRAME_LEN >> 1).into(),
+        );
+
+        // We drop the sender at the end of the async block in order to simulate
+        // a 0-sized read.
+        let send_fut = async move {
+            sender
+                .compat()
+                .write_all(&encoded_longer_frame[..MAX_READ_BUF_INCREMENT])
+                .await
+                .unwrap();
+        };
+        let recv_fut = async { reader.next().await };
+        let (_, received) = tokio::join!(send_fut, recv_fut);
+        assert!(received.is_none());
+    }
+
+    #[tokio::test]
+    async fn frame_reader_handles_early_eof() {
+        const FRAME: &[u8; 16] = b"abcdef0123456789";
+        const COPIED_FRAME_LEN: u16 = 16;
+        let mut encoded_longer_frame = (COPIED_FRAME_LEN + 1).to_le_bytes().to_vec();
+        encoded_longer_frame.extend_from_slice(FRAME.as_slice());
+
+        let cursor = Cursor::new(encoded_longer_frame.as_slice());
+        let mut reader = FrameReader::new(LengthDelimited, cursor, 1000);
+
+        assert!(reader.next().await.is_none());
+    }
+
+    #[test]
+    fn frame_writer_writes_frames_correctly() {
+        const FIRST_FRAME: &[u8; 16] = b"abcdef0123456789";
+        const SECOND_FRAME: &[u8; 9] = b"dead_beef";
+
+        let mut frame_writer: FrameWriter<Bytes, LengthDelimited, Vec<u8>> =
+            FrameWriter::new(LengthDelimited, Vec::new());
+        frame_writer
+            .send((&FIRST_FRAME[..]).into())
+            .now_or_never()
+            .unwrap()
+            .unwrap();
+        let FrameWriter {
+            encoder: _,
+            stream,
+            current_frame: _,
+        } = &frame_writer;
+        let mut encoded_longer_frame = (FIRST_FRAME.len() as u16).to_le_bytes().to_vec();
+        encoded_longer_frame.extend_from_slice(FIRST_FRAME.as_slice());
+        assert_eq!(stream.as_slice(), encoded_longer_frame);
+
+        frame_writer
+            .send((&SECOND_FRAME[..]).into())
+            .now_or_never()
+            .unwrap()
+            .unwrap();
+        let FrameWriter {
+            encoder: _,
+            stream,
+            current_frame: _,
+        } = &frame_writer;
+        encoded_longer_frame
+            .extend_from_slice((SECOND_FRAME.len() as u16).to_le_bytes().as_slice());
+        encoded_longer_frame.extend_from_slice(SECOND_FRAME.as_slice());
+        assert_eq!(stream.as_slice(), encoded_longer_frame);
+    }
+
+    #[tokio::test]
+    async fn frame_writer_handles_0_size() {
+        const FRAME: &[u8; 16] = b"abcdef0123456789";
+
+        let (sender, receiver) = tokio::io::duplex(1000);
+        let mut frame_writer: FrameWriter<Bytes, LengthDelimited, Compat<DuplexStream>> =
+            FrameWriter::new(LengthDelimited, sender.compat());
+        // Send a first frame.
+        frame_writer.send((&FRAME[..]).into()).await.unwrap();
+
+        // Send an empty frame.
+        // We drop the sender at the end of the async block to mark the end of
+        // the stream.
+        let send_fut = async move { frame_writer.send(Bytes::new()).await.unwrap() };
+
+        let recv_fut = async {
+            let mut buf = Vec::new();
+            receiver.compat().read_to_end(&mut buf).await.unwrap();
+            buf
+        };
+
+        let (_, received) = tokio::join!(send_fut, recv_fut);
+        assert_eq!(
+            &received[FRAME.len() + mem::size_of::<u16>()..],
+            0u16.to_le_bytes()
+        );
     }
 }
