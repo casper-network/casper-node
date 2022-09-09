@@ -19,11 +19,12 @@ pub(super) struct MemoryMetrics {
     mem_event_stream_server: IntGauge,
     mem_chainspec_loader: IntGauge,
     mem_consensus: IntGauge,
-    mem_deploy_fetcher: IntGauge,
     mem_deploy_gossiper: IntGauge,
     mem_block_proposer: IntGauge,
     mem_block_validator: IntGauge,
     mem_linear_chain: IntGauge,
+
+    mem_all_fetchers: IntGauge,
     /// Histogram detailing how long it took to measure memory usage.
     mem_estimator_runtime_s: Histogram,
     registry: Registry,
@@ -56,8 +57,8 @@ impl MemoryMetrics {
             "chainspec loader memory usage in bytes",
         )?;
         let mem_consensus = IntGauge::new("mem_consensus", "consensus memory usage in bytes")?;
-        let mem_deploy_fetcher =
-            IntGauge::new("mem_deploy_fetcher", "deploy fetcher memory usage in bytes")?;
+        let mem_all_fetchers =
+            IntGauge::new("mem_all_fetchers", "combined fetcher memory usage in bytes")?;
         let mem_deploy_gossiper = IntGauge::new(
             "mem_deploy_gossiper",
             "deploy gossiper memory usage in bytes",
@@ -91,7 +92,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_event_stream_server.clone()))?;
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
-        registry.register(Box::new(mem_deploy_fetcher.clone()))?;
+        registry.register(Box::new(mem_all_fetchers.clone()))?;
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
         registry.register(Box::new(mem_block_proposer.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
@@ -110,7 +111,7 @@ impl MemoryMetrics {
             mem_event_stream_server,
             mem_chainspec_loader,
             mem_consensus,
-            mem_deploy_fetcher,
+            mem_all_fetchers,
             mem_deploy_gossiper,
             mem_block_proposer,
             mem_block_validator,
@@ -134,7 +135,7 @@ impl MemoryMetrics {
         let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
-        let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
+        let fetchers = reactor.fetchinator.estimate_heap_size() as i64;
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
         let block_proposer = reactor.block_proposer.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
@@ -150,7 +151,7 @@ impl MemoryMetrics {
             + event_stream_server
             + chainspec_loader
             + consensus
-            + deploy_fetcher
+            + fetchers
             + deploy_gossiper
             + block_proposer
             + block_validator
@@ -167,7 +168,7 @@ impl MemoryMetrics {
         self.mem_event_stream_server.set(event_stream_server);
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_consensus.set(consensus);
-        self.mem_deploy_fetcher.set(deploy_fetcher);
+        self.mem_all_fetchers.set(fetchers);
         self.mem_deploy_gossiper.set(deploy_gossiper);
         self.mem_block_proposer.set(block_proposer);
         self.mem_block_validator.set(block_validator);
@@ -188,7 +189,7 @@ impl MemoryMetrics {
                %event_stream_server,
                %chainspec_loader,
                %consensus,
-               %deploy_fetcher,
+               %fetchers,
                %deploy_gossiper,
                %block_proposer,
                %block_validator,
@@ -210,7 +211,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_event_stream_server);
         unregister_metric!(self.registry, self.mem_chainspec_loader);
         unregister_metric!(self.registry, self.mem_consensus);
-        unregister_metric!(self.registry, self.mem_deploy_fetcher);
+        unregister_metric!(self.registry, self.mem_all_fetchers);
         unregister_metric!(self.registry, self.mem_deploy_gossiper);
         unregister_metric!(self.registry, self.mem_block_proposer);
         unregister_metric!(self.registry, self.mem_block_validator);
