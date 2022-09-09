@@ -2199,7 +2199,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Reads block effects (or chunk) from Storage component.
-    pub(crate) async fn get_block_effects_or_chunk(
+    pub(crate) async fn get_block_effects_or_chunk_from_storage(
         &self,
         id: BlockEffectsOrChunkId,
     ) -> Option<BlockEffectsOrChunk>

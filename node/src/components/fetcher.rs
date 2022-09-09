@@ -737,7 +737,9 @@ impl ItemFetcher<BlockEffectsOrChunk> for Fetcher<BlockEffectsOrChunk> {
         responder: FetchResponder<BlockEffectsOrChunk>,
     ) -> Effects<Event<BlockEffectsOrChunk>> {
         async move {
-            let maybe_block_effects = effect_builder.get_block_effects_or_chunk(id).await;
+            let maybe_block_effects = effect_builder
+                .get_block_effects_or_chunk_from_storage(id)
+                .await;
             Event::GetFromStorageResult {
                 id,
                 peer,
