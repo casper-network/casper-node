@@ -1805,6 +1805,45 @@ where
     }
 }
 
+/// Wrapper around the context of the current chunk being fetched.
+enum ChunkVerifier {
+    /// Chunk belongs to a block that is post 1.5.
+    EffectsMerkleRoot(BlockHash, Digest),
+    /// Chunk belongs to a pre-1.5 block.
+    Legacy(BlockHash),
+}
+
+impl ChunkVerifier {
+    /// Returns an instance of post-1.5 chunk verifier.
+    fn effects_merkle_root(block_hash: BlockHash, merkle_root: Digest) -> Self {
+        ChunkVerifier::EffectsMerkleRoot(block_hash, merkle_root)
+    }
+
+    /// Returns an instance of pre-1.5 chunk verifier.
+    fn legacy(block_hash: BlockHash) -> Self {
+        ChunkVerifier::Legacy(block_hash)
+    }
+
+    /// Verifies the chunk `block_effects_or_chunk` according to a logic that is correct for the chunk's context.
+    fn verify(
+        &self,
+        block_effects_or_chunk: &BlockEffectsOrChunk,
+    ) -> Result<bool, FetchBlockEffectsError> {
+        match self {
+            ChunkVerifier::EffectsMerkleRoot(
+                block_hash,
+                block_execution_results_merkle_root_hash,
+            ) => block_effects_or_chunk
+                .validate(block_execution_results_merkle_root_hash)
+                .map_err(|error| FetchBlockEffectsError::ChunkValidationError {
+                    block_hash: *block_hash,
+                    error: format!("{:?}", error),
+                }),
+            ChunkVerifier::Legacy(_) => Ok(true),
+        }
+    }
+}
+
 async fn fetch_and_store_block_effects_by_block_header<REv>(
     block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_, REv>,
@@ -1813,29 +1852,27 @@ where
     REv: From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<NetworkInfoRequest>
-        + From<FetcherRequest<BlockEffectsOrChunk>>,
+        + From<FetcherRequest<BlockEffectsOrChunk>>
+        + Send,
 {
     let block_execution_results =
         read_block_execution_results_root_hash(&block_header, ctx).await?;
 
     let block_hash = block_header.hash();
 
+    // let stub_verifier = || Ok(true);
+
     if let Some(block_execution_results_merkle_root_hash) = block_execution_results {
         let fetch_id = BlockEffectsOrChunkId::new(block_hash);
-        let verify_chunk_fn = move |block_effects_or_chunk: &BlockEffectsOrChunk| {
-            block_effects_or_chunk
-                .validate(block_execution_results_merkle_root_hash)
-                .map_err(|error| FetchBlockEffectsError::ChunkValidationError {
-                    block_hash,
-                    error: format!("{:?}", error),
-                })
-        };
-        fetch_and_store_block_effects(block_header, fetch_id, ctx, &verify_chunk_fn).await?;
+        let chunk_verifier = ChunkVerifier::effects_merkle_root(
+            block_hash,
+            block_execution_results_merkle_root_hash,
+        );
+        fetch_and_store_block_effects(block_header, fetch_id, ctx, &chunk_verifier).await?;
     } else {
         let fetch_id = BlockEffectsOrChunkId::legacy(block_hash);
-        // Nothing to verify for legacy blocks.
-        let verify_chunk_fn = move |_: &BlockEffectsOrChunk| Ok(true);
-        fetch_and_store_block_effects(block_header, fetch_id, ctx, &verify_chunk_fn).await?;
+        let chunk_verifier = ChunkVerifier::legacy(block_hash);
+        fetch_and_store_block_effects(block_header, fetch_id, ctx, &chunk_verifier).await?;
     };
 
     Ok(())
@@ -1847,15 +1884,17 @@ async fn fetch_and_store_block_effects<REv>(
     block_header: &BlockHeader,
     fetch_id: BlockEffectsOrChunkId,
     ctx: &ChainSyncContext<'_, REv>,
-    validate_chunk_fn: &(dyn Fn(&BlockEffectsOrChunk) -> Result<bool, FetchBlockEffectsError>),
+    chunk_verifier: &ChunkVerifier,
 ) -> Result<(), Error>
 where
-    REv:
-        From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + From<StorageRequest>,
+    REv: From<FetcherRequest<BlockEffectsOrChunk>>
+        + From<NetworkInfoRequest>
+        + From<StorageRequest>
+        + Send,
 {
     let block_hash = block_header.hash();
     let fetched_block_effects =
-        fetch_block_effects(&ctx, block_hash, fetch_id, validate_chunk_fn).await?;
+        fetch_block_effects(&ctx, block_hash, fetch_id, chunk_verifier).await?;
     match fetched_block_effects {
         AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
         AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
@@ -1897,10 +1936,10 @@ async fn fetch_block_effects<REv>(
     ctx: &ChainSyncContext<'_, REv>,
     block_hash: BlockHash,
     fetch_id: BlockEffectsOrChunkId,
-    validate_chunk_fn: &(dyn Fn(&BlockEffectsOrChunk) -> Result<bool, FetchBlockEffectsError>),
+    chunk_verifier: &ChunkVerifier,
 ) -> Result<BlockEffectsFetchResult, FetchBlockEffectsError>
 where
-    REv: From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest>,
+    REv: From<FetcherRequest<BlockEffectsOrChunk>> + From<NetworkInfoRequest> + Send,
 {
     //TODO: The code that follows could probably be generalized with what we do for `TrieOrChunk`.
     // Although, there, `TrieOrChunk` is direct alias for `ValueOrChunk` which we CANNOT do here
@@ -1916,7 +1955,7 @@ where
             } => *effects_or_chunk,
         };
 
-    validate_chunk_fn(&effects_or_chunk)?;
+    chunk_verifier.verify(&effects_or_chunk)?;
 
     let chunk_with_proof = match effects_or_chunk.flatten() {
         ValueOrChunk::Value(block_effects) => {
@@ -1947,7 +1986,7 @@ where
                     return Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage)
                 }
                 FetchedData::FromPeer { item, .. } => {
-                    validate_chunk_fn(&*item)?;
+                    chunk_verifier.verify(&*item)?;
                     match item.flatten() {
                         ValueOrChunk::Value(_) =>
                             return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer(block_hash)),

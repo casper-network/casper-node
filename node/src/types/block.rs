@@ -1810,18 +1810,18 @@ pub enum BlockEffectsOrChunk {
 }
 
 impl BlockEffectsOrChunk {
-    // Verifies equivalence of the effects (or chunks) merkle root hash with the expected value.
-    pub fn validate(&self, expected_merkle_root: Digest) -> Result<bool, bytesrepr::Error> {
+    /// Verifies equivalence of the effects (or chunks) merkle root hash with the expected value.
+    pub fn validate(&self, expected_merkle_root: &Digest) -> Result<bool, bytesrepr::Error> {
         match self {
             // For "legacy" block effects we can't verify their correctness as there's no reference,
             // expected value to compare against.
             BlockEffectsOrChunk::BlockEffectsLegacy { .. } => Ok(true),
             BlockEffectsOrChunk::BlockEffects { value, .. } => match value {
                 ValueOrChunk::Value(block_effects) => {
-                    Ok(Chunkable::hash(&block_effects)? == expected_merkle_root)
+                    Ok(&Chunkable::hash(&block_effects)? == expected_merkle_root)
                 }
                 ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
-                    Ok(chunk_with_proof.proof().root_hash() == expected_merkle_root)
+                    Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
                 }
             },
         }
