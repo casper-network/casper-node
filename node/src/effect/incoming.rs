@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::{
     components::{consensus, gossiper},
     protocol::Message,
-    types::{BlockEffectsOrChunkIdDisplay, FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
+    types::{FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
 };
 
 use super::AutoClosingResponder;

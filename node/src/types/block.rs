@@ -1864,19 +1864,29 @@ impl Display for BlockEffectsOrChunk {
     }
 }
 
+/// ID of the request for block effects or chunk.
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum BlockEffectsOrChunkId {
+    /// Request for pre-1.5 block's effects (or chunk).
     BlockEffectsOrChunkLegacyId {
+        /// Index of the chunk being requested.
         chunk_index: u64,
+        /// Hash of the block.
         block_hash: BlockHash,
     },
+    /// Request for post-1.5 block's effects (or chunk).
     BlockEffectsOrChunkId {
+        /// Index of the chunk being requested.
         chunk_index: u64,
+        /// Hash of the block.
         block_hash: BlockHash,
     },
 }
 
 impl BlockEffectsOrChunkId {
+    /// Returns an instance of post-1.5 request for block effects.
+    /// The `chunk_index` is set to 0 as the starting point of the fetch cycle.
+    /// If the effects are stored without chunking the index will be 0 as well.
     pub fn new(block_hash: BlockHash) -> Self {
         BlockEffectsOrChunkId::BlockEffectsOrChunkId {
             chunk_index: 0,
@@ -1885,6 +1895,8 @@ impl BlockEffectsOrChunkId {
     }
 
     /// Constructs a request ID for legacy block effects - pre-1.5.0
+    /// The `chunk_index` is set to 0 as the starting point of the fetch cycle.
+    /// If the effects are stored without chunking the index will be 0 as well.
     pub fn legacy(block_hash: BlockHash) -> Self {
         BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
             chunk_index: 0,
@@ -1900,6 +1912,7 @@ impl BlockEffectsOrChunkId {
         }
     }
 
+    /// Returns the request for the `next_chunk` retaining the original request's block hash.
     pub fn next_chunk(&self, next_chunk: u64) -> Self {
         match self {
             BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId { block_hash, .. } => {
