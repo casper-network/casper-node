@@ -187,34 +187,6 @@ impl Display for TrieRequest {
     }
 }
 
-/// A request for block effects.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) enum BlockEffectsRequest {
-    BlockEffectsLegacyRequest(Vec<u8>),
-    BlockEffectsRequest(Vec<u8>),
-}
-
-impl Display for BlockEffectsRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BlockEffectsRequest::BlockEffectsLegacyRequest(serialized_request) => {
-                write!(
-                    f,
-                    "request for legacy block effects: {}",
-                    BlockEffectsOrChunkIdDisplay(&serialized_request)
-                )
-            }
-            BlockEffectsRequest::BlockEffectsRequest(serialized_request) => {
-                write!(
-                    f,
-                    "request for block effects: {}",
-                    BlockEffectsOrChunkIdDisplay(&serialized_request)
-                )
-            }
-        }
-    }
-}
-
 /// A response for a net request.
 ///
 /// See `NetRequest` for notes.
