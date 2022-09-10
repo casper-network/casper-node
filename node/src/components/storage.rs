@@ -1920,7 +1920,7 @@ impl Storage {
 
         let mut execution_results = vec![];
         for deploy_hash in block_body.transaction_hashes() {
-            match self.get_deploy_metadata(&mut txn, &deploy_hash)? {
+            match self.get_deploy_metadata(&mut txn, deploy_hash)? {
                 None => {
                     // We have the block and the body but not the deploy. This could happen
                     // for a node that is still syncing and probably shouldn't be a fatal

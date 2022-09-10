@@ -1752,17 +1752,15 @@ where
         .map_err(Error::ExecutionEngine)?;
 
     match query_result {
-        QueryResult::ValueNotFound(_) => return Ok(None),
-        QueryResult::Success { value, proofs: _ } => return Ok(Some(*value)),
-        QueryResult::RootNotFound => {
-            return Err(Error::ExecutionEngine(engine_state::Error::RootNotFound(
-                state_root_hash,
-            )))
-        }
+        QueryResult::ValueNotFound(_) => Ok(None),
+        QueryResult::Success { value, proofs: _ } => Ok(Some(*value)),
+        QueryResult::RootNotFound => Err(Error::ExecutionEngine(
+            engine_state::Error::RootNotFound(state_root_hash),
+        )),
         QueryResult::CircularReference(path) => {
-            return Err(GlobalStateQueryError::CircularReference(path).into())
+            Err(GlobalStateQueryError::CircularReference(path).into())
         }
-        QueryResult::DepthLimit { .. } => return Err(GlobalStateQueryError::DepthLimit.into()),
+        QueryResult::DepthLimit { .. } => Err(GlobalStateQueryError::DepthLimit.into()),
     }
 }
 
@@ -1782,11 +1780,11 @@ where
         Key::BlockEffectsRootHash {
             block_height: block_header.height(),
         },
-        &ctx,
+        ctx,
     )
     .await?
     {
-        None => return Ok(None),
+        None => Ok(None),
         Some(stored_value) => {
             let merkle_root: Digest = match stored_value {
                 StoredValue::CLValue(cl_value) => {
@@ -1824,7 +1822,8 @@ impl ChunkVerifier {
         ChunkVerifier::Legacy(block_hash)
     }
 
-    /// Verifies the chunk `block_effects_or_chunk` according to a logic that is correct for the chunk's context.
+    /// Verifies the chunk `block_effects_or_chunk` according to a logic that is correct for the
+    /// chunk's context.
     fn verify(
         &self,
         block_effects_or_chunk: &BlockEffectsOrChunk,
@@ -1855,8 +1854,7 @@ where
         + From<FetcherRequest<BlockEffectsOrChunk>>
         + Send,
 {
-    let block_execution_results =
-        read_block_execution_results_root_hash(&block_header, ctx).await?;
+    let block_execution_results = read_block_execution_results_root_hash(block_header, ctx).await?;
 
     let block_hash = block_header.hash();
 
@@ -1894,7 +1892,7 @@ where
 {
     let block_hash = block_header.hash();
     let fetched_block_effects =
-        fetch_block_effects(&ctx, block_hash, fetch_id, chunk_verifier).await?;
+        fetch_block_effects(ctx, block_hash, fetch_id, chunk_verifier).await?;
     match fetched_block_effects {
         AlreadyPresentOrDownloaded::AlreadyPresent => Ok(()),
         AlreadyPresentOrDownloaded::Downloaded(block_effects) => {
@@ -1947,7 +1945,7 @@ where
     // data (which block) that chunk refers to.
 
     let effects_or_chunk =
-        match fetch_retry_forever::<_, BlockEffectsOrChunk>(&ctx, fetch_id).await? {
+        match fetch_retry_forever::<_, BlockEffectsOrChunk>(ctx, fetch_id).await? {
             FetchedData::FromStorage { .. } => return Ok(BlockEffectsFetchResult::AlreadyPresent),
             FetchedData::FromPeer {
                 item: effects_or_chunk,
@@ -1977,19 +1975,19 @@ where
     let chunk_map_result = futures::stream::iter(1..count)
         .map(move |index| async move {
             match fetch_retry_forever::<_, BlockEffectsOrChunk>(
-                &ctx,
+                ctx,
                 fetch_id.next_chunk(index),
             )
             .await?
             {
                 FetchedData::FromStorage { .. } => {
-                    return Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage)
+                    Err(FetchBlockEffectsError::BlockEffectsFetchByChunksSomehowFetchedFromStorage)
                 }
                 FetchedData::FromPeer { item, .. } => {
                     chunk_verifier.verify(&*item)?;
                     match item.flatten() {
                         ValueOrChunk::Value(_) =>
-                            return Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer(block_hash)),
+                            Err(FetchBlockEffectsError::BlockEffectsBeingFetchedByChunksSomehowFetchWholeFromPeer(block_hash)),
                         ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
                             let index = chunk_with_proof.proof().index();
                             let chunk = chunk_with_proof.into_chunk();
@@ -2114,7 +2112,7 @@ where
         };
 
         if let HandleSignaturesResult::HaveSufficient = sig_collector
-            .handle_incoming_signatures(&block_header, signatures, peer, ctx)
+            .handle_incoming_signatures(block_header, signatures, peer, ctx)
             .await?
         {
             // Sufficient signatures were fetched from peers, store them and finish fetching for
@@ -2129,7 +2127,7 @@ where
     // finality signatures as valid when their total weight is at least
     // `finality_threshold_fraction` of the total validator weights.
     let (_, validator_weights) =
-        linear_chain::era_validator_weights_for_block(&block_header, *ctx.effect_builder).await?;
+        linear_chain::era_validator_weights_for_block(block_header, *ctx.effect_builder).await?;
     sig_collector.check_if_sufficient_for_sync_to_genesis(
         &validator_weights,
         ctx.config.finality_threshold_fraction(),
