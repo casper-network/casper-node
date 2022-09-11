@@ -16,6 +16,7 @@ mod node_id;
 pub mod peers_map;
 mod shared_object;
 mod status_feed;
+mod sync_leap;
 mod value_or_chunk;
 
 use rand::{CryptoRng, RngCore};
@@ -31,7 +32,6 @@ pub use block::{
 pub(crate) use block::{
     BlockAdded, BlockAddedValidationError, BlockHashAndHeight, BlockHeaderWithMetadata,
     BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockWithMetadata, FinalitySignatureId,
-    SyncLeap,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
@@ -50,6 +50,7 @@ pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
+pub(crate) use sync_leap::{SyncLeap, SyncLeapValidationError};
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
 };

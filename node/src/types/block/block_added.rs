@@ -21,45 +21,6 @@ use crate::{
     utils::ds,
 };
 
-/// An error that can arise when validating a `BlockAdded`.
-#[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
-#[non_exhaustive]
-pub(crate) enum BlockAddedValidationError {
-    /// The key provided in the proof is not a `Key::ChecksumRegistry`.
-    #[error("key provided in proof is not a Key::ChecksumRegistry")]
-    InvalidKeyType,
-
-    /// An error while validating the `block` field.
-    #[error(transparent)]
-    BlockValidationError(#[from] BlockValidationError),
-
-    /// An error while computing the state root hash implied by the Merkle proof.
-    #[error("failed to compute state root hash implied by proof")]
-    TrieMerkleProof(bytesrepr::Error),
-
-    /// The state root hash implied by the Merkle proof doesn't match that in the block.
-    #[error("state root hash implied by the Merkle proof doesn't match that in the block")]
-    StateRootHashMismatch {
-        proof_state_root_hash: Digest,
-        block_state_root_hash: Digest,
-    },
-
-    /// The value provided in the proof cannot be parsed to the checksum registry type.
-    #[error("value provided in the proof cannot be parsed to the checksum registry type")]
-    InvalidChecksumRegistry,
-
-    /// An error while computing the root hash of the approvals.
-    #[error("failed to compute root hash of the approvals")]
-    ApprovalsRootHash(bytesrepr::Error),
-
-    /// The approvals root hash implied by the Merkle proof doesn't match the approvals.
-    #[error("approvals root hash implied by the Merkle proof doesn't match the approvals")]
-    ApprovalsRootHashMismatch {
-        computed_approvals_root_hash: Digest,
-        value_in_proof: Digest,
-    },
-}
-
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct BlockAdded {
@@ -170,4 +131,43 @@ impl Display for BlockAdded {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "block added: {}", self.block.hash())
     }
+}
+
+/// An error that can arise when validating a `BlockAdded`.
+#[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
+#[non_exhaustive]
+pub(crate) enum BlockAddedValidationError {
+    /// The key provided in the proof is not a `Key::ChecksumRegistry`.
+    #[error("key provided in proof is not a Key::ChecksumRegistry")]
+    InvalidKeyType,
+
+    /// An error while validating the `block` field.
+    #[error(transparent)]
+    BlockValidationError(#[from] BlockValidationError),
+
+    /// An error while computing the state root hash implied by the Merkle proof.
+    #[error("failed to compute state root hash implied by proof")]
+    TrieMerkleProof(bytesrepr::Error),
+
+    /// The state root hash implied by the Merkle proof doesn't match that in the block.
+    #[error("state root hash implied by the Merkle proof doesn't match that in the block")]
+    StateRootHashMismatch {
+        proof_state_root_hash: Digest,
+        block_state_root_hash: Digest,
+    },
+
+    /// The value provided in the proof cannot be parsed to the checksum registry type.
+    #[error("value provided in the proof cannot be parsed to the checksum registry type")]
+    InvalidChecksumRegistry,
+
+    /// An error while computing the root hash of the approvals.
+    #[error("failed to compute root hash of the approvals")]
+    ApprovalsRootHash(bytesrepr::Error),
+
+    /// The approvals root hash implied by the Merkle proof doesn't match the approvals.
+    #[error("approvals root hash implied by the Merkle proof doesn't match the approvals")]
+    ApprovalsRootHashMismatch {
+        computed_approvals_root_hash: Digest,
+        value_in_proof: Digest,
+    },
 }

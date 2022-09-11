@@ -165,23 +165,3 @@ pub(crate) enum BlockHeadersBatchValidationError {
     )]
     HighestBlockHashMismatch { expected: BlockHash, got: BlockHash },
 }
-
-#[derive(Error, Debug)]
-pub(crate) enum SyncLeapValidationError {
-    #[error("The oldest provided block is not a switch block.")]
-    MissingSwitchBlock,
-    #[error("The headers chain before the trusted hash contains more than one switch block.")]
-    UnexpectedSwitchBlock,
-    #[error("The provided headers have different protocol versions.")]
-    MultipleProtocolVersions,
-    #[error("The sequence of headers up to the trusted one is not contiguous.")]
-    HeadersNotContiguous,
-    #[error("The signed headers are not in consecutive eras.")]
-    SignedHeadersNotInConsecutiveEras,
-    #[error(transparent)]
-    HeadersNotSufficientlySigned(BlockSignatureError),
-    #[error("The block signatures are not cryptographically valid: {0}")]
-    Crypto(crypto::Error),
-    #[error(transparent)]
-    BlockWithMetadata(BlockHeaderWithMetadataValidationError),
-}
