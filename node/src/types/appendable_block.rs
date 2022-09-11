@@ -32,7 +32,7 @@ pub(crate) enum AddError {
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
 #[derive(Clone, DataSize, Debug)]
-pub struct AppendableBlock {
+pub(crate) struct AppendableBlock {
     deploy_config: DeployConfig,
     deploys: Vec<DeployWithApprovals>,
     transfers: Vec<DeployWithApprovals>,

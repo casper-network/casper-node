@@ -223,7 +223,7 @@ impl From<TryFromSliceError> for Error {
 #[derive(
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
-pub struct BlockPayload {
+pub(crate) struct BlockPayload {
     deploys: Vec<DeployWithApprovals>,
     transfers: Vec<DeployWithApprovals>,
     accusations: Vec<PublicKey>,

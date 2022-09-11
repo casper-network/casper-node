@@ -4,6 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use once_cell::sync::{Lazy, OnceCell};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -17,10 +18,11 @@ use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
     types::{Approval, BlockValidationError, FetcherItem, GossiperItem, Item, Tag},
+    utils::ds,
 };
 
 /// An error that can arise when validating a `BlockAdded`.
-#[derive(Error, Debug, Serialize)]
+#[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
 #[non_exhaustive]
 pub(crate) enum BlockAddedValidationError {
     /// The key provided in the proof is not a `Key::ChecksumRegistry`.
@@ -68,22 +70,26 @@ pub(crate) struct BlockAdded {
     /// The Merkle proof of the finalized approvals.
     #[data_size(skip)]
     pub merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    is_verified: OnceCell<Result<(), BlockAddedValidationError>>,
 }
 
-impl Item for BlockAdded {
-    type Id = BlockHash;
-    const TAG: Tag = Tag::BlockAdded;
-
-    fn id(&self) -> Self::Id {
-        *self.block.hash()
+impl BlockAdded {
+    pub(crate) fn new(
+        block: Block,
+        finalized_approvals: Vec<BTreeSet<Approval>>,
+        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    ) -> Self {
+        Self {
+            block,
+            finalized_approvals,
+            merkle_proof_approvals,
+            is_verified: OnceCell::new(),
+        }
     }
-}
 
-impl FetcherItem for BlockAdded {
-    type ValidationError = BlockAddedValidationError;
-    type ValidationMetadata = ();
-
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn verify(&self) -> Result<(), BlockAddedValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(BlockAddedValidationError::InvalidKeyType);
         }
@@ -130,9 +136,25 @@ impl FetcherItem for BlockAdded {
             });
         }
 
-        todo!("memoize this");
-
         Ok(())
+    }
+}
+
+impl Item for BlockAdded {
+    type Id = BlockHash;
+    const TAG: Tag = Tag::BlockAdded;
+
+    fn id(&self) -> Self::Id {
+        *self.block.hash()
+    }
+}
+
+impl FetcherItem for BlockAdded {
+    type ValidationError = BlockAddedValidationError;
+    type ValidationMetadata = ();
+
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+        self.is_verified.get_or_init(|| self.verify()).clone()
     }
 }
 

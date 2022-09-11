@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -39,7 +40,7 @@ pub enum BlockCreationError {
 }
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
-#[derive(Error, Debug, Serialize)]
+#[derive(Error, Clone, Debug, PartialEq, Eq, Serialize, DataSize)]
 pub enum BlockValidationError {
     /// Problem serializing some of a block's data into bytes.
     #[error("{0}")]

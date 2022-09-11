@@ -51,7 +51,7 @@ impl ConsensusValueT for Arc<BlockPayload> {
 
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
 #[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-pub struct ClContext;
+pub(crate) struct ClContext;
 
 impl Context for ClContext {
     type ConsensusValue = Arc<BlockPayload>;
