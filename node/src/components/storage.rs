@@ -1740,7 +1740,7 @@ impl Storage {
     /// Directly returns a deploy from internal store.
     pub fn read_deploy_by_hash(
         &self,
-        deploy_hash: DeployHash,
+        deploy_hash: &DeployHash,
     ) -> Result<Option<Deploy>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)

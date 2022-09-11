@@ -328,6 +328,11 @@ where
             .instrument(error_span!("inject", node_id = %node_id))
             .await
     }
+
+    /// Returns IDs of the nodes currently in the network.
+    pub(crate) fn node_ids(&self) -> impl Iterator<Item = &NodeId> {
+        self.nodes.keys()
+    }
 }
 
 impl<R> Finalize for Network<R>

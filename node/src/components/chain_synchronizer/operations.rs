@@ -1512,6 +1512,7 @@ where
     //  * the block header
     //  * the block body
     //  * the trie
+    //  * block effects (execution results for all deploys in the block)
     // Since we fetch and store each of these independently, we might crash midway through the
     // process and have partial data. We could reindex storages on startup but that had proven to
     // take 30min+ in the past. We need to prioritize correctness over performance so we
@@ -1866,10 +1867,12 @@ where
             block_hash,
             block_execution_results_merkle_root_hash,
         );
+        info!(?block_hash, execution_effects_merkle_root=?block_execution_results_merkle_root_hash, "fetching verifiable block effects");
         fetch_and_store_block_effects(block_header, fetch_id, ctx, &chunk_verifier).await?;
     } else {
         let fetch_id = BlockEffectsOrChunkId::legacy(block_hash);
         let chunk_verifier = ChunkVerifier::legacy(block_hash);
+        info!(?block_hash, "fetching unverifiable block effects");
         fetch_and_store_block_effects(block_header, fetch_id, ctx, &chunk_verifier).await?;
     };
 
