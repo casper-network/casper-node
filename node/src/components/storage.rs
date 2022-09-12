@@ -281,13 +281,6 @@ where
     }
 }
 
-// TODO: Copy&Paste from `block_acceptor.rs` - should not be here
-pub enum SignaturesFinality {
-    Sufficient,
-    NotSufficient,
-    BogusValidators(Vec<PublicKey>),
-}
-
 impl Storage {
     /// Creates a new storage component.
     #[allow(clippy::too_many_arguments)]
