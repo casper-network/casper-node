@@ -11,14 +11,14 @@ use crate::{
         consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
         fetcher, gossiper, linear_chain, rest_server, rpc_server,
         small_network::{self, GossipedAddress},
-        storage,
+        storage, upgrade_watcher,
     },
     effect::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, RpcServerAnnouncement,
+            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -86,7 +86,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
-    ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
+    ChainspecLoader(#[serde(skip_serializing)] upgrade_watcher::Event),
     #[from]
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
@@ -223,7 +223,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
     #[from]
-    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
     ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
     #[from]
@@ -387,7 +387,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
                 "CompleteBlockSynchronizerRequest"
             }
-            ParticipatingEvent::ControlLogicAnnouncement(_) => "ControlLogicAnnouncement",
+            ParticipatingEvent::CheckState => "CheckState",
         }
     }
 }
@@ -620,9 +620,6 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::ChainSynchronizerAnnouncement(ann) => {
                 write!(f, "chain synchronizer announcement: {}", ann)
             }
-            ParticipatingEvent::ControlLogicAnnouncement(ann) => {
-                write!(f, "control logic announcement: {}", ann)
-            }
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::BlockAddedGossiperIncoming(inner) => Display::fmt(inner, f),
@@ -639,6 +636,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlockAddedResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::CheckState => write!(f, "check state"),
         }
     }
 }

@@ -19,10 +19,6 @@ pub enum Error {
     #[error("could not load chainspec: {0}")]
     LoadChainspec(ReadFileError),
 
-    /// Error loading the upgrade point.
-    #[error("could not load upgrade point: {0}")]
-    LoadUpgradePoint(ReadFileError),
-
     /// Error loading the chainspec accounts.
     #[error("could not load chainspec accounts: {0}")]
     LoadChainspecAccounts(#[from] ChainspecAccountsLoadError),
@@ -30,22 +26,6 @@ pub enum Error {
     /// Error loading the global state update.
     #[error("could not load the global state update: {0}")]
     LoadGlobalStateUpgrade(#[from] GlobalStateUpdateLoadError),
-
-    /// Failed to read the given directory.
-    #[error("failed to read dir {}: {error}", dir.display())]
-    ReadDir {
-        /// The directory which could not be read.
-        dir: PathBuf,
-        /// The underlying error.
-        error: io::Error,
-    },
-
-    /// No subdirectory representing a semver version was found in the given directory.
-    #[error("failed to get a valid version from subdirs in {}", dir.display())]
-    NoVersionSubdirFound {
-        /// The searched directory.
-        dir: PathBuf,
-    },
 }
 
 /// Error loading chainspec accounts file.

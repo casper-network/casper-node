@@ -38,14 +38,15 @@ use crate::{
         rpc_server::RpcServer,
         small_network::{self, GossipedAddress, SmallNetwork},
         storage::Storage,
+        upgrade_watcher::{self, UpgradeWatcher},
         Component,
     },
     effect::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            RpcServerAnnouncement,
+            ConsensusAnnouncement, ContractRuntimeAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{
             BlockAddedResponseIncoming, NetResponseIncoming, SyncLeapResponseIncoming,
@@ -300,6 +301,7 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
+    upgrade_watcher: UpgradeWatcher,
 
     small_network: SmallNetwork<ParticipatingEvent, Message>, // TODO: handle setting the `is_syncing_peer` - needs internal init state
     // TODO - has its own timing belt - should it?
@@ -332,6 +334,7 @@ pub(crate) struct Reactor {
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
 
+    #[data_size(skip)]
     state: ReactorState,
 }
 
@@ -357,6 +360,7 @@ impl Reactor {
             ReactorState::CatchUp { .. } => {}
             ReactorState::KeepUp { .. } => {}
         }
+        todo!()
     }
 }
 
@@ -413,6 +417,8 @@ impl reactor::Reactor for Reactor {
         // contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
         //     todo!(), //&highest_block_header
         // ))?;
+
+        let upgrade_watcher = UpgradeWatcher::new(chainspec, &root_dir)?;
 
         let node_key_pair = config.consensus.load_keys(&root_dir)?;
         let small_network = SmallNetwork::new(
@@ -562,7 +568,7 @@ impl reactor::Reactor for Reactor {
             protocol_version,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(chainspec, registry)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -590,16 +596,14 @@ impl reactor::Reactor for Reactor {
             //     "possibly a storage call to get the highest block header or initialize it with 0?"
             // ),
             0,
-            chainspec,
+            &chainspec,
             config.block_proposer,
         )?;
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::BlockProposer,
-            block_proposer_effects,
-        ));
+        let mut effects =
+            reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
 
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
-        let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
+        let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
         let (consensus, consensus_effects) = EraSupervisor::new(
             EraId::new(0), // todo!(), //highest_block_header.next_block_era_id(),
             storage.root_path(),
@@ -620,7 +624,7 @@ impl reactor::Reactor for Reactor {
             consensus_effects,
         ));
 
-        let block_validator = BlockValidator::new(Arc::clone(chainspec));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let linear_chain = LinearChainComponent::new(
             registry,
             protocol_version,
@@ -669,6 +673,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader,
             storage,
             contract_runtime,
+            upgrade_watcher,
             small_network,
             address_gossiper,
             rpc_server,
@@ -690,6 +695,7 @@ impl reactor::Reactor for Reactor {
             metrics,
             memory_metrics,
             event_queue_metrics,
+            state: ReactorState::Initialize {},
         };
         Ok((reactor, effects))
     }
@@ -702,7 +708,6 @@ impl reactor::Reactor for Reactor {
     ) -> Effects<Self::Event> {
         match event {
             // delegate all fetcher activity to self.fetchinator.dispatch_fetcher_event(..)
-            ParticipatingEvent::ControlLogicAnnouncement(ann) => self.control_logic(ann),
             ParticipatingEvent::DeployFetcher(..)
             | ParticipatingEvent::DeployFetcherRequest(..)
             | ParticipatingEvent::BlockFetcher(..)
@@ -873,7 +878,7 @@ impl reactor::Reactor for Reactor {
             ),
             ParticipatingEvent::ChainspecLoader(event) => reactor::wrap_effects(
                 ParticipatingEvent::ChainspecLoader,
-                self.chainspec_loader
+                self.upgrade_watcher
                     .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::DeployAcceptor(event) => reactor::wrap_effects(
@@ -934,11 +939,9 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::MetricsRequest,
                 self.metrics.handle_event(effect_builder, rng, req),
             ),
-            ParticipatingEvent::ChainspecLoaderRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                ParticipatingEvent::ChainspecLoader(req.into()),
-            ),
+            ParticipatingEvent::ChainspecLoaderRequest(req) => {
+                self.dispatch_event(effect_builder, rng, req.into())
+            }
             ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
@@ -1196,10 +1199,10 @@ impl reactor::Reactor for Reactor {
                 ),
             ),
             ParticipatingEvent::ChainspecLoaderAnnouncement(
-                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {
                 let reactor_event = ParticipatingEvent::ChainspecLoader(
-                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
+                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade.clone()),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
@@ -1340,6 +1343,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::CheckState => self.check_state(),
         }
     }
 
@@ -1380,7 +1384,7 @@ impl Reactor {
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes, effect_builder);
+            ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes);
         Self::new_with_chainspec_loader(
             config,
             registry,

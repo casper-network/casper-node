@@ -17,7 +17,7 @@ use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
+        deploy_acceptor::Error, diagnostics_port::FileSerializer, upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     types::{
@@ -331,15 +331,15 @@ impl Display for LinearChainAnnouncement {
 
 /// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum ChainspecLoaderAnnouncement {
+pub(crate) enum UpgradeWatcherAnnouncement {
     /// New upgrade recognized.
     UpgradeActivationPointRead(NextUpgrade),
 }
 
-impl Display for ChainspecLoaderAnnouncement {
+impl Display for UpgradeWatcherAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
+            UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
                 write!(f, "read {}", next_upgrade)
             }
         }

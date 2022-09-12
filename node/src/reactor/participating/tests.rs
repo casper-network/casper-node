@@ -16,7 +16,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
+    components::{gossiper, small_network, storage, upgrade_watcher::NextUpgrade},
     effect::{
         requests::{
             BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,

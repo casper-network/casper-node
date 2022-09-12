@@ -51,7 +51,6 @@ use super::{
     message_pack_format::MessagePackFormat,
     EstimatorWeights, Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
 };
-use crate::components::consensus;
 use crate::components::small_network::Config;
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, FromIncoming},
@@ -63,7 +62,6 @@ use crate::{
     tls::{self, TlsCert},
     types::NodeId,
     utils::display_error,
-    WithDir,
 };
 
 /// An item on the internal outgoing message queue.
@@ -498,7 +496,7 @@ where
 
     // Manually encode a handshake.
     let handshake_message = context.chain_info.create_handshake::<P>(
-        context.public_addr,
+        context.public_addr.expect("component not initialized"),
         context.node_key_pair.as_ref(),
         connection_id,
         context.is_syncing.load(Ordering::SeqCst),
@@ -621,6 +619,7 @@ pub(super) async fn server<P, REv>(
 
     // We first create a future that never terminates, handling incoming connections:
     let accept_connections = async {
+        let event_queue = context.event_queue.expect("component not initialized");
         loop {
             // We handle accept errors here, since they can be caused by a temporary resource
             // shortage or the remote side closing the connection while it is waiting in
@@ -637,8 +636,7 @@ pub(super) async fn server<P, REv>(
                         async move {
                             let incoming =
                                 handle_incoming(context.clone(), stream, peer_addr).await;
-                            context
-                                .event_queue
+                            event_queue
                                 .schedule(
                                     Event::IncomingConnection {
                                         incoming: Box::new(incoming),
@@ -699,6 +697,7 @@ where
         + Send,
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
+    let event_queue = context.event_queue.expect("component not initialized");
 
     let read_messages =
         async move {
@@ -707,7 +706,7 @@ where
                     Ok(msg) => {
                         trace!(%msg, "message received");
 
-                        let effect_builder = EffectBuilder::new(context.event_queue);
+                        let effect_builder = EffectBuilder::new(event_queue);
 
                         /*/ TODO: Handle correctly if we don't know any validator yet. We know validators only
                         // 1) after executing block (implemented)
@@ -785,8 +784,7 @@ where
                                 });
 
                                 // Schedule the created event.
-                                context
-                                    .event_queue
+                                event_queue
                                     .schedule::<REv>(event, QueueKind::NetworkDemand)
                                     .await;
                             }
@@ -805,8 +803,7 @@ where
                                     QueueKind::NetworkIncoming
                                 };
 
-                                context
-                                    .event_queue
+                                event_queue
                                     .schedule(
                                         Event::IncomingMessage {
                                             peer_id: Box::new(peer_id),

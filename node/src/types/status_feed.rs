@@ -18,21 +18,14 @@ use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 use crate::{
     components::{
         chain_synchronizer::Progress,
-        chainspec_loader::NextUpgrade,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+        upgrade_watcher::NextUpgrade,
     },
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap},
 };
 
-static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade::new(
-        ActivationPoint::EraId(EraId::from(42)),
-        ProtocolVersion::from_parts(2, 0, 1),
-    );
-    ChainspecInfo {
-        name: String::from("casper-example"),
-        next_upgrade: Some(next_upgrade),
-    }
+static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
+    name: String::from("casper-example"),
 });
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
@@ -58,7 +51,6 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
 pub struct ChainspecInfo {
     /// Name of the network.
     name: String,
-    next_upgrade: Option<NextUpgrade>,
 }
 
 impl DocExample for ChainspecInfo {
@@ -68,10 +60,9 @@ impl DocExample for ChainspecInfo {
 }
 
 impl ChainspecInfo {
-    pub(crate) fn new(chainspec_network_name: String, next_upgrade: Option<NextUpgrade>) -> Self {
+    pub(crate) fn new(chainspec_network_name: String) -> Self {
         ChainspecInfo {
             name: chainspec_network_name,
-            next_upgrade,
         }
     }
 }
@@ -204,7 +195,7 @@ impl GetStatusResult {
             last_added_block_info: status_feed.last_added_block.map(Into::into),
             our_public_signing_key: status_feed.our_public_signing_key,
             round_length: status_feed.round_length,
-            next_upgrade: status_feed.chainspec_info.next_upgrade,
+            next_upgrade: todo!(), // status_feed.chainspec_info.next_upgrade,
             uptime: status_feed.node_uptime.into(),
             node_state: status_feed.node_state,
             #[cfg(not(test))]

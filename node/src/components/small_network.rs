@@ -1243,12 +1243,10 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // We output only the most important fields of the component, as it gets unwieldy quite fast
         // otherwise.
-        write!(
-            f,
-            "SmallNetwork {{ our_id: {}, status: {:?}, public_addr: {:?} }}",
-            self.context.our_id(),
-            self.status,
-            self.context.public_addr()
-        )
+        f.debug_struct("SmallNetwork")
+            .field("our_id", &self.context.our_id())
+            .field("status", &self.status)
+            .field("public_addr", &self.context.public_addr())
+            .finish()
     }
 }
