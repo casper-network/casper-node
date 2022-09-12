@@ -1241,7 +1241,7 @@ fn should_get_trusted_ancestor_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_header, 100)
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
             .unwrap()
             .unwrap()
             .iter()
@@ -1253,7 +1253,7 @@ fn should_get_trusted_ancestor_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(5).unwrap().header();
         let results = storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_header, 100)
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
             .unwrap()
             .unwrap();
         assert!(results.is_empty(), "should be empty for switch blocks");
@@ -1335,12 +1335,19 @@ fn should_get_signed_block_headers_with_metadata() {
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let highest_block_header_with_sufficient_signatures = storage
+            .get_header_of_highest_complete_block(
+                &mut txn,
+                fault_tolerance_fraction,
+                &trusted_validator_weights,
+            )
+            .unwrap()
+            .unwrap();
         storage
             .get_signed_block_headers_with_metadata(
                 &mut txn,
                 &requested_block_header,
-                fault_tolerance_fraction,
-                &trusted_validator_weights,
+                &highest_block_header_with_sufficient_signatures,
             )
             .unwrap()
             .unwrap()
@@ -1441,12 +1448,20 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let highest_block_header_with_sufficient_signatures = storage
+            .get_header_of_highest_complete_block(
+                &mut txn,
+                fault_tolerance_fraction,
+                &trusted_validator_weights,
+            )
+            .unwrap()
+            .unwrap();
+
         storage
             .get_signed_block_headers_with_metadata(
                 &mut txn,
                 &requested_block_header,
-                fault_tolerance_fraction,
-                &trusted_validator_weights,
+                &highest_block_header_with_sufficient_signatures,
             )
             .unwrap()
             .unwrap()

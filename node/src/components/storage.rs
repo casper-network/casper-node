@@ -1631,18 +1631,15 @@ impl Storage {
     }
 
     // TODO: Docs
-    // TODO: Could be optimized to use `get_blocks_while`
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
-        allowed_era_diff: u64,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
         if trusted_block_header.is_switch_block() {
             return Ok(Some(vec![]));
         }
 
-        let initial_block_header_era = trusted_block_header.era_id();
         let mut current_trusted_block_header = trusted_block_header.clone();
 
         let mut result = vec![];
@@ -1657,14 +1654,6 @@ impl Storage {
                     }
                 };
 
-            let era_diff =
-                initial_block_header_era.saturating_sub(parent_block_header.era_id().into());
-            if allowed_era_diff <= era_diff.into() {
-                // TODO: Is it even possible when we stop at the first switch block?
-                // Diff between requested header and our current fully signed tip.
-                break;
-            }
-
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() {
                 break;
@@ -1676,68 +1665,55 @@ impl Storage {
     }
 
     // TODO: Docs
-    // TODO: Should this also use the "allowed_era_diff",
     fn get_signed_block_headers_with_metadata<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+        highest_block_header_with_sufficient_signatures: &BlockHeaderWithMetadata,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
-        // TODO: Could use that: switch_block_era_id_index
         // TODO: using the `trusted_validator_weights` here is incorrect - the highest block might
         // be from a different era; do we even need to check that it has enough signatures if it is
         // in `completed_blocks`?
-        let maybe_highest_block_header_with_sufficient_signatures = self
-            .get_header_of_highest_complete_block(
-                txn,
-                fault_tolerance_fraction,
-                trusted_validator_weights,
-            )?;
 
-        if let Some(mut current_block_header_with_sufficient_signatures) =
-            maybe_highest_block_header_with_sufficient_signatures
+        let mut current_block_header_with_sufficient_signatures =
+            highest_block_header_with_sufficient_signatures.clone();
+
+        if current_block_header_with_sufficient_signatures
+            .block_header
+            .height()
+            <= trusted_block_header.height()
         {
-            if current_block_header_with_sufficient_signatures
-                .block_header
-                .height()
-                <= trusted_block_header.height()
-            {
-                return Ok(Some(vec![]));
-            }
-
-            let mut result = vec![];
-            result.push(current_block_header_with_sufficient_signatures.clone());
-            loop {
-                let parent_hash = current_block_header_with_sufficient_signatures
-                    .block_header
-                    .parent_hash();
-                let parent_block_header_with_metadata =
-                    match self.get_single_block_header_with_metadata(txn, parent_hash)? {
-                        Some(block_header_with_metadata) => block_header_with_metadata,
-                        None => {
-                            warn!(?parent_hash, "block header not found");
-                            return Ok(None);
-                        }
-                    };
-                if parent_block_header_with_metadata.block_header.hash()
-                    == trusted_block_header.hash()
-                {
-                    // Don't go back further, we're already at the block being requested.
-                    return Ok(Some(result));
-                }
-
-                if parent_block_header_with_metadata
-                    .block_header
-                    .is_switch_block()
-                {
-                    result.push(parent_block_header_with_metadata.clone());
-                }
-                current_block_header_with_sufficient_signatures = parent_block_header_with_metadata;
-            }
+            return Ok(Some(vec![]));
         }
 
-        Ok(None)
+        let mut result = vec![];
+        result.push(current_block_header_with_sufficient_signatures.clone());
+        loop {
+            let parent_hash = current_block_header_with_sufficient_signatures
+                .block_header
+                .parent_hash();
+            let parent_block_header_with_metadata =
+                match self.get_single_block_header_with_metadata(txn, parent_hash)? {
+                    Some(block_header_with_metadata) => block_header_with_metadata,
+                    None => {
+                        warn!(?parent_hash, "block header not found");
+                        return Ok(None);
+                    }
+                };
+            if parent_block_header_with_metadata.block_header.hash() == trusted_block_header.hash()
+            {
+                // Don't go back further, we're already at the block being requested.
+                return Ok(Some(result));
+            }
+
+            if parent_block_header_with_metadata
+                .block_header
+                .is_switch_block()
+            {
+                result.push(parent_block_header_with_metadata.clone());
+            }
+            current_block_header_with_sufficient_signatures = parent_block_header_with_metadata;
+        }
     }
 
     fn get_block_header_by_height_restricted<Tx: Transaction>(
@@ -2350,7 +2326,7 @@ impl Storage {
         let trusted_block_header = trusted_block_header.unwrap(); // TODO
 
         let trusted_ancestor_headers =
-            self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header, allowed_era_diff)?;
+            self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)?;
         let trusted_ancestor_headers = trusted_ancestor_headers.unwrap(); // TODO
 
         if let Some(trusted_validator_weights) = {
@@ -2366,19 +2342,28 @@ impl Storage {
                 }
             }
         } {
-            let signed_block_headers = self.get_signed_block_headers_with_metadata(
-                &mut txn,
-                &trusted_block_header,
-                fault_tolerance_fraction,
-                trusted_validator_weights,
-            )?;
-            let signed_block_headers = signed_block_headers.unwrap(); // TODO
+            if let Some(highest_block_header_with_sufficient_signatures) = self
+                .get_header_of_highest_complete_block(
+                    &mut txn,
+                    fault_tolerance_fraction,
+                    trusted_validator_weights,
+                )?
+            {
+                let signed_block_headers = self.get_signed_block_headers_with_metadata(
+                    &mut txn,
+                    &trusted_block_header,
+                    &highest_block_header_with_sufficient_signatures,
+                )?;
+                let signed_block_headers = signed_block_headers.unwrap(); // TODO
 
-            return Ok(Some(SyncLeap {
-                trusted_block_header,
-                trusted_ancestor_headers,
-                signed_block_headers,
-            }));
+                return Ok(Some(SyncLeap {
+                    trusted_block_header,
+                    trusted_ancestor_headers,
+                    signed_block_headers,
+                }));
+            } else {
+                return Ok(None);
+            }
         }
 
         Ok(None)
