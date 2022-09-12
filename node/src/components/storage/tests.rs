@@ -1239,9 +1239,9 @@ fn should_get_trusted_ancestor_headers() {
 
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_hash = blocks.get(requested_height).unwrap().header().hash();
+        let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_hash, 100)
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_header, 100)
             .unwrap()
             .unwrap()
             .iter()
@@ -1251,9 +1251,9 @@ fn should_get_trusted_ancestor_headers() {
 
     {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_hash = blocks.get(5).unwrap().header().hash();
+        let requested_block_header = blocks.get(5).unwrap().header();
         let results = storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_hash, 100)
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_header, 100)
             .unwrap()
             .unwrap();
         assert!(results.is_empty(), "should be empty for switch blocks");
@@ -1334,13 +1334,13 @@ fn should_get_signed_block_headers_with_metadata() {
 
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_hash = blocks.get(requested_height).unwrap().header().hash();
+        let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
             .get_signed_block_headers_with_metadata(
                 &mut txn,
-                &requested_block_hash,
+                &requested_block_header,
                 fault_tolerance_fraction,
-                trusted_validator_weights.clone(),
+                &trusted_validator_weights,
             )
             .unwrap()
             .unwrap()
@@ -1372,8 +1372,6 @@ fn should_get_signed_block_headers_with_metadata() {
 #[test]
 fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_most_recent_block()
 {
-    // TODO: There's some code duplication with the test `should_get_signed_block_headers_with_metadata`
-
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
@@ -1431,9 +1429,8 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
             storage
                 .write_finality_signatures(&block_signatures)
                 .unwrap();
+            storage.completed_blocks.insert(block.height());
         }
-
-        storage.completed_blocks.insert(block.height());
     });
 
     let fault_tolerance_fraction = Ratio::new(1, 1000);
@@ -1443,13 +1440,13 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
 
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_hash = blocks.get(requested_height).unwrap().header().hash();
+        let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
             .get_signed_block_headers_with_metadata(
                 &mut txn,
-                &requested_block_hash,
+                &requested_block_header,
                 fault_tolerance_fraction,
-                trusted_validator_weights.clone(),
+                &trusted_validator_weights,
             )
             .unwrap()
             .unwrap()
