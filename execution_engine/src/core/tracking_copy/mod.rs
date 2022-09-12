@@ -243,6 +243,7 @@ pub enum AddResult {
     TypeMismatch(StoredValueTypeMismatch),
     /// Serialization error.
     Serialization(bytesrepr::Error),
+    /// Transform error.
     Transform(transform::Error),
 }
 
