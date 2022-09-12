@@ -12,7 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 casper-global-state = { version = "1.4.3", path = "../../global_state" }
-casper-execution-engine = { version = "2.0.0", path = "../../execution_engine", features = ["test-support"] }
+casper-execution-engine = { version = "2.0.1", path = "../../execution_engine", features = ["test-support"] }
 casper-hashing = { version = "1.4.3", path = "../../hashing" }
 casper-types = { version = "1.5.0", path = "../../types" }
 humantime = "2"

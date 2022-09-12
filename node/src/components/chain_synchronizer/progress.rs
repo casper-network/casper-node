@@ -187,20 +187,6 @@ impl ProgressHolder {
         });
     }
 
-    pub(super) fn start_fetching_tries_for_upgrade(
-        &self,
-        block_height: u64,
-        state_root_hash: Digest,
-    ) {
-        let mut inner = self.get_inner_while_fast_syncing("fetching_tries_for_upgrade");
-        *inner = Progress::FastSync(FastSync::FetchingTries {
-            block_height,
-            state_root_hash,
-            reason: FetchingTriesReason::Upgrade,
-            num_tries_to_fetch: 0,
-        });
-    }
-
     pub(super) fn start_fetching_block_and_deploys_to_execute(&self, block_height: u64) {
         let mut inner = self.get_inner_while_fast_syncing("fetching_block_and_deploys_to_execute");
         *inner = Progress::FastSync(FastSync::FetchingBlockAndDeploysToExecute(block_height));

@@ -10,33 +10,41 @@ use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
     runtime_args, ApiError, CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter, RuntimeArgs,
+    EntryPointType, EntryPoints, Key, Parameter, RuntimeArgs,
 };
 
-// This is making use of the undocumented "FFI" function `gas()` which is used by the Wasm
-// interpreter to charge gas for upcoming interpreted instructions.  For further info on this, see
-// https://docs.rs/pwasm-utils/0.12.0/pwasm_utils/fn.inject_gas_counter.html
-mod unsafe_ffi {
-    extern "C" {
-        pub fn gas(amount: i32);
-    }
-}
-
-fn safe_gas(amount: i32) {
-    unsafe { unsafe_ffi::gas(amount) }
-}
-
 const SUBCALL_NAME: &str = "add_gas";
+const DATA_KEY: &str = "data";
 const ADD_GAS_FROM_SESSION: &str = "add-gas-from-session";
 const ADD_GAS_VIA_SUBCALL: &str = "add-gas-via-subcall";
 
 const ARG_GAS_AMOUNT: &str = "gas_amount";
 const ARG_METHOD_NAME: &str = "method_name";
 
+/// This should consume at least `amount * gas_per_byte + C` gas
+/// where C contains wasm overhead and host function calls.
+fn consume_at_least_gas_amount(amount: usize) {
+    if amount > 0 {
+        let data_uref = match runtime::get_key(DATA_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_key) => runtime::revert(ApiError::UnexpectedKeyVariant),
+            None => {
+                let uref = storage::new_uref(());
+                runtime::put_key(DATA_KEY, uref.into());
+                uref
+            }
+        };
+
+        let data = vec![0; amount];
+        storage::write(data_uref, data);
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn add_gas() {
-    let amount: i32 = runtime::get_named_arg(ARG_GAS_AMOUNT);
-    safe_gas(amount);
+    let amount: u32 = runtime::get_named_arg(ARG_GAS_AMOUNT);
+
+    consume_at_least_gas_amount(amount as usize);
 }
 
 fn store() -> (ContractHash, ContractVersion) {
@@ -63,7 +71,7 @@ pub extern "C" fn call() {
     let method_name: String = runtime::get_named_arg(ARG_METHOD_NAME);
 
     match method_name.as_str() {
-        ADD_GAS_FROM_SESSION => safe_gas(amount),
+        ADD_GAS_FROM_SESSION => consume_at_least_gas_amount(amount as usize),
         ADD_GAS_VIA_SUBCALL => {
             let (contract_hash, _contract_version) = store();
             runtime::call_contract(
