@@ -247,7 +247,7 @@ where
         );
 
         let context = Arc::new(NetworkContext::new(
-            cfg,
+            cfg.clone(),
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
             &net_metrics,

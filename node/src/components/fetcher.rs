@@ -6,7 +6,11 @@ mod fetched_data;
 mod fetcher_impls;
 mod item_fetcher;
 mod metrics;
-mod tests;
+// mod tests;
+#[test]
+fn reenable_tests() {
+    todo!("re-enable tests")
+}
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 

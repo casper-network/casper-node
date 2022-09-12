@@ -10,11 +10,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use datasize::DataSize;
 use thiserror::Error;
@@ -44,14 +40,10 @@ pub(crate) struct ChainspecLoader {
 }
 
 impl ChainspecLoader {
-    pub(crate) fn new<P, REv>(
+    pub(crate) fn new(
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-    ) -> Result<Self, Error>
-    where
-        P: AsRef<Path>,
-        REv: From<ChainspecLoaderRequest> + Send,
-    {
+    ) -> Result<Self, Error> {
         if !chainspec.is_valid() {
             return Err(Error::InvalidChainspec);
         }

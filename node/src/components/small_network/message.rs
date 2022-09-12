@@ -171,7 +171,7 @@ impl ConsensusCertificate {
         let public_key = PublicKey::from(&secret_key);
         ConsensusCertificate::create(
             ConnectionId::random(rng),
-            &NodeKeyPair::new(Arc::new(secret_key), public_key),
+            &NodeKeyPair::new((Arc::new(secret_key), public_key)),
         )
     }
 }

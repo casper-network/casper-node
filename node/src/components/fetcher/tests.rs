@@ -70,7 +70,7 @@ reactor!(Reactor {
     type Config = FetcherTestConfig;
 
     components: {
-        chainspec_loader = has_effects ChainspecLoader(
+        chainspec_loader = ChainspecLoader(
             &RESOURCES_PATH.join("local"),
             effect_builder
         );

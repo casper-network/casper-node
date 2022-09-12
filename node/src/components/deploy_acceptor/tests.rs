@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
+    sync::Arc,
     time::Duration,
 };
 
@@ -402,6 +403,8 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
+        chainspec: Arc<Chainspec>,
+        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
@@ -409,9 +412,7 @@ impl reactor::Reactor for Reactor {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
-        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-
-        let deploy_acceptor = DeployAcceptor::new(&chainspec, registry).unwrap();
+        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry).unwrap();
 
         let storage = Storage::new(
             &storage_withdir,
@@ -686,8 +687,17 @@ async fn run_deploy_acceptor_without_timeout(
     let _ = logging::init();
     let mut rng = crate::new_rng();
 
-    let mut runner: Runner<ConditionCheckReactor<Reactor>> =
-        Runner::new(test_scenario, &mut rng).await.unwrap();
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+    let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
+        test_scenario,
+        Arc::new(chainspec),
+        Arc::new(chainspec_raw_bytes),
+        &mut rng,
+    )
+    .await
+    .unwrap();
 
     let block = Box::new(Block::random(&mut rng));
     // Create a responder to assert that the block was successfully injected into storage.

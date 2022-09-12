@@ -485,6 +485,12 @@ pub(super) async fn server<REv>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reenable_tests() {
+        todo!("re-enable tests")
+    }
+
+    /*
     use std::{
         path::{Path, PathBuf},
         sync::Arc,
@@ -655,4 +661,5 @@ mod tests {
             })
             .await;
     }
+    */
 }

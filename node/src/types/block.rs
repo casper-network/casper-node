@@ -16,8 +16,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::Into;
 use hex_fmt::HexList;
-use itertools::Itertools;
-use num_rational::Ratio;
 use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
@@ -29,7 +27,7 @@ use tracing::{error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, StoredValue, Timestamp, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{
@@ -37,10 +35,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::{
-        consensus,
-        linear_chain::{self, BlockSignatureError},
-    },
+    components::consensus,
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
@@ -50,7 +45,7 @@ use crate::{
             BlockWithMetadataValidationError,
         },
         Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, FetcherItem,
-        GossiperItem, Item, JsonBlock, JsonBlockHeader, SyncLeapValidationError, Tag,
+        GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag,
     },
     utils::{ds, DisplayIter},
 };

@@ -133,7 +133,6 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
@@ -142,6 +141,7 @@ use crate::{
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::FromIncoming,
+        upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::announcements::{BlocksAccumulatorAnnouncement, ChainSynchronizerAnnouncement},
@@ -157,10 +157,10 @@ use crate::{
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
-    ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
-    RpcServerAnnouncement,
+    BlockProposerAnnouncement, BlocklistAnnouncement, ConsensusAnnouncement,
+    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+    GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -951,11 +951,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
-        REv: From<ChainspecLoaderAnnouncement>,
+        REv: From<UpgradeWatcherAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
                 QueueKind::Regular,
             )
             .await

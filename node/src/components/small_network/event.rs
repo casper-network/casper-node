@@ -21,7 +21,6 @@ use crate::{
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
-    reactor::EventQueueHandle,
 };
 
 const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
@@ -126,6 +125,7 @@ impl From<NetworkInfoRequest> for Event<ProtocolMessage> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::Initialize => write!(f, "initialize"),
             Event::IncomingConnection { incoming, span: _ } => {
                 write!(f, "incoming connection: {}", incoming)
             }

@@ -1,8 +1,7 @@
-use std::{io, path::PathBuf};
-
-use casper_types::file_utils::ReadFileError;
 use thiserror::Error;
 use uint::FromDecStrErr;
+
+use casper_types::file_utils::ReadFileError;
 
 /// Error returned by the `ChainspecLoader`.
 #[derive(Debug, Error)]

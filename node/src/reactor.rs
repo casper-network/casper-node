@@ -843,12 +843,12 @@ impl Runner<participating::Reactor> {
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) = participating::Reactor::new_with_chainspec(
+        let (reactor, initial_effects) = participating::Reactor::new(
             cfg,
-            &registry,
-            event_queue,
             chainspec,
             chainspec_raw_bytes,
+            &registry,
+            event_queue,
             rng,
         )?;
 

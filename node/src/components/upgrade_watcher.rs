@@ -15,7 +15,6 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 
@@ -27,40 +26,20 @@ use thiserror::Error;
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::core::engine_state::{
-    self, ChainspecRegistry, GenesisSuccess, UpgradeConfig, UpgradeSuccess,
-};
 use casper_types::{
-    bytesrepr,
-    crypto::PublicKey,
     file_utils::{self, ReadFileError},
-    EraId, ProtocolVersion, Timestamp,
+    ProtocolVersion,
 };
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::{
-        consensus::EraReport,
-        contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState},
-        Component,
-    },
-    effect::{
-        announcements::{ControlAnnouncement, UpgradeWatcherAnnouncement},
-        requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, MarkBlockCompletedRequest,
-            StorageRequest,
-        },
-        EffectBuilder, EffectExt, Effects,
-    },
-    fatal,
-    reactor::ReactorExit,
+    components::Component,
+    effect::{announcements::UpgradeWatcherAnnouncement, EffectBuilder, EffectExt, Effects},
     types::{
-        chainspec::{ChainspecRawBytes, ProtocolConfig, CHAINSPEC_FILENAME},
-        ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecInfo, ExitCode,
-        FinalizedBlock,
+        chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
+        ActivationPoint, BlockHeader, Chainspec,
     },
-    utils::Loadable,
     NodeRng,
 };
 
@@ -170,7 +149,7 @@ impl Display for NextUpgrade {
 
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct UpgradeWatcher {
-    chainspec: Arc<Chainspec>,
+    current_version: ProtocolVersion,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
@@ -179,41 +158,44 @@ pub(crate) struct UpgradeWatcher {
 }
 
 impl UpgradeWatcher {
-    pub(crate) fn new<P, REv>(chainspec: Arc<Chainspec>, chainspec_dir: P) -> Result<Self, Error>
-    where
-        P: AsRef<Path>,
-        REv: From<Event> + Send,
-    {
-        Self::new_with_chainspec_and_path::<_, REv>(Arc::clone(&chainspec), chainspec_dir)
+    pub(crate) fn new<P: AsRef<Path>>(
+        chainspec: &Chainspec,
+        chainspec_dir: P,
+    ) -> Result<Self, Error> {
+        Self::new_with_chainspec_and_path(chainspec, chainspec_dir)
     }
 
     #[cfg(test)]
-    pub(crate) fn new_with_chainspec<REv>(chainspec: Arc<Chainspec>) -> Self
-    where
-        REv: From<Event> + Send,
-    {
-        Self::new_with_chainspec_and_path::<_, REv>(chainspec, &RESOURCES_PATH.join("local"))
+    pub(crate) fn new_with_chainspec(chainspec: &Chainspec) -> Self {
+        Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"))
             .expect("constructing upgrade watcher")
     }
 
-    fn new_with_chainspec_and_path<P, REv>(
-        chainspec: Arc<Chainspec>,
+    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
+        self.next_upgrade
+            .as_ref()
+            .map(|next_upgrade| next_upgrade.activation_point())
+    }
+
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.is_initialized
+    }
+
+    fn new_with_chainspec_and_path<P: AsRef<Path>>(
+        chainspec: &Chainspec,
         chainspec_dir: P,
-    ) -> Result<Self, Error>
-    where
-        P: AsRef<Path>,
-        REv: From<Event> + Send,
-    {
+    ) -> Result<Self, Error> {
         let root_dir = chainspec_dir
             .as_ref()
             .parent()
             .map(|path| path.to_path_buf())
             .ok_or(Error::NoChainspecDirParent)?;
 
-        let next_upgrade = next_upgrade(root_dir.clone(), chainspec.protocol_config.version);
+        let current_version = chainspec.protocol_config.version;
+        let next_upgrade = next_upgrade(root_dir.clone(), current_version);
 
         let upgrade_watcher = UpgradeWatcher {
-            chainspec,
+            current_version,
             root_dir,
             is_initialized: false,
             next_upgrade,
@@ -251,7 +233,7 @@ impl UpgradeWatcher {
     /// participating reactors' constructors to start the recurring task of checking for upgrades.
     /// The recurring tasks of the previous reactors will be cancelled when the relevant reactor
     /// is destroyed during transition.
-    pub(crate) fn start_checking_for_upgrades<REv>(
+    fn start_checking_for_upgrades<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
@@ -266,31 +248,12 @@ impl UpgradeWatcher {
         self.check_for_next_upgrade(effect_builder)
     }
 
-    pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
-        &self.chainspec
-    }
-
-    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
-        self.next_upgrade
-            .as_ref()
-            .map(|next_upgrade| next_upgrade.activation_point())
-    }
-
-    /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
-    /// subsequent eras are deleted from storage.
-    pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
-        self.chainspec
-            .protocol_config
-            .hard_reset
-            .then(|| self.chainspec.protocol_config.activation_point.era_id())
-    }
-
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
         REv: From<UpgradeWatcherAnnouncement> + Send,
     {
         let root_dir = self.root_dir.clone();
-        let current_version = self.chainspec.protocol_config.version;
+        let current_version = self.current_version;
         let mut effects = async move {
             let maybe_next_upgrade =
                 task::spawn_blocking(move || next_upgrade(root_dir, current_version))
@@ -345,7 +308,6 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        trace!("{}", event);
         match event {
             Event::Initialize => self.start_checking_for_upgrades(effect_builder),
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
@@ -472,7 +434,7 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, EraId};
 
     use super::*;
     use crate::types::{chainspec::CHAINSPEC_FILENAME, Block};

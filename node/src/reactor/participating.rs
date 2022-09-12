@@ -72,7 +72,14 @@ pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
 
 #[derive(DataSize, Debug)]
-struct Fetchinator {
+enum ReactorState {
+    Initialize,
+    CatchUp,
+    KeepUp,
+}
+
+#[derive(DataSize, Debug)]
+struct Fetchers {
     deploy_fetcher: Fetcher<Deploy>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -87,13 +94,13 @@ struct Fetchinator {
     block_added_fetcher: Fetcher<BlockAdded>,
 }
 
-impl Fetchinator {
+impl Fetchers {
     fn new(
         config: &FetcherConfig,
         chainspec: &Chainspec,
         metrics_registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        Ok(Fetchinator {
+        Ok(Fetchers {
             // WE NEED THESE:
             deploy_fetcher: Fetcher::new("deploy", config, metrics_registry)?,
             block_by_hash_fetcher: Fetcher::new("block", config, metrics_registry)?,
@@ -312,7 +319,7 @@ pub(crate) struct Reactor {
     event_stream_server: EventStreamServer,
     deploy_acceptor: DeployAcceptor, // TODO: should use `get_highest_COMPLETE_block_header_from_storage()`
 
-    fetchinator: Fetchinator,
+    fetchers: Fetchers,
 
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
     block_added_gossiper: Gossiper<BlockAdded, ParticipatingEvent>,
@@ -333,34 +340,33 @@ pub(crate) struct Reactor {
     memory_metrics: MemoryMetrics,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
-
-    #[data_size(skip)]
     state: ReactorState,
 }
 
-enum ReactorState {
-    Initialize {},
-    CatchUp {},
-    KeepUp {},
-}
-
 impl Reactor {
-    // fn control_logic(&self, announcement: ControlLogicAnnouncement) -> Effects<ParticipatingEvent> {
-    //     //self.node_status TBD
-    //     match announcement {
-    //         ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
-    //             reactor::wrap_effects(ParticipatingEvent::TrieDemand, Effects::new())
-    //         }
-    //     }
-    //     // Effects::new()
-    // }
-    fn check_state(&mut self) -> Effects<ParticipatingEvent> {
+    fn check_state(
+        &mut self,
+        effect_builder: EffectBuilder<ParticipatingEvent>,
+        rng: &mut NodeRng,
+    ) -> Effects<ParticipatingEvent> {
+        let mut effects = Effects::new();
         match self.state {
-            ReactorState::Initialize { .. } => {}
-            ReactorState::CatchUp { .. } => {}
-            ReactorState::KeepUp { .. } => {}
+            ReactorState::Initialize => {
+                if !self.upgrade_watcher.is_initialized() {
+                    effects.extend(reactor::wrap_effects(
+                        ParticipatingEvent::UpgradeWatcher,
+                        self.upgrade_watcher.handle_event(
+                            effect_builder,
+                            rng,
+                            upgrade_watcher::Event::Initialize,
+                        ),
+                    ));
+                }
+            }
+            ReactorState::CatchUp => {}
+            ReactorState::KeepUp => {}
         }
-        todo!()
+        effects
     }
 }
 
@@ -379,7 +385,7 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
         let node_startup_instant = Instant::now();
 
-        let chainspec_loader = ChainspecLoader::new(chainspec, chainspec_raw_bytes)?;
+        let chainspec_loader = ChainspecLoader::new(Arc::clone(&chainspec), chainspec_raw_bytes)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -418,7 +424,7 @@ impl reactor::Reactor for Reactor {
         //     todo!(), //&highest_block_header
         // ))?;
 
-        let upgrade_watcher = UpgradeWatcher::new(chainspec, &root_dir)?;
+        let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
 
         let node_key_pair = config.consensus.load_keys(&root_dir)?;
         let small_network = SmallNetwork::new(
@@ -647,7 +653,7 @@ impl reactor::Reactor for Reactor {
             chain_synchronizer_effects,
         ));
 
-        let fetchinator = Fetchinator::new(&config.fetcher, chainspec.as_ref(), registry)?;
+        let fetchinator = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
         let blocks_accumulator =
             BlocksAccumulator::new(chainspec.highway_config.finality_threshold_fraction);
@@ -664,10 +670,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::DiagnosticsPort,
             diagnostics_port_effects,
         ));
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::ChainspecLoader,
-            chainspec_loader.start_checking_for_upgrades(effect_builder),
-        ));
 
         let reactor = Reactor {
             chainspec_loader,
@@ -680,7 +682,7 @@ impl reactor::Reactor for Reactor {
             rest_server,
             event_stream_server,
             deploy_acceptor,
-            fetchinator,
+            fetchers: fetchinator,
             deploy_gossiper,
             block_added_gossiper,
             finality_signature_gossiper,
@@ -702,11 +704,12 @@ impl reactor::Reactor for Reactor {
 
     fn dispatch_event(
         &mut self,
-        effect_builder: EffectBuilder<Self::Event>,
+        effect_builder: EffectBuilder<ParticipatingEvent>,
         rng: &mut NodeRng,
         event: ParticipatingEvent,
-    ) -> Effects<Self::Event> {
+    ) -> Effects<ParticipatingEvent> {
         match event {
+            ParticipatingEvent::CheckState => self.check_state(effect_builder, rng),
             // delegate all fetcher activity to self.fetchinator.dispatch_fetcher_event(..)
             ParticipatingEvent::DeployFetcher(..)
             | ParticipatingEvent::DeployFetcherRequest(..)
@@ -734,7 +737,7 @@ impl reactor::Reactor for Reactor {
             | ParticipatingEvent::BlockAddedFetcherRequest(..)
             | ParticipatingEvent::FinalitySignatureFetcher(..)
             | ParticipatingEvent::FinalitySignatureFetcherRequest(..) => self
-                .fetchinator
+                .fetchers
                 .dispatch_fetcher_event(effect_builder, rng, event),
 
             // Participating only
@@ -876,8 +879,8 @@ impl reactor::Reactor for Reactor {
                 self.event_stream_server
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::ChainspecLoader(event) => reactor::wrap_effects(
-                ParticipatingEvent::ChainspecLoader,
+            ParticipatingEvent::UpgradeWatcher(event) => reactor::wrap_effects(
+                ParticipatingEvent::UpgradeWatcher,
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, event),
             ),
@@ -1004,7 +1007,7 @@ impl reactor::Reactor for Reactor {
                     ),
                 ));
 
-                effects.extend(self.fetchinator.dispatch_fetcher_event(
+                effects.extend(self.fetchers.dispatch_fetcher_event(
                     effect_builder,
                     rng,
                     ParticipatingEvent::DeployAcceptorAnnouncement(
@@ -1198,10 +1201,10 @@ impl reactor::Reactor for Reactor {
                     ),
                 ),
             ),
-            ParticipatingEvent::ChainspecLoaderAnnouncement(
+            ParticipatingEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {
-                let reactor_event = ParticipatingEvent::ChainspecLoader(
+                let reactor_event = ParticipatingEvent::UpgradeWatcher(
                     upgrade_watcher::Event::GotNextUpgrade(next_upgrade.clone()),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
@@ -1343,7 +1346,6 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::CheckState => self.check_state(),
         }
     }
 
@@ -1372,27 +1374,6 @@ impl Reactor {
 
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
-    }
-
-    pub(crate) fn new_with_chainspec(
-        config: <Self as reactor::Reactor>::Config,
-        registry: &Registry,
-        event_queue: EventQueueHandle<ParticipatingEvent>,
-        chainspec: Arc<Chainspec>,
-        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-        rng: &mut NodeRng,
-    ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
-        let effect_builder = EffectBuilder::new(event_queue);
-        let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes);
-        Self::new_with_chainspec_loader(
-            config,
-            registry,
-            event_queue,
-            rng,
-            chainspec_loader,
-            chainspec_effects,
-        )
     }
 }
 

@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::effect::incoming::{BlockAddedRequestIncoming, BlockAddedResponseIncoming};
 use crate::{
     components::{
-        block_proposer, block_validator, blocks_accumulator, chain_synchronizer, chainspec_loader,
+        block_proposer, block_validator, blocks_accumulator, chain_synchronizer,
         complete_block_synchronizer::{self, CompleteBlockSyncRequest},
         consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
         fetcher, gossiper, linear_chain, rest_server, rpc_server,
@@ -86,7 +86,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
-    ChainspecLoader(#[serde(skip_serializing)] upgrade_watcher::Event),
+    UpgradeWatcher(#[serde(skip_serializing)] upgrade_watcher::Event),
     #[from]
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
@@ -223,7 +223,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
     #[from]
-    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
+    UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
     ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
     #[from]
@@ -289,7 +289,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::RpcServer(_) => "RpcServer",
             ParticipatingEvent::RestServer(_) => "RestServer",
             ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
-            ParticipatingEvent::ChainspecLoader(_) => "ChainspecLoader",
+            ParticipatingEvent::UpgradeWatcher(_) => "ChainspecLoader",
             ParticipatingEvent::Consensus(_) => "Consensus",
             ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
             ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
@@ -355,7 +355,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
-            ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::UpgradeWatcherAnnouncement(_) => "ChainspecLoaderAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
@@ -454,7 +454,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::EventStreamServer(event) => {
                 write!(f, "event stream server: {}", event)
             }
-            ParticipatingEvent::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
+            ParticipatingEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             ParticipatingEvent::Consensus(event) => write!(f, "consensus: {}", event),
             ParticipatingEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             ParticipatingEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
@@ -611,7 +611,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlockProposerAnnouncement(ann) => {
                 write!(f, "block proposer announcement: {}", ann)
             }
-            ParticipatingEvent::ChainspecLoaderAnnouncement(ann) => {
+            ParticipatingEvent::UpgradeWatcherAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
