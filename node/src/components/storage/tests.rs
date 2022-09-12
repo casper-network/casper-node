@@ -1237,6 +1237,7 @@ fn should_get_trusted_ancestor_headers() {
         storage.completed_blocks.insert(block.height());
     });
 
+    // TODO: `allowed_era_diff` not used
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
@@ -1445,6 +1446,7 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
     trusted_validator_weights.insert(validator_1_public_key, U512::from(2000000000000u64));
     trusted_validator_weights.insert(validator_2_public_key, U512::from(2000000000000u64));
 
+    // TODO: `allowed_era_diff` not used
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
@@ -1483,6 +1485,90 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
         &[9, 8],
         "should not include switch block that was directly requested"
     );
+}
+
+#[test]
+fn should_get_sync_leap() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Test chain:
+    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
+    // era 0  | era 1  | era 2  | era 3
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+
+    let validator_1_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let validator_2_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent_and_validator_weights(
+                &mut harness.rng,
+                EraId::from(*height / 3),
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 2 || *height == 5 || *height == 8,
+                None,
+                parent,
+                if *height == 2 || *height == 5 || *height == 8 {
+                    trusted_validator_weights.clone()
+                } else {
+                    BTreeMap::new()
+                },
+            );
+            blocks.push(block.clone());
+        });
+
+    blocks.iter().for_each(|block| {
+        storage.write_block(&block).unwrap();
+
+        let mut proofs = BTreeMap::new();
+        proofs.insert(validator_1_public_key.clone(), Signature::System);
+        proofs.insert(validator_2_public_key.clone(), Signature::System);
+
+        let block_signatures = BlockSignatures {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            proofs,
+        };
+
+        storage
+            .write_finality_signatures(&block_signatures)
+            .unwrap();
+
+        storage.completed_blocks.insert(block.height());
+    });
+
+    let requested_block_hash = blocks.get(9).unwrap().header().hash();
+    let allowed_era_diff = 100;
+    let fault_tolerance_fraction = Ratio::new(1, 1000);
+    let sync_leap = storage.get_sync_leap(
+        requested_block_hash,
+        allowed_era_diff,
+        fault_tolerance_fraction,
+    );
+
+    // TODO: Add proper asserts
+    // TODO: Check if `allowed_era_diff` is respected.
+    dbg!(sync_leap);
 }
 
 #[test]

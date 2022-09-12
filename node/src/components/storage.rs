@@ -2349,6 +2349,16 @@ impl Storage {
                     trusted_validator_weights,
                 )?
             {
+                let highest_complete_block_era = highest_block_header_with_sufficient_signatures
+                    .block_header
+                    .era_id();
+
+                if highest_complete_block_era.saturating_sub(trusted_block_header.era_id().into())
+                    > allowed_era_diff.into()
+                {
+                    return Ok(None);
+                }
+
                 let signed_block_headers = self.get_signed_block_headers_with_metadata(
                     &mut txn,
                     &trusted_block_header,
