@@ -43,14 +43,16 @@ use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
 use super::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{ConnectionError, IoError},
+    error::{ConnectionError, Error, IoError},
     event::{IncomingConnection, OutgoingConnection},
     full_transport,
     limiter::LimiterHandle,
-    message::ConsensusKeyPair,
+    message::NodeKeyPair,
     message_pack_format::MessagePackFormat,
     EstimatorWeights, Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
 };
+use crate::components::consensus;
+use crate::components::small_network::Config;
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, FromIncoming},
     effect::{
@@ -61,6 +63,7 @@ use crate::{
     tls::{self, TlsCert},
     types::NodeId,
     utils::display_error,
+    WithDir,
 };
 
 /// An item on the internal outgoing message queue.
@@ -201,36 +204,149 @@ pub(crate) struct NetworkContext<REv>
 where
     REv: 'static,
 {
-    /// Event queue handle.
-    pub(super) event_queue: EventQueueHandle<REv>,
-    /// Our own [`NodeId`].
-    pub(super) our_id: NodeId,
-    /// TLS certificate associated with this node's identity.
-    pub(super) our_cert: Arc<TlsCert>,
-    /// Secret key associated with `our_cert`.
-    pub(super) secret_key: Arc<PKey<Private>>,
-    /// Weak reference to the networking metrics shared by all sender/receiver tasks.
-    pub(super) net_metrics: Weak<Metrics>,
-    /// Chain info extract from chainspec.
-    pub(super) chain_info: ChainInfo,
+    our_id: NodeId,
     /// Our own public listening address.
-    pub(super) public_addr: SocketAddr,
-    /// Optional set of consensus keys, to identify as a validator during handshake.
-    pub(super) consensus_keys: Option<ConsensusKeyPair>,
+    public_addr: Option<SocketAddr>,
+    /// The handle to the reactor's event queue, used by incoming message handlers to put events
+    /// onto the queue.
+    event_queue: Option<EventQueueHandle<REv>>,
+    /// TLS certificate associated with this node's identity.
+    our_cert: Arc<TlsCert>,
+    /// Secret key associated with `our_cert`.
+    secret_key: Arc<PKey<Private>>,
+    /// Weak reference to the networking metrics shared by all sender/receiver tasks.
+    net_metrics: Weak<Metrics>,
+    /// Chain info extracted from chainspec.
+    chain_info: ChainInfo,
+    /// Optional set of signing keys, to identify as a node during handshake.
+    node_key_pair: Option<NodeKeyPair>,
     /// Timeout for handshake completion.
-    pub(super) handshake_timeout: TimeDiff,
+    handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
-    pub(super) payload_weights: EstimatorWeights,
+    payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.
-    pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
+    tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub(super) tarpit_duration: TimeDiff,
+    tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    pub(super) tarpit_chance: f32,
+    tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
-    pub(super) max_in_flight_demands: usize,
+    max_in_flight_demands: usize,
     /// Flag indicating whether this node is syncing.
-    pub(super) is_syncing: AtomicBool,
+    is_syncing: AtomicBool,
+}
+
+impl<REv> NetworkContext<REv> {
+    pub(super) fn new(
+        cfg: Config,
+        node_key_pair: Option<NodeKeyPair>,
+        chain_info: ChainInfo,
+        net_metrics: &Arc<Metrics>,
+    ) -> Result<Self, Error> {
+        // Set the demand max from configuration, regarding `0` as "unlimited".
+        let max_in_flight_demands = if cfg.max_in_flight_demands == 0 {
+            usize::MAX
+        } else {
+            cfg.max_in_flight_demands as usize
+        };
+
+        let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
+        let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
+        let our_id = NodeId::from(certificate.public_key_fingerprint());
+
+        Ok(NetworkContext {
+            our_id,
+            public_addr: None,
+            event_queue: None,
+            our_cert: certificate,
+            secret_key: Arc::new(secret_key),
+            net_metrics: Arc::downgrade(&net_metrics),
+            chain_info,
+            node_key_pair,
+            handshake_timeout: cfg.handshake_timeout,
+            payload_weights: cfg.estimator_weights.clone(),
+            tarpit_version_threshold: cfg.tarpit_version_threshold,
+            tarpit_duration: cfg.tarpit_duration,
+            tarpit_chance: cfg.tarpit_chance,
+            max_in_flight_demands,
+            is_syncing: AtomicBool::new(true),
+        })
+    }
+
+    /// Our own [`NodeId`].
+    pub(super) fn our_id(&self) -> NodeId {
+        self.our_id
+    }
+
+    /// Our own public listening address.
+    pub(super) fn public_addr(&self) -> Option<SocketAddr> {
+        self.public_addr
+    }
+
+    /// Event queue handle.
+    pub(super) fn event_queue(&self) -> Option<&EventQueueHandle<REv>> {
+        self.event_queue.as_ref()
+    }
+
+    /// TLS certificate associated with this node's identity.
+    pub(super) fn our_cert(&self) -> &Arc<TlsCert> {
+        &self.our_cert
+    }
+
+    /// Secret key associated with `our_cert`.
+    pub(super) fn secret_key(&self) -> &Arc<PKey<Private>> {
+        &self.secret_key
+    }
+
+    /// Weak reference to the networking metrics shared by all sender/receiver tasks.
+    pub(super) fn net_metrics(&self) -> &Weak<Metrics> {
+        &self.net_metrics
+    }
+
+    /// Chain info extract from chainspec.
+    pub(super) fn chain_info(&self) -> &ChainInfo {
+        &self.chain_info
+    }
+
+    /// Optional set of consensus keys, to identify as a validator during handshake.
+    pub(super) fn consensus_keys(&self) -> Option<&NodeKeyPair> {
+        self.node_key_pair.as_ref()
+    }
+
+    /// Timeout for handshake completion.
+    pub(super) fn handshake_timeout(&self) -> TimeDiff {
+        self.handshake_timeout
+    }
+
+    /// Weights to estimate payloads with.
+    pub(super) fn payload_weights(&self) -> &EstimatorWeights {
+        &self.payload_weights
+    }
+
+    /// The protocol version at which (or under) tarpitting is enabled.
+    pub(super) fn tarpit_version_threshold(&self) -> Option<ProtocolVersion> {
+        self.tarpit_version_threshold
+    }
+
+    /// If tarpitting is enabled, duration for which connections should be kept open.
+    pub(super) fn tarpit_duration(&self) -> TimeDiff {
+        self.tarpit_duration
+    }
+
+    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
+    pub(super) fn tarpit_chance(&self) -> f32 {
+        self.tarpit_chance
+    }
+
+    /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
+    pub(super) fn max_in_flight_demands(&self) -> usize {
+        self.max_in_flight_demands
+    }
+
+    /// Flag indicating whether this node is syncing.
+    pub(super) fn is_syncing(&self) -> &AtomicBool {
+        &self.is_syncing
+    }
 }
 
 /// Handles an incoming connection.
@@ -383,7 +499,7 @@ where
     // Manually encode a handshake.
     let handshake_message = context.chain_info.create_handshake::<P>(
         context.public_addr,
-        context.consensus_keys.as_ref(),
+        context.node_key_pair.as_ref(),
         connection_id,
         context.is_syncing.load(Ordering::SeqCst),
     );
@@ -584,137 +700,136 @@ where
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
-    let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Ok(msg) => {
-                    trace!(%msg, "message received");
+    let read_messages =
+        async move {
+            while let Some(msg_result) = stream.next().await {
+                match msg_result {
+                    Ok(msg) => {
+                        trace!(%msg, "message received");
 
-                    let effect_builder = EffectBuilder::new(context.event_queue);
+                        let effect_builder = EffectBuilder::new(context.event_queue);
 
-                    /*/ TODO: Handle correctly if we don't know any validator yet. We know validators only
-                    // 1) after executing block (implemented)
-                    // 2) after we "accumulated" switch block (to be possibly implemented)
-                    match msg.payload_is_valid(limiter.validator_sets()) {
-                        Validity::Valid => (),
-                        Validity::NotValid => {
-                            warn!(
-                                message_kind = ?msg,
-                                ?peer_id,
-                                "not valid payload received"
-                            );
-                            continue;
-                        }
-                        Validity::Malicious => {
-                            warn!(
-                                message_kind = ?msg,
-                                ?peer_id,
-                                "malicious payload received"
-                            );
-                            effect_builder.announce_disconnect_from_peer(peer_id).await;
-                            break;
-                        }
-                    }*/
+                        /*/ TODO: Handle correctly if we don't know any validator yet. We know validators only
+                        // 1) after executing block (implemented)
+                        // 2) after we "accumulated" switch block (to be possibly implemented)
+                        match msg.payload_is_valid(limiter.validator_sets()) {
+                            Validity::Valid => (),
+                            Validity::NotValid => {
+                                warn!(
+                                    message_kind = ?msg,
+                                    ?peer_id,
+                                    "not valid payload received"
+                                );
+                                continue;
+                            }
+                            Validity::Malicious => {
+                                warn!(
+                                    message_kind = ?msg,
+                                    ?peer_id,
+                                    "malicious payload received"
+                                );
+                                effect_builder.announce_disconnect_from_peer(peer_id).await;
+                                break;
+                            }
+                        }*/
 
-                    match msg.try_into_demand(effect_builder, peer_id) {
-                        Ok((event, wait_for_response)) => {
-                            // Note: For now, demands bypass the limiter, as we expect the
-                            //       backpressure to handle this instead.
+                        match msg.try_into_demand(effect_builder, peer_id) {
+                            Ok((event, wait_for_response)) => {
+                                // Note: For now, demands bypass the limiter, as we expect the
+                                //       backpressure to handle this instead.
 
-                            // Acquire a permit. If we are handling too many demands at this
-                            // time, this will block, halting the processing of new message,
-                            // thus letting the peer they have reached their maximum allowance.
-                            let in_flight = demands_in_flight
-                                .clone()
-                                .acquire_owned()
-                                .await
-                                // Note: Since the semaphore is reference counted, it must
-                                //       explicitly be closed for acquisition to fail, which we
-                                //       never do. If this happens, there is a bug in the code;
-                                //       we exit with an error and close the connection.
-                                .map_err(|_| {
-                                    io::Error::new(
-                                        io::ErrorKind::Other,
-                                        "demand limiter semaphore closed unexpectedly",
-                                    )
-                                })?;
+                                // Acquire a permit. If we are handling too many demands at this
+                                // time, this will block, halting the processing of new message,
+                                // thus letting the peer they have reached their maximum allowance.
+                                let in_flight = demands_in_flight
+                                    .clone()
+                                    .acquire_owned()
+                                    .await
+                                    // Note: Since the semaphore is reference counted, it must
+                                    //       explicitly be closed for acquisition to fail, which we
+                                    //       never do. If this happens, there is a bug in the code;
+                                    //       we exit with an error and close the connection.
+                                    .map_err(|_| {
+                                        io::Error::new(
+                                            io::ErrorKind::Other,
+                                            "demand limiter semaphore closed unexpectedly",
+                                        )
+                                    })?;
 
-                            Metrics::record_trie_request_start(&context.net_metrics);
+                                Metrics::record_trie_request_start(&context.net_metrics);
 
-                            let net_metrics = context.net_metrics.clone();
-                            // Spawn a future that will eventually send the returned message. It
-                            // will essentially buffer the response.
-                            tokio::spawn(async move {
-                                if let Some(payload) = wait_for_response.await {
-                                    // Send message and await its return. `send_message` should
-                                    // only return when the message has been buffered, if the
-                                    // peer is not accepting data, we will block here until the
-                                    // send buffer has sufficient room.
-                                    effect_builder.send_message(peer_id, payload).await;
+                                let net_metrics = context.net_metrics.clone();
+                                // Spawn a future that will eventually send the returned message. It
+                                // will essentially buffer the response.
+                                tokio::spawn(async move {
+                                    if let Some(payload) = wait_for_response.await {
+                                        // Send message and await its return. `send_message` should
+                                        // only return when the message has been buffered, if the
+                                        // peer is not accepting data, we will block here until the
+                                        // send buffer has sufficient room.
+                                        effect_builder.send_message(peer_id, payload).await;
 
-                                    // Note: We could short-circuit the event queue here and
-                                    //       directly insert into the outgoing message queue,
-                                    //       which may be potential performance improvement.
-                                }
+                                        // Note: We could short-circuit the event queue here and
+                                        //       directly insert into the outgoing message queue,
+                                        //       which may be potential performance improvement.
+                                    }
 
-                                // Missing else: The handler of the demand did not deem it
-                                // worthy a response. Just drop it.
+                                    // Missing else: The handler of the demand did not deem it
+                                    // worthy a response. Just drop it.
 
-                                // After we have either successfully buffered the message for
-                                // sending, failed to do so or did not have a message to send
-                                // out, we consider the request handled and free up the permit.
-                                Metrics::record_trie_request_end(&net_metrics);
-                                drop(in_flight);
-                            });
+                                    // After we have either successfully buffered the message for
+                                    // sending, failed to do so or did not have a message to send
+                                    // out, we consider the request handled and free up the permit.
+                                    Metrics::record_trie_request_end(&net_metrics);
+                                    drop(in_flight);
+                                });
 
-                            // Schedule the created event.
-                            context
-                                .event_queue
-                                .schedule::<REv>(event, QueueKind::NetworkDemand)
-                                .await;
-                        }
-                        Err(msg) => {
-                            // We've received a non-demand message. Ensure we have the proper amount
-                            // of resources, then push it to the reactor.
-                            limiter
-                                .request_allowance(
-                                    msg.payload_incoming_resource_estimate(
+                                // Schedule the created event.
+                                context
+                                    .event_queue
+                                    .schedule::<REv>(event, QueueKind::NetworkDemand)
+                                    .await;
+                            }
+                            Err(msg) => {
+                                // We've received a non-demand message. Ensure we have the proper amount
+                                // of resources, then push it to the reactor.
+                                limiter
+                                    .request_allowance(msg.payload_incoming_resource_estimate(
                                         &context.payload_weights,
-                                    ),
-                                )
-                                .await;
+                                    ))
+                                    .await;
 
-                            let queue_kind = if msg.is_low_priority() {
-                                QueueKind::NetworkLowPriority
-                            } else {
-                                QueueKind::NetworkIncoming
-                            };
+                                let queue_kind = if msg.is_low_priority() {
+                                    QueueKind::NetworkLowPriority
+                                } else {
+                                    QueueKind::NetworkIncoming
+                                };
 
-                            context
-                                .event_queue
-                                .schedule(
-                                    Event::IncomingMessage {
-                                        peer_id: Box::new(peer_id),
-                                        msg: Box::new(msg),
-                                        span: span.clone(),
-                                    },
-                                    queue_kind,
-                                )
-                                .await;
+                                context
+                                    .event_queue
+                                    .schedule(
+                                        Event::IncomingMessage {
+                                            peer_id: Box::new(peer_id),
+                                            msg: Box::new(msg),
+                                            span: span.clone(),
+                                        },
+                                        queue_kind,
+                                    )
+                                    .await;
+                            }
                         }
                     }
-                }
-                Err(err) => {
-                    warn!(
-                        err = display_error(&err),
-                        "receiving message failed, closing connection"
-                    );
-                    return Err(err);
+                    Err(err) => {
+                        warn!(
+                            err = display_error(&err),
+                            "receiving message failed, closing connection"
+                        );
+                        return Err(err);
+                    }
                 }
             }
-        }
-        Ok(())
-    };
+            Ok(())
+        };
 
     let shutdown_messages = async move { while close_incoming_receiver.changed().await.is_ok() {} };
 

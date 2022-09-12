@@ -21,6 +21,7 @@ use crate::{
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
+    reactor::EventQueueHandle,
 };
 
 const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
@@ -34,6 +35,8 @@ fn fix_it() {
 /// A small network event.
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event<P> {
+    Initialize,
+
     /// The TLS handshake completed on the incoming connection.
     IncomingConnection {
         incoming: Box<IncomingConnection<P>>,

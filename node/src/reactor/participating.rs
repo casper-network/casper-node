@@ -44,8 +44,8 @@ use crate::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
             ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, RpcServerAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            RpcServerAnnouncement,
         },
         incoming::{
             BlockAddedResponseIncoming, NetResponseIncoming, SyncLeapResponseIncoming,
@@ -57,17 +57,14 @@ use crate::{
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, Deploy, ExitCode,
-        FinalitySignature, FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
+        Deploy, ExitCode, FinalitySignature, FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
     FetcherConfig, NodeRng,
 };
 #[cfg(test)]
-use crate::{
-    testing::network::NetworkedReactor,
-    types::{ChainspecRawBytes, NodeId},
-};
+use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
@@ -303,14 +300,16 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
-    small_network: SmallNetwork<ParticipatingEvent, Message>, // TODO: handle setting the `is_syncing_peer`
+
+    small_network: SmallNetwork<ParticipatingEvent, Message>, // TODO: handle setting the `is_syncing_peer` - needs internal init state
+    // TODO - has its own timing belt - should it?
     address_gossiper: Gossiper<GossipedAddress, ParticipatingEvent>,
-    rpc_server: RpcServer, // TODO: make sure the handling in "Initialize & CatchUp" phase is correct (explicit error messages, etc.)
+
+    rpc_server: RpcServer, // TODO: make sure the handling in "Initialize & CatchUp" phase is correct (explicit error messages, etc.) - needs an init event?
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     deploy_acceptor: DeployAcceptor, // TODO: should use `get_highest_COMPLETE_block_header_from_storage()`
 
-    // RENAME IT IF YOU FEEL THE NEED
     fetchinator: Fetchinator,
 
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
@@ -332,28 +331,58 @@ pub(crate) struct Reactor {
     memory_metrics: MemoryMetrics,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
+
+    state: ReactorState,
+}
+
+enum ReactorState {
+    Initialize {},
+    CatchUp {},
+    KeepUp {},
 }
 
 impl Reactor {
-    fn new_with_chainspec_loader(
-        config: <Self as reactor::Reactor>::Config,
+    // fn control_logic(&self, announcement: ControlLogicAnnouncement) -> Effects<ParticipatingEvent> {
+    //     //self.node_status TBD
+    //     match announcement {
+    //         ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
+    //             reactor::wrap_effects(ParticipatingEvent::TrieDemand, Effects::new())
+    //         }
+    //     }
+    //     // Effects::new()
+    // }
+    fn check_state(&mut self) -> Effects<ParticipatingEvent> {
+        match self.state {
+            ReactorState::Initialize { .. } => {}
+            ReactorState::CatchUp { .. } => {}
+            ReactorState::KeepUp { .. } => {}
+        }
+    }
+}
+
+impl reactor::Reactor for Reactor {
+    type Event = ParticipatingEvent;
+    type Config = WithDir<Config>;
+    type Error = Error;
+
+    fn new(
+        config: Self::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         registry: &Registry,
-        event_queue: EventQueueHandle<ParticipatingEvent>,
+        event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
-        chainspec_loader: ChainspecLoader,
-        chainspec_effects: Effects<chainspec_loader::Event>,
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
         let node_startup_instant = Instant::now();
 
+        let chainspec_loader = ChainspecLoader::new(chainspec, chainspec_raw_bytes)?;
+
         let effect_builder = EffectBuilder::new(event_queue);
-        let mut effects =
-            reactor::wrap_effects(ParticipatingEvent::ChainspecLoader, chainspec_effects);
 
         let metrics = Metrics::new(registry.clone());
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
-        let chainspec = chainspec_loader.chainspec();
         let protocol_version = chainspec.protocol_config.version;
 
         let (root_dir, config) = config.into_parts();
@@ -385,17 +414,13 @@ impl Reactor {
         //     todo!(), //&highest_block_header
         // ))?;
 
-        let (small_network, small_network_effects) = SmallNetwork::new(
-            event_queue,
+        let node_key_pair = config.consensus.load_keys(&root_dir)?;
+        let small_network = SmallNetwork::new(
             config.network.clone(),
-            Some(WithDir::new(&root_dir, &config.consensus)),
+            Some(node_key_pair),
             registry,
             chainspec.as_ref(),
         )?;
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::SmallNetwork,
-            small_network_effects,
-        ));
 
         // let ParticipatingInitConfig {
         //     root,
@@ -669,43 +694,6 @@ impl Reactor {
         Ok((reactor, effects))
     }
 
-    fn control_logic(&self, announcement: ControlLogicAnnouncement) -> Effects<ParticipatingEvent> {
-        //self.node_status TBD
-        match announcement {
-            ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
-                reactor::wrap_effects(ParticipatingEvent::TrieDemand, Effects::new())
-            }
-        }
-        // Effects::new()
-    }
-}
-
-impl reactor::Reactor for Reactor {
-    type Event = ParticipatingEvent;
-    type Config = WithDir<Config>;
-    type Error = Error;
-
-    fn new(
-        config: Self::Config,
-        registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
-    ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
-        let effect_builder = EffectBuilder::new(event_queue);
-
-        // Construct the `ChainspecLoader` first so we fail fast if the chainspec is invalid.
-        let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(config.dir(), effect_builder)?;
-        Self::new_with_chainspec_loader(
-            config,
-            registry,
-            event_queue,
-            rng,
-            chainspec_loader,
-            chainspec_effects,
-        )
-    }
-
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
@@ -714,6 +702,7 @@ impl reactor::Reactor for Reactor {
     ) -> Effects<Self::Event> {
         match event {
             // delegate all fetcher activity to self.fetchinator.dispatch_fetcher_event(..)
+            ParticipatingEvent::ControlLogicAnnouncement(ann) => self.control_logic(ann),
             ParticipatingEvent::DeployFetcher(..)
             | ParticipatingEvent::DeployFetcherRequest(..)
             | ParticipatingEvent::BlockFetcher(..)
@@ -1351,7 +1340,6 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::ControlLogicAnnouncement(ann) => self.control_logic(ann),
         }
     }
 

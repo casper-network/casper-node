@@ -50,7 +50,7 @@ use crate::{
     fatal,
     reactor::ReactorExit,
     types::{
-        chainspec::{ChainspecRawBytes, ProtocolConfig, CHAINSPEC_FILENAME},
+        chainspec::{ChainspecRawBytes, Error, ProtocolConfig, CHAINSPEC_FILENAME},
         ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecInfo, ExitCode,
         FinalizedBlock,
     },
@@ -125,10 +125,6 @@ impl Display for Event {
     }
 }
 
-pub(crate) enum Error {
-    InvalidChainspec,
-}
-
 /// Information about the next protocol upgrade.
 #[derive(PartialEq, Eq, DataSize, Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct NextUpgrade {
@@ -178,39 +174,124 @@ impl Display for NextUpgrade {
 pub(crate) struct ChainspecLoader {
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    /// The path to the folder where all chainspec and upgrade_point files will be stored in
+    /// subdirs corresponding to their versions.
+    root_dir: PathBuf,
+    reactor_exit: Option<ReactorExit>,
+    next_upgrade: Option<NextUpgrade>,
+    maybe_immediate_switch_block_data: Option<BlockAndExecutionEffects>,
 }
 
 impl ChainspecLoader {
     pub(crate) fn new<P, REv>(
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-    ) -> Result<Self, Error>
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<(Self, Effects<Event>), Error>
     where
         P: AsRef<Path>,
         REv: From<Event> + From<StorageRequest> + Send,
     {
-        if !chainspec.is_valid() {
-            return Err(Error::InvalidChainspec);
+        Ok(Self::new_with_chainspec_and_path(
+            Arc::new(chainspec),
+            Arc::new(chainspec_raw_bytes),
+            chainspec_dir,
+            effect_builder,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_chainspec<REv>(
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Self, Effects<Event>)
+    where
+        REv: From<Event> + From<StorageRequest> + Send,
+    {
+        Self::new_with_chainspec_and_path(
+            chainspec,
+            chainspec_raw_bytes,
+            &RESOURCES_PATH.join("local"),
+            effect_builder,
+        )
+    }
+
+    fn new_with_chainspec_and_path<P, REv>(
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        chainspec_dir: P,
+        // effect_builder: EffectBuilder<REv>,
+    ) -> (Self, Effects<Event>)
+    where
+        P: AsRef<Path>,
+        REv: From<Event> + From<StorageRequest> + Send,
+    {
+        let root_dir = chainspec_dir
+            .as_ref()
+            .parent()
+            .map(|path| path.to_path_buf())
+            .unwrap_or_else(|| {
+                error!("chainspec dir must have a parent");
+                PathBuf::new()
+            });
+
+        if !chainspec.is_valid() || root_dir.as_os_str().is_empty() {
+            let chainspec_loader = ChainspecLoader {
+                chainspec,
+                chainspec_raw_bytes,
+                root_dir,
+                reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
+                next_upgrade: None,
+                maybe_immediate_switch_block_data: None,
+            };
+            return (chainspec_loader, Effects::new());
         }
+
+        let next_upgrade = next_upgrade(root_dir.clone(), chainspec.protocol_config.version);
 
         // If the next activation point is the same as the current chainspec one, we've installed
         // two new versions, where the first which we're currently running should be immediately
         // replaced by the second.
-        // let should_upgrade = if let Some(next_activation_point) = next_upgrade
-        //     .as_ref()
-        //     .map(|upgrade| upgrade.activation_point)
-        // {
-        //     chainspec.protocol_config.activation_point == next_activation_point
-        // } else {
-        //     false
-        // };
+        let should_upgrade = if let Some(next_activation_point) = next_upgrade
+            .as_ref()
+            .map(|upgrade| upgrade.activation_point)
+        {
+            chainspec.protocol_config.activation_point == next_activation_point
+        } else {
+            false
+        };
+
+        let mut effects = if should_upgrade {
+            Effects::new()
+        } else {
+            effect_builder
+                .get_highest_block_header_from_storage()
+                .event(|highest_block_header| Event::Initialize {
+                    maybe_highest_block_header: highest_block_header.map(Box::new),
+                })
+        };
+
+        // Start regularly checking for the next upgrade.
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
+
+        let reactor_exit =
+            should_upgrade.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
 
         let chainspec_loader = ChainspecLoader {
             chainspec,
             chainspec_raw_bytes,
+            root_dir,
+            reactor_exit,
+            next_upgrade,
+            maybe_immediate_switch_block_data: None,
         };
 
-        chainspec_loader
+        (chainspec_loader, effects)
     }
 
     fn handle_initialize<REv>(

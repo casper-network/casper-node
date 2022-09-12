@@ -20,10 +20,7 @@ use crate::{
         fetcher::{self, FetchedData},
         Component,
     },
-    effect::{
-        announcements::ControlLogicAnnouncement, requests::FetcherRequest, EffectBuilder,
-        EffectExt, Effects,
-    },
+    effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
     storage::StorageRequest,
     types::{BlockAdded, BlockHash, Deploy, FinalitySignature, FinalitySignatureId, NodeId},
     NodeRng,
@@ -76,7 +73,7 @@ impl CompleteBlockSynchronizer {
         request: CompleteBlockSyncRequest,
     ) -> Effects<Event>
     where
-        REv: From<ControlLogicAnnouncement> + From<FetcherRequest<BlockAdded>> + Send,
+        REv: From<FetcherRequest<BlockAdded>> + Send,
     {
         match self.builders.entry(request.block_hash) {
             Entry::Occupied(mut entry) => {
@@ -89,9 +86,7 @@ impl CompleteBlockSynchronizer {
                             era_id = %request.era_id,
                             "missing validators for given era"
                         );
-                        return effect_builder
-                            .control_announce_missing_validator_set(request.era_id)
-                            .ignore();
+                        todo!("we need validator set");
                     }
                     Some(validators) => validators.clone(),
                 };
@@ -265,8 +260,7 @@ impl CompleteBlockSynchronizer {
 
 impl<REv> Component<REv> for CompleteBlockSynchronizer
 where
-    REv: From<ControlLogicAnnouncement>
-        + From<FetcherRequest<BlockAdded>>
+    REv: From<FetcherRequest<BlockAdded>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<StorageRequest>

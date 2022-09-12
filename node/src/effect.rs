@@ -159,8 +159,8 @@ use crate::{
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
     ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-    ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-    LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
+    RpcServerAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -540,7 +540,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Extract the event queue handle out of the effect builder.
-    #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
         self.event_queue
     }
@@ -2222,18 +2221,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Control,
         )
         .await
-    }
-
-    pub(crate) async fn control_announce_missing_validator_set(self, era_id: EraId)
-    where
-        REv: From<ControlLogicAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ControlLogicAnnouncement::MissingValidatorSet { era_id },
-                QueueKind::Control,
-            )
-            .await
     }
 
     /// Get the bytes for the chainspec file and genesis_accounts

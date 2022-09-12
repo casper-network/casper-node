@@ -315,7 +315,7 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: None,
-                only_from_available_block_range: _, /* Requesting for higest block cannot be
+                only_from_available_block_range: _, /* Requesting for highest block cannot be
                                                      * restricted by block availability index */
                 responder,
             }) => effect_builder

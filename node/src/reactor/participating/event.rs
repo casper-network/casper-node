@@ -17,8 +17,8 @@ use crate::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
             ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, ControlLogicAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, RpcServerAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -42,12 +42,35 @@ use crate::{
     },
 };
 
+// timing belt event
+// CATCHING_UP
+// match event {
+//     ParticipatingEvent::Initialize(..) => {
+//         // ctor puts into status and we handle pushing various init events here
+//         self.storage.is_init() -> state / or effects if it requires work to be done
+//     }
+//     ParticipatingEvent::GetCaughtUp(..) => {
+//         <- keep on catching up
+//         > sync leap then have convo w accumul
+//                 OR
+//         <- transition to keeping up
+//         <- fatal
+//     }
+//     ParticipatingEvent::StayCaughtUp(..) => {
+//         <- keep on keeping up
+//         <- maybe enuff cycles to attempt 1 sync block
+//         <- get caught up
+//         <- fatal
+//     }
+// }
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
 // Note: The large enum size must be reigned in eventually. This is a stopgap for now.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ParticipatingEvent {
+    CheckState,
     #[from]
     ChainSynchronizer(chain_synchronizer::Event),
     #[from]
@@ -237,8 +260,6 @@ pub(crate) enum ParticipatingEvent {
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
-    #[from]
-    ControlLogicAnnouncement(ControlLogicAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
