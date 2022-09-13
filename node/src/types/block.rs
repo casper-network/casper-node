@@ -29,7 +29,8 @@ use tracing::{error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, StoredValue, Timestamp, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature,
+    Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{
