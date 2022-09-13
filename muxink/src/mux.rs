@@ -38,6 +38,7 @@ pub type ChannelPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, F>
 /// A frame multiplexer.
 ///
 /// A multiplexer is not used directly, but used to spawn multiplexing handles.
+#[derive(Debug)]
 pub struct Multiplexer<S> {
     /// The shared sink for output.
     sink: Arc<Mutex<Option<S>>>,
