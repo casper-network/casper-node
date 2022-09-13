@@ -116,10 +116,13 @@ impl<S> Demultiplexer<S> {
     /// channel, it will notify all other pending channels through wakes, but in order for
     /// this to happen the user must either keep calling `handle.next().await` or finally
     /// drop the handle.
-    pub fn create_handle<E: Error>(
+    pub fn create_handle<E>(
         demux: Arc<Mutex<Self>>,
         channel: u8,
-    ) -> Result<DemultiplexerHandle<S>, DemultiplexerError<E>> {
+    ) -> Result<DemultiplexerHandle<S>, DemultiplexerError<E>>
+    where
+        E: Error,
+    {
         let mut demux_guard = demux.lock().expect("poisoned lock");
 
         if demux_guard.channel_is_active(channel) {
