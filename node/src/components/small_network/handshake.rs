@@ -220,36 +220,3 @@ where
         Err(ConnectionError::DidNotSendHandshake)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn frame_reader_reads_without_consuming_extra_bytes() {
-        todo!("implement test");
-    }
-
-    #[test]
-    fn frame_reader_does_not_allow_exceeding_maximum_size() {
-        todo!("implement test");
-    }
-
-    #[test]
-    fn frame_reader_handles_0_sized_read() {
-        todo!("implement test");
-    }
-
-    #[test]
-    fn frame_reader_handles_early_eof() {
-        todo!("implement test");
-    }
-
-    #[test]
-    fn frame_writer_writes_frames_correctly() {
-        todo!("implement test");
-    }
-
-    #[test]
-    fn frame_writer_handles_0_size() {
-        todo!("implement test");
-    }
-}
