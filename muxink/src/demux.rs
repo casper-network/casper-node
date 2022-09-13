@@ -102,9 +102,7 @@ impl<S> Demultiplexer<S> {
         self.is_finished = true;
         self.wake_pending_channels();
     }
-}
 
-impl<S: Stream> Demultiplexer<S> {
     /// Creates a handle listening for frames on the given channel.
     ///
     /// Items received through a given handle may be blocked if other handles on the same
