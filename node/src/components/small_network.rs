@@ -367,6 +367,7 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
+        self.status = Status::Initialized;
         Ok(effects)
     }
 

@@ -367,6 +367,8 @@ impl Reactor {
             ReactorState::KeepUp => {}
         }
         effects
+
+        // TODO: Stall detection should possibly be done in the control logic.
     }
 }
 
@@ -610,25 +612,24 @@ impl reactor::Reactor for Reactor {
 
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
-        let (consensus, consensus_effects) = EraSupervisor::new(
-            EraId::new(0), // todo!(), //highest_block_header.next_block_era_id(),
+        let consensus = EraSupervisor::new(
             storage.root_path(),
             our_secret_key,
             our_public_key,
             config.consensus,
-            effect_builder,
+            //effect_builder,
             chainspec.clone(),
             // &highest_block_header,
             next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
-            &storage,
-            rng,
+            //&storage,
+            //rng,
         )?;
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::Consensus,
-            consensus_effects,
-        ));
+        // effects.extend(reactor::wrap_effects(
+        //     ParticipatingEvent::Consensus,
+        //     consensus_effects,
+        // ));
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let linear_chain = LinearChainComponent::new(

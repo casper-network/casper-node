@@ -335,7 +335,16 @@ where
                 responder.respond(validator_changes).ignore()
             }
             Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
-                let requested_era = era_id.unwrap_or_else(|| self.current_era());
+                let current_era = match self.current_era() {
+                    None => {
+                        return req
+                            .answer(Err(Cow::Owned(format!("consensus not initialized"))))
+                            .ignore()
+                    }
+                    Some(era_id) => era_id,
+                };
+
+                let requested_era = era_id.unwrap_or(current_era);
 
                 // We emit some log message to get some performance information and give the
                 // operator a chance to find out why their node is busy.
