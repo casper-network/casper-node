@@ -196,6 +196,8 @@ pub struct Storage {
     /// the purpose of deciding how to respond to a
     /// `NetRequest::BlockHeaderAndFinalitySignaturesByHeight`.
     recent_era_count: u64,
+    #[data_size(skip)]
+    fault_tolerance_fraction: Ratio<u64>,
 }
 
 /// A storage component event.
@@ -286,6 +288,7 @@ impl Storage {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
+        fault_tolerance_fraction: Ratio<u64>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
@@ -433,6 +436,7 @@ impl Storage {
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
+            fault_tolerance_fraction,
         };
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
@@ -1532,8 +1536,6 @@ impl Storage {
     fn get_header_of_highest_complete_block<Tx: Transaction>(
         &self,
         txn: &mut Tx,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
         let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
             Some(sequence) => sequence.high(),
@@ -1549,27 +1551,10 @@ impl Storage {
                     return Ok(None);
                 }
             };
-        let maybe_block =
-            self.get_single_block_header_with_metadata(txn, highest_complete_block_hash)?;
-        match maybe_block {
-            Some(highest_block) => {
-                match linear_chain::check_sufficient_block_signatures(
-                    trusted_validator_weights,
-                    fault_tolerance_fraction,
-                    Some(&highest_block.block_signatures),
-                ) {
-                    Ok(_) => Ok(Some(highest_block)),
-                    Err(_) => {
-                        warn!("highest complete block didn't have sufficient signatures");
-                        Ok(None)
-                    }
-                }
-            }
-            None => {
-                warn!("couldn't find the highest complete block in storage");
-                Ok(None)
-            }
-        }
+
+        // The `completed_blocks` contains blocks with sufficient finality signatures,
+        // so we don't need to check the sufficiency again.
+        self.get_single_block_header_with_metadata(txn, highest_complete_block_hash)
     }
 
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
@@ -1665,55 +1650,52 @@ impl Storage {
     }
 
     // TODO: Docs
-    fn get_signed_block_headers_with_metadata<Tx: Transaction>(
+    fn get_signed_block_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
-        highest_block_header_with_sufficient_signatures: &BlockHeaderWithMetadata,
+        highest_signed_block_header: &BlockHeaderWithMetadata,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
+        // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
+        // era 0  | era 1  | era 2  | era 3
+
+        let start_era_id = trusted_block_header.era_id().successor();
+        let current_era = highest_signed_block_header.block_header.era_id();
+
+        todo!();
         // TODO: using the `trusted_validator_weights` here is incorrect - the highest block might
         // be from a different era; do we even need to check that it has enough signatures if it is
         // in `completed_blocks`?
 
-        let mut current_block_header_with_sufficient_signatures =
-            highest_block_header_with_sufficient_signatures.clone();
+        // let mut current_signed_block_header = highest_signed_block_header.clone();
 
-        if current_block_header_with_sufficient_signatures
-            .block_header
-            .height()
-            <= trusted_block_header.height()
-        {
-            return Ok(Some(vec![]));
-        }
+        // if current_signed_block_header.block_header.height() <= trusted_block_header.height() {
+        //     return Ok(Some(vec![]));
+        // }
 
-        let mut result = vec![];
-        result.push(current_block_header_with_sufficient_signatures.clone());
-        loop {
-            let parent_hash = current_block_header_with_sufficient_signatures
-                .block_header
-                .parent_hash();
-            let parent_block_header_with_metadata =
-                match self.get_single_block_header_with_metadata(txn, parent_hash)? {
-                    Some(block_header_with_metadata) => block_header_with_metadata,
-                    None => {
-                        warn!(?parent_hash, "block header not found");
-                        return Ok(None);
-                    }
-                };
-            if parent_block_header_with_metadata.block_header.hash() == trusted_block_header.hash()
-            {
-                // Don't go back further, we're already at the block being requested.
-                return Ok(Some(result));
-            }
+        // let mut result = vec![];
+        // result.push(current_signed_block_header.clone());
+        // loop {
+        //     let parent_hash = current_signed_block_header.block_header.parent_hash();
+        //     let signed_parent_block =
+        //         match self.get_single_block_header_with_metadata(txn, parent_hash)? {
+        //             Some(block_header_with_metadata) => block_header_with_metadata,
+        //             None => {
+        //                 warn!(?parent_hash, "block header not found");
+        //                 return Ok(None);
+        //             }
+        //         };
+        //     if signed_parent_block.block_header.hash() == trusted_block_header.hash() {
+        //         // Don't go back further, we're already at the block being requested.
+        //         return Ok(Some(result));
+        //     }
 
-            if parent_block_header_with_metadata
-                .block_header
-                .is_switch_block()
-            {
-                result.push(parent_block_header_with_metadata.clone());
-            }
-            current_block_header_with_sufficient_signatures = parent_block_header_with_metadata;
-        }
+        //     if signed_parent_block.block_header.is_switch_block() {
+        //         // TODO: Check if signed_parent_block has sufficient finality signatures
+        //         result.push(signed_parent_block.clone());
+        //     }
+        //     current_signed_block_header = signed_parent_block;
+        // }
     }
 
     fn get_block_header_by_height_restricted<Tx: Transaction>(
@@ -2305,6 +2287,12 @@ impl Config {
     }
 }
 
+enum SyncLeapResult {
+    HaveIt(SyncLeap),
+    DontHaveIt,
+    TooOld,
+}
+
 // Testing code. The functions below allow direct inspection of the storage component and should
 // only ever be used when writing tests.
 #[cfg(test)]
@@ -2314,69 +2302,48 @@ impl Storage {
         &self,
         block_hash: BlockHash,
         allowed_era_diff: u64,
-        fault_tolerance_fraction: Ratio<u64>,
-    ) -> Result<Option<SyncLeap>, FatalStorageError> {
+    ) -> Result<SyncLeapResult, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
 
-        let trusted_block_header =
-            self.get_single_block_header_restricted(&mut txn, &block_hash, false)?;
-        let trusted_block_header = trusted_block_header.unwrap(); // TODO
+        let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
+            Some(trusted_block_header) => trusted_block_header,
+            None => return Ok(SyncLeapResult::DontHaveIt),
+        };
 
         let trusted_ancestor_headers =
-            self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)?;
-        let trusted_ancestor_headers = trusted_ancestor_headers.unwrap(); // TODO
+            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
+                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
+                None => return Ok(SyncLeapResult::DontHaveIt),
+            };
 
-        if let Some(trusted_validator_weights) = {
-            if trusted_block_header.is_switch_block() {
-                trusted_block_header.next_era_validator_weights()
-            } else {
-                match trusted_ancestor_headers.last() {
-                    Some(switch_block) => switch_block.next_era_validator_weights(),
-                    None => {
-                        error!("should have trusted ancestor headers when trusted block header is not a switch block");
-                        return Ok(None);
-                    }
-                }
-            }
-        } {
-            if let Some(highest_block_header_with_sufficient_signatures) = self
-                .get_header_of_highest_complete_block(
-                    &mut txn,
-                    fault_tolerance_fraction,
-                    trusted_validator_weights,
-                )?
+        if let Some(highest_complete_block_header) =
+            self.get_header_of_highest_complete_block(&mut txn)?
+        {
+            let highest_complete_block_era = highest_complete_block_header.block_header.era_id();
+
+            if highest_complete_block_era.saturating_sub(trusted_block_header.era_id().into())
+                > allowed_era_diff.into()
             {
-                let highest_complete_block_era = highest_block_header_with_sufficient_signatures
-                    .block_header
-                    .era_id();
-
-                if highest_complete_block_era.saturating_sub(trusted_block_header.era_id().into())
-                    > allowed_era_diff.into()
-                {
-                    return Ok(None);
-                }
-
-                let signed_block_headers = self.get_signed_block_headers_with_metadata(
-                    &mut txn,
-                    &trusted_block_header,
-                    &highest_block_header_with_sufficient_signatures,
-                )?;
-                let signed_block_headers = signed_block_headers.unwrap(); // TODO
-
-                return Ok(Some(SyncLeap {
-                    trusted_block_header,
-                    trusted_ancestor_headers,
-                    signed_block_headers,
-                }));
-            } else {
-                return Ok(None);
+                return Ok(SyncLeapResult::TooOld);
             }
-        }
 
-        Ok(None)
+            let signed_block_headers = self.get_signed_block_headers(
+                &mut txn,
+                &trusted_block_header,
+                &highest_complete_block_header,
+            )?;
+            let signed_block_headers = signed_block_headers.unwrap(); // TODO
+
+            return Ok(SyncLeapResult::HaveIt(SyncLeap {
+                trusted_block_header,
+                trusted_ancestor_headers,
+                signed_block_headers,
+            }));
+        }
+        return Ok(SyncLeapResult::DontHaveIt);
     }
 
     /// Directly returns a deploy from internal store.

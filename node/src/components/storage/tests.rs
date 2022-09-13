@@ -1328,24 +1328,15 @@ fn should_get_signed_block_headers_with_metadata() {
         storage.completed_blocks.insert(block.height());
     });
 
-    let fault_tolerance_fraction = Ratio::new(1, 1000);
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key, U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key, U512::from(2000000000000u64));
-
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_of_highest_complete_block(
-                &mut txn,
-                fault_tolerance_fraction,
-                &trusted_validator_weights,
-            )
+            .get_header_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
         storage
-            .get_signed_block_headers_with_metadata(
+            .get_signed_block_headers(
                 &mut txn,
                 &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
@@ -1441,26 +1432,17 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
         }
     });
 
-    let fault_tolerance_fraction = Ratio::new(1, 1000);
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key, U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key, U512::from(2000000000000u64));
-
     // TODO: `allowed_era_diff` not used
     let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_of_highest_complete_block(
-                &mut txn,
-                fault_tolerance_fraction,
-                &trusted_validator_weights,
-            )
+            .get_header_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
 
         storage
-            .get_signed_block_headers_with_metadata(
+            .get_signed_block_headers(
                 &mut txn,
                 &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
