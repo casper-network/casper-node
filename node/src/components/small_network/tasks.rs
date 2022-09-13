@@ -3,7 +3,6 @@
 use std::{
     fmt::Display,
     net::SocketAddr,
-    num::NonZeroUsize,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc, Weak},
 };
@@ -15,9 +14,7 @@ use futures::{
     SinkExt, StreamExt,
 };
 use muxink::{
-    fragmented::{Defragmentizer, Fragmentizer},
-    framing::length_delimited::LengthDelimited,
-    io::{FrameReader, FrameWriter},
+    fragmented::Defragmentizer, framing::length_delimited::LengthDelimited, io::FrameReader,
 };
 use openssl::{
     pkey::{PKey, Private},
@@ -47,20 +44,18 @@ use super::{
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    BincodeFormat, EstimatorWeights, Event, FromIncoming, Message, Metrics, Payload, Transport,
+    BincodeFormat, EstimatorWeights, Event, FromIncoming, Message, Metrics, OutgoingChannel,
+    Payload, Transport,
 };
 
 use crate::{
-    components::small_network::{IncomingStream, OutgoingSink},
+    components::small_network::IncomingStream,
     effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
     utils::display_error,
 };
-
-/// The size of a single message fragment sent over the wire.
-const MESSAGE_FRAGMENT_SIZE: usize = 4096;
 
 /// An item on the internal outgoing message queue.
 ///
@@ -157,22 +152,11 @@ where
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
             }
 
-            // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
-            // tokio built-in version instead). The compat layer fixes that.
-            let compat_stream =
-                tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
-
-            let sink: OutgoingSink = Fragmentizer::new(
-                // TOOD: Replace with `NonZeroUsize::new(_).unwrap()` in const once stabilized.
-                NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap(),
-                FrameWriter::new(LengthDelimited, compat_stream),
-            );
-
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
                 peer_consensus_public_key,
-                sink,
+                transport,
                 is_syncing,
             }
         }
@@ -550,7 +534,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<MessageQueueItem<P>>,
-    mut sink: OutgoingSink,
+    mut sink: OutgoingChannel,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where

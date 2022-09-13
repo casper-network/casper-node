@@ -45,6 +45,7 @@ use std::{
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     net::{SocketAddr, TcpListener},
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -56,9 +57,10 @@ use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use muxink::{
-    fragmented::{Fragmentizer, SingleFragment, Defragmentizer},
+    fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
     framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
+    mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerHandle},
 };
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
@@ -132,6 +134,9 @@ const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Interval during which to perform outgoing manager housekeeping.
 const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
+
+/// The size of a single message fragment sent over the wire.
+const MESSAGE_FRAGMENT_SIZE: usize = 4096;
 
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle<P> {
@@ -713,7 +718,7 @@ where
                 peer_addr,
                 peer_id,
                 peer_consensus_public_key,
-                sink,
+                transport,
                 is_syncing,
             } => {
                 info!("new outgoing connection established");
@@ -742,10 +747,24 @@ where
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
 
+                // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
+                // tokio built-in version instead). The compat layer fixes that.
+                let compat_transport =
+                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
+                let carrier: OutgoingCarrier =
+                    Multiplexer::new(FrameWriter::new(LengthDelimited, compat_transport));
+
+                // TOOD: Replace with `NonZeroUsize::new(_).unwrap()` in const once stabilized.
+                let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
+
+                // Now we can setup a channel (TODO: Setup multiple channels instead).
+                let mux_123 = carrier.create_channel_handle(123);
+                let channel_123: OutgoingChannel = Fragmentizer::new(fragment_size, mux_123);
+
                 effects.extend(
                     tasks::message_sender(
                         receiver,
-                        sink,
+                        channel_123,
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
@@ -1212,12 +1231,18 @@ impl From<&SmallNetworkIdentity> for NodeId {
     }
 }
 
-/// Transport type alias for base encrypted connections.
+/// Transport type for base encrypted connections.
 type Transport = SslStream<TcpStream>;
 
-/// The outgoing message sink of an outgoing connection.
-type OutgoingSink =
-    Fragmentizer<FrameWriter<SingleFragment, LengthDelimited, Compat<Transport>>, Bytes>;
+/// The writer for outgoing length-prefixed frames.
+type OutgoingFrameWriter =
+    FrameWriter<ChannelPrefixedFrame<SingleFragment>, LengthDelimited, Compat<Transport>>;
+
+/// The multiplexer to send fragments over an underlying frame writer.
+type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
+
+/// An instance of a channel on a carrier.
+type OutgoingChannel = Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>;
 
 /// The incoming message stream of an incoming connection.
 type IncomingStream = Defragmentizer<FrameReader<LengthDelimited, Compat<Transport>>>;

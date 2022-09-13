@@ -12,7 +12,7 @@ use tracing::Span;
 
 use super::{
     error::{ConnectionError, MessageReaderError},
-    GossipedAddress, IncomingStream, Message, NodeId, OutgoingSink,
+    GossipedAddress, IncomingStream, Message, NodeId, Transport,
 };
 use crate::{
     effect::{
@@ -268,7 +268,7 @@ pub(crate) enum OutgoingConnection {
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
         #[serde(skip)]
-        sink: OutgoingSink,
+        transport: Transport,
         /// Holds the information whether the remote node is syncing.
         is_syncing: bool,
     },
@@ -290,7 +290,7 @@ impl Display for OutgoingConnection {
                 peer_addr,
                 peer_id,
                 peer_consensus_public_key,
-                sink: _,
+                transport: _,
                 is_syncing,
             } => {
                 write!(
