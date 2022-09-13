@@ -13,9 +13,7 @@ use futures::{
     future::{self, Either},
     SinkExt, StreamExt,
 };
-use muxink::{
-    fragmented::Defragmentizer, framing::length_delimited::LengthDelimited, io::FrameReader,
-};
+
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
@@ -44,12 +42,11 @@ use super::{
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    BincodeFormat, EstimatorWeights, Event, FromIncoming, Message, Metrics, OutgoingChannel,
-    Payload, Transport,
+    BincodeFormat, EstimatorWeights, Event, FromIncoming, IncomingChannel, Message, Metrics,
+    OutgoingChannel, Payload, Transport,
 };
 
 use crate::{
-    components::small_network::IncomingStream,
     effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
@@ -260,25 +257,12 @@ where
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
-            // TODO: Removal of `CountingTransport` here means some functionality has to be restored.
-
-            // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
-            // tokio built-in version instead). The compat layer fixes that.
-            let compat_stream = tokio_util::compat::TokioAsyncReadCompatExt::compat(transport);
-
-            // TODO: We need to split the stream here eventually. Right now, this is safe since the
-            //       reader only uses one direction.
-            let stream: IncomingStream = Defragmentizer::new(
-                context.chain_info.maximum_net_message_size as usize,
-                FrameReader::new(LengthDelimited, compat_stream, 4096),
-            );
-
             IncomingConnection::Established {
                 peer_addr,
                 public_addr,
                 peer_id,
                 peer_consensus_public_key,
-                stream,
+                transport,
             }
         }
         Err(error) => IncomingConnection::Failed {
@@ -411,7 +395,7 @@ fn bincode_config() -> impl Options {
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: IncomingStream,
+    mut stream: IncomingChannel,
     limiter: Box<dyn LimiterHandle>,
     mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,

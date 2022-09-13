@@ -3,7 +3,7 @@ use std::{io, net::SocketAddr, sync::Arc};
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
 use datasize::DataSize;
-use muxink::fragmented::DefragmentizerError;
+use muxink::{demux::DemultiplexerError, fragmented::DefragmentizerError};
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -225,7 +225,7 @@ pub enum MessageReaderError {
     /// The message receival stack returned an error.
     // These errors can get fairly and complicated and are boxed here for that reason.
     #[error("message receive error")]
-    ReceiveError(DefragmentizerError<io::Error>),
+    ReceiveError(DefragmentizerError<DemultiplexerError<io::Error>>),
     /// Error deserializing message.
     #[error("message deserialization error")]
     DeserializationError(bincode::Error),

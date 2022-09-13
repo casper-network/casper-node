@@ -48,7 +48,7 @@ use std::{
     num::NonZeroUsize,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -57,6 +57,7 @@ use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use muxink::{
+    demux::{Demultiplexer, DemultiplexerHandle},
     fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
     framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
@@ -532,7 +533,7 @@ where
                 public_addr,
                 peer_id,
                 peer_consensus_public_key,
-                stream,
+                transport,
             } => {
                 if self.cfg.max_incoming_peer_connections != 0 {
                     if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
@@ -581,12 +582,36 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
+                // TODO: Removal of `CountingTransport` here means some functionality has to be restored.
+
+                // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
+                // tokio built-in version instead). The compat layer fixes that.
+                let compat_transport =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(transport);
+
+                // TODO: We need to split the stream here eventually. Right now, this is safe since
+                //       the reader only uses one direction.
+                let carrier = Arc::new(Mutex::new(Demultiplexer::new(FrameReader::new(
+                    LengthDelimited,
+                    compat_transport,
+                    MESSAGE_FRAGMENT_SIZE,
+                ))));
+
+                // Setup one channel.
+                let demux_123 =
+                    Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), 123)
+                        .expect("mutex poisoned");
+                let channel_123: IncomingChannel = Defragmentizer::new(
+                    self.context.chain_info.maximum_net_message_size as usize,
+                    demux_123,
+                );
+
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
                     tasks::message_receiver(
                         self.context.clone(),
-                        stream,
+                        channel_123,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.close_incoming_receiver.clone(),
@@ -1241,11 +1266,17 @@ type OutgoingFrameWriter =
 /// The multiplexer to send fragments over an underlying frame writer.
 type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
 
-/// An instance of a channel on a carrier.
+/// An instance of a channel on an outgoing carrier.
 type OutgoingChannel = Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>;
 
-/// The incoming message stream of an incoming connection.
-type IncomingStream = Defragmentizer<FrameReader<LengthDelimited, Compat<Transport>>>;
+/// The reader for incoming length-prefixed frames.
+type IncomingFrameReader = FrameReader<LengthDelimited, Compat<Transport>>;
+
+/// The demultiplexer that seperates channels sent through the underlying frame reader.
+type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
+
+/// An instance of a channel on an incoming carrier.
+type IncomingChannel = Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>;
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where

@@ -12,7 +12,7 @@ use tracing::Span;
 
 use super::{
     error::{ConnectionError, MessageReaderError},
-    GossipedAddress, IncomingStream, Message, NodeId, Transport,
+    GossipedAddress, Message, NodeId, Transport,
 };
 use crate::{
     effect::{
@@ -198,7 +198,7 @@ pub(crate) enum IncomingConnection {
         peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
-        stream: IncomingStream,
+        transport: Transport,
     },
 }
 
@@ -219,7 +219,7 @@ impl Display for IncomingConnection {
                 public_addr,
                 peer_id,
                 peer_consensus_public_key,
-                stream: _,
+                transport: _,
             } => {
                 write!(
                     f,
