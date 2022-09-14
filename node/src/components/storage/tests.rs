@@ -67,6 +67,81 @@ fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMeta
         .collect()
 }
 
+fn create_sync_leap_test_chain(non_signed_blocks: &[u64]) -> (Storage, Vec<Block>) {
+    // Test chain:
+    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
+    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+    let validator_1_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let validator_2_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent_and_validator_weights(
+                &mut harness.rng,
+                if *height == 0 {
+                    EraId::from(0)
+                } else {
+                    EraId::from((*height - 1) / 3 + 1)
+                },
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 0 || *height == 3 || *height == 6 || *height == 9,
+                None,
+                parent,
+                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
+                    trusted_validator_weights.clone()
+                } else {
+                    BTreeMap::new()
+                },
+            );
+
+            blocks.push(block.clone());
+        });
+    blocks.iter().for_each(|block| {
+        storage.write_block(&block).unwrap();
+
+        let mut proofs = BTreeMap::new();
+        proofs.insert(validator_1_public_key.clone(), Signature::System);
+        proofs.insert(validator_2_public_key.clone(), Signature::System);
+
+        let block_signatures = BlockSignatures {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            proofs,
+        };
+
+        if !non_signed_blocks.contains(&block.height()) {
+            storage
+                .write_finality_signatures(&block_signatures)
+                .unwrap();
+            storage.completed_blocks.insert(block.height());
+        }
+    });
+    (storage, blocks)
+}
+
 /// Storage component test fixture.
 ///
 /// Creates a storage component in a temporary directory.
@@ -1222,78 +1297,7 @@ fn can_put_and_get_block() {
 
 #[test]
 fn should_get_trusted_ancestor_headers() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let validator_1_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-    let validator_2_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
-
-    // Test chain:
-    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
-    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent_and_validator_weights(
-                &mut harness.rng,
-                if *height == 0 {
-                    EraId::from(0)
-                } else {
-                    EraId::from((*height - 1) / 3 + 1)
-                },
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 0 || *height == 3 || *height == 6 || *height == 9,
-                None,
-                parent,
-                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
-                    trusted_validator_weights.clone()
-                } else {
-                    BTreeMap::new()
-                },
-            );
-
-            blocks.push(block.clone());
-        });
-
-    blocks.iter().for_each(|block| {
-        storage.write_block(&block).unwrap();
-
-        let mut proofs = BTreeMap::new();
-        proofs.insert(validator_1_public_key.clone(), Signature::System);
-        proofs.insert(validator_2_public_key.clone(), Signature::System);
-
-        let block_signatures = BlockSignatures {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            proofs,
-        };
-
-        storage
-            .write_finality_signatures(&block_signatures)
-            .unwrap();
-
-        storage.completed_blocks.insert(block.height());
-    });
+    let (storage, blocks) = create_sync_leap_test_chain(&[]);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1323,78 +1327,7 @@ fn should_get_trusted_ancestor_headers() {
 
 #[test]
 fn should_get_signed_block_headers() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let validator_1_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-    let validator_2_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
-
-    // Test chain:
-    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
-    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent_and_validator_weights(
-                &mut harness.rng,
-                if *height == 0 {
-                    EraId::from(0)
-                } else {
-                    EraId::from((*height - 1) / 3 + 1)
-                },
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 0 || *height == 3 || *height == 6 || *height == 9,
-                None,
-                parent,
-                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
-                    trusted_validator_weights.clone()
-                } else {
-                    BTreeMap::new()
-                },
-            );
-
-            blocks.push(block.clone());
-        });
-
-    blocks.iter().for_each(|block| {
-        storage.write_block(&block).unwrap();
-
-        let mut proofs = BTreeMap::new();
-        proofs.insert(validator_1_public_key.clone(), Signature::System);
-        proofs.insert(validator_2_public_key.clone(), Signature::System);
-
-        let block_signatures = BlockSignatures {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            proofs,
-        };
-
-        storage
-            .write_finality_signatures(&block_signatures)
-            .unwrap();
-
-        storage.completed_blocks.insert(block.height());
-    });
+    let (storage, blocks) = create_sync_leap_test_chain(&[]);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1443,80 +1376,7 @@ fn should_get_signed_block_headers() {
 
 #[test]
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let validator_1_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-    let validator_2_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
-
-    // Test chain:
-    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
-    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent_and_validator_weights(
-                &mut harness.rng,
-                if *height == 0 {
-                    EraId::from(0)
-                } else {
-                    EraId::from((*height - 1) / 3 + 1)
-                },
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 0 || *height == 3 || *height == 6 || *height == 9,
-                None,
-                parent,
-                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
-                    trusted_validator_weights.clone()
-                } else {
-                    BTreeMap::new()
-                },
-            );
-
-            blocks.push(block.clone());
-        });
-
-    blocks.iter().for_each(|block| {
-        storage.write_block(&block).unwrap();
-
-        let mut proofs = BTreeMap::new();
-        proofs.insert(validator_1_public_key.clone(), Signature::System);
-        proofs.insert(validator_2_public_key.clone(), Signature::System);
-
-        let block_signatures = BlockSignatures {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            proofs,
-        };
-
-        // Most recent block is not fully signed.
-        if block.height() != 11 {
-            storage
-                .write_finality_signatures(&block_signatures)
-                .unwrap();
-            storage.completed_blocks.insert(block.height());
-        }
-    });
+    let (storage, blocks) = create_sync_leap_test_chain(&[11]);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1566,78 +1426,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 
 #[test]
 fn should_get_sync_leap() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let validator_1_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-    let validator_2_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
-
-    // Test chain:
-    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
-    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent_and_validator_weights(
-                &mut harness.rng,
-                if *height == 0 {
-                    EraId::from(0)
-                } else {
-                    EraId::from((*height - 1) / 3 + 1)
-                },
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 0 || *height == 3 || *height == 6 || *height == 9,
-                None,
-                parent,
-                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
-                    trusted_validator_weights.clone()
-                } else {
-                    BTreeMap::new()
-                },
-            );
-
-            blocks.push(block.clone());
-        });
-
-    blocks.iter().for_each(|block| {
-        storage.write_block(&block).unwrap();
-
-        let mut proofs = BTreeMap::new();
-        proofs.insert(validator_1_public_key.clone(), Signature::System);
-        proofs.insert(validator_2_public_key.clone(), Signature::System);
-
-        let block_signatures = BlockSignatures {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            proofs,
-        };
-
-        storage
-            .write_finality_signatures(&block_signatures)
-            .unwrap();
-
-        storage.completed_blocks.insert(block.height());
-    });
+    let (storage, blocks) = create_sync_leap_test_chain(&[]);
 
     let requested_block_hash = blocks.get(5).unwrap().header().hash();
     let allowed_era_diff = 100;
@@ -1663,78 +1452,7 @@ fn should_get_sync_leap() {
 
 #[test]
 fn should_respect_allowed_era_diff_in_get_sync_leap() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let validator_1_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-    let validator_2_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-
-    let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
-
-    // Test chain:
-    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
-    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent_and_validator_weights(
-                &mut harness.rng,
-                if *height == 0 {
-                    EraId::from(0)
-                } else {
-                    EraId::from((*height - 1) / 3 + 1)
-                },
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 0 || *height == 3 || *height == 6 || *height == 9,
-                None,
-                parent,
-                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
-                    trusted_validator_weights.clone()
-                } else {
-                    BTreeMap::new()
-                },
-            );
-
-            blocks.push(block.clone());
-        });
-
-    blocks.iter().for_each(|block| {
-        storage.write_block(&block).unwrap();
-
-        let mut proofs = BTreeMap::new();
-        proofs.insert(validator_1_public_key.clone(), Signature::System);
-        proofs.insert(validator_2_public_key.clone(), Signature::System);
-
-        let block_signatures = BlockSignatures {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            proofs,
-        };
-
-        storage
-            .write_finality_signatures(&block_signatures)
-            .unwrap();
-
-        storage.completed_blocks.insert(block.height());
-    });
+    let (storage, blocks) = create_sync_leap_test_chain(&[]);
 
     let requested_block_hash = blocks.get(5).unwrap().header().hash();
     let allowed_era_diff = 1;
