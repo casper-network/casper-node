@@ -37,7 +37,7 @@ use crate::{
     components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA,
     effect::{
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
             NodeStateRequest, RestRequest, StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
@@ -56,7 +56,7 @@ pub(crate) trait ReactorEventT:
     + From<RestRequest>
     + From<NetworkInfoRequest>
     + From<StorageRequest>
-    + From<ChainspecLoaderRequest>
+    + From<ChainspecRawBytesRequest>
     + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
@@ -70,7 +70,7 @@ impl<REv> ReactorEventT for REv where
         + From<RestRequest>
         + From<NetworkInfoRequest>
         + From<StorageRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>

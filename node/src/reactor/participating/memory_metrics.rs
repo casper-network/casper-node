@@ -17,7 +17,6 @@ pub(super) struct MemoryMetrics {
     mem_rpc_server: IntGauge,
     mem_rest_server: IntGauge,
     mem_event_stream_server: IntGauge,
-    mem_chainspec_loader: IntGauge,
     mem_consensus: IntGauge,
     mem_deploy_gossiper: IntGauge,
     mem_block_proposer: IntGauge,
@@ -51,10 +50,6 @@ impl MemoryMetrics {
         let mem_event_stream_server = IntGauge::new(
             "mem_event_stream_server",
             "event stream server memory usage in bytes",
-        )?;
-        let mem_chainspec_loader = IntGauge::new(
-            "mem_chainspec_loader",
-            "chainspec loader memory usage in bytes",
         )?;
         let mem_consensus = IntGauge::new("mem_consensus", "consensus memory usage in bytes")?;
         let mem_all_fetchers =
@@ -90,7 +85,6 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_rpc_server.clone()))?;
         registry.register(Box::new(mem_rest_server.clone()))?;
         registry.register(Box::new(mem_event_stream_server.clone()))?;
-        registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_all_fetchers.clone()))?;
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
@@ -109,7 +103,6 @@ impl MemoryMetrics {
             mem_rpc_server,
             mem_rest_server,
             mem_event_stream_server,
-            mem_chainspec_loader,
             mem_consensus,
             mem_all_fetchers,
             mem_deploy_gossiper,
@@ -133,7 +126,6 @@ impl MemoryMetrics {
         let rpc_server = reactor.rpc_server.estimate_heap_size() as i64;
         let rest_server = reactor.rest_server.estimate_heap_size() as i64;
         let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
-        let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let fetchers = reactor.fetchers.estimate_heap_size() as i64;
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
@@ -149,7 +141,6 @@ impl MemoryMetrics {
             + rpc_server
             + rest_server
             + event_stream_server
-            + chainspec_loader
             + consensus
             + fetchers
             + deploy_gossiper
@@ -166,7 +157,6 @@ impl MemoryMetrics {
         self.mem_rpc_server.set(rpc_server);
         self.mem_rest_server.set(rest_server);
         self.mem_event_stream_server.set(event_stream_server);
-        self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_consensus.set(consensus);
         self.mem_all_fetchers.set(fetchers);
         self.mem_deploy_gossiper.set(deploy_gossiper);
@@ -187,7 +177,6 @@ impl MemoryMetrics {
                %rpc_server,
                %rest_server,
                %event_stream_server,
-               %chainspec_loader,
                %consensus,
                %fetchers,
                %deploy_gossiper,
@@ -209,7 +198,6 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_rpc_server);
         unregister_metric!(self.registry, self.mem_rest_server);
         unregister_metric!(self.registry, self.mem_event_stream_server);
-        unregister_metric!(self.registry, self.mem_chainspec_loader);
         unregister_metric!(self.registry, self.mem_consensus);
         unregister_metric!(self.registry, self.mem_all_fetchers);
         unregister_metric!(self.registry, self.mem_deploy_gossiper);

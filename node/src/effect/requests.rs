@@ -1241,16 +1241,18 @@ pub(crate) enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
-pub(crate) enum ChainspecLoaderRequest {
+pub(crate) enum ChainspecRawBytesRequest {
     /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
     /// they are present.
     GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
 }
 
-impl Display for ChainspecLoaderRequest {
+impl Display for ChainspecRawBytesRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
+            ChainspecRawBytesRequest::GetChainspecRawBytes(_) => {
+                write!(f, "get chainspec raw bytes")
+            }
         }
     }
 }

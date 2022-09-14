@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{self, Context};
+use anyhow::{self, bail, Context};
 use prometheus::Registry;
 use regex::Regex;
 use stats_alloc::{StatsAlloc, INSTRUMENTED_SYSTEM};
@@ -175,6 +175,10 @@ impl Cli {
 
                 let (chainspec, chainspec_raw_bytes) =
                     <(Chainspec, ChainspecRawBytes)>::from_path(validator_config.dir())?;
+
+                if !chainspec.is_valid() {
+                    bail!("invalid chainspec");
+                }
 
                 let mut participating_runner = Runner::<participating::Reactor>::with_metrics(
                     validator_config,

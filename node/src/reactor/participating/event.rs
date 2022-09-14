@@ -28,7 +28,7 @@ use crate::{
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
             UpgradeWatcherRequest,
@@ -76,6 +76,8 @@ pub(crate) enum ParticipatingEvent {
     Shutdown(String),
     // Check the status of the reactor, should only be raised by the reactor itself
     CheckStatus,
+    #[from]
+    ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
 
     // Coordination events == component to component(s) or component to reactor events
     #[from]
@@ -192,8 +194,6 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
     #[from]
-    ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
-    #[from]
     UpgradeWatcherRequest(#[serde(skip_serializing)] UpgradeWatcherRequest),
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
@@ -300,7 +300,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::RpcServer(_) => "RpcServer",
             ParticipatingEvent::RestServer(_) => "RestServer",
             ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
-            ParticipatingEvent::UpgradeWatcher(_) => "ChainspecLoader",
+            ParticipatingEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             ParticipatingEvent::Consensus(_) => "Consensus",
             ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
             ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
@@ -353,7 +353,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
-            ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             ParticipatingEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
@@ -367,7 +367,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
-            ParticipatingEvent::UpgradeWatcherAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
@@ -530,7 +530,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
             }
-            ParticipatingEvent::ChainspecLoaderRequest(req) => {
+            ParticipatingEvent::ChainspecRawBytesRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
             }
             ParticipatingEvent::UpgradeWatcherRequest(req) => {

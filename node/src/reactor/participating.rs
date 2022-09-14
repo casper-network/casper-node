@@ -21,7 +21,6 @@ use crate::{
         block_validator::{self, BlockValidator},
         blocks_accumulator::{self, BlocksAccumulator},
         chain_synchronizer::{self, ChainSynchronizer},
-        chainspec_loader::{self, ChainspecLoader},
         complete_block_synchronizer::{self, CompleteBlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
@@ -50,6 +49,7 @@ use crate::{
             BlockAddedResponseIncoming, NetResponseIncoming, SyncLeapResponseIncoming,
             TrieResponseIncoming,
         },
+        requests::ChainspecRawBytesRequest,
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -304,7 +304,6 @@ impl Fetchers {
 /// Participating node reactor.
 #[derive(DataSize, Debug)]
 pub(crate) struct Reactor {
-    chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
     upgrade_watcher: UpgradeWatcher,
@@ -340,6 +339,8 @@ pub(crate) struct Reactor {
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
     state: ReactorState,
+    chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
 fn is_uninitialized<T: InitializedComponent<ParticipatingEvent>>(component: &T) -> bool {
@@ -450,8 +451,6 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
         let node_startup_instant = Instant::now();
 
-        let chainspec_loader = ChainspecLoader::new(Arc::clone(&chainspec), chainspec_raw_bytes)?;
-
         let effect_builder = EffectBuilder::new(event_queue);
 
         let metrics = Metrics::new(registry.clone());
@@ -463,7 +462,7 @@ impl reactor::Reactor for Reactor {
         let (root_dir, config) = config.into_parts();
         let storage_config = WithDir::new(&root_dir, config.storage.clone());
 
-        let hard_reset_to_start_of_era = chainspec_loader.hard_reset_to_start_of_era();
+        let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
         let storage = Storage::new(
             &storage_config,
             hard_reset_to_start_of_era,
@@ -502,7 +501,6 @@ impl reactor::Reactor for Reactor {
         // let ParticipatingInitConfig {
         //     root,
         //     config,
-        //     chainspec_loader,
         //     storage,
         //     mut contract_runtime,
         //     //joining_outcome,
@@ -526,7 +524,7 @@ impl reactor::Reactor for Reactor {
         //             block,
         //             execution_results,
         //             maybe_step_effect_and_upcoming_era_validators,
-        //         }) = chainspec_loader
+        //         }) = chainspec
         //             .maybe_immediate_switch_block_data()
         //             .cloned()
         //         {
@@ -713,7 +711,8 @@ impl reactor::Reactor for Reactor {
             DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port.clone()));
 
         let reactor = Reactor {
-            chainspec_loader,
+            chainspec,
+            chainspec_raw_bytes,
             storage,
             contract_runtime,
             upgrade_watcher,
@@ -996,9 +995,9 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::MetricsRequest,
                 self.metrics.handle_event(effect_builder, rng, req),
             ),
-            ParticipatingEvent::ChainspecLoaderRequest(req) => {
-                self.dispatch_event(effect_builder, rng, req.into())
-            }
+            ParticipatingEvent::ChainspecRawBytesRequest(
+                ChainspecRawBytesRequest::GetChainspecRawBytes(responder),
+            ) => responder.respond(self.chainspec_raw_bytes.clone()).ignore(),
             ParticipatingEvent::UpgradeWatcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, req.into())
             }

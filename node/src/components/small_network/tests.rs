@@ -29,7 +29,7 @@ use crate::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, GossiperAnnouncement},
         incoming::GossiperIncoming,
         requests::{
-            BeginGossipRequest, ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest,
+            BeginGossipRequest, ChainspecRawBytesRequest, ContractRuntimeRequest, NetworkRequest,
             StorageRequest,
         },
         EffectBuilder, Effects,
@@ -110,8 +110,8 @@ impl From<StorageRequest> for Event {
     }
 }
 
-impl From<ChainspecLoaderRequest> for Event {
-    fn from(_request: ChainspecLoaderRequest) -> Self {
+impl From<ChainspecRawBytesRequest> for Event {
+    fn from(_request: ChainspecRawBytesRequest) -> Self {
         unreachable!()
     }
 }

@@ -42,7 +42,7 @@ use crate::{
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
             NetworkInfoRequest, NodeStateRequest, RpcRequest, StorageRequest,
             UpgradeWatcherRequest,
         },
@@ -61,7 +61,7 @@ pub(crate) trait ReactorEventT:
     From<Event>
     + From<RpcRequest>
     + From<RpcServerAnnouncement>
-    + From<ChainspecLoaderRequest>
+    + From<ChainspecRawBytesRequest>
     + From<UpgradeWatcherRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
@@ -77,7 +77,7 @@ impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RpcRequest>
         + From<RpcServerAnnouncement>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + From<UpgradeWatcherRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
