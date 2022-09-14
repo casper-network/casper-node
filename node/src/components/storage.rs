@@ -2338,7 +2338,7 @@ impl Storage {
                 &trusted_block_header,
                 &highest_complete_block_header,
                 trusted_ancestor_headers
-                    .first()
+                    .last()
                     .cloned()
                     .unwrap_or(trusted_block_header.clone()),
             )?;

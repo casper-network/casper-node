@@ -50,6 +50,20 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     }
 }
 
+fn block_headers_into_heights(block_headers: &[BlockHeader]) -> Vec<u64> {
+    block_headers
+        .iter()
+        .map(|block_header| block_header.height())
+        .collect()
+}
+
+fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMetadata]) -> Vec<u64> {
+    signed_block_headers
+        .iter()
+        .map(|signed_block_header| signed_block_header.block_header.height())
+        .collect()
+}
+
 /// Storage component test fixture.
 ///
 /// Creates a storage component in a temporary directory.
@@ -1516,13 +1530,6 @@ fn should_get_sync_leap() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    // Test chain:
-    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
-    // era 0  | era 1  | era 2  | era 3
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-
     let validator_1_public_key = {
         let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
@@ -1531,12 +1538,19 @@ fn should_get_sync_leap() {
         let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
     };
+
     let mut trusted_validator_weights = BTreeMap::new();
     trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
     trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
 
+    // Test chain:
+    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
+    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
+    //  where
+    //   S - switch block
+    //   B - non-switch block
     let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         .iter()
         .for_each(|height| {
             let parent = if *height == 0 {
@@ -1546,18 +1560,23 @@ fn should_get_sync_leap() {
             };
             let block = Block::random_with_specifics_and_parent_and_validator_weights(
                 &mut harness.rng,
-                EraId::from(*height / 3),
+                if *height == 0 {
+                    EraId::from(0)
+                } else {
+                    EraId::from((*height - 1) / 3 + 1)
+                },
                 *height,
                 ProtocolVersion::from_parts(1, 5, 0),
-                *height == 2 || *height == 5 || *height == 8,
+                *height == 0 || *height == 3 || *height == 6 || *height == 9,
                 None,
                 parent,
-                if *height == 2 || *height == 5 || *height == 8 {
+                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
                     trusted_validator_weights.clone()
                 } else {
                     BTreeMap::new()
                 },
             );
+
             blocks.push(block.clone());
         });
 
@@ -1581,14 +1600,28 @@ fn should_get_sync_leap() {
         storage.completed_blocks.insert(block.height());
     });
 
-    let requested_block_hash = blocks.get(9).unwrap().header().hash();
+    let requested_block_hash = blocks.get(5).unwrap().header().hash();
     let allowed_era_diff = 100;
-    let fault_tolerance_fraction = Ratio::new(1, 1000);
-    let sync_leap = storage.get_sync_leap(requested_block_hash, allowed_era_diff);
+    let sync_leap_result = storage
+        .get_sync_leap(requested_block_hash, allowed_era_diff)
+        .unwrap();
 
-    // TODO: Add proper asserts
     // TODO: Check if `allowed_era_diff` is respected.
-    dbg!(sync_leap);
+
+    let leap_sync = match sync_leap_result {
+        crate::storage::SyncLeapResult::HaveIt(leap_sync) => leap_sync,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(leap_sync.trusted_block_header.height(), 5);
+    assert_eq!(
+        block_headers_into_heights(&leap_sync.trusted_ancestor_headers),
+        vec![4, 3],
+    );
+    assert_eq!(
+        signed_block_headers_into_heights(&leap_sync.signed_block_headers),
+        vec![6, 9, 11]
+    );
 }
 
 #[test]
