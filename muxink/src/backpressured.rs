@@ -125,7 +125,8 @@ where
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(ack_received)) => {
-                    try_ready!(self_mut.validate_ack(self_mut.received_ack));
+                    try_ready!(self_mut.validate_ack(ack_received));
+                    // validate_ack!(self_mut, ack_received);
 
                     self_mut.received_ack = ack_received;
                 }
@@ -195,9 +196,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use futures::{FutureExt, SinkExt};
+    use std::convert::TryInto;
+
+    use futures::{FutureExt, SinkExt, StreamExt};
     use tokio::sync::mpsc::UnboundedSender;
-    use tokio_stream::wrappers::UnboundedReceiverStream;
+    use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
+    use tokio_util::sync::PollSender;
 
     use crate::error::Error;
 
@@ -305,5 +309,49 @@ mod tests {
                 highest: 2
             }))
         ));
+    }
+
+    #[tokio::test]
+    async fn backpressured_sink_concurrent_tasks() {
+        let to_send: Vec<u16> = (0..u16::MAX).into_iter().rev().collect();
+        let (sink, receiver) = tokio::sync::mpsc::channel::<u16>(u16::MAX as usize);
+        let (ack_sender, ack_receiver) = tokio::sync::mpsc::unbounded_channel::<u64>();
+        let ack_stream = UnboundedReceiverStream::new(ack_receiver);
+        let mut sink = BackpressuredSink::new(PollSender::new(sink), ack_stream, WINDOW_SIZE);
+
+        let send_fut = tokio::spawn(async move {
+            for item in to_send.iter() {
+                // Try to feed each item into the sink.
+                if sink.feed(*item).await.is_err() {
+                    // When `feed` fails, the sink is full, so we flush it.
+                    sink.flush().await.unwrap();
+                    // After flushing, the sink must be able to accept new items.
+                    sink.feed(*item).await.unwrap();
+                }
+            }
+            // Close the sink here to signal the end of the stream on the other end.
+            sink.close().await.unwrap();
+            // Return the sink so we don't drop the ACK sending end yet.
+            sink
+        });
+
+        let recv_fut = tokio::spawn(async move {
+            let mut item_stream = ReceiverStream::new(receiver);
+            let mut items: Vec<u16> = vec![];
+            while let Some(item) = item_stream.next().await {
+                // Receive each item sent by the sink.
+                items.push(item);
+                // Send the ACK for it.
+                ack_sender.send(items.len().try_into().unwrap()).unwrap();
+            }
+            items
+        });
+
+        let (send_result, recv_result) = tokio::join!(send_fut, recv_fut);
+        assert!(send_result.is_ok());
+        assert_eq!(
+            recv_result.unwrap(),
+            (0..u16::MAX).into_iter().rev().collect::<Vec<u16>>()
+        );
     }
 }
