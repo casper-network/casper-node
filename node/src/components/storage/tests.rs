@@ -1434,20 +1434,23 @@ fn should_get_sync_leap() {
         .get_sync_leap(requested_block_hash, allowed_era_diff)
         .unwrap();
 
-    let leap_sync = match sync_leap_result {
-        SyncLeapResult::HaveIt(leap_sync) => leap_sync,
+    let sync_leap = match sync_leap_result {
+        SyncLeapResult::HaveIt(sync_leap) => sync_leap,
         _ => panic!("should have leap sync"),
     };
 
-    assert_eq!(leap_sync.trusted_block_header.height(), 5);
+    assert_eq!(sync_leap.trusted_block_header.height(), 5);
     assert_eq!(
-        block_headers_into_heights(&leap_sync.trusted_ancestor_headers),
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
         vec![4, 3],
     );
     assert_eq!(
-        signed_block_headers_into_heights(&leap_sync.signed_block_headers),
+        signed_block_headers_into_heights(&sync_leap.signed_block_headers),
         vec![6, 9, 11]
     );
+
+    // TODO: Add correct sync leap validation.
+    // assert!(sync_leap.validate());
 }
 
 #[test]
