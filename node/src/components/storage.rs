@@ -1659,43 +1659,32 @@ impl Storage {
         // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
         // era 0  | era 1  | era 2  | era 3
 
+        if trusted_block_header.hash() == highest_signed_block_header.block_header.hash() {
+            return Ok(Some(vec![]));
+        }
+
         let start_era_id = trusted_block_header.era_id().successor();
-        let current_era = highest_signed_block_header.block_header.era_id();
+        let start_era_id = trusted_block_header.era_id();
+        let current_era_id = highest_signed_block_header.block_header.era_id();
 
-        todo!();
-        // TODO: using the `trusted_validator_weights` here is incorrect - the highest block might
-        // be from a different era; do we even need to check that it has enough signatures if it is
-        // in `completed_blocks`?
+        let start_era_id: u64 = start_era_id.into();
+        let current_era_id: u64 = current_era_id.into();
 
-        // let mut current_signed_block_header = highest_signed_block_header.clone();
+        let mut result = vec![];
 
-        // if current_signed_block_header.block_header.height() <= trusted_block_header.height() {
-        //     return Ok(Some(vec![]));
-        // }
+        for era_id in start_era_id..current_era_id {
+            if let Some(hash) = self.switch_block_era_id_index.get(&EraId::from(era_id)) {
+                let block = self
+                    .get_single_block_header_with_metadata(txn, hash)?
+                    .unwrap();
+                result.push(block);
+            } else {
+                return Ok(None);
+            }
+        }
+        result.push(highest_signed_block_header.clone());
 
-        // let mut result = vec![];
-        // result.push(current_signed_block_header.clone());
-        // loop {
-        //     let parent_hash = current_signed_block_header.block_header.parent_hash();
-        //     let signed_parent_block =
-        //         match self.get_single_block_header_with_metadata(txn, parent_hash)? {
-        //             Some(block_header_with_metadata) => block_header_with_metadata,
-        //             None => {
-        //                 warn!(?parent_hash, "block header not found");
-        //                 return Ok(None);
-        //             }
-        //         };
-        //     if signed_parent_block.block_header.hash() == trusted_block_header.hash() {
-        //         // Don't go back further, we're already at the block being requested.
-        //         return Ok(Some(result));
-        //     }
-
-        //     if signed_parent_block.block_header.is_switch_block() {
-        //         // TODO: Check if signed_parent_block has sufficient finality signatures
-        //         result.push(signed_parent_block.clone());
-        //     }
-        //     current_signed_block_header = signed_parent_block;
-        // }
+        return Ok(Some(result));
     }
 
     fn get_block_header_by_height_restricted<Tx: Transaction>(
@@ -2287,7 +2276,8 @@ impl Config {
     }
 }
 
-enum SyncLeapResult {
+#[derive(Debug)]
+pub enum SyncLeapResult {
     HaveIt(SyncLeap),
     DontHaveIt,
     TooOld,

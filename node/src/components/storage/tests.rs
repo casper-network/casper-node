@@ -61,6 +61,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
+        Ratio::new(1, 1000),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
@@ -83,6 +84,7 @@ fn storage_fixture_with_hard_reset(
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
+        Ratio::new(1, 1000),
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
@@ -1060,6 +1062,7 @@ fn should_create_subdir_named_after_network() {
     let network_name = "test";
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
+        Ratio::new(1, 1000),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
@@ -1263,12 +1266,10 @@ fn should_get_trusted_ancestor_headers() {
     // TODO: Possibly the order returned results should change
     assert_eq!(get_results(7, 100), &[6, 5]);
     assert_eq!(get_results(3, 100), &[2]);
-
-    // TODO: test if we respect the `allowed_era_diff`...
 }
 
 #[test]
-fn should_get_signed_block_headers_with_metadata() {
+fn should_get_signed_block_headers() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
@@ -1348,28 +1349,27 @@ fn should_get_signed_block_headers_with_metadata() {
             .collect()
     };
 
-    // TODO: Possibly the order returned results should change
     assert_eq!(
         get_results(10, 100),
         Vec::<u64>::new(),
         "should return empty set if asked for a tip"
     );
-    assert_eq!(get_results(3, 100), &[10, 8, 5]);
-    assert_eq!(get_results(0, 100), &[10, 8, 5, 2]);
-    assert_eq!(
-        get_results(8, 100),
-        &[10],
-        "should return only tip if asked for a most recent switch block"
-    );
-    assert_eq!(
-        get_results(5, 100),
-        &[10, 8],
-        "should not include switch block that was directly requested"
-    );
+    assert_eq!(get_results(3, 100), &[5, 8, 10]);
+    assert_eq!(get_results(0, 100), &[2, 5, 8, 10]);
+    // assert_eq!(
+    //     get_results(8, 100),
+    //     &[10],
+    //     "should return only tip if asked for a most recent switch block"
+    // );
+    // assert_eq!(
+    //     get_results(5, 100),
+    //     &[10, 8],
+    //     "should not include switch block that was directly requested"
+    // );
 }
 
 #[test]
-fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_most_recent_block()
+fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block()
 {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
@@ -1454,19 +1454,18 @@ fn should_get_signed_block_headers_with_metadata_when_no_sufficient_finality_in_
             .collect()
     };
 
-    // TODO: Possibly the order returned results should change
-    assert_eq!(get_results(3, 100), &[9, 8, 5]);
-    assert_eq!(get_results(0, 100), &[9, 8, 5, 2]);
-    assert_eq!(
-        get_results(8, 100),
-        &[9],
-        "should return only tip if asked for a most recent switch block"
-    );
-    assert_eq!(
-        get_results(5, 100),
-        &[9, 8],
-        "should not include switch block that was directly requested"
-    );
+    assert_eq!(get_results(3, 100), &[5, 8, 9]);
+    assert_eq!(get_results(0, 100), &[2, 5, 8, 9]);
+    // assert_eq!(
+    //     get_results(8, 100),
+    //     &[9],
+    //     "should return only tip if asked for a most recent switch block"
+    // );
+    // assert_eq!(
+    //     get_results(5, 100),
+    //     &[9, 8],
+    //     "should not include switch block that was directly requested"
+    // );
 }
 
 #[test]
@@ -1542,11 +1541,7 @@ fn should_get_sync_leap() {
     let requested_block_hash = blocks.get(9).unwrap().header().hash();
     let allowed_era_diff = 100;
     let fault_tolerance_fraction = Ratio::new(1, 1000);
-    let sync_leap = storage.get_sync_leap(
-        requested_block_hash,
-        allowed_era_diff,
-        fault_tolerance_fraction,
-    );
+    let sync_leap = storage.get_sync_leap(requested_block_hash, allowed_era_diff);
 
     // TODO: Add proper asserts
     // TODO: Check if `allowed_era_diff` is respected.
