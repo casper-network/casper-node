@@ -343,14 +343,6 @@ pub(crate) struct Reactor {
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
-fn is_uninitialized<T: InitializedComponent<ParticipatingEvent>>(component: &T) -> bool {
-    component.is_uninitialized()
-}
-
-fn is_fatal<T: InitializedComponent<ParticipatingEvent>>(component: &T) -> bool {
-    component.is_fatal()
-}
-
 impl Reactor {
     fn check_status(
         &mut self,
@@ -360,7 +352,7 @@ impl Reactor {
         let mut effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
-                if is_uninitialized(&self.diagnostics_port) {
+                if InitializedComponent::<ParticipatingEvent>::is_uninitialized(&self.diagnostics_port) {
                     effects.extend(reactor::wrap_effects(
                         ParticipatingEvent::DiagnosticsPort,
                         self.diagnostics_port.handle_event(
@@ -376,14 +368,14 @@ impl Reactor {
                     );
                     return effects;
                 }
-                if is_fatal(&self.diagnostics_port) {
+                if InitializedComponent::<ParticipatingEvent>::is_fatal(&self.diagnostics_port) {
                     return effect_builder.immediately().event(|()| {
                         ParticipatingEvent::Shutdown(
                             "diagnostics_port failed to initialize".to_string(),
                         )
                     });
                 }
-                if is_uninitialized(&self.upgrade_watcher) {
+                if InitializedComponent::<ParticipatingEvent>::is_uninitialized(&self.upgrade_watcher) {
                     effects.extend(reactor::wrap_effects(
                         ParticipatingEvent::UpgradeWatcher,
                         self.upgrade_watcher.handle_event(
@@ -399,7 +391,7 @@ impl Reactor {
                     );
                     return effects;
                 }
-                if is_fatal(&self.upgrade_watcher) {
+                if InitializedComponent::<ParticipatingEvent>::is_fatal(&self.upgrade_watcher) {
                     return effect_builder.immediately().event(|()| {
                         ParticipatingEvent::Shutdown(
                             "upgrade_watcher failed to initialize".to_string(),

@@ -67,6 +67,7 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
+mod deploy_buffer;
 
 use datasize::DataSize;
 use serde::Deserialize;
