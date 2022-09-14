@@ -102,21 +102,6 @@ where
                 });
             }
 
-            // Verify: the total weight decreased by the smallest weight of a single signature
-            // should be below threshold (anti-spam countermeasure).
-            if weight_minus_minimum * U512::from(*quorum_fraction.denom())
-                > total_weight * U512::from(*quorum_fraction.numer())
-            {
-                return Err(BlockSignatureError::TooManySignatures {
-                    trusted_validator_weights: trusted_validator_weights.clone(),
-                    block_signatures: Box::new(block_signatures.clone()),
-                    signature_weight: Box::new(signature_weight),
-                    weight_minus_minimum: Box::new(weight_minus_minimum),
-                    total_validator_weight: Box::new(total_weight),
-                    fault_tolerance_fraction,
-                });
-            }
-
             Ok(())
         }
         None => {
@@ -322,7 +307,6 @@ mod tests {
         const TOTAL_VALIDATORS_WEIGHT: usize = TOTAL_VALIDATORS * TEST_VALIDATOR_WEIGHT;
         const INSUFFICIENT_BLOCK_SIGNATURES: usize = 13;
         const JUST_ENOUGH_BLOCK_SIGNATURES: usize = 14;
-        const TOO_MANY_BLOCK_SIGNATURES: usize = 15;
 
         let mut rng = TestRng::new();
 
@@ -338,12 +322,10 @@ mod tests {
         // we need signatures of weight:
         //   - 13 or less for `InsufficientWeightForFinality`
         //   - 14 for Ok
-        //   - 15 or more for `TooManySignatures`
 
         let insufficient = create_signatures(&mut rng, &validators, INSUFFICIENT_BLOCK_SIGNATURES);
         let just_enough_weight =
             create_signatures(&mut rng, &validators, JUST_ENOUGH_BLOCK_SIGNATURES);
-        let too_many = create_signatures(&mut rng, &validators, TOO_MANY_BLOCK_SIGNATURES);
 
         let result = check_sufficient_block_signatures(
             &validator_weights,
@@ -367,23 +349,6 @@ mod tests {
             Some(&just_enough_weight),
         );
         assert!(result.is_ok());
-
-        let result = check_sufficient_block_signatures(
-            &validator_weights,
-            fault_tolerance_fraction,
-            Some(&too_many),
-        );
-        assert!(matches!(
-            result,
-            Err(BlockSignatureError::TooManySignatures {
-                trusted_validator_weights: _,
-                block_signatures: _,
-                signature_weight,
-                weight_minus_minimum: _,
-                total_validator_weight,
-                fault_tolerance_fraction: _
-            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == TOO_MANY_BLOCK_SIGNATURES.into()
-        ));
     }
 
     #[test]
@@ -392,7 +357,6 @@ mod tests {
         const TOTAL_VALIDATORS_WEIGHT: usize = TOTAL_VALIDATORS * TEST_VALIDATOR_WEIGHT;
         const INSUFFICIENT_BLOCK_SIGNATURES: usize = 6;
         const JUST_ENOUGH_BLOCK_SIGNATURES: usize = 7;
-        const TOO_MANY_BLOCK_SIGNATURES: usize = 8;
 
         let mut rng = TestRng::new();
 
@@ -412,12 +376,10 @@ mod tests {
         // we need signatures of weight:
         //   - 6 or less for `InsufficientWeightForFinality`
         //   - 7 for Ok
-        //   - 8 or more for `TooManySignatures`
 
         let insufficient = create_signatures(&mut rng, &validators, INSUFFICIENT_BLOCK_SIGNATURES);
         let just_enough_weight =
             create_signatures(&mut rng, &validators, JUST_ENOUGH_BLOCK_SIGNATURES);
-        let too_many = create_signatures(&mut rng, &validators, TOO_MANY_BLOCK_SIGNATURES);
 
         let result = check_sufficient_block_signatures_with_quorum_formula(
             &validator_weights,
@@ -443,24 +405,6 @@ mod tests {
             custom_quorum_formula,
         );
         assert!(result.is_ok());
-
-        let result = check_sufficient_block_signatures_with_quorum_formula(
-            &validator_weights,
-            fault_tolerance_fraction,
-            Some(&too_many),
-            custom_quorum_formula,
-        );
-        assert!(matches!(
-            result,
-            Err(BlockSignatureError::TooManySignatures {
-                trusted_validator_weights: _,
-                block_signatures: _,
-                signature_weight,
-                weight_minus_minimum: _,
-                total_validator_weight,
-                fault_tolerance_fraction: _
-            }) if *total_validator_weight == TOTAL_VALIDATORS_WEIGHT.into() && *signature_weight == TOO_MANY_BLOCK_SIGNATURES.into()
-        ));
     }
 
     #[test]

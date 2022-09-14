@@ -29,8 +29,7 @@ use tracing::{error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature,
-    Timestamp, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{
@@ -1609,6 +1608,7 @@ impl Block {
     }
 
     #[cfg(any(feature = "testing", test))]
+    // TODO[RC]: Not needed?
     pub fn random_with_specifics_and_parent<'a, I: IntoIterator<Item = &'a Deploy>>(
         rng: &mut TestRng,
         era_id: EraId,

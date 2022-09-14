@@ -1655,28 +1655,41 @@ impl Storage {
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
         highest_signed_block_header: &BlockHeaderWithMetadata,
+        mut switch_block: BlockHeader,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
-        // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
-        // era 0  | era 1  | era 2  | era 3
-
         if trusted_block_header.hash() == highest_signed_block_header.block_header.hash() {
             return Ok(Some(vec![]));
         }
 
-        let start_era_id = trusted_block_header.era_id().successor();
-        let start_era_id = trusted_block_header.era_id();
-        let current_era_id = highest_signed_block_header.block_header.era_id();
-
-        let start_era_id: u64 = start_era_id.into();
-        let current_era_id: u64 = current_era_id.into();
+        let start_era_id: u64 = trusted_block_header.next_block_era_id().into();
+        let current_era_id: u64 = highest_signed_block_header.block_header.era_id().into();
 
         let mut result = vec![];
 
         for era_id in start_era_id..current_era_id {
-            if let Some(hash) = self.switch_block_era_id_index.get(&EraId::from(era_id)) {
-                let block = self
-                    .get_single_block_header_with_metadata(txn, hash)?
-                    .unwrap();
+            let hash = match self.switch_block_era_id_index.get(&EraId::from(era_id)) {
+                Some(hash) => hash,
+                None => return Ok(None),
+            };
+
+            let block = match self.get_single_block_header_with_metadata(txn, hash)? {
+                Some(block) => block,
+                None => return Ok(None),
+            };
+
+            let next_era_validator_weights = match switch_block.next_era_validator_weights() {
+                Some(next_era_validator_weights) => next_era_validator_weights,
+                None => return Ok(None),
+            };
+
+            if linear_chain::check_sufficient_block_signatures(
+                &next_era_validator_weights,
+                self.fault_tolerance_fraction,
+                Some(&block.block_signatures),
+            )
+            .is_ok()
+            {
+                switch_block = block.block_header.clone();
                 result.push(block);
             } else {
                 return Ok(None);
@@ -2324,6 +2337,10 @@ impl Storage {
                 &mut txn,
                 &trusted_block_header,
                 &highest_complete_block_header,
+                trusted_ancestor_headers
+                    .first()
+                    .cloned()
+                    .unwrap_or(trusted_block_header.clone()),
             )?;
             let signed_block_headers = signed_block_headers.unwrap(); // TODO
 

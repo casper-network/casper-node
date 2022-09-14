@@ -1273,33 +1273,6 @@ fn should_get_signed_block_headers() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    // Test chain:
-    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
-    // era 0  | era 1  | era 2  | era 3
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent(
-                &mut harness.rng,
-                EraId::from(*height / 3),
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 2 || *height == 5 || *height == 8,
-                None,
-                parent,
-            );
-            blocks.push(block.clone());
-        });
-
     let validator_1_public_key = {
         let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
@@ -1308,6 +1281,47 @@ fn should_get_signed_block_headers() {
         let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
     };
+
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
+    // Test chain:
+    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
+    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent_and_validator_weights(
+                &mut harness.rng,
+                if *height == 0 {
+                    EraId::from(0)
+                } else {
+                    EraId::from((*height - 1) / 3 + 1)
+                },
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 0 || *height == 3 || *height == 6 || *height == 9,
+                None,
+                parent,
+                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
+                    trusted_validator_weights.clone()
+                } else {
+                    BTreeMap::new()
+                },
+            );
+
+            blocks.push(block.clone());
+        });
 
     blocks.iter().for_each(|block| {
         storage.write_block(&block).unwrap();
@@ -1329,18 +1343,25 @@ fn should_get_signed_block_headers() {
         storage.completed_blocks.insert(block.height());
     });
 
-    let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
             .get_header_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
+        let previous_switch_block_header = storage
+            .get_block_by_height(&mut txn, previous_switch_block as u64)
+            .unwrap()
+            .unwrap()
+            .header()
+            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
+                previous_switch_block_header.clone(),
             )
             .unwrap()
             .unwrap()
@@ -1349,57 +1370,28 @@ fn should_get_signed_block_headers() {
             .collect()
     };
 
-    assert_eq!(
-        get_results(10, 100),
-        Vec::<u64>::new(),
-        "should return empty set if asked for a tip"
+    assert!(
+        get_results(11, 9).is_empty(),
+        "should return empty set if asked for a most recent signed block"
     );
-    assert_eq!(get_results(3, 100), &[5, 8, 10]);
-    assert_eq!(get_results(0, 100), &[2, 5, 8, 10]);
-    // assert_eq!(
-    //     get_results(8, 100),
-    //     &[10],
-    //     "should return only tip if asked for a most recent switch block"
-    // );
-    // assert_eq!(
-    //     get_results(5, 100),
-    //     &[10, 8],
-    //     "should not include switch block that was directly requested"
-    // );
+    assert_eq!(get_results(4, 3), &[6, 9, 11]);
+    assert_eq!(get_results(1, 0), &[3, 6, 9, 11]);
+    assert_eq!(
+        get_results(9, 6),
+        &[11],
+        "should return only tip if asked for a most recent switch block"
+    );
+    assert_eq!(
+        get_results(6, 3),
+        &[9, 11],
+        "should not include switch block that was directly requested"
+    );
 }
 
 #[test]
-fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block()
-{
+fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
-
-    // Test chain:
-    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
-    // era 0  | era 1  | era 2  | era 3
-    //  where
-    //   S - switch block
-    //   B - non-switch block
-    let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent(
-                &mut harness.rng,
-                EraId::from(*height / 3),
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 2 || *height == 5 || *height == 8,
-                None,
-                parent,
-            );
-            blocks.push(block.clone());
-        });
 
     let validator_1_public_key = {
         let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
@@ -1409,6 +1401,47 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
         PublicKey::from(&secret_key)
     };
+
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
+    // Test chain:
+    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
+    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent_and_validator_weights(
+                &mut harness.rng,
+                if *height == 0 {
+                    EraId::from(0)
+                } else {
+                    EraId::from((*height - 1) / 3 + 1)
+                },
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 0 || *height == 3 || *height == 6 || *height == 9,
+                None,
+                parent,
+                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
+                    trusted_validator_weights.clone()
+                } else {
+                    BTreeMap::new()
+                },
+            );
+
+            blocks.push(block.clone());
+        });
 
     blocks.iter().for_each(|block| {
         storage.write_block(&block).unwrap();
@@ -1423,8 +1456,8 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             proofs,
         };
 
-        // No finality signatures for block 10
-        if block.height() != 10 {
+        // Most recent block is not fully signed.
+        if block.height() != 11 {
             storage
                 .write_finality_signatures(&block_signatures)
                 .unwrap();
@@ -1432,8 +1465,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         }
     });
 
-    // TODO: `allowed_era_diff` not used
-    let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
@@ -1441,11 +1473,18 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .unwrap()
             .unwrap();
 
+        let previous_switch_block_header = storage
+            .get_block_by_height(&mut txn, previous_switch_block as u64)
+            .unwrap()
+            .unwrap()
+            .header()
+            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
+                previous_switch_block_header.clone(),
             )
             .unwrap()
             .unwrap()
@@ -1454,18 +1493,22 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .collect()
     };
 
-    assert_eq!(get_results(3, 100), &[5, 8, 9]);
-    assert_eq!(get_results(0, 100), &[2, 5, 8, 9]);
-    // assert_eq!(
-    //     get_results(8, 100),
-    //     &[9],
-    //     "should return only tip if asked for a most recent switch block"
-    // );
-    // assert_eq!(
-    //     get_results(5, 100),
-    //     &[9, 8],
-    //     "should not include switch block that was directly requested"
-    // );
+    assert!(
+        get_results(10, 9).is_empty(),
+        "should return empty set if asked for a most recent signed block"
+    );
+    assert_eq!(get_results(4, 3), &[6, 9, 10]);
+    assert_eq!(get_results(1, 0), &[3, 6, 9, 10]);
+    assert_eq!(
+        get_results(9, 6),
+        &[10],
+        "should return only tip if asked for a most recent switch block"
+    );
+    assert_eq!(
+        get_results(6, 3),
+        &[9, 10],
+        "should not include switch block that was directly requested"
+    );
 }
 
 #[test]

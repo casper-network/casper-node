@@ -324,7 +324,7 @@ impl LinearChain {
                 self.finality_threshold_fraction,
                 Some(signatures),
             ),
-            Ok(()) | Err(BlockSignatureError::TooManySignatures { .. })
+            Ok(())
         )
     }
 

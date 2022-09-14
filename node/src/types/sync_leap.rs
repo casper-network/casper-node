@@ -136,7 +136,7 @@ impl FetcherItem for SyncLeap {
                 *finality_threshold_fraction,
                 Some(&signed_header.block_signatures),
             ) {
-                Ok(()) | Err(BlockSignatureError::TooManySignatures { .. }) => (),
+                Ok(()) => (),
                 Err(err) => return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(err)),
             }
             signed_header
