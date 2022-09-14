@@ -2292,7 +2292,7 @@ impl Config {
 }
 
 #[derive(Debug)]
-pub enum SyncLeapResult {
+pub(crate) enum SyncLeapResult {
     HaveIt(SyncLeap),
     DontHaveIt,
     TooOld,
@@ -2317,42 +2317,43 @@ impl Storage {
             None => return Ok(SyncLeapResult::DontHaveIt),
         };
 
+        let highest_complete_block_header =
+            match self.get_header_of_highest_complete_block(&mut txn)? {
+                Some(highest_complete_block_header) => highest_complete_block_header,
+                None => return Ok(SyncLeapResult::DontHaveIt),
+            };
+        if highest_complete_block_header
+            .block_header
+            .era_id()
+            .saturating_sub(trusted_block_header.era_id().into())
+            > allowed_era_diff.into()
+        {
+            return Ok(SyncLeapResult::TooOld);
+        }
+
         let trusted_ancestor_headers =
             match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
                 None => return Ok(SyncLeapResult::DontHaveIt),
             };
 
-        if let Some(highest_complete_block_header) =
-            self.get_header_of_highest_complete_block(&mut txn)?
-        {
-            let highest_complete_block_era = highest_complete_block_header.block_header.era_id();
-
-            if highest_complete_block_era.saturating_sub(trusted_block_header.era_id().into())
-                > allowed_era_diff.into()
-            {
-                return Ok(SyncLeapResult::TooOld);
-            }
-
-            if let Some(signed_block_headers) = self.get_signed_block_headers(
-                &mut txn,
-                &trusted_block_header,
-                &highest_complete_block_header,
-                trusted_ancestor_headers
-                    .last()
-                    .cloned()
-                    .unwrap_or(trusted_block_header.clone()),
-            )? {
-                return Ok(SyncLeapResult::HaveIt(SyncLeap {
-                    trusted_block_header,
-                    trusted_ancestor_headers,
-                    signed_block_headers,
-                }));
-            } else {
-                return Ok(SyncLeapResult::DontHaveIt);
-            }
+        if let Some(signed_block_headers) = self.get_signed_block_headers(
+            &mut txn,
+            &trusted_block_header,
+            &highest_complete_block_header,
+            trusted_ancestor_headers
+                .last()
+                .cloned()
+                .unwrap_or(trusted_block_header.clone()),
+        )? {
+            return Ok(SyncLeapResult::HaveIt(SyncLeap {
+                trusted_block_header,
+                trusted_ancestor_headers,
+                signed_block_headers,
+            }));
+        } else {
+            return Ok(SyncLeapResult::DontHaveIt);
         }
-        return Ok(SyncLeapResult::DontHaveIt);
     }
 
     /// Directly returns a deploy from internal store.

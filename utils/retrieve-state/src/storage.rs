@@ -136,7 +136,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
     storage_config.path = chain_download_path.clone();
     Ok(Storage::new(
         &WithDir::new(chain_download_path, storage_config),
-        Ratio::new(1, 1000),
+        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(0, 0, 0),
         "test",

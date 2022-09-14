@@ -21,7 +21,7 @@ use crate::{
 /// Headers and signatures required to prove that if a given trusted block hash is on the correct
 /// chain, then so is a later header, which should be the most recent one according to the sender.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct SyncLeap {
+pub(crate) struct SyncLeap {
     /// The header of the trusted block specified by hash by the requester.
     pub trusted_block_header: BlockHeader,
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.

@@ -280,7 +280,7 @@ impl reactor::Reactor for Reactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
-            Ratio::new(1, 1000),
+            Ratio::new(1, 3),
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",

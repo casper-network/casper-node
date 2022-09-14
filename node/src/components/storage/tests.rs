@@ -153,7 +153,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Ratio::new(1, 1000),
+        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
@@ -176,7 +176,7 @@ fn storage_fixture_with_hard_reset(
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Ratio::new(1, 1000),
+        Ratio::new(1, 3),
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
@@ -1154,7 +1154,7 @@ fn should_create_subdir_named_after_network() {
     let network_name = "test";
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
-        Ratio::new(1, 1000),
+        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
