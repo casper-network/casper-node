@@ -67,7 +67,7 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
-mod deploy_buffer;
+pub(crate) mod deploy_buffer;
 
 use datasize::DataSize;
 use serde::Deserialize;
@@ -81,8 +81,9 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
 pub(crate) enum ComponentStatus {
+    #[default]
     Uninitialized,
     Initialized,
     Fatal,
