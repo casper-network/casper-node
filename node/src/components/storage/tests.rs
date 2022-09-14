@@ -23,7 +23,10 @@ use super::{
 };
 use crate::{
     effect::{requests::StorageRequest, Multiple},
-    storage::lmdb_ext::{deserialize_internal, serialize_internal},
+    storage::{
+        lmdb_ext::{deserialize_internal, serialize_internal},
+        SyncLeapResult,
+    },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
@@ -1277,7 +1280,6 @@ fn should_get_trusted_ancestor_headers() {
         assert!(results.is_empty(), "should be empty for switch blocks");
     }
 
-    // TODO: Possibly the order returned results should change
     assert_eq!(get_results(7, 100), &[6, 5]);
     assert_eq!(get_results(3, 100), &[2]);
 }
@@ -1606,10 +1608,8 @@ fn should_get_sync_leap() {
         .get_sync_leap(requested_block_hash, allowed_era_diff)
         .unwrap();
 
-    // TODO: Check if `allowed_era_diff` is respected.
-
     let leap_sync = match sync_leap_result {
-        crate::storage::SyncLeapResult::HaveIt(leap_sync) => leap_sync,
+        SyncLeapResult::HaveIt(leap_sync) => leap_sync,
         _ => panic!("should have leap sync"),
     };
 
@@ -1621,6 +1621,93 @@ fn should_get_sync_leap() {
     assert_eq!(
         signed_block_headers_into_heights(&leap_sync.signed_block_headers),
         vec![6, 9, 11]
+    );
+}
+
+#[test]
+fn should_respect_allowed_era_diff_in_get_sync_leap() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let validator_1_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let validator_2_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
+    // Test chain:
+    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
+    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+    let mut blocks = vec![];
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        .iter()
+        .for_each(|height| {
+            let parent = if *height == 0 {
+                None
+            } else {
+                Some(blocks.get((height - 1) as usize).unwrap())
+            };
+            let block = Block::random_with_specifics_and_parent_and_validator_weights(
+                &mut harness.rng,
+                if *height == 0 {
+                    EraId::from(0)
+                } else {
+                    EraId::from((*height - 1) / 3 + 1)
+                },
+                *height,
+                ProtocolVersion::from_parts(1, 5, 0),
+                *height == 0 || *height == 3 || *height == 6 || *height == 9,
+                None,
+                parent,
+                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
+                    trusted_validator_weights.clone()
+                } else {
+                    BTreeMap::new()
+                },
+            );
+
+            blocks.push(block.clone());
+        });
+
+    blocks.iter().for_each(|block| {
+        storage.write_block(&block).unwrap();
+
+        let mut proofs = BTreeMap::new();
+        proofs.insert(validator_1_public_key.clone(), Signature::System);
+        proofs.insert(validator_2_public_key.clone(), Signature::System);
+
+        let block_signatures = BlockSignatures {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            proofs,
+        };
+
+        storage
+            .write_finality_signatures(&block_signatures)
+            .unwrap();
+
+        storage.completed_blocks.insert(block.height());
+    });
+
+    let requested_block_hash = blocks.get(5).unwrap().header().hash();
+    let allowed_era_diff = 1;
+    let sync_leap_result = storage
+        .get_sync_leap(requested_block_hash, allowed_era_diff)
+        .unwrap();
+
+    assert!(
+        matches!(sync_leap_result, SyncLeapResult::TooOld),
+        "should not have sync leap"
     );
 }
 
