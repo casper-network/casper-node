@@ -1615,7 +1615,8 @@ impl Storage {
         Ok(Some(block_header))
     }
 
-    // TODO: Docs
+    /// Returns block headers of the trusted block's ancestors, back to the most recent switch block.
+    /// If the trusted one is already a switch block, returns empty vec.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1635,7 +1636,7 @@ impl Storage {
                     Some(block_header) => block_header,
                     None => {
                         warn!(?parent_hash, "block header not found");
-                        todo!()
+                        return Ok(None);
                     }
                 };
 
@@ -1649,7 +1650,8 @@ impl Storage {
         Ok(Some(result))
     }
 
-    // TODO: Docs
+    /// Returns headers of all known switch blocks after the trusted block but before
+    /// highest block, with signatures, plus the signed highest block.
     fn get_signed_block_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -2300,7 +2302,6 @@ pub enum SyncLeapResult {
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
-    // TODO: Need a test in other component that will verify if the generated SyncLeap verifies
     pub(crate) fn get_sync_leap(
         &self,
         block_hash: BlockHash,
@@ -2333,7 +2334,7 @@ impl Storage {
                 return Ok(SyncLeapResult::TooOld);
             }
 
-            let signed_block_headers = self.get_signed_block_headers(
+            if let Some(signed_block_headers) = self.get_signed_block_headers(
                 &mut txn,
                 &trusted_block_header,
                 &highest_complete_block_header,
@@ -2341,14 +2342,15 @@ impl Storage {
                     .last()
                     .cloned()
                     .unwrap_or(trusted_block_header.clone()),
-            )?;
-            let signed_block_headers = signed_block_headers.unwrap(); // TODO
-
-            return Ok(SyncLeapResult::HaveIt(SyncLeap {
-                trusted_block_header,
-                trusted_ancestor_headers,
-                signed_block_headers,
-            }));
+            )? {
+                return Ok(SyncLeapResult::HaveIt(SyncLeap {
+                    trusted_block_header,
+                    trusted_ancestor_headers,
+                    signed_block_headers,
+                }));
+            } else {
+                return Ok(SyncLeapResult::DontHaveIt);
+            }
         }
         return Ok(SyncLeapResult::DontHaveIt);
     }
