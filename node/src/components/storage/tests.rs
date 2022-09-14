@@ -1225,14 +1225,27 @@ fn should_get_trusted_ancestor_headers() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
+    let validator_1_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+    let validator_2_public_key = {
+        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+        PublicKey::from(&secret_key)
+    };
+
+    let mut trusted_validator_weights = BTreeMap::new();
+    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
     // Test chain:
-    // B0 B1 S2 B3 B4 S5 B6 B7 S8 B9 B10
-    // era 0  | era 1  | era 2  | era 3
+    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
+    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
     //  where
     //   S - switch block
     //   B - non-switch block
     let mut blocks = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         .iter()
         .for_each(|height| {
             let parent = if *height == 0 {
@@ -1240,25 +1253,49 @@ fn should_get_trusted_ancestor_headers() {
             } else {
                 Some(blocks.get((height - 1) as usize).unwrap())
             };
-            let block = Block::random_with_specifics_and_parent(
+            let block = Block::random_with_specifics_and_parent_and_validator_weights(
                 &mut harness.rng,
-                EraId::from(*height / 3),
+                if *height == 0 {
+                    EraId::from(0)
+                } else {
+                    EraId::from((*height - 1) / 3 + 1)
+                },
                 *height,
                 ProtocolVersion::from_parts(1, 5, 0),
-                *height == 2 || *height == 5 || *height == 8,
+                *height == 0 || *height == 3 || *height == 6 || *height == 9,
                 None,
                 parent,
+                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
+                    trusted_validator_weights.clone()
+                } else {
+                    BTreeMap::new()
+                },
             );
+
             blocks.push(block.clone());
         });
 
     blocks.iter().for_each(|block| {
         storage.write_block(&block).unwrap();
+
+        let mut proofs = BTreeMap::new();
+        proofs.insert(validator_1_public_key.clone(), Signature::System);
+        proofs.insert(validator_2_public_key.clone(), Signature::System);
+
+        let block_signatures = BlockSignatures {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            proofs,
+        };
+
+        storage
+            .write_finality_signatures(&block_signatures)
+            .unwrap();
+
         storage.completed_blocks.insert(block.height());
     });
 
-    // TODO: `allowed_era_diff` not used
-    let get_results = |requested_height: usize, allowed_era_diff: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
@@ -1272,7 +1309,7 @@ fn should_get_trusted_ancestor_headers() {
 
     {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_header = blocks.get(5).unwrap().header();
+        let requested_block_header = blocks.get(6).unwrap().header();
         let results = storage
             .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
             .unwrap()
@@ -1280,8 +1317,8 @@ fn should_get_trusted_ancestor_headers() {
         assert!(results.is_empty(), "should be empty for switch blocks");
     }
 
-    assert_eq!(get_results(7, 100), &[6, 5]);
-    assert_eq!(get_results(3, 100), &[2]);
+    assert_eq!(get_results(8), &[7, 6]);
+    assert_eq!(get_results(4), &[3]);
 }
 
 #[test]
