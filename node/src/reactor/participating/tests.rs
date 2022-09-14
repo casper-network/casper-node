@@ -196,7 +196,7 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
         nodes
             .values()
-            .all(|runner| runner.participating().consensus().current_era() == era_id)
+            .all(|runner| runner.participating().consensus().current_era() == Some(era_id))
     }
 }
 

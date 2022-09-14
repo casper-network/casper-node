@@ -39,7 +39,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, ProtocolVersion, Timestamp};
 
 use crate::{
-    components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
+    components::{fetcher::FetchResponse, Component, ComponentStatus},
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
@@ -58,11 +58,10 @@ pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
 pub use operations::execute_finalized_block;
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
-
-use self::operations::execute_only;
-
-use super::fetcher::FetchResponse;
+use operations::execute_only;
+pub(crate) use types::{
+    BlockAndExecutionEffects, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
+};
 
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
 #[derive(Debug, Error, From)]
@@ -196,6 +195,7 @@ impl Display for Event {
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
+    status: ComponentStatus,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -662,6 +662,7 @@ impl ContractRuntime {
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
+            status: ComponentStatus::Initialized,
             execution_pre_state,
             engine_state,
             metrics,

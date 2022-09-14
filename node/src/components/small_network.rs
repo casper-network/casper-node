@@ -91,7 +91,7 @@ use self::{
 };
 
 use crate::{
-    components::Component,
+    components::{Component, ComponentStatus, InitializedComponent},
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
@@ -173,14 +173,7 @@ where
     active_era: EraId,
 
     /// The status of this component.
-    status: Status,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
-pub(crate) enum Status {
-    Uninitialized,
-    Initialized,
-    FatalError,
+    status: ComponentStatus,
 }
 
 #[derive(DataSize)]
@@ -265,14 +258,10 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
-            status: Status::Uninitialized,
+            status: ComponentStatus::Uninitialized,
         };
 
         Ok(component)
-    }
-
-    pub(crate) fn status(&self) -> Status {
-        self.status
     }
 
     fn initialize(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Event<P>>> {
@@ -367,7 +356,7 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
-        self.status = Status::Initialized;
+        self.status = ComponentStatus::Initialized;
         Ok(effects)
     }
 
@@ -937,32 +926,34 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match (event, self.status) {
-            (_, Status::FatalError) => {
+            (_, ComponentStatus::Fatal) => {
                 error!("should not handle this event when network component has fatal error");
                 return Effects::new();
             }
-            (Event::Initialize, Status::Uninitialized) => match self.initialize(effect_builder) {
-                Ok(effects) => effects,
-                Err(error) => {
-                    error!(%error, "failed to initialize network component");
-                    self.status = Status::FatalError;
-                    return Effects::new();
+            (Event::Initialize, ComponentStatus::Uninitialized) => {
+                match self.initialize(effect_builder) {
+                    Ok(effects) => effects,
+                    Err(error) => {
+                        error!(%error, "failed to initialize network component");
+                        self.status = ComponentStatus::Fatal;
+                        return Effects::new();
+                    }
                 }
-            },
-            (_, Status::Uninitialized) => {
+            }
+            (_, ComponentStatus::Uninitialized) => {
                 error!("should not handle this event when network component is uninitialized");
-                self.status = Status::FatalError;
+                self.status = ComponentStatus::Fatal;
                 return Effects::new();
             }
-            (Event::Initialize, Status::Initialized) => {
+            (Event::Initialize, ComponentStatus::Initialized) => {
                 error!("should not initialize when network component is already initialized");
-                self.status = Status::FatalError;
+                self.status = ComponentStatus::Fatal;
                 return Effects::new();
             }
-            (Event::IncomingConnection { incoming, span }, Status::Initialized) => {
+            (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {
                 self.handle_incoming_connection(incoming, span)
             }
-            (Event::IncomingMessage { peer_id, msg, span }, Status::Initialized) => {
+            (Event::IncomingMessage { peer_id, msg, span }, ComponentStatus::Initialized) => {
                 self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
             }
             (
@@ -972,18 +963,18 @@ where
                     peer_addr,
                     span,
                 },
-                Status::Initialized,
+                ComponentStatus::Initialized,
             ) => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
-            (Event::OutgoingConnection { outgoing, span }, Status::Initialized) => {
+            (Event::OutgoingConnection { outgoing, span }, ComponentStatus::Initialized) => {
                 self.handle_outgoing_connection(*outgoing, span)
             }
 
-            (Event::OutgoingDropped { peer_id, peer_addr }, Status::Initialized) => {
+            (Event::OutgoingDropped { peer_id, peer_addr }, ComponentStatus::Initialized) => {
                 self.handle_outgoing_dropped(*peer_id, peer_addr)
             }
 
-            (Event::NetworkRequest { req }, Status::Initialized) => {
+            (Event::NetworkRequest { req }, ComponentStatus::Initialized) => {
                 match *req {
                     NetworkRequest::SendMessage {
                         dest,
@@ -1038,7 +1029,7 @@ where
                     }
                 }
             }
-            (Event::NetworkInfoRequest { req }, Status::Initialized) => match *req {
+            (Event::NetworkInfoRequest { req }, ComponentStatus::Initialized) => match *req {
                 NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
                 NetworkInfoRequest::FullyConnectedPeers { responder } => {
                     let mut symmetric_peers: Vec<NodeId> = self
@@ -1068,7 +1059,7 @@ where
                     responder.respond(symmetric_validator_peers).ignore()
                 }
             },
-            (Event::PeerAddressReceived(gossiped_address), Status::Initialized) => {
+            (Event::PeerAddressReceived(gossiped_address), ComponentStatus::Initialized) => {
                 let requests = self.outgoing_manager.learn_addr(
                     gossiped_address.into(),
                     false,
@@ -1078,7 +1069,7 @@ where
             }
             (
                 Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)),
-                Status::Initialized,
+                ComponentStatus::Initialized,
             ) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
@@ -1097,7 +1088,7 @@ where
                     ContractRuntimeAnnouncement::LinearChainBlock { .. }
                     | ContractRuntimeAnnouncement::CommitStepSuccess { .. },
                 ),
-                Status::Initialized,
+                ComponentStatus::Initialized,
             ) => Effects::new(),
             (
                 Event::ContractRuntimeAnnouncement(
@@ -1106,7 +1097,7 @@ where
                         mut upcoming_era_validators,
                     },
                 ),
-                Status::Initialized,
+                ComponentStatus::Initialized,
             ) => {
                 if era_that_is_ending < self.active_era {
                     debug!("ignoring past era end announcement");
@@ -1152,7 +1143,7 @@ where
 
                 Effects::new()
             }
-            (Event::GossipOurAddress, Status::Initialized) => {
+            (Event::GossipOurAddress, ComponentStatus::Initialized) => {
                 let our_address = GossipedAddress::new(
                     self.context
                         .public_addr()
@@ -1169,7 +1160,7 @@ where
                 );
                 effects
             }
-            (Event::SweepOutgoing, Status::Initialized) => {
+            (Event::SweepOutgoing, ComponentStatus::Initialized) => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
 
@@ -1185,13 +1176,29 @@ where
             }
             (
                 Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
-                Status::Initialized,
+                ComponentStatus::Initialized,
             ) => {
                 self.context.is_syncing().store(false, Ordering::SeqCst);
                 self.close_incoming_connections();
                 Effects::new()
             }
         }
+    }
+}
+
+impl<REv, P> InitializedComponent<REv> for SmallNetwork<REv, P>
+where
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>
+        + From<BlocklistAnnouncement>,
+    P: Payload,
+{
+    fn status(&self) -> ComponentStatus {
+        self.status
     }
 }
 

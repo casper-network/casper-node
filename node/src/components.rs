@@ -68,15 +68,25 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
+
+use datasize::DataSize;
+use serde::Deserialize;
+
 // TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
 //       remove once the macro is deleted.
 #[cfg(test)]
 pub(crate) use crate::testing::fake_deploy_acceptor;
-
 use crate::{
     effect::{EffectBuilder, Effects},
     NodeRng,
 };
+
+#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug, Deserialize)]
+pub(crate) enum ComponentStatus {
+    Uninitialized,
+    Initialized,
+    Fatal,
+}
 
 /// Core Component.
 ///
@@ -119,4 +129,20 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
+}
+
+pub(crate) trait InitializedComponent<REv>: Component<REv> {
+    fn status(&self) -> ComponentStatus;
+
+    fn is_uninitialized(&self) -> bool {
+        self.status() == ComponentStatus::Uninitialized
+    }
+
+    fn is_initialized(&self) -> bool {
+        self.status() == ComponentStatus::Initialized
+    }
+
+    fn is_fatal(&self) -> bool {
+        self.status() == ComponentStatus::Fatal
+    }
 }

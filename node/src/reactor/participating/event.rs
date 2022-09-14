@@ -70,7 +70,13 @@ use crate::{
 // Note: The large enum size must be reigned in eventually. This is a stopgap for now.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ParticipatingEvent {
-    CheckState,
+    // Control logic == Reactor self events
+    // Shutdown the reactor, should only be raised by the reactor itself
+    Shutdown(String),
+    // Check the status of the reactor, should only be raised by the reactor itself
+    CheckStatus,
+
+    // Coordination events == component to component(s) or component to reactor events
     #[from]
     ChainSynchronizer(chain_synchronizer::Event),
     #[from]
@@ -282,6 +288,8 @@ impl ReactorEvent for ParticipatingEvent {
     #[inline]
     fn description(&self) -> &'static str {
         match self {
+            ParticipatingEvent::Shutdown(_) => "Shutdown",
+            ParticipatingEvent::CheckStatus => "CheckStatus",
             ParticipatingEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
             ParticipatingEvent::BlockProposer(_) => "BlockProposer",
@@ -387,7 +395,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
                 "CompleteBlockSynchronizerRequest"
             }
-            ParticipatingEvent::CheckState => "CheckState",
         }
     }
 }
@@ -443,6 +450,8 @@ impl From<ConsensusRequest> for ParticipatingEvent {
 impl Display for ParticipatingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ParticipatingEvent::Shutdown(msg) => write!(f, "shutdown: {}", msg),
+            ParticipatingEvent::CheckStatus => write!(f, "check status"),
             ParticipatingEvent::ChainSynchronizer(event) => {
                 write!(f, "chain synchronizer: {}", event)
             }
@@ -636,7 +645,6 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlockAddedResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
-            ParticipatingEvent::CheckState => write!(f, "check state"),
         }
     }
 }

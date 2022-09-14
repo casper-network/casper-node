@@ -9,7 +9,6 @@ use crate::{
         contract_runtime::BlockExecutionError, diagnostics_port, small_network, storage,
         upgrade_watcher,
     },
-    types::chainspec,
     utils::{ListeningError, LoadError},
 };
 

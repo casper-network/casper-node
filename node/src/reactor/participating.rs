@@ -15,8 +15,6 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
 
-use casper_types::EraId;
-
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -26,9 +24,9 @@ use crate::{
         chainspec_loader::{self, ChainspecLoader},
         complete_block_synchronizer::{self, CompleteBlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        contract_runtime::ContractRuntime,
+        contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
-        diagnostics_port::DiagnosticsPort,
+        diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
@@ -39,7 +37,7 @@ use crate::{
         small_network::{self, GossipedAddress, SmallNetwork},
         storage::Storage,
         upgrade_watcher::{self, UpgradeWatcher},
-        Component,
+        Component, InitializedComponent,
     },
     effect::{
         announcements::{
@@ -52,8 +50,9 @@ use crate::{
             BlockAddedResponseIncoming, NetResponseIncoming, SyncLeapResponseIncoming,
             TrieResponseIncoming,
         },
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
+    fatal,
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
@@ -343,8 +342,16 @@ pub(crate) struct Reactor {
     state: ReactorState,
 }
 
+fn is_uninitialized<T: InitializedComponent<ParticipatingEvent>>(component: &T) -> bool {
+    component.is_uninitialized()
+}
+
+fn is_fatal<T: InitializedComponent<ParticipatingEvent>>(component: &T) -> bool {
+    component.is_fatal()
+}
+
 impl Reactor {
-    fn check_state(
+    fn check_status(
         &mut self,
         effect_builder: EffectBuilder<ParticipatingEvent>,
         rng: &mut NodeRng,
@@ -352,7 +359,30 @@ impl Reactor {
         let mut effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
-                if !self.upgrade_watcher.is_initialized() {
+                if is_uninitialized(&self.diagnostics_port) {
+                    effects.extend(reactor::wrap_effects(
+                        ParticipatingEvent::DiagnosticsPort,
+                        self.diagnostics_port.handle_event(
+                            effect_builder,
+                            rng,
+                            diagnostics_port::Event::Initialize,
+                        ),
+                    ));
+                    effects.extend(
+                        effect_builder
+                            .immediately()
+                            .event(|()| ParticipatingEvent::CheckStatus),
+                    );
+                    return effects;
+                }
+                if is_fatal(&self.diagnostics_port) {
+                    return effect_builder.immediately().event(|()| {
+                        ParticipatingEvent::Shutdown(
+                            "diagnostics_port failed to initialize".to_string(),
+                        )
+                    });
+                }
+                if is_uninitialized(&self.upgrade_watcher) {
                     effects.extend(reactor::wrap_effects(
                         ParticipatingEvent::UpgradeWatcher,
                         self.upgrade_watcher.handle_event(
@@ -361,7 +391,40 @@ impl Reactor {
                             upgrade_watcher::Event::Initialize,
                         ),
                     ));
+                    effects.extend(
+                        effect_builder
+                            .immediately()
+                            .event(|()| ParticipatingEvent::CheckStatus),
+                    );
+                    return effects;
                 }
+                if is_fatal(&self.upgrade_watcher) {
+                    return effect_builder.immediately().event(|()| {
+                        ParticipatingEvent::Shutdown(
+                            "upgrade_watcher failed to initialize".to_string(),
+                        )
+                    });
+                }
+                // Y diagnostic assumed to not need special bs
+                // Y upgrade watcher
+                // N storage
+                // N block validator
+                // N linear chain aka block array
+                // Y block proposer
+                // N deploy acceptor
+                // N contract runtime
+                // N metrics
+                // N rest server
+                // N rpc server
+                // N gossiper
+                // N network
+                // N fetchers
+                // N sync leaper
+                // N blocks accumulator
+                // N blocks synchronizer
+                // N consensus / era_supervisor
+                // -- delete chain sync
+                // N delete chain spec loader / shift function to reactor
             }
             ReactorState::CatchUp => {}
             ReactorState::KeepUp => {}
@@ -596,19 +659,12 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
-        let (block_proposer, block_proposer_effects) = BlockProposer::new(
+        let block_proposer = BlockProposer::new(
             registry.clone(),
-            effect_builder,
             //highest_block_header.height() + 1,
-            // todo!(
-            //     "possibly a storage call to get the highest block header or initialize it with 0?"
-            // ),
-            0,
             &chainspec,
             config.block_proposer,
         )?;
-        let mut effects =
-            reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
 
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
@@ -617,19 +673,11 @@ impl reactor::Reactor for Reactor {
             our_secret_key,
             our_public_key,
             config.consensus,
-            //effect_builder,
             chainspec.clone(),
-            // &highest_block_header,
             next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
-            //&storage,
-            //rng,
         )?;
-        // effects.extend(reactor::wrap_effects(
-        //     ParticipatingEvent::Consensus,
-        //     consensus_effects,
-        // ));
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let linear_chain = LinearChainComponent::new(
@@ -641,7 +689,7 @@ impl reactor::Reactor for Reactor {
             next_upgrade_activation_point,
         )?;
 
-        let (chain_synchronizer, chain_synchronizer_effects) =
+        let (chain_synchronizer, _chain_synchronizer_effects) =
             ChainSynchronizer::<ParticipatingEvent>::new_for_sync_to_genesis(
                 chainspec.clone(),
                 config.node.clone(),
@@ -649,12 +697,8 @@ impl reactor::Reactor for Reactor {
                 chain_synchronizer::Metrics::new(registry).unwrap(),
                 effect_builder,
             )?;
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::ChainSynchronizer,
-            chain_synchronizer_effects,
-        ));
 
-        let fetchinator = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
+        let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
         let blocks_accumulator =
             BlocksAccumulator::new(chainspec.highway_config.finality_threshold_fraction);
@@ -663,14 +707,8 @@ impl reactor::Reactor for Reactor {
             chainspec.highway_config.finality_threshold_fraction,
         );
 
-        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
-            &WithDir::new(&root_dir, config.diagnostics_port.clone()),
-            event_queue,
-        )?;
-        effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::DiagnosticsPort,
-            diagnostics_port_effects,
-        ));
+        let diagnostics_port =
+            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port.clone()));
 
         let reactor = Reactor {
             chainspec_loader,
@@ -683,7 +721,7 @@ impl reactor::Reactor for Reactor {
             rest_server,
             event_stream_server,
             deploy_acceptor,
-            fetchers: fetchinator,
+            fetchers,
             deploy_gossiper,
             block_added_gossiper,
             finality_signature_gossiper,
@@ -700,6 +738,10 @@ impl reactor::Reactor for Reactor {
             event_queue_metrics,
             state: ReactorState::Initialize {},
         };
+
+        let effects = effect_builder
+            .immediately()
+            .event(|()| ParticipatingEvent::CheckStatus);
         Ok((reactor, effects))
     }
 
@@ -710,8 +752,17 @@ impl reactor::Reactor for Reactor {
         event: ParticipatingEvent,
     ) -> Effects<ParticipatingEvent> {
         match event {
-            ParticipatingEvent::CheckState => self.check_state(effect_builder, rng),
-            // delegate all fetcher activity to self.fetchinator.dispatch_fetcher_event(..)
+            ParticipatingEvent::Shutdown(msg) => {
+                return fatal!(
+                    effect_builder,
+                    "reactor should shut down due to error: {}",
+                    msg,
+                )
+                .ignore();
+                //kill me now please
+            }
+            ParticipatingEvent::CheckStatus => self.check_status(effect_builder, rng),
+            // delegate all fetcher activity to self.fetchers.dispatch_fetcher_event(..)
             ParticipatingEvent::DeployFetcher(..)
             | ParticipatingEvent::DeployFetcherRequest(..)
             | ParticipatingEvent::BlockFetcher(..)

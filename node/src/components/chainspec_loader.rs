@@ -74,6 +74,7 @@ impl ChainspecLoader {
     }
 }
 
+// TODO: KILL WITH FIRE...REACTOR HAS THIS STUFF NOW, DOESNT NEED TO BE ANEMIC COMPONENT
 impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<ChainspecLoaderRequest> + Send,
@@ -83,7 +84,7 @@ where
 
     fn handle_event(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
+        _effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {

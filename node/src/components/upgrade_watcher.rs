@@ -34,7 +34,7 @@ use casper_types::{
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::Component,
+    components::{Component, ComponentStatus, InitializedComponent},
     effect::{announcements::UpgradeWatcherAnnouncement, EffectBuilder, EffectExt, Effects},
     types::{
         chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
@@ -153,7 +153,7 @@ pub(crate) struct UpgradeWatcher {
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    is_initialized: bool,
+    status: ComponentStatus,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -177,10 +177,6 @@ impl UpgradeWatcher {
             .map(|next_upgrade| next_upgrade.activation_point())
     }
 
-    pub(crate) fn is_initialized(&self) -> bool {
-        self.is_initialized
-    }
-
     fn new_with_chainspec_and_path<P: AsRef<Path>>(
         chainspec: &Chainspec,
         chainspec_dir: P,
@@ -197,7 +193,7 @@ impl UpgradeWatcher {
         let upgrade_watcher = UpgradeWatcher {
             current_version,
             root_dir,
-            is_initialized: false,
+            status: ComponentStatus::Uninitialized,
             next_upgrade,
         };
 
@@ -240,11 +236,10 @@ impl UpgradeWatcher {
     where
         REv: From<UpgradeWatcherAnnouncement> + Send,
     {
-        if self.is_initialized {
-            error!("called start_checking_for_upgrades more than once");
+        if self.status != ComponentStatus::Uninitialized {
             return Effects::new();
         }
-        self.is_initialized = true;
+        self.status = ComponentStatus::Initialized;
         self.check_for_next_upgrade(effect_builder)
     }
 
@@ -255,6 +250,7 @@ impl UpgradeWatcher {
         let root_dir = self.root_dir.clone();
         let current_version = self.current_version;
         let mut effects = async move {
+            // TODO: only do this on era change / JIT
             let maybe_next_upgrade =
                 task::spawn_blocking(move || next_upgrade(root_dir, current_version))
                     .await
@@ -313,6 +309,14 @@ where
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }
+    }
+}
+impl<REv> InitializedComponent<REv> for UpgradeWatcher
+where
+    REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
+{
+    fn status(&self) -> ComponentStatus {
+        self.status
     }
 }
 
