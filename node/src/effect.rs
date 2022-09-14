@@ -167,7 +167,7 @@ use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
     ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    NodeStateRequest, StateStoreRequest, StorageRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1867,12 +1867,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested chainspec info from the chainspec loader.
-    pub(crate) async fn get_chainspec_info(self) -> ChainspecInfo
+    /// Gets the next scheduled upgrade, if any.
+    pub(crate) async fn get_next_upgrade(self) -> Option<NextUpgrade>
     where
-        REv: From<ChainspecLoaderRequest> + Send,
+        REv: From<UpgradeWatcherRequest> + Send,
     {
-        self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
+        self.make_request(UpgradeWatcherRequest, QueueKind::Regular)
             .await
     }
 

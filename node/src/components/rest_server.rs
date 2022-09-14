@@ -38,12 +38,12 @@ use crate::{
     effect::{
         requests::{
             ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            NodeStateRequest, RestRequest, StorageRequest,
+            NodeStateRequest, RestRequest, StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::StatusFeed,
+    types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -57,6 +57,7 @@ pub(crate) trait ReactorEventT:
     + From<NetworkInfoRequest>
     + From<StorageRequest>
     + From<ChainspecLoaderRequest>
+    + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
     + From<NodeStateRequest>
@@ -70,6 +71,7 @@ impl<REv> ReactorEventT for REv where
         + From<NetworkInfoRequest>
         + From<StorageRequest>
         + From<ChainspecLoaderRequest>
+        + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
         + From<NodeStateRequest>
@@ -88,6 +90,8 @@ pub(crate) struct InnerRestServer {
     server_join_handle: Option<JoinHandle<()>>,
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The network name, as specified in the chainspec
+    network_name: String,
 }
 
 #[derive(DataSize, Debug)]
@@ -101,6 +105,7 @@ impl RestServer {
         config: Config,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        network_name: String,
         node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
@@ -126,6 +131,7 @@ impl RestServer {
                 shutdown_sender,
                 server_join_handle,
                 node_startup_instant,
+                network_name,
             }),
         })
     }
@@ -154,17 +160,18 @@ where
         match event {
             Event::RestRequest(RestRequest::Status { responder }) => {
                 let node_uptime = rest_server.node_startup_instant.elapsed();
+                let network_name = rest_server.network_name.clone();
                 async move {
                     let (
                         last_added_block,
                         peers,
-                        chainspec_info,
+                        next_upgrade,
                         consensus_status,
                         node_state,
                     ) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
-                        effect_builder.get_chainspec_info(),
+                        effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
                         effect_builder.get_node_state()
                     );
@@ -172,7 +179,7 @@ where
                     let status_feed = StatusFeed::new(
                         last_added_block,
                         peers,
-                        chainspec_info,
+                        ChainspecInfo::new(network_name, next_upgrade),
                         consensus_status,
                         node_uptime,
                         node_state,

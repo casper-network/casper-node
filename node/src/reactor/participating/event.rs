@@ -31,6 +31,7 @@ use crate::{
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -193,6 +194,8 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
     #[from]
+    UpgradeWatcherRequest(#[serde(skip_serializing)] UpgradeWatcherRequest),
+    #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
@@ -351,6 +354,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
@@ -528,6 +532,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::ChainspecLoaderRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
+            }
+            ParticipatingEvent::UpgradeWatcherRequest(req) => {
+                write!(f, "upgrade watcher request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             ParticipatingEvent::MarkBlockCompletedRequest(req) => {

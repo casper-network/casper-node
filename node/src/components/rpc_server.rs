@@ -44,10 +44,11 @@ use crate::{
         requests::{
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
             NetworkInfoRequest, NodeStateRequest, RpcRequest, StorageRequest,
+            UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{BlockHeader, Deploy, StatusFeed},
+    types::{BlockHeader, ChainspecInfo, Deploy, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -61,6 +62,7 @@ pub(crate) trait ReactorEventT:
     + From<RpcRequest>
     + From<RpcServerAnnouncement>
     + From<ChainspecLoaderRequest>
+    + From<UpgradeWatcherRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
@@ -76,6 +78,7 @@ impl<REv> ReactorEventT for REv where
         + From<RpcRequest>
         + From<RpcServerAnnouncement>
         + From<ChainspecLoaderRequest>
+        + From<UpgradeWatcherRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
@@ -91,11 +94,17 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct InnerRpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The network name, as specified in the chainspec
+    network_name: String,
 }
 
 impl InnerRpcServer {
     pub fn node_startup_instant(&self) -> Instant {
         self.node_startup_instant
+    }
+
+    fn network_name(&self) -> String {
+        self.network_name.clone()
     }
 }
 
@@ -118,6 +127,7 @@ impl RpcServer {
         speculative_exec_config: SpeculativeExecConfig,
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        network_name: String,
         node_startup_instant: Instant,
     ) -> Result<Self, ListeningError>
     where
@@ -158,6 +168,7 @@ impl RpcServer {
 
         let inner_rpc = Some(InnerRpcServer {
             node_startup_instant,
+            network_name,
         });
 
         Ok(RpcServer {
@@ -398,18 +409,19 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
                 let node_uptime = rpc_server.node_startup_instant().elapsed();
+                let network_name = rpc_server.network_name();
                 async move {
-                    let (last_added_block, peers, chainspec_info, consensus_status, node_state) = join!(
+                    let (last_added_block, peers, next_upgrade, consensus_status, node_state) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
-                        effect_builder.get_chainspec_info(),
+                        effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
                         effect_builder.get_node_state()
                     );
                     let status_feed = StatusFeed::new(
                         last_added_block,
                         peers,
-                        chainspec_info,
+                        ChainspecInfo::new(network_name, next_upgrade),
                         consensus_status,
                         node_uptime,
                         node_state,

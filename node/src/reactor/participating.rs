@@ -625,12 +625,14 @@ impl reactor::Reactor for Reactor {
             config.speculative_exec_server.clone(),
             effect_builder,
             protocol_version,
+            chainspec.network_config.name.clone(),
             node_startup_instant,
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             protocol_version,
+            chainspec.network_config.name.clone(),
             node_startup_instant,
         )?;
         let event_stream_server = EventStreamServer::new(
@@ -995,6 +997,9 @@ impl reactor::Reactor for Reactor {
                 self.metrics.handle_event(effect_builder, rng, req),
             ),
             ParticipatingEvent::ChainspecLoaderRequest(req) => {
+                self.dispatch_event(effect_builder, rng, req.into())
+            }
+            ParticipatingEvent::UpgradeWatcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, req.into())
             }
             ParticipatingEvent::StorageRequest(req) => reactor::wrap_effects(

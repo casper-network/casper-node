@@ -21,7 +21,7 @@ use casper_types::{EraId, ProtocolVersion};
 use crate::{
     components::Component,
     effect::{requests::ChainspecLoaderRequest, EffectBuilder, EffectExt, Effects},
-    types::{chainspec::ChainspecRawBytes, Chainspec, ChainspecInfo},
+    types::{chainspec::ChainspecRawBytes, Chainspec},
     NodeRng,
 };
 
@@ -68,10 +68,6 @@ impl ChainspecLoader {
             .hard_reset
             .then(|| self.chainspec.protocol_config.activation_point.era_id())
     }
-
-    fn new_chainspec_info(&self) -> ChainspecInfo {
-        ChainspecInfo::new(self.chainspec.network_config.name.clone())
-    }
 }
 
 // TODO: KILL WITH FIRE...REACTOR HAS THIS STUFF NOW, DOESNT NEED TO BE ANEMIC COMPONENT
@@ -90,9 +86,6 @@ where
     ) -> Effects<Self::Event> {
         trace!("{}", event);
         match event {
-            ChainspecLoaderRequest::GetChainspecInfo(responder) => {
-                responder.respond(self.new_chainspec_info()).ignore()
-            }
             ChainspecLoaderRequest::GetChainspecRawBytes(responder) => responder
                 .respond(Arc::clone(&self.chainspec_raw_bytes))
                 .ignore(),

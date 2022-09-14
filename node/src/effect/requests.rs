@@ -44,6 +44,7 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
         sync_leaper::{ConstructSyncLeapError, PullSyncLeapError},
+        upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::{AutoClosingResponder, Responder},
@@ -1240,10 +1241,7 @@ pub(crate) enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
-#[allow(clippy::enum_variant_names)]
 pub(crate) enum ChainspecLoaderRequest {
-    /// Chainspec info request.
-    GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
     /// they are present.
     GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
@@ -1252,9 +1250,18 @@ pub(crate) enum ChainspecLoaderRequest {
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
+    }
+}
+
+/// UpgradeWatcher component request to get the next scheduled upgrade, if any.
+#[derive(Debug, Serialize)]
+pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>>);
+
+impl Display for UpgradeWatcherRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "get next upgrade")
     }
 }
 
