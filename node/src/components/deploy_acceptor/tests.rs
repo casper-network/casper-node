@@ -9,6 +9,7 @@ use std::{
 
 use derive_more::From;
 use futures::channel::oneshot;
+use num_rational::Ratio;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
@@ -416,6 +417,7 @@ impl reactor::Reactor for Reactor {
 
         let storage = Storage::new(
             &storage_withdir,
+            Ratio::new(1, 3),
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",

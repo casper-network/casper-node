@@ -73,6 +73,7 @@ reactor!(Reactor {
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
+            Ratio::new(1, 3),
             // TODO: Load the local chainspec file.
             false, // chainspec_loader.hard_reset_to_start_of_era(),
             ProtocolVersion::V1_0_0, // chainspec_loader.chainspec().protocol_config.version,

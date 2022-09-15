@@ -224,6 +224,7 @@ impl reactor::Reactor for Reactor {
         let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
         let storage = Storage::new(
             &storage_config,
+            chainspec.highway_config.finality_threshold_fraction,
             hard_reset_to_start_of_era,
             protocol_version,
             &chainspec.network_config.name,

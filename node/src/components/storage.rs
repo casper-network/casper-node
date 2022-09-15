@@ -96,7 +96,7 @@ use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
-use super::linear_chain::{self, BlockSignatureError};
+use super::linear_chain::{self};
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -196,6 +196,8 @@ pub struct Storage {
     /// the purpose of deciding how to respond to a
     /// `NetRequest::BlockHeaderAndFinalitySignaturesByHeight`.
     recent_era_count: u64,
+    #[data_size(skip)]
+    fault_tolerance_fraction: Ratio<u64>,
 }
 
 /// A storage component event.
@@ -281,18 +283,12 @@ where
     }
 }
 
-// TODO: Copy&Paste from `block_acceptor.rs` - should not be here
-pub enum SignaturesFinality {
-    Sufficient,
-    NotSufficient,
-    BogusValidators(Vec<PublicKey>),
-}
-
 impl Storage {
     /// Creates a new storage component.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
+        fault_tolerance_fraction: Ratio<u64>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
@@ -440,6 +436,7 @@ impl Storage {
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
+            fault_tolerance_fraction,
         };
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
@@ -1535,39 +1532,10 @@ impl Storage {
             .transpose()
     }
 
-    // TODO: Copy&Paste from `block_acceptor.rs` - should not be here
-    pub(super) fn has_sufficient_signatures(
-        block_signatures: &BlockSignatures,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: BTreeMap<PublicKey, U512>, // TODO: Should borrow that?
-    ) -> SignaturesFinality {
-        match linear_chain::check_sufficient_block_signatures(
-            &trusted_validator_weights,
-            fault_tolerance_fraction,
-            Some(&block_signatures),
-        ) {
-            Ok(_) => SignaturesFinality::Sufficient,
-            Err(err) => match err {
-                BlockSignatureError::BogusValidators {
-                    bogus_validators, ..
-                } => SignaturesFinality::BogusValidators(*bogus_validators),
-                BlockSignatureError::InsufficientWeightForFinality { .. } => {
-                    return SignaturesFinality::NotSufficient
-                }
-                BlockSignatureError::TooManySignatures { .. } => {
-                    // This error is returned only when the signatures are proven to be sufficient.
-                    SignaturesFinality::Sufficient
-                }
-            },
-        }
-    }
-
     /// Retrieves the highest block header from storage, if one exists. May return an LMDB error.
     fn get_header_of_highest_complete_block<Tx: Transaction>(
         &self,
         txn: &mut Tx,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
         let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
             Some(sequence) => sequence.high(),
@@ -1583,29 +1551,10 @@ impl Storage {
                     return Ok(None);
                 }
             };
-        let maybe_block =
-            self.get_single_block_header_with_metadata(txn, highest_complete_block_hash)?;
-        match maybe_block {
-            Some(highest_block) => {
-                if matches!(
-                    Self::has_sufficient_signatures(
-                        &highest_block.block_signatures,
-                        fault_tolerance_fraction,
-                        trusted_validator_weights.clone(),
-                    ),
-                    SignaturesFinality::Sufficient
-                ) {
-                    Ok(Some(highest_block))
-                } else {
-                    warn!("highest complete block didn't have sufficient signatures");
-                    Ok(None)
-                }
-            }
-            None => {
-                warn!("couldn't find the highest complete block in storage");
-                Ok(None)
-            }
-        }
+
+        // The `completed_blocks` contains blocks with sufficient finality signatures,
+        // so we don't need to check the sufficiency again.
+        self.get_single_block_header_with_metadata(txn, highest_complete_block_hash)
     }
 
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
@@ -1666,118 +1615,91 @@ impl Storage {
         Ok(Some(block_header))
     }
 
-    // TODO: Docs
-    // TODO: Could be optimized to use `get_blocks_while`
+    /// Returns block headers of the trusted block's ancestors, back to the most recent switch block.
+    /// If the trusted one is already a switch block, returns empty vec.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
-        block_hash: &BlockHash,
-        allowed_era_diff: u64,
+        trusted_block_header: &BlockHeader,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
-        let mut block_header: BlockHeader =
-            match txn.get_value(self.block_header_db, &block_hash)? {
-                Some(block_header) => block_header,
-                None => return Ok(None),
-            };
-
-        if block_header.is_switch_block() {
+        if trusted_block_header.is_switch_block() {
             return Ok(Some(vec![]));
         }
 
-        let initial_block_header_era = block_header.era_id();
+        let mut current_trusted_block_header = trusted_block_header.clone();
 
         let mut result = vec![];
         loop {
-            let parent_hash = block_header.parent_hash();
+            let parent_hash = current_trusted_block_header.parent_hash();
             let parent_block_header: BlockHeader =
                 match txn.get_value(self.block_header_db, &parent_hash)? {
                     Some(block_header) => block_header,
                     None => {
                         warn!(?parent_hash, "block header not found");
-                        todo!()
+                        return Ok(None);
                     }
                 };
-
-            let era_diff =
-                initial_block_header_era.saturating_sub(parent_block_header.era_id().into());
-            if allowed_era_diff <= era_diff.into() {
-                // TODO: Is it even possible when we stop at the first switch block?
-                // Diff between requested header and our current fully signed tip.
-                break;
-            }
 
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() {
                 break;
             }
-            block_header = parent_block_header;
+            current_trusted_block_header = parent_block_header;
         }
 
         Ok(Some(result))
     }
 
-    // TODO: Docs
-    // TODO: Should this also use the "allowed_era_diff",
-    fn get_signed_block_headers_with_metadata<Tx: Transaction>(
+    /// Returns headers of all known switch blocks after the trusted block but before
+    /// highest block, with signatures, plus the signed highest block.
+    fn get_signed_block_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
-        block_hash: &BlockHash,
-        block_height: u64,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: BTreeMap<PublicKey, U512>,
+        trusted_block_header: &BlockHeader,
+        highest_signed_block_header: &BlockHeaderWithMetadata,
+        mut switch_block: BlockHeader,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
-        // TODO: Could use that: switch_block_era_id_index
-        // TODO: using the `trusted_validator_weights` here is incorrect - the highest block might
-        // be from a different era; do we even need to check that it has enough signatures if it is
-        // in `completed_blocks`?
-        let maybe_highest_block_header_with_sufficient_signatures = self
-            .get_header_of_highest_complete_block(
-                txn,
-                fault_tolerance_fraction,
-                trusted_validator_weights,
-            )?;
-
-        if let Some(mut current_block_header_with_sufficient_signatures) =
-            maybe_highest_block_header_with_sufficient_signatures
-        {
-            if current_block_header_with_sufficient_signatures
-                .block_header
-                .height()
-                <= block_height
-            {
-                return Ok(Some(vec![]));
-            }
-
-            let mut result = vec![];
-            result.push(current_block_header_with_sufficient_signatures.clone());
-            loop {
-                let parent_hash = current_block_header_with_sufficient_signatures
-                    .block_header
-                    .parent_hash();
-                let parent_block_header_with_metadata =
-                    match self.get_single_block_header_with_metadata(txn, parent_hash)? {
-                        Some(block_header_with_metadata) => block_header_with_metadata,
-                        None => {
-                            warn!(?parent_hash, "block header not found");
-                            return Ok(None);
-                        }
-                    };
-                if parent_block_header_with_metadata.block_header.hash() == *block_hash {
-                    // Don't go back further, we're already at the block being requested.
-                    return Ok(Some(result));
-                }
-
-                if parent_block_header_with_metadata
-                    .block_header
-                    .is_switch_block()
-                {
-                    result.push(parent_block_header_with_metadata.clone());
-                }
-                current_block_header_with_sufficient_signatures = parent_block_header_with_metadata;
-            }
+        if trusted_block_header.hash() == highest_signed_block_header.block_header.hash() {
+            return Ok(Some(vec![]));
         }
 
-        Ok(None)
+        let start_era_id: u64 = trusted_block_header.next_block_era_id().into();
+        let current_era_id: u64 = highest_signed_block_header.block_header.era_id().into();
+
+        let mut result = vec![];
+
+        for era_id in start_era_id..current_era_id {
+            let hash = match self.switch_block_era_id_index.get(&EraId::from(era_id)) {
+                Some(hash) => hash,
+                None => return Ok(None),
+            };
+
+            let block = match self.get_single_block_header_with_metadata(txn, hash)? {
+                Some(block) => block,
+                None => return Ok(None),
+            };
+
+            let next_era_validator_weights = match switch_block.next_era_validator_weights() {
+                Some(next_era_validator_weights) => next_era_validator_weights,
+                None => return Ok(None),
+            };
+
+            if linear_chain::check_sufficient_block_signatures(
+                &next_era_validator_weights,
+                self.fault_tolerance_fraction,
+                Some(&block.block_signatures),
+            )
+            .is_ok()
+            {
+                switch_block = block.block_header.clone();
+                result.push(block);
+            } else {
+                return Ok(None);
+            }
+        }
+        result.push(highest_signed_block_header.clone());
+
+        return Ok(Some(result));
     }
 
     fn get_block_header_by_height_restricted<Tx: Transaction>(
@@ -2369,45 +2291,69 @@ impl Config {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum SyncLeapResult {
+    HaveIt(SyncLeap),
+    DontHaveIt,
+    TooOld,
+}
+
 // Testing code. The functions below allow direct inspection of the storage component and should
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
-    // TODO: Need a test in other component that will verify if the generated SyncLeap verifies
     pub(crate) fn get_sync_leap(
         &self,
         block_hash: BlockHash,
         allowed_era_diff: u64,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Result<Option<SyncLeap>, FatalStorageError> {
+    ) -> Result<SyncLeapResult, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
 
-        let trusted_block_header =
-            self.get_single_block_header_restricted(&mut txn, &block_hash, false)?;
-        let trusted_block_header = trusted_block_header.unwrap(); // TODO
+        let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
+            Some(trusted_block_header) => trusted_block_header,
+            None => return Ok(SyncLeapResult::DontHaveIt),
+        };
+
+        let highest_complete_block_header =
+            match self.get_header_of_highest_complete_block(&mut txn)? {
+                Some(highest_complete_block_header) => highest_complete_block_header,
+                None => return Ok(SyncLeapResult::DontHaveIt),
+            };
+        if highest_complete_block_header
+            .block_header
+            .era_id()
+            .saturating_sub(trusted_block_header.era_id().into())
+            > allowed_era_diff.into()
+        {
+            return Ok(SyncLeapResult::TooOld);
+        }
 
         let trusted_ancestor_headers =
-            self.get_trusted_ancestor_headers(&mut txn, &block_hash, allowed_era_diff)?;
-        let trusted_ancestor_headers = trusted_ancestor_headers.unwrap(); // TODO
+            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
+                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
+                None => return Ok(SyncLeapResult::DontHaveIt),
+            };
 
-        let signed_block_headers = self.get_signed_block_headers_with_metadata(
+        if let Some(signed_block_headers) = self.get_signed_block_headers(
             &mut txn,
-            &block_hash,
-            trusted_block_header.height(),
-            fault_tolerance_fraction,
-            trusted_validator_weights,
-        )?;
-        let signed_block_headers = signed_block_headers.unwrap(); // TODO
-
-        Ok(Some(SyncLeap {
-            trusted_block_header,
-            trusted_ancestor_headers,
-            signed_block_headers,
-        }))
+            &trusted_block_header,
+            &highest_complete_block_header,
+            trusted_ancestor_headers
+                .last()
+                .cloned()
+                .unwrap_or(trusted_block_header.clone()),
+        )? {
+            return Ok(SyncLeapResult::HaveIt(SyncLeap {
+                trusted_block_header,
+                trusted_ancestor_headers,
+                signed_block_headers,
+            }));
+        } else {
+            return Ok(SyncLeapResult::DontHaveIt);
+        }
     }
 
     /// Directly returns a deploy from internal store.

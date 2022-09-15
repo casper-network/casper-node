@@ -1603,7 +1603,10 @@ impl Block {
     }
 
     #[cfg(any(feature = "testing", test))]
-    pub fn random_with_specifics_and_parent<'a, I: IntoIterator<Item = &'a Deploy>>(
+    pub fn random_with_specifics_and_parent_and_validator_weights<
+        'a,
+        I: IntoIterator<Item = &'a Deploy>,
+    >(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
@@ -1611,19 +1614,24 @@ impl Block {
         is_switch: bool,
         deploys_iter: I,
         parent_block: Option<&Block>,
+        validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Self {
         let parent_hash = match parent_block {
             Some(parent) => parent.hash().clone(),
             None => BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
         };
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let finalized_block =
+        let mut finalized_block =
             FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
+        if !validator_weights.is_empty() {
+            finalized_block.era_report = Box::new(Some(EraReport::default()));
+        }
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let next_era_validator_weights = finalized_block
-            .clone()
-            .era_report
-            .map(|_| BTreeMap::<PublicKey, U512>::default());
+        let next_era_validator_weights = if validator_weights.is_empty() {
+            None
+        } else {
+            Some(validator_weights)
+        };
 
         Block::new(
             parent_hash,

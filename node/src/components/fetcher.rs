@@ -203,11 +203,6 @@ where
             error!(?error, "bogus validators block signature from storage");
             false
         }
-        // TODO - make this an error condition once we start using `get_minimal_set_of_signatures`.
-        Err(BlockSignatureError::TooManySignatures { .. }) => {
-            debug!("too many block signatures from storage");
-            true
-        }
         Ok(_) => true,
     }
 }

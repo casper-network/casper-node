@@ -129,10 +129,6 @@ impl BlockAcceptor {
                 BlockSignatureError::InsufficientWeightForFinality { .. } => {
                     return SignaturesFinality::NotSufficient
                 }
-                BlockSignatureError::TooManySignatures { .. } => {
-                    // This error is returned only when the signatures are proven to be sufficient.
-                    SignaturesFinality::Sufficient
-                }
             },
         }
     }

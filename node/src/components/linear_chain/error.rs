@@ -62,22 +62,4 @@ pub(crate) enum BlockSignatureError {
         total_validator_weight: Box<U512>,
         fault_tolerance_fraction: Ratio<u64>,
     },
-
-    #[error(
-        "Anti-spam: signature set not minimal. \
-         trusted validator weights: {trusted_validator_weights:?}, \
-         block signatures: {block_signatures:?}, \
-         signature weight: {signature_weight}, \
-         weight minus minimum: {weight_minus_minimum}, \
-         total validator weight: {total_validator_weight}, \
-         fault tolerance fraction: {fault_tolerance_fraction}"
-    )]
-    TooManySignatures {
-        trusted_validator_weights: BTreeMap<PublicKey, U512>,
-        block_signatures: Box<BlockSignatures>,
-        signature_weight: Box<U512>,
-        weight_minus_minimum: Box<U512>,
-        total_validator_weight: Box<U512>,
-        fault_tolerance_fraction: Ratio<u64>,
-    },
 }
