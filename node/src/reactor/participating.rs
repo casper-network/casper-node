@@ -32,7 +32,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain::{self, LinearChainComponent},
         metrics::Metrics,
-        rest_server::RestServer,
+        rest_server::RestServer, rest_server, rpc_server,
         rpc_server::RpcServer,
         small_network::{self, GossipedAddress, SmallNetwork},
         storage::Storage,
@@ -55,7 +55,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit, participating::utils::initialize_component},
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
         BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
@@ -70,8 +70,6 @@ pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
-use crate::components::rest_server;
-use crate::reactor::participating::utils::initialize_component;
 
 #[derive(DataSize, Debug)]
 enum ReactorState {
@@ -387,28 +385,15 @@ impl Reactor {
                 ) {
                     return effects;
                 }
-
-                // Y diagnostic assumed to not need special bs
-                // Y upgrade watcher
-                // N storage
-                // N block validator
-                // N linear chain aka block array
-                // Y block proposer
-                // N deploy acceptor
-                // N contract runtime
-                // N metrics
-                // N rest server
-                // N rpc server
-                // Y event stream server
-                // N gossiper
-                // N network
-                // N fetchers
-                // N sync leaper
-                // N blocks accumulator
-                // N blocks synchronizer
-                // N consensus / era_supervisor
-                // -- delete chain sync
-                // N delete chain spec loader / shift function to reactor
+                if let Some(effects) = initialize_component(
+                    effect_builder,
+                    &mut self.rpc_server,
+                    "rpc_server".to_string(),
+                    ParticipatingEvent::RpcServer(rpc_server::Event::Initialize)
+                ) {
+                    return effects;
+                }
+                // .. and so on
             }
             ReactorState::CatchUp => {}
             ReactorState::KeepUp => {}
@@ -604,11 +589,10 @@ impl reactor::Reactor for Reactor {
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
             config.speculative_exec_server.clone(),
-            effect_builder,
             protocol_version,
             chainspec.network_config.name.clone(),
             node_startup_instant,
-        )?;
+        );
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             protocol_version,
