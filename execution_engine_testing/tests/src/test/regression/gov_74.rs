@@ -9,12 +9,18 @@ use casper_execution_engine::{
         engine_state::{EngineConfigBuilder, Error},
         execution::Error as ExecError,
     },
-    shared::wasm_config::WasmConfig,
+    shared::{wasm_config::WasmConfig, wasm_prep::DEFAULT_MAX_PARAMETER_COUNT},
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
 
-const I32_WASM_SIZE_BYTES: usize = 8;
-const ARITY_INTERPRETER_LIMIT: usize = wasmi::DEFAULT_CALL_STACK_LIMIT / I32_WASM_SIZE_BYTES;
+use crate::wasm_utils;
+
+// Previously this value was derived from `wasmi::DEFAULT_CALL_STACK_LIMIT` as we haven't a check
+// for argument count declared in wasm functions. We have very restrictive stack height which also
+// means the maximum allowed function count still fails at runtime inside the stack limiter.
+//
+// Max parameter count - 1 will exercise the height limiter while passing the preprocessing stage.
+const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize - 1;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const I32_WAT_TYPE: &str = "i64";
 const NEW_WASM_STACK_HEIGHT: u32 = 16;
@@ -28,32 +34,6 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     )
 });
 
-fn make_n_arg_call_bytes(arity: usize, arg_type: &str) -> Vec<u8> {
-    let mut call_args = String::new();
-    for i in 0..arity {
-        call_args.push_str(&format!("({}.const {}) ", arg_type, i));
-    }
-
-    let mut func_params = String::new();
-    for i in 0..arity {
-        func_params.push_str(&format!("(param $arg{} {}) ", i, arg_type));
-    }
-
-    // This wasm module contains a function with a specified amount of arguments in it.
-    let wat = format!(
-        r#"(module
-        (func $call (call $func {call_args}) (return))
-        (func $func {func_params} (return))
-        (export "func" (func $func))
-        (export "call" (func $call))
-        (memory $memory 1)
-      )"#,
-        call_args = call_args,
-        func_params = func_params
-    );
-    wabt::wat2wasm(wat).expect("should parse wat")
-}
-
 fn initialize_builder() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -66,7 +46,9 @@ fn should_verify_interpreter_stack_limit() {
     let mut builder = initialize_builder();
 
     // This runs out of the interpreter stack limit
-    let module_bytes = make_n_arg_call_bytes(ARITY_INTERPRETER_LIMIT, I32_WAT_TYPE);
+    let module_bytes = wasm_utils::make_n_arg_call_bytes(ARITY_INTERPRETER_LIMIT, I32_WAT_TYPE)
+        .expect("should make wasm bytes");
+
     let exec = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
         module_bytes,
@@ -97,7 +79,9 @@ fn should_observe_stack_height_limit() {
 
     // This runs out of the interpreter stack limit
     let exec_request_1 = {
-        let module_bytes = make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize, I32_WAT_TYPE);
+        let module_bytes =
+            wasm_utils::make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize, I32_WAT_TYPE)
+                .expect("should make wasm bytes");
 
         ExecuteRequestBuilder::module_bytes(
             *DEFAULT_ACCOUNT_ADDR,
@@ -129,7 +113,9 @@ fn should_observe_stack_height_limit() {
     // An amount of args equal to the new limit fails because there's overhead of `fn call` that
     // adds 1 to the height.
     let exec_request_2 = {
-        let module_bytes = make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize, I32_WAT_TYPE);
+        let module_bytes =
+            wasm_utils::make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize, I32_WAT_TYPE)
+                .expect("should make wasm bytes");
 
         ExecuteRequestBuilder::module_bytes(
             *DEFAULT_ACCOUNT_ADDR,
@@ -151,7 +137,9 @@ fn should_observe_stack_height_limit() {
 
     // But new limit minus one runs fine
     let exec_request_3 = {
-        let module_bytes = make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize - 1, I32_WAT_TYPE);
+        let module_bytes =
+            wasm_utils::make_n_arg_call_bytes(NEW_WASM_STACK_HEIGHT as usize - 1, I32_WAT_TYPE)
+                .expect("should make wasm bytes");
 
         ExecuteRequestBuilder::module_bytes(
             *DEFAULT_ACCOUNT_ADDR,

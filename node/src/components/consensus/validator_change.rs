@@ -191,11 +191,8 @@ mod tests {
             cannot_propose: &Default::default(),
         };
 
-        let expected_change = vec![(
-            seen_as_faulty_in_new_era.clone(),
-            ValidatorChange::SeenAsFaulty,
-        )];
         let actual_change = ValidatorChanges::new_from_metadata(era0_metadata, era1_metadata);
+        let expected_change = vec![(seen_as_faulty_in_new_era, ValidatorChange::SeenAsFaulty)];
         assert_eq!(expected_change, actual_change.0)
     }
 

@@ -269,7 +269,7 @@ where
         // Optimization: Don't look for descendants of leaves.
         match maybe_retrieved_trie_bytes
             .as_ref()
-            .and_then(|bytes| bytes.get(0))
+            .and_then(|bytes| bytes.first())
         {
             // if this is a leaf don't parse (ie, the first byte is 0), just continue
             Some(0) => continue,

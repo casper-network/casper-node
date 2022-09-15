@@ -137,7 +137,7 @@ impl Distribution<AccessRights> for Standard {
 }
 
 /// Used to indicate if a granted [`URef`] was already held by the context.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum GrantedAccess {
     /// No new set of access rights were granted.
     PreExisting,
@@ -151,7 +151,7 @@ pub enum GrantedAccess {
 }
 
 /// Access rights for a given runtime context.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ContextAccessRights {
     context_key: Key,
     access_rights: BTreeMap<URefAddr, AccessRights>,

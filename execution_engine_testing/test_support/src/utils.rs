@@ -194,7 +194,7 @@ pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
 /// # Panics
 /// Panics if `response` is `None`.
 pub fn get_success_result(response: &[Rc<ExecutionResult>]) -> &ExecutionResult {
-    &*response.get(0).expect("should have a result")
+    response.get(0).expect("should have a result")
 }
 
 /// Returns an error if the `ExecutionResult` has an error.
