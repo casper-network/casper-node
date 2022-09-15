@@ -246,7 +246,7 @@ where
             &net_metrics,
         )?);
 
-        let mut component = SmallNetwork {
+        let component = SmallNetwork {
             cfg,
             context,
             outgoing_manager,

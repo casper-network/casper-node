@@ -1,10 +1,7 @@
-use std::str::FromStr;
 use std::time::Duration;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-
-use casper_types::TimeDiff;
 
 // TODO: 60s might be too aggressive
 const DEFAULT_EXPIRY_CHECK_SECONDS: u64 = 60u64;

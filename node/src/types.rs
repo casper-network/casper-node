@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! Common types used across multiple components.
 
 pub(crate) mod appendable_block;
@@ -50,7 +52,7 @@ pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
-pub(crate) use sync_leap::{SyncLeap, SyncLeapValidationError};
+pub(crate) use sync_leap::{SyncLeap};
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
 };

@@ -9,7 +9,6 @@ use casper_types::PublicKey;
 use derive_more::From;
 use futures::stream::{SplitSink, SplitStream};
 use serde::Serialize;
-use static_assertions::const_assert;
 use tracing::Span;
 
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};

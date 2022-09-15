@@ -2286,7 +2286,7 @@ fn is_current_era_given_current_timestamp(
 mod tests {
     use std::iter;
 
-    use casper_types::{testing::TestRng, EraId, PublicKey, SecretKey};
+    use casper_types::{EraId, PublicKey, SecretKey};
 
     use super::*;
     use crate::{

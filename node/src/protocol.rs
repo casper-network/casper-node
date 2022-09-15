@@ -67,16 +67,6 @@ pub(crate) enum Message {
     FinalitySignature(Box<FinalitySignature>),
 }
 
-/// Describes the validity of the message.
-pub(crate) enum Validity {
-    /// All checks made on the message indicate that it is valid.
-    Valid,
-    /// The message is not malicious, but not all checks could be executed to prove that.
-    NotValid,
-    /// Checks made on the message indicate that it is malicious.
-    Malicious,
-}
-
 impl Payload for Message {
     #[inline]
     fn message_kind(&self) -> MessageKind {

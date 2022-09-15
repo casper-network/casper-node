@@ -18,7 +18,7 @@ use regex::Regex;
 use stats_alloc::{StatsAlloc, INSTRUMENTED_SYSTEM};
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
     logging,
@@ -190,10 +190,6 @@ impl Cli {
 
                 match participating_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
-                    reactor_exit => {
-                        error!("validator should not exit with {:?}", reactor_exit);
-                        Ok(ExitCode::Abort as i32)
-                    }
                 }
             }
             Cli::MigrateConfig {
@@ -274,5 +270,13 @@ impl Cli {
         logging::init_with_config(&participating_config.logging)?;
 
         Ok(WithDir::new(root, participating_config))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reminder_to_not_allow_unused() {
+        panic!("#![allow(unused)] was introduced in several modules to minimize the warning bloat during the mob development of the new fast sync. This is a reminder that this flag should be disabled once the source code stabilizes.")
     }
 }

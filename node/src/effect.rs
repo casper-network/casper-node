@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! Effects subsystem.
 //!
 //! Effects describe things that the creator of the effect intends to happen, producing a value upon
@@ -149,7 +151,7 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAdded, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
         TrieOrChunk, TrieOrChunkId,
