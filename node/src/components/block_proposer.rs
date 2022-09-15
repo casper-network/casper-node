@@ -258,23 +258,6 @@ where
     }
 }
 
-impl<REv> InitializedComponent<REv> for BlockProposer
-where
-    REv: From<Event>
-        + From<StorageRequest>
-        + From<StateStoreRequest>
-        + From<BlockProposerAnnouncement>
-        + Send
-        + 'static,
-{
-    fn status(&self) -> ComponentStatus {
-        match self.state {
-            BlockProposerState::Initializing { status, .. } => status,
-            BlockProposerState::Ready(_) => ComponentStatus::Initialized,
-        }
-    }
-}
-
 /// State of operational block proposer.
 #[derive(DataSize, Debug)]
 #[cfg_attr(test, derive(Default))]

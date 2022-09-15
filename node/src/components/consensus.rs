@@ -40,8 +40,9 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::ConsensusMessageIncoming,
         requests::{
-            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+            BlockProposerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
+            ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -254,7 +255,7 @@ pub(crate) trait ReactorEventT:
     + From<BlockValidationRequest>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
-    + From<ChainspecLoaderRequest>
+    + From<ChainspecRawBytesRequest>
     + From<BlocklistAnnouncement>
     + From<BlocklistAnnouncement>
 {
@@ -271,7 +272,7 @@ impl<REv> ReactorEventT for REv where
         + From<BlockValidationRequest>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + From<BlocklistAnnouncement>
 {
 }

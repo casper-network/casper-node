@@ -3,7 +3,7 @@ use uint::FromDecStrErr;
 
 use casper_types::file_utils::ReadFileError;
 
-/// Error returned by the `ChainspecLoader`.
+/// Error returned when loading the chainspec.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error while decoding the chainspec from TOML format.

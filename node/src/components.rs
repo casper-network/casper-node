@@ -48,7 +48,6 @@ pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod blocks_accumulator;
 pub(crate) mod chain_synchronizer;
-pub(crate) mod chainspec_loader;
 pub(crate) mod complete_block_synchronizer;
 pub(crate) mod consensus;
 pub mod contract_runtime;
@@ -68,7 +67,9 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
+pub(crate) mod deploy_buffer;
 
+use std::fmt::{Debug, Display};
 use datasize::DataSize;
 use serde::Deserialize;
 
@@ -81,11 +82,12 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug, Deserialize)]
+#[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
 pub(crate) enum ComponentStatus {
+    #[default]
     Uninitialized,
     Initialized,
-    Fatal,
+    Fatal(String),
 }
 
 /// Core Component.
@@ -143,6 +145,26 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
     }
 
     fn is_fatal(&self) -> bool {
-        self.status() == ComponentStatus::Fatal
+        matches!(self.status() , ComponentStatus::Fatal(_))
     }
 }
+
+pub(crate) trait PortBoundComponent<REv> : InitializedComponent<REv>
+{
+    type Error: Display + Debug;
+    type ComponentEvent;
+
+    fn bind(&mut self, enabled: bool, effect_builder: EffectBuilder<REv>) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
+        if enabled == false {
+            return (Effects::new(), ComponentStatus::Initialized);
+        }
+
+        match self.listen(effect_builder){
+            Ok(effects) => (effects, ComponentStatus::Initialized),
+            Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error)))
+        }
+    }
+
+    fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
+}
+

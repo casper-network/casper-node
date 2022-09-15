@@ -31,7 +31,7 @@ use crate::{
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ChainspecRawBytesRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
@@ -93,7 +93,7 @@ where
         + From<NetworkRequest<Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     outcomes
@@ -171,7 +171,7 @@ where
         + From<NetworkRequest<Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     type Event = Event;

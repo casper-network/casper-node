@@ -20,7 +20,7 @@ use tokio::{net::UnixListener, sync::watch};
 use tracing::{debug, warn};
 
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent},
+    components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
     effect::{
         announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
         EffectBuilder, EffectExt, Effects,
@@ -73,71 +73,8 @@ impl DiagnosticsPort {
             shutdown_sender: None,
         }
     }
-
-    fn init<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Event>, Error>
-    where
-        REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
-    {
-        let config = self.config.value();
-        if !config.enabled {
-            // If not enabled, do not launch a background task, simply exit immediately.
-            // Having a shutdown sender around still is harmless.
-            debug!("diagnostics port disabled");
-            self.status = ComponentStatus::Initialized;
-            return Ok(Effects::new());
-        };
-
-        let (shutdown_sender, shutdown_receiver) = watch::channel(());
-
-        self.shutdown_sender = Some(shutdown_sender);
-
-        let socket_path = self.config.with_dir(config.socket_path.clone());
-        let listener = setup_listener(
-            &socket_path,
-            // Mac OS X / Linux use different types for the mask, so we need to call .into() here.
-            #[allow(clippy::useless_conversion)]
-            config.socket_umask.into(),
-        )?;
-        let server = tasks::server(effect_builder, socket_path, listener, shutdown_receiver);
-
-        Ok(server.ignore())
-    }
 }
 
-/// Sets up a UNIX socket listener at the given path.
-///
-/// If the socket already exists, an attempt to delete it is made. Errors during deletion are
-/// ignored, but may cause the subsequent socket opening to fail.
-fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Result<UnixListener> {
-    let socket_path = path.as_ref();
-
-    // This would be racy, but no one is racing us for the socket, so we'll just do a naive
-    // check-then-delete :).
-    if socket_path.exists() {
-        debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
-        match fs::remove_file(&socket_path) {
-            Ok(_) => {
-                debug!("stale socket file removed");
-            }
-            Err(err) => {
-                // This happens if a background program races us for the removal, as it usually
-                // means the file is already gone. We can ignore this, but make note of it in the
-                // log.
-                warn!(%err, "could not remove stale socket file, assuming race with other process");
-            }
-        }
-    }
-
-    // This is not thread-safe, as it will set the umask for the entire process, but we assume that
-    // initalization happens "sufficiently single-threaded".
-    let umask_guard = umask::temp_umask(socket_umask);
-    let listener = UnixListener::bind(socket_path)?;
-    drop(umask_guard);
-
-    debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "diagnostics port listening");
-
-    Ok(listener)
-}
 
 /// Diagnostics port event.
 #[derive(Debug, Serialize)]
@@ -177,16 +114,9 @@ where
                 if self.status != ComponentStatus::Uninitialized {
                     return Effects::new();
                 }
-                match self.init(effect_builder) {
-                    Ok(effects) => {
-                        self.status = ComponentStatus::Initialized;
-                        effects
-                    }
-                    Err(_) => {
-                        self.status = ComponentStatus::Fatal;
-                        Effects::new()
-                    }
-                }
+                let (effects, status) = self.bind( self.config.value().enabled, effect_builder);
+                self.status = status;
+                effects
             }
         }
     }
@@ -197,8 +127,69 @@ where
     REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
 {
     fn status(&self) -> ComponentStatus {
-        self.status
+        self.status.clone()
     }
+}
+
+impl<REv> PortBoundComponent<REv> for DiagnosticsPort
+    where
+        REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+{
+    type Error = Error;
+    type ComponentEvent = Event;
+
+    fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Event>, Self::Error> {
+        let (shutdown_sender, shutdown_receiver) = watch::channel(());
+
+        self.shutdown_sender = Some(shutdown_sender);
+
+        let cfg = self.config.value();
+
+        let socket_path = self.config.with_dir(cfg.socket_path.clone());
+        let listener = setup_listener(
+            &socket_path,
+            // Mac OS X / Linux use different types for the mask, so we need to call .into() here.
+            #[allow(clippy::useless_conversion)]
+                cfg.socket_umask.into(),
+        )?;
+        let server = tasks::server(effect_builder, socket_path, listener, shutdown_receiver);
+        Ok(server.ignore())
+    }
+}
+
+/// Sets up a UNIX socket listener at the given path.
+///
+/// If the socket already exists, an attempt to delete it is made. Errors during deletion are
+/// ignored, but may cause the subsequent socket opening to fail.
+fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Result<UnixListener> {
+    let socket_path = path.as_ref();
+
+    // This would be racy, but no one is racing us for the socket, so we'll just do a naive
+    // check-then-delete :).
+    if socket_path.exists() {
+        debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
+        match fs::remove_file(&socket_path) {
+            Ok(_) => {
+                debug!("stale socket file removed");
+            }
+            Err(err) => {
+                // This happens if a background program races us for the removal, as it usually
+                // means the file is already gone. We can ignore this, but make note of it in the
+                // log.
+                warn!(%err, "could not remove stale socket file, assuming race with other process");
+            }
+        }
+    }
+
+    // This is not thread-safe, as it will set the umask for the entire process, but we assume that
+    // initalization happens "sufficiently single-threaded".
+    let umask_guard = umask::temp_umask(socket_umask);
+    let listener = UnixListener::bind(socket_path)?;
+    drop(umask_guard);
+
+    debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "diagnostics port listening");
+
+    Ok(listener)
 }
 
 #[cfg(test)]

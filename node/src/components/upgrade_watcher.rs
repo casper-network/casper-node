@@ -316,7 +316,7 @@ where
     REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
     fn status(&self) -> ComponentStatus {
-        self.status
+        self.status.clone()
     }
 }
 

@@ -460,3 +460,11 @@ socket_path = "debug.socket"
 # socket to be only accessible by the user the node runs as. A more relaxed variant is `0o007`,
 # which allows for group access as well.
 socket_umask = 0o077
+
+# ====================================================================
+# Configuration options for deploy buffer
+# ====================================================================
+[deploy_buffer]
+
+# The deploy buffer will check for expired deploys every n seconds.
+expiry_check_seconds = '60s'

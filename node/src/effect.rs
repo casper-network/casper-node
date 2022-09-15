@@ -165,9 +165,9 @@ use announcements::{
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    NodeStateRequest, StateStoreRequest, StorageRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1867,12 +1867,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested chainspec info from the chainspec loader.
-    pub(crate) async fn get_chainspec_info(self) -> ChainspecInfo
+    /// Gets the next scheduled upgrade, if any.
+    pub(crate) async fn get_next_upgrade(self) -> Option<NextUpgrade>
     where
-        REv: From<ChainspecLoaderRequest> + Send,
+        REv: From<UpgradeWatcherRequest> + Send,
     {
-        self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
+        self.make_request(UpgradeWatcherRequest, QueueKind::Regular)
             .await
     }
 
@@ -2103,7 +2103,7 @@ impl<REv> EffectBuilder<REv> {
     /// block after a restart.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
+        REv: From<StorageRequest> + From<ChainspecRawBytesRequest>,
     {
         // TODO (#3233): If there was an upgrade changing the validator set at `era_id`, the switch
         // block at this era will be the immediate switch block created after the upgrade. We should
@@ -2127,7 +2127,7 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecRawBytesRequest>,
     {
         // try just reading the era validators first
         let maybe_era_validators = self.get_era_validators(era_id).await;
@@ -2227,10 +2227,10 @@ impl<REv> EffectBuilder<REv> {
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
     where
-        REv: From<ChainspecLoaderRequest> + Send,
+        REv: From<ChainspecRawBytesRequest> + Send,
     {
         self.make_request(
-            ChainspecLoaderRequest::GetChainspecRawBytes,
+            ChainspecRawBytesRequest::GetChainspecRawBytes,
             QueueKind::Regular,
         )
         .await

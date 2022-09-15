@@ -5,9 +5,8 @@ use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 
 use crate::{
     components::{
-        chain_synchronizer, chainspec_loader, contract_runtime,
-        contract_runtime::BlockExecutionError, diagnostics_port, small_network, storage,
-        upgrade_watcher,
+        chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
+        diagnostics_port, small_network, storage, upgrade_watcher,
     },
     utils::{ListeningError, LoadError},
 };
@@ -15,10 +14,6 @@ use crate::{
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
 pub(crate) enum Error {
-    /// `ChainspecLoader` component error.
-    #[error("chainspec loader error: {0}")]
-    ChainspecLoader(#[from] chainspec_loader::Error),
-
     /// `UpgradeWatcher` component error.
     #[error("upgrade watcher error: {0}")]
     UpgradeWatcher(#[from] upgrade_watcher::Error),
