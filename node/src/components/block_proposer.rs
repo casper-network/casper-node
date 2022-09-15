@@ -25,11 +25,10 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{PublicKey, Timestamp};
 
-use crate::components::{ComponentStatus, InitializedComponent};
 use crate::{
     components::{
         consensus::{BlockContext, ClContext},
-        Component,
+        Component, ComponentStatus, InitializedComponent,
     },
     effect::{
         announcements::BlockProposerAnnouncement,

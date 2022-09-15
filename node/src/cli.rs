@@ -20,13 +20,12 @@ use structopt::StructOpt;
 use toml::{value::Table, Value};
 use tracing::{error, info};
 
-use crate::utils::Loadable;
 use crate::{
     logging,
     reactor::{participating, ReactorExit, Runner},
     setup_signal_hooks,
     types::{Chainspec, ChainspecRawBytes, ExitCode},
-    utils::WithDir,
+    utils::{Loadable, WithDir},
 };
 
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF

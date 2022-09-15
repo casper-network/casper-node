@@ -18,7 +18,6 @@ use casper_types::{
     PublicKey, U512,
 };
 
-use crate::contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME};
 use crate::{
     components::{
         consensus::EraReport,
@@ -27,6 +26,7 @@ use crate::{
             BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
+    contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{error::BlockCreationError, Block, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{

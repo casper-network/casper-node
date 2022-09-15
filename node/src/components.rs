@@ -61,22 +61,18 @@ pub(crate) mod rest_server;
 pub mod rpc_server;
 pub(crate) mod upgrade_watcher;
 // The `in_memory_network` is public for use in doctests.
+pub(crate) mod deploy_buffer;
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
-pub(crate) mod deploy_buffer;
 
-use std::fmt::{Debug, Display};
 use datasize::DataSize;
 use serde::Deserialize;
+use std::fmt::{Debug, Display};
 
-// TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
-//       remove once the macro is deleted.
-#[cfg(test)]
-pub(crate) use crate::testing::fake_deploy_acceptor;
 use crate::{
     effect::{EffectBuilder, Effects},
     NodeRng,
@@ -145,26 +141,31 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
     }
 
     fn is_fatal(&self) -> bool {
-        matches!(self.status() , ComponentStatus::Fatal(_))
+        matches!(self.status(), ComponentStatus::Fatal(_))
     }
 }
 
-pub(crate) trait PortBoundComponent<REv> : InitializedComponent<REv>
-{
+pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
     type Error: Display + Debug;
     type ComponentEvent;
 
-    fn bind(&mut self, enabled: bool, effect_builder: EffectBuilder<REv>) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
+    fn bind(
+        &mut self,
+        enabled: bool,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
         if enabled == false {
             return (Effects::new(), ComponentStatus::Initialized);
         }
 
-        match self.listen(effect_builder){
+        match self.listen(effect_builder) {
             Ok(effects) => (effects, ComponentStatus::Initialized),
-            Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error)))
+            Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error))),
         }
     }
 
-    fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
 }
-

@@ -1,10 +1,10 @@
-mod event;
 mod config;
+mod event;
 
 use std::{
     collections::{BTreeMap, HashSet},
     mem,
-    time::Duration
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -12,7 +12,7 @@ use itertools::Itertools;
 use regex::internal::Input;
 use tracing::{debug, error};
 
-use casper_types::{TimeDiff, Timestamp, bytesrepr::ToBytes};
+use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use event::{DeployBufferRequest, ProposableDeploy};
 
@@ -23,7 +23,7 @@ use crate::{
     },
     effect::{
         announcements::BlockProposerAnnouncement, requests::StateStoreRequest, EffectBuilder,
-        Effects, EffectExt
+        EffectExt, Effects,
     },
     storage::StorageRequest,
     types::{chainspec::DeployConfig, Deploy, DeployHash, FinalizedBlock},
@@ -58,15 +58,18 @@ impl DeployBuffer {
 
     fn expire(&mut self) {
         let earliest_acceptable_timestamp = Timestamp::now() - self.deploy_config.max_ttl;
-        let (buffer, freed) : (BTreeMap<DeployHash, Deploy>, BTreeMap<DeployHash, Deploy>) = mem::take(&mut self.buffer)
-            .into_iter()
-            .partition(|(_, v)| v.header().timestamp() >= earliest_acceptable_timestamp);
+        let (buffer, freed): (BTreeMap<DeployHash, Deploy>, BTreeMap<DeployHash, Deploy>) =
+            mem::take(&mut self.buffer)
+                .into_iter()
+                .partition(|(_, v)| v.header().timestamp() >= earliest_acceptable_timestamp);
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
-        self.hold.iter_mut().for_each(|(k,v)| v.retain(|v| freed.contains_key(v)));
-        self.hold.retain(|k,v| v.is_empty() == false);
+        self.hold
+            .iter_mut()
+            .for_each(|(k, v)| v.retain(|v| freed.contains_key(v)));
+        self.hold.retain(|k, v| v.is_empty() == false);
 
-        self.dead.retain(|v|freed.contains_key(v) == false);
+        self.dead.retain(|v| freed.contains_key(v) == false);
         self.buffer = buffer;
     }
 
@@ -83,11 +86,16 @@ impl DeployBuffer {
     }
 
     fn block_proposed(&mut self, proposed_block: Box<ProposedBlock<ClContext>>) {
-        self.hold.get_mut(&proposed_block.context().timestamp()).map(|hs| hs.extend(
-            proposed_block.value()
-                .deploy_hashes()
-                .chain(proposed_block.value().transfer_hashes()),
-        ));
+        self.hold
+            .get_mut(&proposed_block.context().timestamp())
+            .map(|hs| {
+                hs.extend(
+                    proposed_block
+                        .value()
+                        .deploy_hashes()
+                        .chain(proposed_block.value().transfer_hashes()),
+                )
+            });
     }
 
     fn block_finalized(&mut self, finalized_block: &FinalizedBlock) {
@@ -108,7 +116,8 @@ impl DeployBuffer {
 
     fn proposable(&self) -> Vec<Deploy> {
         // a deploy hash that is not in dead or hold is proposable
-        self.buffer.iter()
+        self.buffer
+            .iter()
             .filter(|(k, _)| self.hold.values().any(|hs| hs.contains(k)) == false)
             .filter(|(k, _)| self.dead.contains(k) == false)
             .map(|(_, v)| v.clone())
@@ -119,7 +128,7 @@ impl DeployBuffer {
     fn proposable_deploys(&mut self, timestamp: Timestamp) -> Vec<ProposableDeploy> {
         fn skip(current: &mut usize, next: usize, max: usize) -> bool {
             if *current + next > max {
-                return true
+                return true;
             }
             *current += next;
             return false;
@@ -152,7 +161,11 @@ impl DeployBuffer {
                 self.dead.insert(deploy_hash);
                 continue;
             }
-            if skip(&mut total_approvals, deploy.approvals().len(), max_approvals) {
+            if skip(
+                &mut total_approvals,
+                deploy.approvals().len(),
+                max_approvals,
+            ) {
                 continue;
             }
             if skip(&mut total_size, deploy.serialized_length(), max_block_size) {
@@ -186,17 +199,17 @@ impl DeployBuffer {
         }
 
         // put a hold on all proposed deploys / transfers
-        self.hold.insert(timestamp, ret.iter().map(|pd|pd.deploy_hash()).collect());
+        self.hold
+            .insert(timestamp, ret.iter().map(|pd| pd.deploy_hash()).collect());
 
         ret
     }
 }
 
 impl<REv> InitializedComponent<REv> for DeployBuffer
-    where
-        REv: From<Event>
-        + Send
-        + 'static, {
+where
+    REv: From<Event> + Send + 'static,
+{
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
@@ -204,9 +217,7 @@ impl<REv> InitializedComponent<REv> for DeployBuffer
 
 impl<REv> Component<REv> for DeployBuffer
 where
-    REv: From<Event>
-        + Send
-        + 'static,
+    REv: From<Event> + Send + 'static,
 {
     type Event = Event;
     type ConstructionError = ();
@@ -219,7 +230,10 @@ where
     ) -> Effects<Self::Event> {
         match (self.status.clone(), event) {
             (ComponentStatus::Fatal(msg), _) => {
-                error!(msg, "should not handle this event when this component has fatal error");
+                error!(
+                    msg,
+                    "should not handle this event when this component has fatal error"
+                );
                 return Effects::new();
             }
             (ComponentStatus::Uninitialized, Event::Initialize) => {
@@ -231,22 +245,27 @@ where
             }
             (ComponentStatus::Uninitialized, _) => {
                 error!("should not handle this event when component is uninitialized");
-                self.status = ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
+                self.status =
+                    ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
                 return Effects::new();
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 error!("should not initialize when component is already initialized");
-                self.status = ComponentStatus::Fatal("attempt to reinitialize component".to_string());
+                self.status =
+                    ComponentStatus::Fatal("attempt to reinitialize component".to_string());
                 return Effects::new();
             }
-            (ComponentStatus::Initialized, Event::Request(DeployBufferRequest::GetProposableDeploys(timestamp, responder))) => {
-                responder.respond(self.proposable_deploys(timestamp)).ignore()
-            }
+            (
+                ComponentStatus::Initialized,
+                Event::Request(DeployBufferRequest::GetProposableDeploys(timestamp, responder)),
+            ) => responder
+                .respond(self.proposable_deploys(timestamp))
+                .ignore(),
             (ComponentStatus::Initialized, Event::BlockFinalized(finalized_block)) => {
                 self.block_finalized(&*finalized_block);
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::BlockProposed(proposed) )=> {
+            (ComponentStatus::Initialized, Event::BlockProposed(proposed)) => {
                 self.block_proposed(proposed);
                 Effects::new()
             }

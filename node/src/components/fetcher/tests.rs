@@ -1,9 +1,13 @@
 #![cfg(test)]
-#![allow(unreachable_code)]
 
-use std::sync::{Arc, Mutex};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::{Arc, Mutex},
+};
 
+use derive_more::From;
 use futures::FutureExt;
+use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 
@@ -13,24 +17,35 @@ use casper_types::testing::TestRng;
 use super::*;
 use crate::{
     components::{
-        deploy_acceptor, fetcher, in_memory_network::NetworkController,
-        small_network::GossipedAddress, storage,
+        deploy_acceptor, fetcher,
+        in_memory_network::{self, InMemoryNetwork, NetworkController},
+        small_network::GossipedAddress,
+        storage::{self, Storage},
     },
     effect::{
-        announcements::DeployAcceptorAnnouncement,
-        incoming::{NetResponse, NetResponseIncoming},
+        announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, RpcServerAnnouncement},
+        incoming::{
+            BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
+            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponse,
+            NetResponseIncoming, SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand,
+            TrieRequestIncoming, TrieResponseIncoming,
+        },
+        requests::{MarkBlockCompletedRequest, StateStoreRequest},
         Responder,
     },
     fatal,
     protocol::Message,
-    reactor::{Reactor as ReactorTrait, Runner},
+    reactor::{self, EventQueueHandle, Reactor as ReactorTrait, ReactorEvent, ReactorExit, Runner},
     testing::{
         self,
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
+        ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{BlockAdded, Deploy, DeployHash, FinalitySignature, NodeId},
-    utils::{WithDir, RESOURCES_PATH},
+    types::{
+        BlockAdded, Chainspec, ChainspecRawBytes, Deploy, DeployHash, FinalitySignature,
+        GossiperItem, NodeId,
+    },
+    utils::WithDir,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -66,88 +81,231 @@ impl Default for FetcherTestConfig {
     }
 }
 
-reactor!(Reactor {
+#[derive(Debug, From, Serialize)]
+enum Event {
+    #[from]
+    Network(in_memory_network::Event<Message>),
+    #[from]
+    Storage(storage::Event),
+    #[from]
+    FakeDeployAcceptor(deploy_acceptor::Event),
+    #[from]
+    DeployFetcher(fetcher::Event<Deploy>),
+    #[from]
+    NetworkRequestMessage(NetworkRequest<Message>),
+    #[from]
+    StorageRequest(StorageRequest),
+    #[from]
+    StateStoreRequest(StateStoreRequest),
+    #[from]
+    FetcherRequestDeploy(FetcherRequest<Deploy>),
+    #[from]
+    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement),
+    #[from]
+    RpcServerAnnouncement(RpcServerAnnouncement),
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+    #[from]
+    BlocklistAnnouncement(BlocklistAnnouncement),
+    #[from]
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+    #[from]
+    TrieDemand(TrieDemand),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+    #[from]
+    GossiperIncomingDeploy(GossiperIncoming<Deploy>),
+    #[from]
+    GossiperIncomingBlockAdded(GossiperIncoming<BlockAdded>),
+    #[from]
+    GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
+    #[from]
+    GossiperIncomingGossipedAddress(GossiperIncoming<GossipedAddress>),
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+    #[from]
+    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
+    #[from]
+    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
+    #[from]
+    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
+    #[from]
+    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        None
+    }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        None
+    }
+}
+
+#[derive(Debug)]
+struct Reactor {
+    network: InMemoryNetwork<Message>,
+    storage: Storage,
+    fake_deploy_acceptor: FakeDeployAcceptor,
+    deploy_fetcher: Fetcher<Deploy>,
+}
+
+impl ReactorTrait for Reactor {
+    type Event = Event;
     type Config = FetcherTestConfig;
+    type Error = Error;
 
-    components: {
-        network = infallible InMemoryNetwork::<Message>(event_queue, rng);
-        storage = Storage(
+    fn dispatch_event(
+        &mut self,
+        effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut NodeRng,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        match event {
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
+            Event::Storage(event) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
+            ),
+            Event::FakeDeployAcceptor(event) => reactor::wrap_effects(
+                Event::FakeDeployAcceptor,
+                self.fake_deploy_acceptor
+                    .handle_event(effect_builder, rng, event.into()),
+            ),
+            Event::DeployFetcher(event) => reactor::wrap_effects(
+                Event::DeployFetcher,
+                self.deploy_fetcher
+                    .handle_event(effect_builder, rng, event.into()),
+            ),
+            Event::NetworkRequestMessage(request) => reactor::wrap_effects(
+                Event::Network,
+                self.network
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            Event::StorageRequest(request) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            Event::StateStoreRequest(request) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            Event::FetcherRequestDeploy(request) => reactor::wrap_effects(
+                Event::DeployFetcher,
+                self.deploy_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            Event::DeployAcceptorAnnouncement(announcement) => reactor::wrap_effects(
+                Event::DeployFetcher,
+                self.deploy_fetcher
+                    .handle_event(effect_builder, rng, announcement.into()),
+            ),
+            Event::RpcServerAnnouncement(announcement) => reactor::wrap_effects(
+                Event::FakeDeployAcceptor,
+                self.fake_deploy_acceptor
+                    .handle_event(effect_builder, rng, announcement.into()),
+            ),
+            Event::NetRequestIncoming(announcement) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, announcement.into()),
+            ),
+            Event::NetResponseIncoming(announcement) => {
+                let mut announcement_effects = Effects::new();
+                let effects = self.handle_net_response(effect_builder, rng, announcement);
+                announcement_effects.extend(effects.into_iter());
+                announcement_effects
+            }
+            Event::MarkBlockCompletedRequest(request) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            Event::TrieDemand(_)
+            | Event::ContractRuntimeRequest(_)
+            | Event::BlocklistAnnouncement(_)
+            | Event::GossiperIncomingDeploy(_)
+            | Event::GossiperIncomingBlockAdded(_)
+            | Event::GossiperIncomingFinalitySignature(_)
+            | Event::GossiperIncomingGossipedAddress(_)
+            | Event::TrieRequestIncoming(_)
+            | Event::TrieResponseIncoming(_)
+            | Event::SyncLeapRequestIncoming(_)
+            | Event::SyncLeapResponseIncoming(_)
+            | Event::BlockAddedRequestIncoming(_)
+            | Event::BlockAddedResponseIncoming(_)
+            | Event::ConsensusMessageIncoming(_)
+            | Event::FinalitySignatureIncoming(_)
+            | Event::ControlAnnouncement(_) => panic!("unexpected: {}", event),
+        }
+    }
+
+    fn new(
+        cfg: Self::Config,
+        chainspec: Arc<Chainspec>,
+        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
+        let network = InMemoryNetwork::<Message>::new(event_queue, rng);
+
+        let storage = Storage::new(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
-            Ratio::new(1, 3),
-            // TODO: Load the local chainspec file.
-            false, // chainspec_loader.hard_reset_to_start_of_era(),
-            ProtocolVersion::V1_0_0, // chainspec_loader.chainspec().protocol_config.version,
-            "casper-example", // &chainspec_loader.chainspec().network_config.name,
-            14, // chainspec_loader.chainspec().core_config.unbonding_delay,
-        );
-        fake_deploy_acceptor = infallible FakeDeployAcceptor();
-        deploy_fetcher = Fetcher::<Deploy>(
-            "deploy",
-            &cfg.fetcher_config,
-            registry);
+            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.hard_reset_to_start_of_era(),
+            chainspec.protocol_config.version,
+            &chainspec.network_config.name,
+            chainspec.core_config.unbonding_delay,
+        )
+        .unwrap();
+
+        let fake_deploy_acceptor = FakeDeployAcceptor::new();
+        let deploy_fetcher =
+            Fetcher::<Deploy>::new("deploy", &cfg.fetcher_config, registry).unwrap();
+        let reactor = Reactor {
+            network,
+            storage,
+            fake_deploy_acceptor,
+            deploy_fetcher,
+        };
+        Ok((reactor, Effects::new()))
     }
 
-    events: {
-        network = Event<Message>;
-        deploy_fetcher = Event<Deploy>;
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        None
     }
-
-    requests: {
-        // This test contains no linear chain requests, so we panic if we receive any.
-        NetworkRequest<Message> -> network;
-        StorageRequest -> storage;
-        MarkBlockCompletedRequest -> storage;
-        StateStoreRequest -> storage;
-        FetcherRequest<Deploy> -> deploy_fetcher;
-        TrieDemand -> !;
-
-        // The only contract runtime request will be the commit of genesis, which we discard.
-        ContractRuntimeRequest -> #;
-    }
-
-    announcements: {
-        // The deploy fetcher needs to be notified about new deploys.
-        DeployAcceptorAnnouncement -> [deploy_fetcher];
-        // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
-        // from a client.
-        RpcServerAnnouncement -> [fake_deploy_acceptor];
-        ChainspecLoaderAnnouncement -> [!];
-
-        // The `handle_net_response` function implements the entire "custom" logic found in this test
-        // reactor, outside of routing.
-        NetRequestIncoming -> [storage];
-        NetResponseIncoming -> [fn handle_net_response];
-
-        // There is no deploy or block gossiping going on.
-        GossiperIncoming<Deploy> -> [!];
-        GossiperIncoming<BlockAdded> -> [!];
-        GossiperIncoming<FinalitySignature> -> [!];
-
-        // We are using an in-memory network, so we do not expect any gossiping of addresses.
-        GossiperIncoming<GossipedAddress> -> [!];
-
-        // We do not serve any other requests.
-        TrieRequestIncoming -> [!];
-        TrieResponseIncoming -> [!];
-        SyncLeapRequestIncoming -> [!];
-        SyncLeapResponseIncoming -> [!];
-        BlockAddedRequestIncoming -> [!];
-        BlockAddedResponseIncoming -> [!];
-
-        // No consensus component.
-        ConsensusMessageIncoming -> [!];
-        FinalitySignatureIncoming -> [!];
-        BlocklistAnnouncement -> [!];
-    }
-});
+}
 
 impl Reactor {
     fn handle_net_response(
         &mut self,
-        effect_builder: EffectBuilder<ReactorEvent>,
+        effect_builder: EffectBuilder<Event>,
         rng: &mut NodeRng,
         response: NetResponseIncoming,
-    ) -> Effects<ReactorEvent> {
+    ) -> Effects<Event> {
         match response.message {
             NetResponse::Deploy(ref serialized_item) => {
                 let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
@@ -186,7 +344,7 @@ impl Reactor {
                 self.dispatch_event(
                     effect_builder,
                     rng,
-                    ReactorEvent::FakeDeployAcceptor(deploy_acceptor::Event::Accept {
+                    Event::FakeDeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
@@ -211,8 +369,8 @@ impl NetworkedReactor for Reactor {
 fn announce_deploy_received(
     deploy: Deploy,
     responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
-) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
-    |effect_builder: EffectBuilder<ReactorEvent>| {
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    |effect_builder: EffectBuilder<Event>| {
         effect_builder
             .announce_deploy_received(Box::new(deploy), responder)
             .ignore()
@@ -225,8 +383,8 @@ fn fetch_deploy(
     deploy_hash: DeployHash,
     node_id: NodeId,
     fetched: FetchedDeployResult,
-) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
-    move |effect_builder: EffectBuilder<ReactorEvent>| {
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    move |effect_builder: EffectBuilder<Event>| {
         effect_builder
             .fetch::<Deploy>(deploy_hash, node_id, ())
             .then(move |deploy| async move {
@@ -255,10 +413,10 @@ async fn store_deploy(
         .crank_until(
             node_id,
             rng,
-            move |event: &ReactorEvent| {
+            move |event: &Event| {
                 matches!(
                     event,
-                    ReactorEvent::DeployAcceptorAnnouncement(
+                    Event::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
                     )
                 )
@@ -469,10 +627,9 @@ async fn should_timeout_fetch_from_peer() {
         .crank_until(
             &requesting_node,
             &mut rng,
-            move |event: &ReactorEvent| {
-                if let ReactorEvent::NetworkRequestMessage(NetworkRequest::SendMessage {
-                    payload,
-                    ..
+            move |event: &Event| {
+                if let Event::NetworkRequestMessage(NetworkRequest::SendMessage {
+                    payload, ..
                 }) = event
                 {
                     matches!(**payload, Message::GetRequest { .. })
@@ -489,10 +646,9 @@ async fn should_timeout_fetch_from_peer() {
         .crank_until(
             &holding_node,
             &mut rng,
-            move |event: &ReactorEvent| {
-                if let ReactorEvent::NetworkRequestMessage(NetworkRequest::SendMessage {
-                    payload,
-                    ..
+            move |event: &Event| {
+                if let Event::NetworkRequestMessage(NetworkRequest::SendMessage {
+                    payload, ..
                 }) = event
                 {
                     matches!(**payload, Message::GetResponse { .. })

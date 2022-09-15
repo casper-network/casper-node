@@ -54,4 +54,16 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
                 responder,
             })
     }
+
+    fn put_to_storage<REv>(
+        &self,
+        _item: Deploy,
+        _peer: NodeId,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Option<Effects<Event<Deploy>>>
+    where
+        REv: From<StorageRequest> + Send,
+    {
+        None
+    }
 }

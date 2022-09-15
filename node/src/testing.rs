@@ -4,7 +4,7 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
-pub(crate) mod fake_deploy_acceptor;
+mod fake_deploy_acceptor;
 pub(crate) mod filter_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
@@ -23,17 +23,17 @@ use std::{
 
 use anyhow::Context;
 use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
-use casper_types::testing::TestRng;
 use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
 use rand::Rng;
+use schemars::schema::RootSchema;
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{testing::TestRng, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -47,7 +47,7 @@ use crate::{
     types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
-use schemars::schema::RootSchema;
+pub(crate) use fake_deploy_acceptor::FakeDeployAcceptor;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.

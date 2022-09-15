@@ -36,7 +36,6 @@ use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
-        fake_deploy_acceptor::FakeDeployAcceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         small_network::GossipedAddress,
         storage::{self, Storage},
@@ -61,7 +60,7 @@ use crate::{
     testing::{
         self,
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
+        ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
     utils::WithDir,

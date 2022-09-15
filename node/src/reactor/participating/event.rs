@@ -3,7 +3,6 @@ use std::fmt::{self, Debug, Display, Formatter};
 use derive_more::From;
 use serde::Serialize;
 
-use crate::effect::incoming::{BlockAddedRequestIncoming, BlockAddedResponseIncoming};
 use crate::{
     components::{
         block_proposer, block_validator, blocks_accumulator, chain_synchronizer,
@@ -22,9 +21,10 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, SyncLeapRequestIncoming,
-            SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
+            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponseIncoming,
+            SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -52,8 +52,7 @@ use crate::{
 //     }
 //     ParticipatingEvent::GetCaughtUp(..) => {
 //         <- keep on catching up
-//         > sync leap then have convo w accumul
-//                 OR
+//         > sync leap then have convo w accumul OR
 //         <- transition to keeping up
 //         <- fatal
 //     }

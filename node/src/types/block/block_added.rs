@@ -10,8 +10,7 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, bytesrepr::ToBytes, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
