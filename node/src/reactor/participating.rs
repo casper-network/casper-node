@@ -21,15 +21,14 @@ use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
-        blocks_accumulator::{self, BlocksAccumulator},
+        blocks_accumulator::BlocksAccumulator,
         chain_synchronizer::{self, ChainSynchronizer},
         complete_block_synchronizer::{self, CompleteBlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        contract_runtime::{self, ContractRuntime},
+        contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},
-        fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain::{self, LinearChainComponent},
         metrics::Metrics,
@@ -40,7 +39,7 @@ use crate::{
         small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
         storage::Storage,
         upgrade_watcher::{self, UpgradeWatcher},
-        Component, InitializedComponent,
+        Component,
     },
     effect::{
         announcements::{
@@ -59,23 +58,23 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::{
-        self, event_queue_metrics::EventQueueMetrics, participating::utils::initialize_component,
+        self,
+        event_queue_metrics::EventQueueMetrics,
+        participating::{fetchers::Fetchers, utils::initialize_component},
         EventQueueHandle, ReactorExit,
     },
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
-        Deploy, ExitCode, FinalitySignature, FinalizedApprovalsWithId, Item, SyncLeap, TrieOrChunk,
+        BlockAdded, Chainspec, ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, Item,
+        SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
-    FetcherConfig, NodeRng,
+    NodeRng,
 };
 #[cfg(test)]
 use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
-use fetchers::Fetchers;
 use memory_metrics::MemoryMetrics;
 
 #[derive(DataSize, Debug)]
@@ -138,7 +137,7 @@ impl Reactor {
         effect_builder: EffectBuilder<ParticipatingEvent>,
         _rng: &mut NodeRng,
     ) -> Effects<ParticipatingEvent> {
-        let mut effects = Effects::new();
+        let effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
                 if let Some(effects) = initialize_component(

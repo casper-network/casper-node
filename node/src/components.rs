@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! Components subsystem.
 //!
 //! Components are the building blocks for the application and wired together inside a

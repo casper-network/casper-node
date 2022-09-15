@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! Reactor core.
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are
@@ -143,8 +145,6 @@ fn adjust_open_files_limit() {
 /// The value returned by a reactor on completion of the `run()` loop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
 pub(crate) enum ReactorExit {
-    /// The process should continue running, moving to the next reactor.
-    ProcessShouldContinue,
     /// The process should exit with the given exit code to allow the launcher to react
     /// accordingly.
     ProcessShouldExit(ExitCode),

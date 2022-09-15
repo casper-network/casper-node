@@ -8,7 +8,7 @@ use derive_more::From;
 use fmt::Display;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{DeployHash, Motes};
+use casper_types::Motes;
 
 use super::{BlockHeight, CachedState};
 use crate::{

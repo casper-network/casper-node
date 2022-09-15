@@ -4,15 +4,12 @@ mod event;
 use std::{
     collections::{BTreeMap, HashSet},
     mem,
-    time::Duration,
 };
 
 use datasize::DataSize;
-use itertools::Itertools;
-use regex::internal::Input;
 use tracing::{debug, error};
 
-use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
+use casper_types::{bytesrepr::ToBytes, Timestamp};
 
 use event::{DeployBufferRequest, ProposableDeploy};
 
@@ -21,11 +18,7 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         Component, ComponentStatus, InitializedComponent,
     },
-    effect::{
-        announcements::BlockProposerAnnouncement, requests::StateStoreRequest, EffectBuilder,
-        EffectExt, Effects,
-    },
-    storage::StorageRequest,
+    effect::{EffectBuilder, EffectExt, Effects},
     types::{chainspec::DeployConfig, Deploy, DeployHash, FinalizedBlock},
     NodeRng,
 };
@@ -66,8 +59,8 @@ impl DeployBuffer {
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold
             .iter_mut()
-            .for_each(|(k, v)| v.retain(|v| freed.contains_key(v)));
-        self.hold.retain(|k, v| v.is_empty() == false);
+            .for_each(|(_, v)| v.retain(|v| freed.contains_key(v)));
+        self.hold.retain(|_, v| v.is_empty() == false);
 
         self.dead.retain(|v| freed.contains_key(v) == false);
         self.buffer = buffer;
@@ -241,7 +234,7 @@ where
                 // start self-expiry management on initialization
                 effect_builder
                     .set_timeout(self.cfg.expiry())
-                    .event(move |result| Event::Expire)
+                    .event(move |_| Event::Expire)
             }
             (ComponentStatus::Uninitialized, _) => {
                 error!("should not handle this event when component is uninitialized");
@@ -277,7 +270,7 @@ where
                 self.expire();
                 effect_builder
                     .set_timeout(self.cfg.expiry())
-                    .event(move |result| Event::Expire)
+                    .event(move |_| Event::Expire)
             }
         }
     }

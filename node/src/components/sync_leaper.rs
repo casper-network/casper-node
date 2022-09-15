@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! The Sync Leaper
 mod error;
 
@@ -148,7 +150,7 @@ impl SyncLeaper {
             error!("tried to start fetching a sync leap without peers to ask");
             return Effects::new();
         }
-        if let Some(pull_request_in_progress) = &self.maybe_pull_request_in_progress {
+        if let Some(_) = &self.maybe_pull_request_in_progress {
             // TODO: if the trusted hash is the same, maybe another component is just giving us
             // more peers? consider handling that in a different way
             return Effects::new();

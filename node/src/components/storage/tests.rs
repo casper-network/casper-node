@@ -2,7 +2,6 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
-    f32::consts::E,
     fs::{self, File},
     iter,
 };
@@ -31,7 +30,7 @@ use crate::{
     types::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
         BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        DeployWithFinalizedApprovals, FinalitySignature,
     },
     utils::WithDir,
 };

@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    effect::{requests::StorageRequest, EffectBuilder, Effects},
     types::{BlockWithMetadata, NodeId},
 };
 

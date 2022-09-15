@@ -10,7 +10,6 @@ use std::{
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
-    iter,
 };
 
 use datasize::DataSize;
@@ -506,6 +505,8 @@ impl FinalizedBlock {
         is_switch: bool,
         deploys_iter: I,
     ) -> Self {
+        use std::iter;
+
         let mut deploys = deploys_iter
             .into_iter()
             .map(DeployWithApprovals::from)
@@ -2353,7 +2354,7 @@ impl Display for FinalitySignatureId {
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use std::{iter, rc::Rc};
 
     use casper_types::{bytesrepr, testing::TestRng};
 

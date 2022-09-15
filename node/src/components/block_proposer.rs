@@ -28,7 +28,7 @@ use casper_types::{PublicKey, Timestamp};
 use crate::{
     components::{
         consensus::{BlockContext, ClContext},
-        Component, ComponentStatus, InitializedComponent,
+        Component, ComponentStatus,
     },
     effect::{
         announcements::BlockProposerAnnouncement,

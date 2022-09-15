@@ -43,7 +43,7 @@ use crate::{
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
-        sync_leaper::{ConstructSyncLeapError, PullSyncLeapError},
+        sync_leaper::ConstructSyncLeapError,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -52,10 +52,10 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
-        StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed, SyncLeap,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };

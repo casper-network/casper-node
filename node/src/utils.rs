@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 

@@ -14,7 +14,7 @@ use super::{
 use crate::{
     components::{
         chain_synchronizer::KeyBlockInfo,
-        linear_chain::{self, BlockSignatureError},
+        linear_chain::{self},
     },
     types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
@@ -464,15 +464,9 @@ impl LinearChain {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, fmt::Debug, iter};
-
     use rand::Rng;
 
-    use casper_types::{
-        crypto::generate_ed25519_keypair, testing::TestRng, EraId, PublicKey, SecretKey,
-    };
-
-    use crate::{logging, types::FinalizedBlock};
+    use casper_types::{testing::TestRng, EraId};
 
     use super::*;
 

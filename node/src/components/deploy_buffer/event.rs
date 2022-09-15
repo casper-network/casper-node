@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{bytesrepr::ToBytes, Gas, Timestamp};
+use casper_types::Timestamp;
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
