@@ -198,7 +198,7 @@ impl<REv> InitializedComponent<REv> for DeployBuffer
         + Send
         + 'static, {
     fn status(&self) -> ComponentStatus {
-        self.status
+        self.status.clone()
     }
 }
 

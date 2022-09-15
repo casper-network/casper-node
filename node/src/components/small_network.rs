@@ -925,9 +925,9 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (event, self.status) {
-            (_, ComponentStatus::Fatal) => {
-                error!("should not handle this event when network component has fatal error");
+        match (event, self.status.clone()) {
+            (_, ComponentStatus::Fatal(msg)) => {
+                error!(msg, "should not handle this event when network component has fatal error");
                 return Effects::new();
             }
             (Event::Initialize, ComponentStatus::Uninitialized) => {
@@ -935,19 +935,19 @@ where
                     Ok(effects) => effects,
                     Err(error) => {
                         error!(%error, "failed to initialize network component");
-                        self.status = ComponentStatus::Fatal;
+                        self.status = ComponentStatus::Fatal(error.to_string());
                         return Effects::new();
                     }
                 }
             }
             (_, ComponentStatus::Uninitialized) => {
                 error!("should not handle this event when network component is uninitialized");
-                self.status = ComponentStatus::Fatal;
+                self.status = ComponentStatus::Fatal("attempt to use uninitialized network component".to_string());
                 return Effects::new();
             }
             (Event::Initialize, ComponentStatus::Initialized) => {
                 error!("should not initialize when network component is already initialized");
-                self.status = ComponentStatus::Fatal;
+                self.status = ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
                 return Effects::new();
             }
             (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {
@@ -1198,7 +1198,7 @@ where
     P: Payload,
 {
     fn status(&self) -> ComponentStatus {
-        self.status
+        self.status.clone()
     }
 }
 
