@@ -35,7 +35,7 @@ use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use warp::Filter;
 
 use casper_types::ProtocolVersion;
@@ -133,28 +133,39 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::Initialize => {
-                if self.status != ComponentStatus::Uninitialized {
-                    return Effects::new();
-                }
+        match (self.status.clone(), event) {
+            (ComponentStatus::Fatal(msg), _) => {
+                error!(msg, "should not handle this event when this component has fatal error");
+                return Effects::new();
+            }
+            (ComponentStatus::Uninitialized, Event::Initialize) => {
                 let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
                 self.status = status;
                 effects
             }
-            Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
+            (ComponentStatus::Uninitialized, _) => {
+                error!("should not handle this event when component is uninitialized");
+                self.status = ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
+                return Effects::new();
+            }
+            (ComponentStatus::Initialized, Event::Initialize) => {
+                error!("should not initialize when component is already initialized");
+                self.status = ComponentStatus::Fatal("attempt to reinitialize component".to_string());
+                return Effects::new();
+            }
+            (ComponentStatus::Initialized, Event::BlockAdded(block)) => self.broadcast(SseData::BlockAdded {
                 block_hash: *block.hash(),
                 block: Box::new(JsonBlock::new(*block, None)),
             }),
-            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
+            (ComponentStatus::Initialized, Event::DeployAccepted(deploy)) => self.broadcast(SseData::DeployAccepted {
                 deploy: Arc::new(*deploy),
             }),
-            Event::DeployProcessed {
+            (ComponentStatus::Initialized, Event::DeployProcessed {
                 deploy_hash,
                 deploy_header,
                 block_hash,
                 execution_result,
-            } => self.broadcast(SseData::DeployProcessed {
+            }) => self.broadcast(SseData::DeployProcessed {
                 deploy_hash: Box::new(deploy_hash),
                 account: Box::new(deploy_header.account().clone()),
                 timestamp: deploy_header.timestamp(),
@@ -163,24 +174,24 @@ where
                 block_hash: Box::new(block_hash),
                 execution_result,
             }),
-            Event::DeploysExpired(deploy_hashes) => deploy_hashes
+            (ComponentStatus::Initialized, Event::DeploysExpired(deploy_hashes)) => deploy_hashes
                 .into_iter()
                 .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
                 .collect(),
-            Event::Fault {
+            (ComponentStatus::Initialized, Event::Fault {
                 era_id,
                 public_key,
                 timestamp,
-            } => self.broadcast(SseData::Fault {
+            }) => self.broadcast(SseData::Fault {
                 era_id,
                 public_key,
                 timestamp,
             }),
-            Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
-            Event::Step {
+            (ComponentStatus::Initialized, Event::FinalitySignature(fs)) => self.broadcast(SseData::FinalitySignature(fs)),
+            (ComponentStatus::Initialized, Event::Step {
                 era_id,
                 execution_effect,
-            } => self.broadcast(SseData::Step {
+            }) => self.broadcast(SseData::Step {
                 era_id,
                 execution_effect,
             }),

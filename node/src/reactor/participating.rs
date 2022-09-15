@@ -70,6 +70,7 @@ pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
+use crate::components::rest_server;
 use crate::reactor::participating::utils::initialize_component;
 
 #[derive(DataSize, Debug)]
@@ -378,6 +379,14 @@ impl Reactor {
                 ) {
                     return effects;
                 }
+                if let Some(effects) = initialize_component(
+                    effect_builder,
+                    &mut self.rest_server,
+                    "rest_server".to_string(),
+                    ParticipatingEvent::RestServer(rest_server::Event::Initialize)
+                ) {
+                    return effects;
+                }
 
                 // Y diagnostic assumed to not need special bs
                 // Y upgrade watcher
@@ -602,11 +611,10 @@ impl reactor::Reactor for Reactor {
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
-            effect_builder,
             protocol_version,
             chainspec.network_config.name.clone(),
             node_startup_instant,
-        )?;
+        );
         let event_stream_server = EventStreamServer::new(
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
