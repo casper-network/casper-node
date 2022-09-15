@@ -60,7 +60,7 @@ impl DeployBuffer {
         let earliest_acceptable_timestamp = Timestamp::now() - self.deploy_config.max_ttl;
         let (buffer, freed) : (BTreeMap<DeployHash, Deploy>, BTreeMap<DeployHash, Deploy>) = mem::take(&mut self.buffer)
             .into_iter()
-            .partition(|(_, v)| v.header().timestamp() < earliest_acceptable_timestamp);
+            .partition(|(_, v)| v.header().timestamp() >= earliest_acceptable_timestamp);
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold.iter_mut().for_each(|(k,v)| v.retain(|v| freed.contains_key(v)));
