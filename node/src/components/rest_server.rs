@@ -34,7 +34,10 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
-    components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA,
+    components::{
+        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentStatus, InitializedComponent,
+        PortBoundComponent,
+    },
     effect::{
         requests::{
             ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
@@ -49,7 +52,6 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use event::Event;
-use crate::components::{ComponentStatus, InitializedComponent, PortBoundComponent};
 
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
@@ -113,8 +115,7 @@ impl RestServer {
         api_version: ProtocolVersion,
         network_name: String,
         node_startup_instant: Instant,
-    ) -> Self
-    {
+    ) -> Self {
         RestServer {
             status: ComponentStatus::Uninitialized,
             config,
@@ -207,19 +208,26 @@ where
     }
 }
 
-impl<REv> InitializedComponent<REv> for RestServer where REv: ReactorEventT {
+impl<REv> InitializedComponent<REv> for RestServer
+where
+    REv: ReactorEventT,
+{
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
 }
 
 impl<REv> PortBoundComponent<REv> for RestServer
-    where
-        REv: ReactorEventT, {
+where
+    REv: ReactorEventT,
+{
     type Error = ListeningError;
     type ComponentEvent = Event;
 
-    fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
         let cfg = &self.config;
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 

@@ -3,9 +3,9 @@ use serde::Deserialize;
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockProposerConfig,
-    CompleteBlockSynchronizerConfig, ConsensusConfig, ContractRuntimeConfig, DiagnosticsPortConfig,
-    EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig,
-    SmallNetworkConfig, SpeculativeExecConfig, StorageConfig, DeployBufferConfig
+    CompleteBlockSynchronizerConfig, ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig,
+    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig,
+    RpcServerConfig, SmallNetworkConfig, SpeculativeExecConfig, StorageConfig,
 };
 
 /// Root configuration.

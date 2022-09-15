@@ -9,6 +9,7 @@ use prometheus::Registry;
 
 use super::network::NetworkedReactor;
 use crate::{
+    components::small_network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor, ReactorExit},
     types::{Chainspec, ChainspecRawBytes, NodeId},
@@ -50,6 +51,7 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
         config: Self::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
@@ -58,6 +60,7 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
             config,
             chainspec,
             chainspec_raw_bytes,
+            network_identity,
             registry,
             event_queue,
             rng,

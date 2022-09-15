@@ -16,7 +16,12 @@ use casper_types::{
 };
 
 use crate::{
-    components::{gossiper, small_network, storage, upgrade_watcher::NextUpgrade},
+    components::{
+        gossiper,
+        small_network::{self, Identity as NetworkIdentity},
+        storage,
+        upgrade_watcher::NextUpgrade,
+    },
     effect::{
         requests::{
             BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,
@@ -170,12 +175,14 @@ impl TestChain {
         for idx in 0..self.keys.len() {
             info!("creating node {}", idx);
             let cfg = self.create_node_config(idx, first_node_port);
+            let network_identity = NetworkIdentity::with_generated_certs().unwrap();
 
             // We create an initializer reactor here and run it to completion.
             let _ = Runner::<participating::Reactor>::new_with_chainspec(
                 WithDir::new(root.clone(), cfg),
                 Arc::clone(&self.chainspec),
                 Arc::clone(&self.chainspec_raw_bytes),
+                network_identity,
                 rng,
             )
             .await?;

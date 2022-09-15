@@ -1,12 +1,10 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Gas, Timestamp, bytesrepr::ToBytes};
+use casper_types::{bytesrepr::ToBytes, Gas, Timestamp};
 
 use crate::{
-    components::{
-        consensus::{ClContext, ProposedBlock},
-    },
+    components::consensus::{ClContext, ProposedBlock},
     effect::Responder,
     types::{Deploy, DeployHash, FinalizedBlock},
 };
@@ -14,14 +12,14 @@ use crate::{
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub(crate) enum ProposableDeploy {
     Transfer(Deploy),
-    Deploy(Deploy)
+    Deploy(Deploy),
 }
 
 impl ProposableDeploy {
     pub(super) fn deploy_hash(&self) -> DeployHash {
-        match self{
+        match self {
             ProposableDeploy::Deploy(d) => *d.id(),
-            ProposableDeploy::Transfer(t) => *t.id()
+            ProposableDeploy::Transfer(t) => *t.id(),
         }
     }
 }
@@ -36,5 +34,5 @@ pub(crate) enum Event {
     ReceiveDeploy(Deploy),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     BlockFinalized(Box<FinalizedBlock>),
-    Expire
+    Expire,
 }

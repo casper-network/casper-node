@@ -37,7 +37,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        small_network::GossipedAddress,
+        small_network::{GossipedAddress, Identity as NetworkIdentity},
         storage::{self, Storage},
     },
     effect::{
@@ -272,6 +272,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         _chainspec: Arc<Chainspec>,
         _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        _network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,

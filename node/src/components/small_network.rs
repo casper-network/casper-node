@@ -30,6 +30,7 @@ mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod identity;
 mod limiter;
 mod message;
 mod message_pack_format;
@@ -71,10 +72,11 @@ use casper_types::{EraId, PublicKey, SecretKey};
 
 pub(crate) use self::{
     bincode_format::BincodeFormat,
-    config::Config,
+    config::{Config, IdentityConfig},
     error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
+    identity::Identity,
     message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use self::{
@@ -89,7 +91,6 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
-
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
@@ -213,6 +214,7 @@ where
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
         cfg: Config,
+        our_identity: Identity,
         node_key_pair: Option<(Arc<SecretKey>, PublicKey)>,
         registry: &Registry,
         chain_info_source: C,
@@ -241,10 +243,11 @@ where
 
         let context = Arc::new(NetworkContext::new(
             cfg.clone(),
+            our_identity,
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
             &net_metrics,
-        )?);
+        ));
 
         let mut component = SmallNetwork {
             cfg,
@@ -927,7 +930,10 @@ where
     ) -> Effects<Self::Event> {
         match (event, self.status.clone()) {
             (_, ComponentStatus::Fatal(msg)) => {
-                error!(msg, "should not handle this event when network component has fatal error");
+                error!(
+                    msg,
+                    "should not handle this event when network component has fatal error"
+                );
                 return Effects::new();
             }
             (Event::Initialize, ComponentStatus::Uninitialized) => {
@@ -942,12 +948,15 @@ where
             }
             (_, ComponentStatus::Uninitialized) => {
                 error!("should not handle this event when network component is uninitialized");
-                self.status = ComponentStatus::Fatal("attempt to use uninitialized network component".to_string());
+                self.status = ComponentStatus::Fatal(
+                    "attempt to use uninitialized network component".to_string(),
+                );
                 return Effects::new();
             }
             (Event::Initialize, ComponentStatus::Initialized) => {
                 error!("should not initialize when network component is already initialized");
-                self.status = ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
+                self.status =
+                    ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
                 return Effects::new();
             }
             (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {

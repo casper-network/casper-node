@@ -17,7 +17,6 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
 
-use crate::reactor::participating::fetchers::Fetchers;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -38,7 +37,7 @@ use crate::{
         rest_server::RestServer,
         rpc_server,
         rpc_server::RpcServer,
-        small_network::{self, GossipedAddress, SmallNetwork},
+        small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
         storage::Storage,
         upgrade_watcher::{self, UpgradeWatcher},
         Component, InitializedComponent,
@@ -76,6 +75,7 @@ use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
+use fetchers::Fetchers;
 use memory_metrics::MemoryMetrics;
 
 #[derive(DataSize, Debug)]
@@ -182,6 +182,7 @@ impl Reactor {
                     return effects;
                 }
                 // .. and so on
+                self.state = ReactorState::CatchUp;
             }
             ReactorState::CatchUp => {
                 // check block accumulator
@@ -191,6 +192,7 @@ impl Reactor {
                 // any progress at all will touch the idleness counter (keeping it alive longer)
             }
             ReactorState::KeepUp => {
+                // check if we should run commit genesis/upgrade and do so if required?
                 // if in validator set and era supervisor is green, validate
                 // else get added blocks for block accumulator and execute them
                 // if falling behind, switch over to catchup
@@ -214,6 +216,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
@@ -263,6 +266,7 @@ impl reactor::Reactor for Reactor {
         let node_key_pair = config.consensus.load_keys(&root_dir)?;
         let small_network = SmallNetwork::new(
             config.network.clone(),
+            network_identity,
             Some(node_key_pair),
             registry,
             chainspec.as_ref(),

@@ -42,6 +42,7 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
+    components::{ComponentStatus, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
     types::JsonBlock,
     utils::{self, ListeningError},
@@ -52,7 +53,6 @@ pub(crate) use event::Event;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 pub(crate) use sse_server::SseData;
-use crate::components::{ComponentStatus, InitializedComponent, PortBoundComponent};
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -90,17 +90,13 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(
-        config: Config,
-        storage_path: PathBuf,
-        api_version: ProtocolVersion,
-    ) -> Self {
+    pub(crate) fn new(config: Config, storage_path: PathBuf, api_version: ProtocolVersion) -> Self {
         EventStreamServer {
             status: ComponentStatus::Uninitialized,
             config,
             storage_path,
             api_version,
-            sse_server: None
+            sse_server: None,
         }
     }
 
@@ -135,7 +131,10 @@ where
     ) -> Effects<Self::Event> {
         match (self.status.clone(), event) {
             (ComponentStatus::Fatal(msg), _) => {
-                error!(msg, "should not handle this event when this component has fatal error");
+                error!(
+                    msg,
+                    "should not handle this event when this component has fatal error"
+                );
                 return Effects::new();
             }
             (ComponentStatus::Uninitialized, Event::Initialize) => {
@@ -145,27 +144,36 @@ where
             }
             (ComponentStatus::Uninitialized, _) => {
                 error!("should not handle this event when component is uninitialized");
-                self.status = ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
+                self.status =
+                    ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
                 return Effects::new();
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 error!("should not initialize when component is already initialized");
-                self.status = ComponentStatus::Fatal("attempt to reinitialize component".to_string());
+                self.status =
+                    ComponentStatus::Fatal("attempt to reinitialize component".to_string());
                 return Effects::new();
             }
-            (ComponentStatus::Initialized, Event::BlockAdded(block)) => self.broadcast(SseData::BlockAdded {
-                block_hash: *block.hash(),
-                block: Box::new(JsonBlock::new(*block, None)),
-            }),
-            (ComponentStatus::Initialized, Event::DeployAccepted(deploy)) => self.broadcast(SseData::DeployAccepted {
-                deploy: Arc::new(*deploy),
-            }),
-            (ComponentStatus::Initialized, Event::DeployProcessed {
-                deploy_hash,
-                deploy_header,
-                block_hash,
-                execution_result,
-            }) => self.broadcast(SseData::DeployProcessed {
+            (ComponentStatus::Initialized, Event::BlockAdded(block)) => {
+                self.broadcast(SseData::BlockAdded {
+                    block_hash: *block.hash(),
+                    block: Box::new(JsonBlock::new(*block, None)),
+                })
+            }
+            (ComponentStatus::Initialized, Event::DeployAccepted(deploy)) => {
+                self.broadcast(SseData::DeployAccepted {
+                    deploy: Arc::new(*deploy),
+                })
+            }
+            (
+                ComponentStatus::Initialized,
+                Event::DeployProcessed {
+                    deploy_hash,
+                    deploy_header,
+                    block_hash,
+                    execution_result,
+                },
+            ) => self.broadcast(SseData::DeployProcessed {
                 deploy_hash: Box::new(deploy_hash),
                 account: Box::new(deploy_header.account().clone()),
                 timestamp: deploy_header.timestamp(),
@@ -178,20 +186,28 @@ where
                 .into_iter()
                 .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
                 .collect(),
-            (ComponentStatus::Initialized, Event::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            }) => self.broadcast(SseData::Fault {
+            (
+                ComponentStatus::Initialized,
+                Event::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                },
+            ) => self.broadcast(SseData::Fault {
                 era_id,
                 public_key,
                 timestamp,
             }),
-            (ComponentStatus::Initialized, Event::FinalitySignature(fs)) => self.broadcast(SseData::FinalitySignature(fs)),
-            (ComponentStatus::Initialized, Event::Step {
-                era_id,
-                execution_effect,
-            }) => self.broadcast(SseData::Step {
+            (ComponentStatus::Initialized, Event::FinalitySignature(fs)) => {
+                self.broadcast(SseData::FinalitySignature(fs))
+            }
+            (
+                ComponentStatus::Initialized,
+                Event::Step {
+                    era_id,
+                    execution_effect,
+                },
+            ) => self.broadcast(SseData::Step {
                 era_id,
                 execution_effect,
             }),
@@ -200,8 +216,8 @@ where
 }
 
 impl<REv> InitializedComponent<REv> for EventStreamServer
-    where
-        REv: ReactorEventT,
+where
+    REv: ReactorEventT,
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
@@ -209,13 +225,16 @@ impl<REv> InitializedComponent<REv> for EventStreamServer
 }
 
 impl<REv> PortBoundComponent<REv> for EventStreamServer
-    where
-        REv: ReactorEventT,
+where
+    REv: ReactorEventT,
 {
     type Error = ListeningError;
     type ComponentEvent = Event;
 
-    fn listen(&mut self, _effect_builder: EffectBuilder<REv>) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
+    fn listen(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
         let cfg = self.config.clone();
         let required_address = utils::resolve_address(&cfg.address).map_err(|error| {
             warn!(

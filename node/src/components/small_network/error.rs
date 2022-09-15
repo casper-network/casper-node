@@ -20,23 +20,6 @@ pub enum Error {
     /// We do not have any known hosts.
     #[error("could not resolve at least one known host (or none provided)")]
     EmptyKnownHosts,
-    /// Failed to generate node TLS certificate.
-    #[error("failed to generate cert")]
-    CertificateGeneration(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
-    /// Our own certificate is not valid.
-    #[error("own certificate invalid")]
-    OwnCertificateInvalid(#[source] ValidationError),
-    /// Consensus signing during handshake was provided, but keys could not be loaded.
-    #[error("consensus keys provided, but could not be loaded: {0}")]
-    LoadConsensusKeys(
-        #[serde(skip_serializing)]
-        #[source]
-        LoadError<<Arc<SecretKey> as Loadable>::Error>,
-    ),
     /// Failed to create a TCP listener.
     #[error("failed to create listener on {1}")]
     ListenerCreation(

@@ -18,7 +18,7 @@ use tracing::{debug, info};
 
 use super::{
     chain_info::ChainInfo, Config, Event as SmallNetworkEvent, FromIncoming, GossipedAddress,
-    MessageKind, Payload, SmallNetwork,
+    Identity, MessageKind, Payload, SmallNetwork,
 };
 use crate::{
     components::{
@@ -189,11 +189,18 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         _chainspec: Arc<Chainspec>,
         _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        our_identity: Identity,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let net = SmallNetwork::new(cfg, None, registry, ChainInfo::create_for_testing())?;
+        let net = SmallNetwork::new(
+            cfg,
+            our_identity,
+            None,
+            registry,
+            ChainInfo::create_for_testing(),
+        )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;

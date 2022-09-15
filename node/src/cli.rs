@@ -21,6 +21,7 @@ use toml::{value::Table, Value};
 use tracing::{error, info};
 
 use crate::{
+    components::small_network::Identity as NetworkIdentity,
     logging,
     reactor::{participating, ReactorExit, Runner},
     setup_signal_hooks,
@@ -179,10 +180,17 @@ impl Cli {
                     bail!("invalid chainspec");
                 }
 
+                let network_identity = NetworkIdentity::from_config(WithDir::new(
+                    validator_config.dir(),
+                    validator_config.value().network.clone(),
+                ))
+                .context("failed to create a network identity")?;
+
                 let mut participating_runner = Runner::<participating::Reactor>::with_metrics(
                     validator_config,
                     Arc::new(chainspec),
                     Arc::new(chainspec_raw_bytes),
+                    network_identity,
                     &mut rng,
                     &registry,
                 )

@@ -57,7 +57,10 @@ use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 use crate::{
-    components::{deploy_acceptor, fetcher, fetcher::FetchResponse},
+    components::{
+        deploy_acceptor, fetcher, fetcher::FetchResponse,
+        small_network::Identity as NetworkIdentity,
+    },
     effect::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
         incoming::NetResponse,
@@ -277,6 +280,7 @@ pub(crate) trait Reactor: Sized {
         cfg: Self::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
@@ -469,6 +473,7 @@ where
         cfg: R::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
         rng: &mut NodeRng,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
@@ -493,6 +498,7 @@ where
             cfg,
             chainspec,
             chainspec_raw_bytes,
+            network_identity,
             registry,
             event_queue,
             rng,
@@ -777,7 +783,16 @@ where
     ) -> Result<Self, R::Error> {
         // Instantiate a new registry for metrics for this reactor.
         let registry = Registry::new();
-        Self::with_metrics(cfg, chainspec, chainspec_raw_bytes, rng, &registry).await
+        let network_identity = NetworkIdentity::with_generated_certs().unwrap();
+        Self::with_metrics(
+            cfg,
+            chainspec,
+            chainspec_raw_bytes,
+            network_identity,
+            rng,
+            &registry,
+        )
+        .await
     }
 
     /// Inject (schedule then process) effects created via a call to `create_effects` which is
@@ -836,6 +851,7 @@ impl Runner<participating::Reactor> {
         cfg: <participating::Reactor as Reactor>::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
         rng: &mut NodeRng,
     ) -> Result<Self, <participating::Reactor as Reactor>::Error> {
         let registry = Registry::new();
@@ -847,6 +863,7 @@ impl Runner<participating::Reactor> {
             cfg,
             chainspec,
             chainspec_raw_bytes,
+            network_identity,
             &registry,
             event_queue,
             rng,

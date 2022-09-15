@@ -1,12 +1,17 @@
-use prometheus::Registry;
+use crate::{
+    components::{fetcher, fetcher::Fetcher, Component},
+    effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
+    reactor,
+    reactor::participating::ParticipatingEvent,
+    types::{
+        Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
+        FinalizedApprovalsWithId, SyncLeap, TrieOrChunk,
+    },
+    FetcherConfig, NodeRng,
+};
 use datasize::DataSize;
-use crate::components::fetcher::Fetcher;
-use crate::effect::{EffectBuilder, Effects};
-use crate::{FetcherConfig, NodeRng, reactor};
-use crate::components::{Component, fetcher};
-use crate::effect::announcements::DeployAcceptorAnnouncement;
-use crate::reactor::participating::ParticipatingEvent;
-use crate::types::{Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeadersBatch, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Chainspec, Deploy, FinalizedApprovalsWithId, SyncLeap, TrieOrChunk};
+use prometheus::Registry;
 
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {

@@ -75,7 +75,6 @@ impl DiagnosticsPort {
     }
 }
 
-
 /// Diagnostics port event.
 #[derive(Debug, Serialize)]
 pub(crate) enum Event {
@@ -114,7 +113,7 @@ where
                 if self.status != ComponentStatus::Uninitialized {
                     return Effects::new();
                 }
-                let (effects, status) = self.bind( self.config.value().enabled, effect_builder);
+                let (effects, status) = self.bind(self.config.value().enabled, effect_builder);
                 self.status = status;
                 effects
             }
@@ -132,13 +131,16 @@ where
 }
 
 impl<REv> PortBoundComponent<REv> for DiagnosticsPort
-    where
-        REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+where
+    REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
 {
     type Error = Error;
     type ComponentEvent = Event;
 
-    fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Event>, Self::Error> {
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Event>, Self::Error> {
         let (shutdown_sender, shutdown_receiver) = watch::channel(());
 
         self.shutdown_sender = Some(shutdown_sender);
@@ -150,7 +152,7 @@ impl<REv> PortBoundComponent<REv> for DiagnosticsPort
             &socket_path,
             // Mac OS X / Linux use different types for the mask, so we need to call .into() here.
             #[allow(clippy::useless_conversion)]
-                cfg.socket_umask.into(),
+            cfg.socket_umask.into(),
         )?;
         let server = tasks::server(effect_builder, socket_path, listener, shutdown_receiver);
         Ok(server.ignore())
