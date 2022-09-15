@@ -75,7 +75,6 @@ use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
-use fetchers::Fetchers;
 use memory_metrics::MemoryMetrics;
 
 #[derive(DataSize, Debug)]
