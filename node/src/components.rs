@@ -156,7 +156,7 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         enabled: bool,
         effect_builder: EffectBuilder<REv>,
     ) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
-        if enabled == false {
+        if !enabled {
             return (Effects::new(), ComponentStatus::Initialized);
         }
 

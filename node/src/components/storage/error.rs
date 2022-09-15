@@ -181,7 +181,7 @@ pub(super) enum GetRequestError {
         // the ID requested
         requested_id: FinalitySignatureId,
         // the finality signature read from storage
-        finality_signature: FinalitySignature,
+        finality_signature: Box<FinalitySignature>,
     },
     /// Failed to get a highest block header despite already having retrieved a block header.
     #[error("failed to get highest block header despite at least one header existing")]

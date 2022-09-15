@@ -413,7 +413,7 @@ where
                     GossipTarget::All => true,
                     GossipTarget::NonValidators(era_id) => {
                         // If the peer isn't a validator, include it.
-                        match self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+                        match self.outgoing_limiter.is_validator_in_era(era_id, peer_id) {
                             Some(false) | None => true,
                             Some(true) => false,
                         }
@@ -934,7 +934,7 @@ where
                     msg,
                     "should not handle this event when network component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
             (Event::Initialize, ComponentStatus::Uninitialized) => {
                 match self.initialize(effect_builder) {
@@ -942,7 +942,7 @@ where
                     Err(error) => {
                         error!(%error, "failed to initialize network component");
                         self.status = ComponentStatus::Fatal(error.to_string());
-                        return Effects::new();
+                        Effects::new()
                     }
                 }
             }
@@ -951,13 +951,13 @@ where
                 self.status = ComponentStatus::Fatal(
                     "attempt to use uninitialized network component".to_string(),
                 );
-                return Effects::new();
+                Effects::new()
             }
             (Event::Initialize, ComponentStatus::Initialized) => {
                 error!("should not initialize when network component is already initialized");
                 self.status =
                     ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {
                 self.handle_incoming_connection(incoming, span)

@@ -339,7 +339,7 @@ where
                 let current_era = match self.current_era() {
                     None => {
                         return req
-                            .answer(Err(Cow::Owned(format!("consensus not initialized"))))
+                            .answer(Err(Cow::Owned("consensus not initialized".to_string())))
                             .ignore()
                     }
                     Some(era_id) => era_id,

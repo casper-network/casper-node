@@ -109,12 +109,12 @@ impl CompleteBlockBuilder {
             return (vec![], NeedNext::Peers);
         }
 
-        if self.has_block() == false {
+        if !self.has_block() {
             self.builder_state = BlockAcquisitionState::GettingBlock;
             return (peers, NeedNext::Block(self.block_hash));
         }
 
-        if self.has_sufficient_weight(fault_tolerance_fraction, false) == false {
+        if !self.has_sufficient_weight(fault_tolerance_fraction, false) {
             self.builder_state = BlockAcquisitionState::GettingFinalitySignatures;
             let validators = self
                 .validators
@@ -138,7 +138,7 @@ impl CompleteBlockBuilder {
         // }
 
         if self.should_fetch_execution_state
-            && self.has_global_state == false
+            && !self.has_global_state
             && self.state_root_hash.is_some()
         {
             self.builder_state = BlockAcquisitionState::GettingGlobalState;
@@ -166,7 +166,7 @@ impl CompleteBlockBuilder {
     }
 
     pub(super) fn is_syncing_global_state(&self) -> bool {
-        self.state_root_hash.is_some() && self.has_global_state == false
+        self.state_root_hash.is_some() && !self.has_global_state
     }
 
     fn next_deploy(&self) -> Option<DeployHash> {
@@ -227,16 +227,14 @@ impl CompleteBlockBuilder {
     }
 
     fn current_weight(&self) -> Option<U512> {
-        match self.finality_signatures.as_ref() {
-            None => None,
-            Some(sigs) => Some(
-                sigs.values()
-                    .flat_map(|finality_signature| {
-                        self.validators.get(&finality_signature.public_key).copied()
-                    })
-                    .sum(),
-            ),
-        }
+        let sigs = self.finality_signatures.as_ref()?;
+        Some(
+            sigs.values()
+                .flat_map(|finality_signature| {
+                    self.validators.get(&finality_signature.public_key).copied()
+                })
+                .sum(),
+        )
     }
 
     pub(super) fn has_sufficient_weight(
@@ -298,7 +296,7 @@ impl CompleteBlockBuilder {
             return;
         }
 
-        if self.validators.contains_key(&finality_signature.public_key) == false {
+        if !self.validators.contains_key(&finality_signature.public_key) {
             error!(
                 block_hash = %self.block_hash,
                 era = %self.era_id,

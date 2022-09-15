@@ -5,11 +5,11 @@ use crate::types::{BlockAdded, FinalitySignature, NodeId};
 #[derive(Debug)]
 pub(crate) enum Event {
     ReceivedBlock {
-        block: BlockAdded,
+        block: Box<BlockAdded>,
         sender: NodeId,
     },
     ReceivedFinalitySignature {
-        finality_signature: FinalitySignature,
+        finality_signature: Box<FinalitySignature>,
         sender: NodeId,
     },
 }

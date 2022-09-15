@@ -65,32 +65,28 @@ impl PullRequestInProgress {
     }
 
     fn best_response(&self) -> Result<SyncLeap, PullSyncLeapError> {
-        let sync_leaps: Vec<_> = self
-            .peers
-            .values()
-            .filter_map(|peer_state| match peer_state {
-                PeerState::Fetched(sync_leap) => Some(sync_leap.clone()),
-                _ => None,
-            })
-            .collect();
         let reject_count = self
             .peers
             .values()
             .filter(|peer_state| matches!(peer_state, PeerState::Rejected))
             .count();
 
-        sync_leaps
-            .into_iter()
+        self.peers
+            .values()
+            .filter_map(|peer_state| match peer_state {
+                PeerState::Fetched(sync_leap) => Some(*sync_leap.clone()),
+                _ => None,
+            })
             .max_by_key(|sync_leap| sync_leap.highest_era())
-            .ok_or_else(|| {
+            .ok_or(
                 // sync_leaps is empty, so our best response is either that the trusted hash was
                 // too old or that we just couldn't fetch a SyncLeap
                 if reject_count > 0 {
                     PullSyncLeapError::TrustedHashTooOld(self.trusted_hash)
                 } else {
                     PullSyncLeapError::CouldntFetch(self.trusted_hash)
-                }
-            })
+                },
+            )
     }
 }
 
@@ -105,7 +101,7 @@ enum PeerState {
     RequestSent,
     Rejected,
     CouldntFetch,
-    Fetched(SyncLeap),
+    Fetched(Box<SyncLeap>),
 }
 
 impl SyncLeaper {
@@ -150,9 +146,9 @@ impl SyncLeaper {
             error!("tried to start fetching a sync leap without peers to ask");
             return Effects::new();
         }
-        if let Some(_) = &self.maybe_pull_request_in_progress {
+        if self.maybe_pull_request_in_progress.is_some() {
             // TODO: if the trusted hash is the same, maybe another component is just giving us
-            // more peers? consider handling that in a different way
+            //       more peers? consider handling that in a different way
             return Effects::new();
         }
         let mut effects = Effects::new();
@@ -229,7 +225,7 @@ impl SyncLeaper {
                         return Effects::new();
                     }
                 };
-                *peer_state = PeerState::Fetched(*item);
+                *peer_state = PeerState::Fetched(Box::new(*item));
             }
             Err(fetcher::Error::Rejected { peer, .. }) => {
                 let peer_state = match request_in_progress.peers.get_mut(&peer) {

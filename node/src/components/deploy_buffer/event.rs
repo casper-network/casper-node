@@ -31,7 +31,7 @@ pub(crate) enum DeployBufferRequest {
 pub(crate) enum Event {
     Initialize,
     Request(DeployBufferRequest),
-    ReceiveDeploy(Deploy),
+    ReceiveDeploy(Box<Deploy>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,

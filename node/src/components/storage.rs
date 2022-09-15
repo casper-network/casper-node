@@ -627,7 +627,7 @@ impl Storage {
                     if item.block_hash != id.block_hash || item.era_id != id.era_id {
                         return Err(GetRequestError::FinalitySignatureIdMismatch {
                             requested_id: id,
-                            finality_signature: item.clone(),
+                            finality_signature: Box::new(item.clone()),
                         });
                     }
                 }
@@ -1289,7 +1289,10 @@ impl Storage {
     ) -> Result<(), FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let block_hash = signatures.block_hash;
-        if let Err(_) = txn.put_value(self.block_metadata_db, &block_hash, signatures, true) {
+        if txn
+            .put_value(self.block_metadata_db, &block_hash, signatures, true)
+            .is_err()
+        {
             panic!("write_finality_signatures() failed");
         }
         txn.commit()?;
@@ -1685,7 +1688,7 @@ impl Storage {
             };
 
             if linear_chain::check_sufficient_block_signatures(
-                &next_era_validator_weights,
+                next_era_validator_weights,
                 self.fault_tolerance_fraction,
                 Some(&block.block_signatures),
             )
@@ -1699,7 +1702,7 @@ impl Storage {
         }
         result.push(highest_signed_block_header.clone());
 
-        return Ok(Some(result));
+        Ok(Some(result))
     }
 
     fn get_block_header_by_height_restricted<Tx: Transaction>(
@@ -2344,15 +2347,15 @@ impl Storage {
             trusted_ancestor_headers
                 .last()
                 .cloned()
-                .unwrap_or(trusted_block_header.clone()),
+                .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
-            return Ok(SyncLeapResult::HaveIt(SyncLeap {
+            Ok(SyncLeapResult::HaveIt(SyncLeap {
                 trusted_block_header,
                 trusted_ancestor_headers,
                 signed_block_headers,
-            }));
+            }))
         } else {
-            return Ok(SyncLeapResult::DontHaveIt);
+            Ok(SyncLeapResult::DontHaveIt)
         }
     }
 

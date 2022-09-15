@@ -167,7 +167,10 @@ impl BlocksAccumulator {
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
-                if let Err(_) = accumulated_block.register_signature(finality_signature) {
+                if accumulated_block
+                    .register_signature(finality_signature)
+                    .is_err()
+                {
                     return effect_builder
                         .announce_disconnect_from_peer(sender)
                         .ignore();
@@ -248,7 +251,7 @@ impl BlocksAccumulator {
     }
 
     fn remove_signatures(&mut self, block_hash: &BlockHash, signers: &[PublicKey]) {
-        if let Some(accumulated_block) = self.block_acceptors.get_mut(&block_hash) {
+        if let Some(accumulated_block) = self.block_acceptors.get_mut(block_hash) {
             accumulated_block.remove_signatures(signers);
         }
     }
@@ -269,12 +272,12 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::ReceivedBlock { block, sender } => {
-                self.handle_block_added(effect_builder, block, sender)
+                self.handle_block_added(effect_builder, *block, sender)
             }
             Event::ReceivedFinalitySignature {
                 finality_signature,
                 sender,
-            } => self.handle_finality_signature(effect_builder, finality_signature, sender),
+            } => self.handle_finality_signature(effect_builder, *finality_signature, sender),
         }
     }
 }

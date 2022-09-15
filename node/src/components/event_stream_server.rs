@@ -135,7 +135,7 @@ where
                     msg,
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Uninitialized, Event::Initialize) => {
                 let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
@@ -146,13 +146,13 @@ where
                 error!("should not handle this event when component is uninitialized");
                 self.status =
                     ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 error!("should not initialize when component is already initialized");
                 self.status =
                     ComponentStatus::Fatal("attempt to reinitialize component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Initialized, Event::BlockAdded(block)) => {
                 self.broadcast(SseData::BlockAdded {

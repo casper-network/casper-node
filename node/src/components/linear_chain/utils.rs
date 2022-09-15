@@ -23,7 +23,7 @@ pub(crate) fn validate_block_signatures(
         return Err(BlockSignatureError::BogusValidators {
             trusted_validator_weights: validator_weights.clone(),
             block_signatures: Box::new(signatures.clone()),
-            bogus_validators: Box::new(bogus_validators),
+            bogus_validators,
         });
     }
 
@@ -81,7 +81,7 @@ where
                 return Err(BlockSignatureError::BogusValidators {
                     trusted_validator_weights: trusted_validator_weights.clone(),
                     block_signatures: Box::new(block_signatures.clone()),
-                    bogus_validators: Box::new(bogus_validators),
+                    bogus_validators,
                 });
             }
             let weight_minus_minimum = signature_weight - minimum_weight.unwrap_or_else(U512::zero);

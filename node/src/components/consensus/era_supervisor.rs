@@ -149,19 +149,16 @@ impl Debug for EraSupervisor {
 
 impl EraSupervisor {
     /// Creates a new `EraSupervisor`, starting in the indicated current era.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         storage_dir: &Path,
         secret_signing_key: Arc<SecretKey>,
         public_signing_key: PublicKey,
         config: Config,
-        //effect_builder: EffectBuilder<REv>,
         chainspec: Arc<Chainspec>,
-        // latest_block_header: &BlockHeader,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor>,
-        //storage: &Storage,
-        //        rng: &mut NodeRng,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);

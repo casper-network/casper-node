@@ -143,7 +143,7 @@ where
         match (self.status.clone(), event) {
             (ComponentStatus::Fatal(msg), _) => {
                 error!(msg, "should not handle this event when this component has fatal error");
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Uninitialized, Event::Initialize) => {
                 let (effects, status) = self.bind(self.config.enable_server, effect_builder);
@@ -153,12 +153,12 @@ where
             (ComponentStatus::Uninitialized, _) => {
                 error!("should not handle this event when component is uninitialized");
                 self.status = ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 error!("should not initialize when component is already initialized");
                 self.status = ComponentStatus::Fatal("attempt to reinitialize component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Initialized, Event::RestRequest(RestRequest::Status { responder })) => {
                 let node_uptime = self.node_startup_instant.elapsed();

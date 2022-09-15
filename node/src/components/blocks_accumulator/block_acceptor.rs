@@ -125,9 +125,9 @@ impl BlockAcceptor {
             Err(err) => match err {
                 BlockSignatureError::BogusValidators {
                     bogus_validators, ..
-                } => SignaturesFinality::BogusValidators(*bogus_validators),
+                } => SignaturesFinality::BogusValidators(bogus_validators),
                 BlockSignatureError::InsufficientWeightForFinality { .. } => {
-                    return SignaturesFinality::NotSufficient
+                    SignaturesFinality::NotSufficient
                 }
             },
         }
@@ -135,6 +135,6 @@ impl BlockAcceptor {
 
     pub(super) fn remove_signatures(&mut self, signers: &[PublicKey]) {
         self.signatures
-            .retain(|public_key, _| !signers.contains(&public_key))
+            .retain(|public_key, _| !signers.contains(public_key))
     }
 }

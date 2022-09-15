@@ -56,36 +56,35 @@ impl DeployBuffer {
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold
             .iter_mut()
-            .for_each(|(_, v)| v.retain(|v| freed.contains_key(v) == false));
-        self.hold.retain(|_, v| v.is_empty() == false);
+            .for_each(|(_, v)| v.retain(|v| !freed.contains_key(v)));
+        self.hold.retain(|_, v| !v.is_empty());
 
-        self.dead.retain(|v| freed.contains_key(v) == false);
+        self.dead.retain(|v| !freed.contains_key(v));
         self.buffer = buffer;
     }
 
-    fn register_deploy(&mut self, deploy_hash: DeployHash, deploy: Deploy) {
-        if self.dead.contains(&deploy_hash) {
+    fn register_deploy(&mut self, deploy: Deploy) {
+        let deploy_hash = deploy.id();
+        if self.dead.contains(deploy_hash) {
             debug!(?deploy_hash, "attempt to register already dead deploy");
             return;
         }
-        if self.hold.values().any(|dhs| dhs.contains(&deploy_hash)) {
+        if self.hold.values().any(|dhs| dhs.contains(deploy_hash)) {
             debug!(?deploy_hash, "attempt to register already held deploy");
             return;
         }
-        self.buffer.insert(deploy_hash, deploy);
+        self.buffer.insert(*deploy_hash, deploy);
     }
 
-    fn block_proposed(&mut self, proposed_block: Box<ProposedBlock<ClContext>>) {
-        self.hold
-            .get_mut(&proposed_block.context().timestamp())
-            .map(|hs| {
-                hs.extend(
-                    proposed_block
-                        .value()
-                        .deploy_hashes()
-                        .chain(proposed_block.value().transfer_hashes()),
-                )
-            });
+    fn block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
+        if let Some(hold_set) = self.hold.get_mut(&proposed_block.context().timestamp()) {
+            hold_set.extend(
+                proposed_block
+                    .value()
+                    .deploy_hashes()
+                    .chain(proposed_block.value().transfer_hashes()),
+            )
+        }
     }
 
     fn block_finalized(&mut self, finalized_block: &FinalizedBlock) {
@@ -108,8 +107,8 @@ impl DeployBuffer {
         // a deploy hash that is not in dead or hold is proposable
         self.buffer
             .iter()
-            .filter(|(k, _)| self.hold.values().any(|hs| hs.contains(k)) == false)
-            .filter(|(k, _)| self.dead.contains(k) == false)
+            .filter(|(k, _)| !self.hold.values().any(|hs| hs.contains(k)))
+            .filter(|(k, _)| !self.dead.contains(k))
             .map(|(_, v)| v.clone())
             .collect()
     }
@@ -121,7 +120,7 @@ impl DeployBuffer {
                 return true;
             }
             *current += next;
-            return false;
+            false
         }
 
         let max_block_size = self.deploy_config.max_block_size as usize;
@@ -224,7 +223,7 @@ where
                     msg,
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Uninitialized, Event::Initialize) => {
                 self.status = ComponentStatus::Initialized;
@@ -237,13 +236,13 @@ where
                 error!("should not handle this event when component is uninitialized");
                 self.status =
                     ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 error!("should not initialize when component is already initialized");
                 self.status =
                     ComponentStatus::Fatal("attempt to reinitialize component".to_string());
-                return Effects::new();
+                Effects::new()
             }
             (
                 ComponentStatus::Initialized,
@@ -256,11 +255,11 @@ where
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::BlockProposed(proposed)) => {
-                self.block_proposed(proposed);
+                self.block_proposed(*proposed);
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::ReceiveDeploy(deploy)) => {
-                self.register_deploy(*deploy.id(), deploy);
+                self.register_deploy(*deploy);
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Expire) => {

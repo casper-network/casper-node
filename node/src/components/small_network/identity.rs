@@ -21,11 +21,11 @@ pub(crate) enum Error {
     #[error("could not generate TLS certificate: {0}")]
     CouldNotGenerateTlsCertificate(OpenSslErrorStack),
     #[error(transparent)]
-    ValidationError(#[from] ValidationError),
+    Validation(#[from] ValidationError),
     #[error(transparent)]
-    LoadCertError(#[from] LoadCertError),
+    LoadCert(#[from] LoadCertError),
     #[error(transparent)]
-    LoadSecretKeyError(#[from] LoadSecretKeyError),
+    LoadSecretKey(#[from] LoadSecretKeyError),
 }
 
 /// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
@@ -64,7 +64,7 @@ impl Identity {
         tls::validate_cert_with_authority(x509_cert.as_x509().clone(), &network_ca).map_err(
             |error| {
                 warn!(%error, "the given node certificate is not signed by the network CA");
-                Error::ValidationError(error)
+                Error::Validation(error)
             },
         )?;
 
