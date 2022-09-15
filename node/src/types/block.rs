@@ -1567,11 +1567,6 @@ impl Block {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
-    pub fn set_parent_hash(&mut self, hash: BlockHash) {
-        self.header.parent_hash = hash;
-    }
-
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(any(feature = "testing", test))]
     pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
@@ -1603,7 +1598,9 @@ impl Block {
         .expect("Could not create random block with specifics")
     }
 
+    /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(any(feature = "testing", test))]
+    #[allow(clippy::too_many_arguments)]
     pub fn random_with_specifics_and_parent_and_validator_weights<
         'a,
         I: IntoIterator<Item = &'a Deploy>,
@@ -1618,7 +1615,7 @@ impl Block {
         validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Self {
         let parent_hash = match parent_block {
-            Some(parent) => parent.hash().clone(),
+            Some(parent) => *parent.hash(),
             None => BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
         };
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();

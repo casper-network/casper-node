@@ -218,7 +218,7 @@ impl reactor::Reactor for Reactor {
         network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<ParticipatingEvent>), Error> {
         let node_startup_instant = Instant::now();
 
@@ -479,7 +479,7 @@ impl reactor::Reactor for Reactor {
         );
 
         let diagnostics_port =
-            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port.clone()));
+            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
 
         let reactor = Reactor {
             chainspec,
@@ -525,12 +525,12 @@ impl reactor::Reactor for Reactor {
     ) -> Effects<ParticipatingEvent> {
         match event {
             ParticipatingEvent::Shutdown(msg) => {
-                return fatal!(
+                fatal!(
                     effect_builder,
                     "reactor should shut down due to error: {}",
                     msg,
                 )
-                .ignore();
+                .ignore()
                 //kill me now please
             }
             ParticipatingEvent::CheckStatus => self.check_status(effect_builder, rng),

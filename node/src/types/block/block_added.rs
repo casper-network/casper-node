@@ -76,7 +76,7 @@ impl BlockAdded {
             .and_then(|registry: BTreeMap<String, Digest>| {
                 registry.get(APPROVALS_CHECKSUM_NAME).copied()
             })
-            .ok_or_else(|| BlockAddedValidationError::InvalidChecksumRegistry)?;
+            .ok_or(BlockAddedValidationError::InvalidChecksumRegistry)?;
 
         let computed_approvals_root_hash = {
             let mut approval_hashes = vec![];

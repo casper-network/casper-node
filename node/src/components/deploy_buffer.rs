@@ -2,7 +2,7 @@ mod config;
 mod event;
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     mem,
 };
 
@@ -10,8 +10,6 @@ use datasize::DataSize;
 use tracing::{debug, error};
 
 use casper_types::{bytesrepr::ToBytes, Timestamp};
-
-use event::{DeployBufferRequest, ProposableDeploy};
 
 use crate::{
     components::{
@@ -22,16 +20,16 @@ use crate::{
     types::{chainspec::DeployConfig, Deploy, DeployHash, FinalizedBlock},
     NodeRng,
 };
-
 pub(crate) use config::Config;
 pub(crate) use event::Event;
+use event::{DeployBufferRequest, ProposableDeploy};
 
 #[derive(DataSize, Debug)]
 struct DeployBuffer {
     status: ComponentStatus,
     cfg: Config,
     deploy_config: DeployConfig,
-    buffer: BTreeMap<DeployHash, Deploy>,
+    buffer: HashMap<DeployHash, Deploy>,
     hold: BTreeMap<Timestamp, HashSet<DeployHash>>,
     dead: HashSet<DeployHash>,
 }
@@ -43,7 +41,7 @@ impl DeployBuffer {
             status: ComponentStatus::Uninitialized,
             cfg,
             deploy_config,
-            buffer: BTreeMap::new(),
+            buffer: HashMap::new(),
             hold: BTreeMap::new(),
             dead: HashSet::new(),
         }
@@ -51,15 +49,14 @@ impl DeployBuffer {
 
     fn expire(&mut self) {
         let earliest_acceptable_timestamp = Timestamp::now() - self.deploy_config.max_ttl;
-        let (buffer, freed): (BTreeMap<DeployHash, Deploy>, BTreeMap<DeployHash, Deploy>) =
-            mem::take(&mut self.buffer)
-                .into_iter()
-                .partition(|(_, v)| v.header().timestamp() >= earliest_acceptable_timestamp);
+        let (buffer, freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
+            .into_iter()
+            .partition(|(_, v)| v.header().timestamp() >= earliest_acceptable_timestamp);
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold
             .iter_mut()
-            .for_each(|(_, v)| v.retain(|v| freed.contains_key(v)));
+            .for_each(|(_, v)| v.retain(|v| freed.contains_key(v) == false));
         self.hold.retain(|_, v| v.is_empty() == false);
 
         self.dead.retain(|v| freed.contains_key(v) == false);

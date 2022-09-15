@@ -22,7 +22,7 @@ pub(super) fn initialize_component(
     }
     if component.is_fatal() {
         return Some(effect_builder.immediately().event(move |()| {
-            ParticipatingEvent::Shutdown(format!("{} failed to initialize", component_name.clone()))
+            ParticipatingEvent::Shutdown(format!("{} failed to initialize", component_name))
         }));
     }
     None

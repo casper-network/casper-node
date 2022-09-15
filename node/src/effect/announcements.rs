@@ -428,7 +428,7 @@ pub(crate) enum BlocksAccumulatorAnnouncement {
     /// stored.
     AcceptedNewFinalitySignature {
         /// The new finality signature.
-        finality_signature: FinalitySignature,
+        finality_signature: Box<FinalitySignature>,
     },
 }
 

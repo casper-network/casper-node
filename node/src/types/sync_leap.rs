@@ -134,7 +134,7 @@ impl FetcherItem for SyncLeap {
                 return Err(SyncLeapValidationError::SignedHeadersNotInConsecutiveEras);
             }
             match linear_chain::check_sufficient_block_signatures(
-                &validator_weights,
+                validator_weights,
                 *finality_threshold_fraction,
                 Some(&signed_header.block_signatures),
             ) {

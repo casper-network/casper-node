@@ -253,11 +253,23 @@ where
                 sender,
                 responder,
             }) => {
+                if block.deploy_hashes().count()
+                    > self.chainspec.deploy_config.block_max_deploy_count as usize
+                {
+                    return responder.respond(false).ignore();
+                }
+                if block.transfer_hashes().count()
+                    > self.chainspec.deploy_config.block_max_transfer_count as usize
+                {
+                    return responder.respond(false).ignore();
+                }
+
                 let deploy_count = block.deploy_hashes().count() + block.transfer_hashes().count();
                 if deploy_count == 0 {
                     // If there are no deploys, return early.
                     return responder.respond(true).ignore();
                 }
+
                 // Collect the deploys in a map. If they are fewer now, then there was a duplicate!
                 let block_deploys: HashMap<_, _> = block.deploys_and_transfers_iter().collect();
                 if block_deploys.len() != deploy_count {

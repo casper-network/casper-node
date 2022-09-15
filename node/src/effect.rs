@@ -865,7 +865,9 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(
-                BlocksAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
+                BlocksAccumulatorAnnouncement::AcceptedNewFinalitySignature {
+                    finality_signature: Box::new(finality_signature),
+                },
                 QueueKind::Regular,
             )
             .await;

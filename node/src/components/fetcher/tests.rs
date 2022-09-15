@@ -188,12 +188,11 @@ impl ReactorTrait for Reactor {
             Event::FakeDeployAcceptor(event) => reactor::wrap_effects(
                 Event::FakeDeployAcceptor,
                 self.fake_deploy_acceptor
-                    .handle_event(effect_builder, rng, event.into()),
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployFetcher(event) => reactor::wrap_effects(
                 Event::DeployFetcher,
-                self.deploy_fetcher
-                    .handle_event(effect_builder, rng, event.into()),
+                self.deploy_fetcher.handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequestMessage(request) => reactor::wrap_effects(
                 Event::Network,

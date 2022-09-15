@@ -116,10 +116,10 @@ fn create_sync_leap_test_chain(non_signed_blocks: &[u64]) -> (Storage, Vec<Block
                 },
             );
 
-            blocks.push(block.clone());
+            blocks.push(block);
         });
     blocks.iter().for_each(|block| {
-        storage.write_block(&block).unwrap();
+        storage.write_block(block).unwrap();
 
         let mut proofs = BTreeMap::new();
         proofs.insert(validator_1_public_key.clone(), Signature::System);
@@ -1302,7 +1302,7 @@ fn should_get_trusted_ancestor_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
+            .get_trusted_ancestor_headers(&mut txn, requested_block_header)
             .unwrap()
             .unwrap()
             .iter()
@@ -1335,9 +1335,9 @@ fn should_get_signed_block_headers() {
         storage
             .get_signed_block_headers(
                 &mut txn,
-                &requested_block_header,
+                requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header.clone(),
+                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1385,9 +1385,9 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         storage
             .get_signed_block_headers(
                 &mut txn,
-                &requested_block_header,
+                requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header.clone(),
+                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
