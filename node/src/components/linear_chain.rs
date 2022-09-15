@@ -7,8 +7,6 @@ mod signature_cache;
 mod state;
 mod utils;
 
-use std::convert::Infallible;
-
 use async_trait::async_trait;
 use datasize::DataSize;
 use itertools::Itertools;
@@ -175,7 +173,6 @@ where
         + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

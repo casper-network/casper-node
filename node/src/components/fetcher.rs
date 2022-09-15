@@ -101,7 +101,6 @@ where
         + Send,
 {
     type Event = Event<T>;
-    type ConstructionError = prometheus::Error;
 
     fn handle_event(
         &mut self,

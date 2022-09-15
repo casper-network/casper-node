@@ -43,7 +43,6 @@ mod tests;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -920,7 +919,6 @@ where
     P: Payload,
 {
     type Event = Event<P>;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

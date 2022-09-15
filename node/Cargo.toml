@@ -23,7 +23,6 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "2.0.0", path = "../execution_engine" }
 casper-hashing = { version = "1.4.3", path = "../hashing" }
 casper-json-rpc = { version = "0.1.0", path = "../json_rpc" }
-casper-node-macros = { version = "1.4.3", path = "../node_macros" }
 casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 datasize = { version = "0.2.10", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"

@@ -280,7 +280,6 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet},
-    convert::Infallible,
     fmt::{self, Display, Formatter},
     sync::{Arc, RwLock},
 };
@@ -525,7 +524,6 @@ where
     P: Display + Clone,
 {
     type Event = Event<P>;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

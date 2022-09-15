@@ -13,7 +13,6 @@ mod tests;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
-    convert::Infallible,
     fmt::Debug,
     hash::Hash,
     sync::Arc,
@@ -238,7 +237,6 @@ where
         + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

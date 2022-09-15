@@ -4,7 +4,6 @@ mod event;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap},
-    convert::Infallible,
     fmt::{self, Display, Formatter},
 };
 
@@ -267,7 +266,6 @@ where
         + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

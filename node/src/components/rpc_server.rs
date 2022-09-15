@@ -21,7 +21,7 @@ pub mod rpcs;
 mod speculative_exec_config;
 mod speculative_exec_server;
 
-use std::{convert::Infallible, fmt::Debug, time::Instant};
+use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
@@ -234,7 +234,6 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

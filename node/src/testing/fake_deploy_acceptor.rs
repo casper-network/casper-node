@@ -5,8 +5,6 @@
 //! `FakeDeployAcceptor` puts the deploy to storage, and once that has completed, announces the
 //! deploy if the storage result indicates it's a new deploy.
 
-use std::convert::Infallible;
-
 use tracing::debug;
 
 use casper_types::Timestamp;
@@ -97,7 +95,6 @@ impl FakeDeployAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

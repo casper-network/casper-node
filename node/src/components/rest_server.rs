@@ -23,7 +23,7 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{convert::Infallible, fmt::Debug, time::Instant};
+use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -132,7 +132,6 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

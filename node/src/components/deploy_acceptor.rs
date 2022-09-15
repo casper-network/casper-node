@@ -841,7 +841,6 @@ impl DeployAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
-    type ConstructionError = prometheus::Error;
 
     fn handle_event(
         &mut self,

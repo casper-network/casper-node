@@ -296,7 +296,6 @@ where
     REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
     type Event = Event;
-    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,

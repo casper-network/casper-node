@@ -240,7 +240,6 @@ where
     REv: ReactorEvent + From<NetworkRequest<Message>>,
 {
     type Event = Event;
-    type ConstructionError = FatalStorageError;
 
     fn handle_event(
         &mut self,

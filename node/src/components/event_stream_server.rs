@@ -28,7 +28,7 @@ mod sse_server;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -121,7 +121,6 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

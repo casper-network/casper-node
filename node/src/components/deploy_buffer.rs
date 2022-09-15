@@ -209,7 +209,6 @@ where
     REv: From<Event> + Send + 'static,
 {
     type Event = Event;
-    type ConstructionError = ();
 
     fn handle_event(
         &mut self,

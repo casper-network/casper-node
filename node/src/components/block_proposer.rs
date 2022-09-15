@@ -13,7 +13,6 @@ mod tests;
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
-    convert::Infallible,
     sync::Arc,
     time::Duration,
 };
@@ -160,7 +159,6 @@ where
         + 'static,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

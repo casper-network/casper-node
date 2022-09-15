@@ -116,9 +116,6 @@ pub(crate) trait Component<REv> {
     /// The event type that is handled by the component.
     type Event;
 
-    /// Error emitted when constructing the component.
-    type ConstructionError;
-
     /// Processes an event, outputting zero or more effects.
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected

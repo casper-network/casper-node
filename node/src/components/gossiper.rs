@@ -9,7 +9,6 @@ mod tests;
 
 use std::{
     collections::HashSet,
-    convert::Infallible,
     fmt::{self, Debug, Formatter},
     time::Duration,
 };
@@ -573,7 +572,6 @@ where
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

@@ -5,7 +5,7 @@ mod metrics;
 mod operations;
 mod progress;
 
-use std::{convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -277,7 +277,6 @@ where
         + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

@@ -18,7 +18,6 @@ mod validator_change;
 
 use std::{
     borrow::Cow,
-    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
     time::Duration,
@@ -282,7 +281,6 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

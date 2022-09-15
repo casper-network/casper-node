@@ -2,10 +2,7 @@ mod block_acceptor;
 mod error;
 mod event;
 
-use std::{
-    collections::{btree_map::Entry, BTreeMap},
-    convert::Infallible,
-};
+use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;
 use num_rational::Ratio;
@@ -262,7 +259,6 @@ where
     REv: Send + From<BlocklistAnnouncement>,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

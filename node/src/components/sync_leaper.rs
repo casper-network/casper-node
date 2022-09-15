@@ -3,7 +3,7 @@
 //! The Sync Leaper
 mod error;
 
-use std::{collections::HashMap, convert::Infallible};
+use std::collections::HashMap;
 
 use num_rational::Ratio;
 use tracing::{error, info, warn};
@@ -269,7 +269,6 @@ where
     REv: From<FetcherRequest<SyncLeap>> + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

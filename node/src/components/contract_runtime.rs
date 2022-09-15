@@ -223,7 +223,6 @@ where
         + Send,
 {
     type Event = Event;
-    type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
