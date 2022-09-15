@@ -18,7 +18,7 @@ use crate::{
     components::{
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        small_network::GossipedAddress,
+        small_network::{GossipedAddress, Identity as NetworkIdentity},
         storage::{self, Storage},
     },
     effect::{
@@ -264,6 +264,7 @@ impl ReactorTrait for Reactor {
         cfg: Self::Config,
         chainspec: Arc<Chainspec>,
         _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        _network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,

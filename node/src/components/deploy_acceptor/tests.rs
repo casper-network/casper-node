@@ -28,7 +28,10 @@ use casper_types::{
 
 use super::*;
 use crate::{
-    components::storage::{self, Storage},
+    components::{
+        small_network::Identity as NetworkIdentity,
+        storage::{self, Storage},
+    },
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
         requests::{ContractRuntimeRequest, NetworkRequest},
@@ -406,6 +409,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         chainspec: Arc<Chainspec>,
         _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        _network_identity: NetworkIdentity,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,

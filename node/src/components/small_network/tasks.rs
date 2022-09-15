@@ -22,6 +22,7 @@ use futures::{
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
+    x509::X509,
 };
 use prometheus::IntGauge;
 use rand::Rng;
@@ -49,7 +50,8 @@ use super::{
     limiter::LimiterHandle,
     message::NodeKeyPair,
     message_pack_format::MessagePackFormat,
-    EstimatorWeights, Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
+    EstimatorWeights, Event, FramedTransport, FullTransport, Identity, IdentityConfig, Message,
+    Metrics, Payload, Transport,
 };
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, Config, FromIncoming},
@@ -58,7 +60,7 @@ use crate::{
         EffectBuilder,
     },
     reactor::{EventQueueHandle, QueueKind},
-    tls::{self, TlsCert},
+    tls::{self, TlsCert, ValidationError},
     types::NodeId,
     utils::display_error,
 };
@@ -117,11 +119,11 @@ where
         .peer_certificate()
         .ok_or(ConnectionError::NoPeerCertificate)?;
 
-    let peer_id = NodeId::from(
-        tls::validate_cert(peer_cert)
-            .map_err(ConnectionError::PeerCertificateInvalid)?
-            .public_key_fingerprint(),
-    );
+    let validated_peer_cert = context
+        .validate_peer_cert(peer_cert)
+        .map_err(ConnectionError::PeerCertificateInvalid)?;
+
+    let peer_id = NodeId::from(validated_peer_cert.public_key_fingerprint());
 
     Ok((peer_id, transport))
 }
@@ -209,6 +211,8 @@ where
     event_queue: Option<EventQueueHandle<REv>>,
     /// TLS certificate associated with this node's identity.
     our_cert: Arc<TlsCert>,
+    /// TLS certificate authority associated with this node's identity.
+    network_ca: Option<Arc<X509>>,
     /// Secret key associated with `our_cert`.
     secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
@@ -236,10 +240,11 @@ where
 impl<REv> NetworkContext<REv> {
     pub(super) fn new(
         cfg: Config,
+        our_identity: Identity,
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
-    ) -> Result<Self, Error> {
+    ) -> Self {
         // Set the demand max from configuration, regarding `0` as "unlimited".
         let max_in_flight_demands = if cfg.max_in_flight_demands == 0 {
             usize::MAX
@@ -247,16 +252,20 @@ impl<REv> NetworkContext<REv> {
             cfg.max_in_flight_demands as usize
         };
 
-        let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
-        let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
+        let Identity {
+            secret_key,
+            tls_certificate,
+            network_ca,
+        } = our_identity;
+        let our_id = NodeId::from(tls_certificate.public_key_fingerprint());
 
-        Ok(NetworkContext {
+        NetworkContext {
             our_id,
             public_addr: None,
             event_queue: None,
-            our_cert: certificate,
-            secret_key: Arc::new(secret_key),
+            our_cert: tls_certificate,
+            network_ca,
+            secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info,
             node_key_pair,
@@ -267,7 +276,14 @@ impl<REv> NetworkContext<REv> {
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands,
             is_syncing: AtomicBool::new(true),
-        })
+        }
+    }
+
+    pub(super) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
+        match &self.network_ca {
+            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
+            None => tls::validate_self_signed_cert(peer_cert),
+        }
     }
 
     /// Our own [`NodeId`].
@@ -360,13 +376,12 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let (peer_id, transport) =
-        match server_setup_tls(stream, &context.our_cert, &context.secret_key).await {
-            Ok(value) => value,
-            Err(error) => {
-                return IncomingConnection::FailedEarly { peer_addr, error };
-            }
-        };
+    let (peer_id, transport) = match server_setup_tls(&context, stream).await {
+        Ok(value) => value,
+        Err(error) => {
+            return IncomingConnection::FailedEarly { peer_addr, error };
+        }
+    };
 
     // Register the `peer_id` on the [`Span`] for logging the ID from here on out.
     Span::current().record("peer_id", &field::display(peer_id));
@@ -423,15 +438,17 @@ where
 /// Server-side TLS setup.
 ///
 /// This function groups the TLS setup into a convenient function, enabling the `?` operator.
-pub(super) async fn server_setup_tls(
+pub(super) async fn server_setup_tls<REv>(
+    context: &NetworkContext<REv>,
     stream: TcpStream,
-    cert: &TlsCert,
-    secret_key: &PKey<Private>,
 ) -> Result<(NodeId, Transport), ConnectionError> {
-    let mut tls_stream = tls::create_tls_acceptor(cert.as_x509().as_ref(), secret_key.as_ref())
-        .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
-        .and_then(|ssl| SslStream::new(ssl, stream))
-        .map_err(ConnectionError::TlsInitialization)?;
+    let mut tls_stream = tls::create_tls_acceptor(
+        context.our_cert.as_x509().as_ref(),
+        context.secret_key.as_ref(),
+    )
+    .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
+    .and_then(|ssl| SslStream::new(ssl, stream))
+    .map_err(ConnectionError::TlsInitialization)?;
 
     SslStream::accept(Pin::new(&mut tls_stream))
         .await
@@ -443,12 +460,12 @@ pub(super) async fn server_setup_tls(
         .peer_certificate()
         .ok_or(ConnectionError::NoPeerCertificate)?;
 
+    let validated_peer_cert = context
+        .validate_peer_cert(peer_cert)
+        .map_err(ConnectionError::PeerCertificateInvalid)?;
+
     Ok((
-        NodeId::from(
-            tls::validate_cert(peer_cert)
-                .map_err(ConnectionError::PeerCertificateInvalid)?
-                .public_key_fingerprint(),
-        ),
+        NodeId::from(validated_peer_cert.public_key_fingerprint()),
         tls_stream,
     ))
 }

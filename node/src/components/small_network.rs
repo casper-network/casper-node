@@ -30,6 +30,7 @@ mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod identity;
 mod limiter;
 mod message;
 mod message_pack_format;
@@ -71,10 +72,11 @@ use casper_types::{EraId, PublicKey, SecretKey};
 
 pub(crate) use self::{
     bincode_format::BincodeFormat,
-    config::Config,
+    config::{Config, IdentityConfig},
     error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
+    identity::Identity,
     message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use self::{
@@ -89,7 +91,6 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
-
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
@@ -213,6 +214,7 @@ where
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
         cfg: Config,
+        our_identity: Identity,
         node_key_pair: Option<(Arc<SecretKey>, PublicKey)>,
         registry: &Registry,
         chain_info_source: C,
@@ -241,10 +243,11 @@ where
 
         let context = Arc::new(NetworkContext::new(
             cfg.clone(),
+            our_identity,
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
             &net_metrics,
-        )?);
+        ));
 
         let component = SmallNetwork {
             cfg,
