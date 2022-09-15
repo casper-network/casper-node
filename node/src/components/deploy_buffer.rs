@@ -10,7 +10,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use regex::internal::Input;
-use tracing::debug;
+use tracing::{debug, error};
 
 use casper_types::{TimeDiff, Timestamp, bytesrepr::ToBytes};
 
@@ -217,33 +217,44 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::Initialize => {
-                if self.status != ComponentStatus::Uninitialized {
-                    return Effects::new();
-                }
+        match (self.status.clone(), event) {
+            (ComponentStatus::Fatal(msg), _) => {
+                error!(msg, "should not handle this event when this component has fatal error");
+                return Effects::new();
+            }
+            (ComponentStatus::Uninitialized, Event::Initialize) => {
                 self.status = ComponentStatus::Initialized;
                 // start self-expiry management on initialization
                 effect_builder
                     .set_timeout(self.cfg.expiry())
                     .event(move |result| Event::Expire)
             }
-            Event::Request(DeployBufferRequest::GetProposableDeploys(timestamp, responder)) => {
+            (ComponentStatus::Uninitialized, _) => {
+                error!("should not handle this event when component is uninitialized");
+                self.status = ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
+                return Effects::new();
+            }
+            (ComponentStatus::Initialized, Event::Initialize) => {
+                error!("should not initialize when component is already initialized");
+                self.status = ComponentStatus::Fatal("attempt to reinitialize component".to_string());
+                return Effects::new();
+            }
+            (ComponentStatus::Initialized, Event::Request(DeployBufferRequest::GetProposableDeploys(timestamp, responder))) => {
                 responder.respond(self.proposable_deploys(timestamp)).ignore()
             }
-            Event::BlockFinalized(finalized_block) => {
+            (ComponentStatus::Initialized, Event::BlockFinalized(finalized_block)) => {
                 self.block_finalized(&*finalized_block);
                 Effects::new()
             }
-            Event::BlockProposed(proposed) => {
+            (ComponentStatus::Initialized, Event::BlockProposed(proposed) )=> {
                 self.block_proposed(proposed);
                 Effects::new()
             }
-            Event::ReceiveDeploy(deploy) => {
+            (ComponentStatus::Initialized, Event::ReceiveDeploy(deploy)) => {
                 self.register_deploy(*deploy.id(), deploy);
                 Effects::new()
             }
-            Event::Expire => {
+            (ComponentStatus::Initialized, Event::Expire) => {
                 self.expire();
                 effect_builder
                     .set_timeout(self.cfg.expiry())
