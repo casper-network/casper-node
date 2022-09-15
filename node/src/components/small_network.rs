@@ -73,6 +73,7 @@ use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
     chain_info::ChainInfo,
+    config::IdentityConfig,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
@@ -100,7 +101,10 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
-    tls::{self, TlsCert, ValidationError},
+    tls::{
+        self, validate_cert_with_authority, LoadCertError, LoadSecretKeyError, TlsCert,
+        ValidationError,
+    },
     types::NodeId,
     utils::{self, display_error, WithDir},
     NodeRng,
@@ -275,10 +279,31 @@ where
             .map_err(Error::LoadConsensusKeys)?
             .map(|(secret_key, public_key)| ConsensusKeyPair::new(secret_key, public_key));
 
+        // Load a ca certificate (if present)
+        let ca_certificate = match &cfg.identity {
+            Some(identity) => {
+                let ca_cert = tls::load_cert(&identity.ca_certificate)?;
+
+                // A quick sanity check for the loaded cert against supplied CA.
+                validate_cert_with_authority(
+                    small_network_identity.tls_certificate.as_x509().clone(),
+                    &ca_cert,
+                )
+                .map_err(|error| {
+                    warn!(%error, "the given node certificate is not signed by the network CA");
+                    Error::CertValidationError(error)
+                })?;
+
+                Some(ca_cert)
+            }
+            None => None,
+        };
+
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
             our_cert: small_network_identity.tls_certificate,
+            network_ca: ca_certificate.map(Arc::new),
             secret_key: small_network_identity.secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info: chain_info_source.into(),
@@ -967,6 +992,10 @@ pub(crate) enum SmallNetworkIdentityError {
     CouldNotGenerateTlsCertificate(OpenSslErrorStack),
     #[error(transparent)]
     ValidationError(#[from] ValidationError),
+    #[error(transparent)]
+    LoadCertError(#[from] LoadCertError),
+    #[error(transparent)]
+    LoadSecretKeyError(#[from] LoadSecretKeyError),
 }
 
 /// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
@@ -977,14 +1006,37 @@ pub(crate) struct SmallNetworkIdentity {
 }
 
 impl SmallNetworkIdentity {
-    pub(crate) fn new() -> result::Result<Self, SmallNetworkIdentityError> {
-        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
-            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
-        let tls_certificate = tls::validate_cert(not_yet_validated_x509_cert)?;
-        Ok(SmallNetworkIdentity {
+    fn new(secret_key: PKey<Private>, tls_certificate: TlsCert) -> Self {
+        Self {
             secret_key: Arc::new(secret_key),
             tls_certificate: Arc::new(tls_certificate),
-        })
+        }
+    }
+
+    pub(crate) fn from_config(
+        config: WithDir<Config>,
+    ) -> result::Result<Self, SmallNetworkIdentityError> {
+        match &config.value().identity {
+            Some(identity) => Self::from_identity_config(identity),
+            None => Self::with_generated_certs(),
+        }
+    }
+
+    fn from_identity_config(
+        identity: &IdentityConfig,
+    ) -> result::Result<Self, SmallNetworkIdentityError> {
+        let not_yet_validated_x509_cert = tls::load_cert(&identity.tls_certificate)?;
+        let secret_key = tls::load_secret_key(&identity.secret_key)?;
+        let x509_cert = tls::tls_cert_from_x509(not_yet_validated_x509_cert)?;
+
+        Ok(SmallNetworkIdentity::new(secret_key, x509_cert))
+    }
+
+    pub(crate) fn with_generated_certs() -> result::Result<Self, SmallNetworkIdentityError> {
+        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
+            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
+        let tls_certificate = tls::validate_self_signed_cert(not_yet_validated_x509_cert)?;
+        Ok(SmallNetworkIdentity::new(secret_key, tls_certificate))
     }
 }
 

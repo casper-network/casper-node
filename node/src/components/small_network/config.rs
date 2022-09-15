@@ -1,6 +1,6 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -35,8 +35,22 @@ impl Default for Config {
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
             estimator_weights: Default::default(),
+            identity: None,
         }
     }
+}
+
+/// Small network identity configuration.
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
+pub struct IdentityConfig {
+    /// Path to a signed certificate
+    pub tls_certificate: PathBuf,
+    /// Path to a secret key.
+    pub secret_key: PathBuf,
+    /// Path to a certificate authority certificate
+    pub ca_certificate: PathBuf,
 }
 
 /// Small network configuration.
@@ -64,6 +78,11 @@ pub struct Config {
     pub max_incoming_message_rate_non_validators: u32,
     /// Weight distribution for the payload impact estimator.
     pub estimator_weights: PayloadWeights,
+    /// Small network identity configuration option.
+    ///
+    /// An identity will be automatically generated when starting up a node if this option is
+    /// unspecified.
+    pub identity: Option<IdentityConfig>,
 }
 
 #[cfg(test)]

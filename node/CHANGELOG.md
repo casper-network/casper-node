@@ -13,6 +13,11 @@ All notable changes to this project will be documented in this file.  The format
 
 ## 1.4.8
 
+### Added
+* Add an `identity` option to load existing network identity certificates signed by a CA.
+
+
+
 ### Changed
 * Update `casper-execution-engine`.
 
