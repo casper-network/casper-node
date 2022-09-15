@@ -149,11 +149,17 @@ impl Display for Event {
 
 impl ReactorEvent for Event {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
-        None
+        match self {
+            Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            _ => None,
+        }
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
-        None
+        match self {
+            Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            _ => None,
+        }
     }
 }
 

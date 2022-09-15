@@ -11,8 +11,7 @@ pub(super) fn initialize_component(
     initiating_event: ParticipatingEvent,
 ) -> Option<Effects<ParticipatingEvent>> {
     if component.is_uninitialized() {
-        let mut effects = Effects::new();
-        effects.extend(effect_builder.immediately().event(|()| initiating_event));
+        let mut effects = effect_builder.immediately().event(|()| initiating_event);
         effects.extend(
             effect_builder
                 .immediately()

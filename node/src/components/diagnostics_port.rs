@@ -8,6 +8,7 @@ mod tasks;
 mod util;
 
 use std::{
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     fs, io,
     path::{Path, PathBuf},
@@ -100,7 +101,7 @@ where
     REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
 {
     type Event = Event;
-    type ConstructionError = Error;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

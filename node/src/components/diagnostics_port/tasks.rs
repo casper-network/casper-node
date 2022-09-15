@@ -485,34 +485,45 @@ pub(super) async fn server<REv>(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn reenable_tests() {
-        todo!("re-enable tests")
-    }
-
-    /*
     use std::{
+        fmt::{self, Debug, Display, Formatter},
         path::{Path, PathBuf},
         sync::Arc,
         time::Duration,
     };
 
-    use crate::{
-        components::{diagnostics_port::Config as DiagnosticsPortConfig, small_network},
-        reactor::{participating::ParticipatingEvent, QueueKind},
-        testing::{
-            self,
-            network::{Network, NetworkedReactor},
-        },
-        utils::WeightedRoundRobin,
-        WithDir,
-    };
-    use casper_node_macros::reactor;
-    use casper_types::testing::TestRng;
+    use derive_more::From;
+    use prometheus::Registry;
+    use serde::Serialize;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::UnixStream,
         sync::Notify,
+    };
+
+    use casper_types::testing::TestRng;
+
+    use crate::{
+        components::{
+            diagnostics_port::{self, Config as DiagnosticsPortConfig, DiagnosticsPort},
+            small_network::{self, Identity as NetworkIdentity},
+            Component,
+        },
+        effect::{
+            announcements::ControlAnnouncement, requests::DumpConsensusStateRequest, EffectBuilder,
+            EffectExt, Effects,
+        },
+        reactor::{
+            self, participating::ParticipatingEvent, EventQueueHandle, QueueKind,
+            Reactor as ReactorTrait, ReactorEvent,
+        },
+        testing::{
+            self,
+            network::{Network, NetworkedReactor},
+        },
+        types::{Chainspec, ChainspecRawBytes},
+        utils::WeightedRoundRobin,
+        NodeRng, WithDir,
     };
 
     pub struct TestReactorConfig {
@@ -538,22 +549,102 @@ mod tests {
         }
     }
 
-    // For testing we use a tiny reactor that runs nothing but the diagnostics console:
-    reactor!(Reactor {
+    #[derive(Debug)]
+    struct Error;
+
+    impl From<prometheus::Error> for Error {
+        fn from(_: prometheus::Error) -> Self {
+            Self
+        }
+    }
+
+    #[derive(Serialize, Debug, From)]
+    enum Event {
+        #[from]
+        DiagnosticsConsole(diagnostics_port::Event),
+        #[from]
+        DumpConsensusStateRequest(DumpConsensusStateRequest),
+        #[from]
+        ControlAnnouncement(ControlAnnouncement),
+    }
+
+    impl Display for Event {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            Debug::fmt(self, f)
+        }
+    }
+
+    impl ReactorEvent for Event {
+        fn as_control(&self) -> Option<&ControlAnnouncement> {
+            match self {
+                Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+                _ => None,
+            }
+        }
+
+        fn try_into_control(self) -> Option<ControlAnnouncement> {
+            match self {
+                Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct Reactor {
+        diagnostics_console: DiagnosticsPort,
+    }
+
+    impl ReactorTrait for Reactor {
+        type Event = Event;
+        type Error = Error;
         type Config = TestReactorConfig;
 
-        components: {
-            diagnostics_console = has_effects DiagnosticsPort(&WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port), event_queue);
+        fn dispatch_event(
+            &mut self,
+            effect_builder: EffectBuilder<Self::Event>,
+            rng: &mut NodeRng,
+            event: Event,
+        ) -> Effects<Event> {
+            match event {
+                Event::DiagnosticsConsole(event) => reactor::wrap_effects(
+                    Event::DiagnosticsConsole,
+                    self.diagnostics_console
+                        .handle_event(effect_builder, rng, event),
+                ),
+                Event::DumpConsensusStateRequest(_) | Event::ControlAnnouncement(_) => {
+                    panic!("unexpected: {}", event)
+                }
+            }
         }
 
-        events: {}
+        fn new(
+            cfg: TestReactorConfig,
+            chainspec: Arc<Chainspec>,
+            _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+            _network_identity: NetworkIdentity,
+            registry: &Registry,
+            event_queue: EventQueueHandle<Event>,
+            rng: &mut NodeRng,
+        ) -> Result<(Self, Effects<Event>), Error> {
+            let diagnostics_console =
+                DiagnosticsPort::new(WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port));
+            let reactor = Reactor {
+                diagnostics_console,
+            };
 
-        requests: {
-            DumpConsensusStateRequest -> !;
+            let effects = reactor::wrap_effects(
+                Event::DiagnosticsConsole,
+                async {}.event(|()| diagnostics_port::Event::Initialize),
+            );
+
+            Ok((reactor, effects))
         }
 
-        announcements: {}
-    });
+        fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+            None
+        }
+    }
 
     impl NetworkedReactor for Reactor {}
 
@@ -661,5 +752,4 @@ mod tests {
             })
             .await;
     }
-    */
 }
