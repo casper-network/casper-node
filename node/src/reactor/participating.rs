@@ -8,6 +8,7 @@ mod event;
 mod memory_metrics;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 use std::{sync::Arc, time::Instant};
 
@@ -69,6 +70,7 @@ pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
+use crate::reactor::participating::utils::initialize_component;
 
 #[derive(DataSize, Debug)]
 enum ReactorState {
@@ -347,57 +349,36 @@ impl Reactor {
     fn check_status(
         &mut self,
         effect_builder: EffectBuilder<ParticipatingEvent>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Effects<ParticipatingEvent> {
         let mut effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
-                if InitializedComponent::<ParticipatingEvent>::is_uninitialized(&self.diagnostics_port) {
-                    effects.extend(reactor::wrap_effects(
-                        ParticipatingEvent::DiagnosticsPort,
-                        self.diagnostics_port.handle_event(
-                            effect_builder,
-                            rng,
-                            diagnostics_port::Event::Initialize,
-                        ),
-                    ));
-                    effects.extend(
-                        effect_builder
-                            .immediately()
-                            .event(|()| ParticipatingEvent::CheckStatus),
-                    );
+                if let Some(effects) = initialize_component(
+                    effect_builder,
+                    &mut self.diagnostics_port,
+                    "diagnotics".to_string(),
+                    ParticipatingEvent::DiagnosticsPort(diagnostics_port::Event::Initialize)
+                ) {
                     return effects;
                 }
-                if InitializedComponent::<ParticipatingEvent>::is_fatal(&self.diagnostics_port) {
-                    return effect_builder.immediately().event(|()| {
-                        ParticipatingEvent::Shutdown(
-                            "diagnostics_port failed to initialize".to_string(),
-                        )
-                    });
-                }
-                if InitializedComponent::<ParticipatingEvent>::is_uninitialized(&self.upgrade_watcher) {
-                    effects.extend(reactor::wrap_effects(
-                        ParticipatingEvent::UpgradeWatcher,
-                        self.upgrade_watcher.handle_event(
-                            effect_builder,
-                            rng,
-                            upgrade_watcher::Event::Initialize,
-                        ),
-                    ));
-                    effects.extend(
-                        effect_builder
-                            .immediately()
-                            .event(|()| ParticipatingEvent::CheckStatus),
-                    );
+                if let Some(effects) = initialize_component(
+                    effect_builder,
+                    &mut self.upgrade_watcher,
+                    "upgrade_watcher".to_string(),
+                    ParticipatingEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize)
+                ) {
                     return effects;
                 }
-                if InitializedComponent::<ParticipatingEvent>::is_fatal(&self.upgrade_watcher) {
-                    return effect_builder.immediately().event(|()| {
-                        ParticipatingEvent::Shutdown(
-                            "upgrade_watcher failed to initialize".to_string(),
-                        )
-                    });
+                if let Some(effects) = initialize_component(
+                    effect_builder,
+                    &mut self.event_stream_server,
+                    "event_stream_server".to_string(),
+                    ParticipatingEvent::EventStreamServer(event_stream_server::Event::Initialize)
+                ) {
+                    return effects;
                 }
+
                 // Y diagnostic assumed to not need special bs
                 // Y upgrade watcher
                 // N storage
@@ -409,6 +390,7 @@ impl Reactor {
                 // N metrics
                 // N rest server
                 // N rpc server
+                // Y event stream server
                 // N gossiper
                 // N network
                 // N fetchers
@@ -629,7 +611,7 @@ impl reactor::Reactor for Reactor {
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
             protocol_version,
-        )?;
+        );
 
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(

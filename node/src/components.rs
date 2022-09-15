@@ -167,3 +167,4 @@ pub(crate) trait PortBoundComponent<REv> : InitializedComponent<REv>
 
     fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
 }
+

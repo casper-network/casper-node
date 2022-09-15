@@ -7,6 +7,7 @@ use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalityS
 
 #[derive(Debug)]
 pub enum Event {
+    Initialize,
     BlockAdded(Box<Block>),
     DeployAccepted(Box<Deploy>),
     DeployProcessed {
@@ -31,6 +32,7 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Event::Initialize => write!(formatter, "initialize"),
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
             Event::DeployAccepted(deploy_hash) => {
                 write!(formatter, "deploy accepted {}", deploy_hash)
