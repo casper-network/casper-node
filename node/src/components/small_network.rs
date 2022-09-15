@@ -46,10 +46,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::{atomic::Ordering, Arc, Weak},
     time::{Duration, Instant},
 };
 
@@ -70,7 +67,7 @@ use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, SecretKey};
 
 pub(crate) use self::{
     bincode_format::BincodeFormat,
@@ -86,7 +83,7 @@ use self::{
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
-    message::ConsensusKeyPair,
+    message::NodeKeyPair,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
@@ -94,7 +91,7 @@ use self::{
 };
 
 use crate::{
-    components::{consensus, Component},
+    components::{Component, ComponentStatus, InitializedComponent},
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
@@ -102,10 +99,10 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::{EventQueueHandle, Finalize, ReactorEvent},
+    reactor::{Finalize, ReactorEvent},
     tls,
     types::NodeId,
-    utils::{self, display_error, Source, WithDir},
+    utils::{self, display_error, Source},
     NodeRng,
 };
 
@@ -156,6 +153,31 @@ where
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
 
+    channel_management: Option<ChannelManagement>,
+
+    /// Networking metrics.
+    #[data_size(skip)]
+    net_metrics: Arc<Metrics>,
+
+    /// The outgoing bandwidth limiter.
+    #[data_size(skip)]
+    outgoing_limiter: Limiter,
+
+    /// The limiter for incoming resource usage.
+    ///
+    /// This is not incoming bandwidth but an independent resource estimate.
+    #[data_size(skip)]
+    incoming_limiter: Limiter,
+
+    /// The era that is considered the active era by the small network component.
+    active_era: EraId,
+
+    /// The status of this component.
+    status: ComponentStatus,
+}
+
+#[derive(DataSize)]
+struct ChannelManagement {
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -175,23 +197,6 @@ where
     /// connections should be closed.
     #[data_size(skip)]
     close_incoming_receiver: watch::Receiver<()>,
-
-    /// Networking metrics.
-    #[data_size(skip)]
-    net_metrics: Arc<Metrics>,
-
-    /// The outgoing bandwidth limiter.
-    #[data_size(skip)]
-    outgoing_limiter: Limiter,
-
-    /// The limiter for incoming resource usage.
-    ///
-    /// This is not incoming bandwidth but an independent resource estimate.
-    #[data_size(skip)]
-    incoming_limiter: Limiter,
-
-    /// The era that is considered the active era by the small network component.
-    active_era: EraId,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -207,32 +212,11 @@ where
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
-        event_queue: EventQueueHandle<REv>,
         cfg: Config,
-        consensus_cfg: Option<WithDir<&consensus::Config>>,
+        node_key_pair: Option<(Arc<SecretKey>, PublicKey)>,
         registry: &Registry,
         chain_info_source: C,
-    ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
-        let mut known_addresses = HashSet::new();
-        for address in &cfg.known_addresses {
-            match utils::resolve_address(address) {
-                Ok(known_address) => {
-                    if !known_addresses.insert(known_address) {
-                        warn!(%address, resolved=%known_address, "ignoring duplicated known address");
-                    };
-                }
-                Err(ref err) => {
-                    warn!(%address, err=display_error(err), "failed to resolve known address");
-                }
-            }
-        }
-
-        // Assert we have at least one known address in the config.
-        if known_addresses.is_empty() {
-            warn!("no known addresses provided via config or all failed DNS resolution");
-            return Err(Error::EmptyKnownHosts);
-        }
-
+    ) -> Result<SmallNetwork<REv, P>> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_limiter = Limiter::new(
@@ -255,11 +239,58 @@ where
             net_metrics.create_outgoing_metrics(),
         );
 
+        let context = Arc::new(NetworkContext::new(
+            cfg.clone(),
+            node_key_pair.map(NodeKeyPair::new),
+            chain_info_source.into(),
+            &net_metrics,
+        )?);
+
+        let mut component = SmallNetwork {
+            cfg,
+            context,
+            outgoing_manager,
+            connection_symmetries: HashMap::new(),
+            syncing_nodes: HashSet::new(),
+            channel_management: None,
+            net_metrics,
+            outgoing_limiter,
+            incoming_limiter,
+            // We start with an empty set of validators for era 0 and expect to be updated.
+            active_era: EraId::new(0),
+            status: ComponentStatus::Uninitialized,
+        };
+
+        Ok(component)
+    }
+
+    fn initialize(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Event<P>>> {
+        let mut known_addresses = HashSet::new();
+        for address in &self.cfg.known_addresses {
+            match utils::resolve_address(address) {
+                Ok(known_address) => {
+                    if !known_addresses.insert(known_address) {
+                        warn!(%address, resolved=%known_address, "ignoring duplicated known address");
+                    };
+                }
+                Err(ref err) => {
+                    warn!(%address, err=display_error(err), "failed to resolve known address");
+                }
+            }
+        }
+
+        // Assert we have at least one known address in the config.
+        if known_addresses.is_empty() {
+            warn!("no known addresses provided via config or all failed DNS resolution");
+            return Err(Error::EmptyKnownHosts);
+        }
+
         let mut public_addr =
-            utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
+            utils::resolve_address(&self.cfg.public_address).map_err(Error::ResolveAddr)?;
 
         // We can now create a listener.
-        let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
+        let bind_address =
+            utils::resolve_address(&self.cfg.bind_address).map_err(Error::ResolveAddr)?;
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
         // We must set non-blocking to `true` or else the tokio task hangs forever.
@@ -274,48 +305,7 @@ where
             public_addr.set_port(local_addr.port());
         }
 
-        // If given consensus key configuration, load it for handshake signing.
-        let consensus_keys = consensus_cfg
-            .map(|cfg| {
-                let root = cfg.dir();
-                cfg.value().load_keys(root)
-            })
-            .transpose()
-            .map_err(Error::LoadConsensusKeys)?
-            .map(|(secret_key, public_key)| ConsensusKeyPair::new(secret_key, public_key));
-
-        // Set the demand max from configuration, regarding `0` as "unlimited".
-        let demand_max = if cfg.max_in_flight_demands == 0 {
-            usize::MAX
-        } else {
-            cfg.max_in_flight_demands as usize
-        };
-
-        // First, we generate the TLS keys.
-        let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
-        let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
-
-        let chain_info = chain_info_source.into();
-        let protocol_version = chain_info.protocol_version;
-        let context = Arc::new(NetworkContext {
-            event_queue,
-            our_id,
-            our_cert: certificate,
-            secret_key: Arc::new(secret_key),
-            net_metrics: Arc::downgrade(&net_metrics),
-            chain_info,
-            public_addr,
-            consensus_keys,
-            handshake_timeout: cfg.handshake_timeout,
-            payload_weights: cfg.estimator_weights.clone(),
-            tarpit_version_threshold: cfg.tarpit_version_threshold,
-            tarpit_duration: cfg.tarpit_duration,
-            tarpit_chance: cfg.tarpit_chance,
-            max_in_flight_demands: demand_max,
-            is_syncing: AtomicBool::new(true),
-        });
-
+        let protocol_version = self.context.chain_info().protocol_version;
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
@@ -324,47 +314,38 @@ where
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
 
+        let context = self.context.clone();
         let server_join_handle = tokio::spawn(
             tasks::server(
-                context.clone(),
+                context,
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
                 server_shutdown_receiver,
             )
             .in_current_span(),
         );
 
-        let mut component = SmallNetwork {
-            cfg,
-            context,
-            outgoing_manager,
-            connection_symmetries: HashMap::new(),
-            syncing_nodes: HashSet::new(),
+        let channel_management = ChannelManagement {
             shutdown_sender: Some(server_shutdown_sender),
+            server_join_handle: Some(server_join_handle),
             close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
-            server_join_handle: Some(server_join_handle),
-            net_metrics,
-            outgoing_limiter,
-            incoming_limiter,
-            // We start with an empty set of validators for era 0 and expect to be updated.
-            active_era: EraId::new(0),
         };
 
-        let effect_builder = EffectBuilder::new(event_queue);
+        self.channel_management = Some(channel_management);
 
         // Learn all known addresses and mark them as unforgettable.
         let now = Instant::now();
         let dial_requests: Vec<_> = known_addresses
             .into_iter()
-            .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
+            .filter_map(|addr| self.outgoing_manager.learn_addr(addr, true, now))
             .collect();
 
-        let mut effects = component.process_dial_requests(dial_requests);
+        let mut effects = self.process_dial_requests(dial_requests);
 
         // Start broadcasting our public listening address.
         effects.extend(
             effect_builder
-                .set_timeout(component.cfg.initial_gossip_delay.into())
+                .set_timeout(self.cfg.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
         );
 
@@ -375,14 +356,26 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
-        Ok((component, effects))
+        self.status = ComponentStatus::Initialized;
+        Ok(effects)
+    }
+
+    /// Should only be called after component has been initialized.
+    fn channel_management(&self) -> &ChannelManagement {
+        self.channel_management
+            .as_ref()
+            .expect("component not initialized properly")
     }
 
     fn close_incoming_connections(&mut self) {
         info!("disconnecting incoming connections");
         let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
-        self.close_incoming_sender = Some(close_incoming_sender);
-        self.close_incoming_receiver = close_incoming_receiver;
+        let channel_management = self
+            .channel_management
+            .as_mut()
+            .expect("component not initialized properly");
+        channel_management.close_incoming_sender = Some(close_incoming_sender);
+        channel_management.close_incoming_receiver = close_incoming_receiver;
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
@@ -430,7 +423,7 @@ where
             // TODO - set this to `warn!` once we are normally testing with networks large enough to
             //        make it a meaningful and infrequent log message.
             trace!(
-                our_id=%self.context.our_id,
+                our_id=%self.context.our_id(),
                 wanted = count,
                 selected = peer_ids.len(),
                 "could not select enough random nodes for gossiping, not enough non-excluded \
@@ -463,13 +456,13 @@ where
 
             if let Err(msg) = connection.sender.send((msg, opt_responder)) {
                 // We lost the connection, but that fact has not reached us yet.
-                warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
+                warn!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, lost connection");
             } else {
                 self.net_metrics.queued_messages.inc();
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            debug!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, no connection");
+            debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
         }
     }
 
@@ -569,7 +562,7 @@ where
                         stream,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
-                        self.close_incoming_receiver.clone(),
+                        self.channel_management().close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
                     )
@@ -869,7 +862,7 @@ where
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.context.our_id
+        self.context.our_id()
     }
 }
 
@@ -880,22 +873,33 @@ where
 {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
-            // Close the shutdown socket, causing the server to exit.
-            drop(self.shutdown_sender.take());
-            drop(self.close_incoming_sender.take());
+            if let Some(mut channel_management) = self.channel_management.take() {
+                // Close the shutdown socket, causing the server to exit.
+                drop(channel_management.shutdown_sender.take());
+                drop(channel_management.close_incoming_sender.take());
 
-            // Wait for the server to exit cleanly.
-            if let Some(join_handle) = self.server_join_handle.take() {
-                match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.context.our_id, "server exited cleanly"),
-                    Err(ref err) => {
-                        error!(%self.context.our_id, err=display_error(err), "could not join server task cleanly")
+                // Wait for the server to exit cleanly.
+                if let Some(join_handle) = channel_management.server_join_handle.take() {
+                    match join_handle.await {
+                        Ok(_) => debug!(our_id=%self.context.our_id(), "server exited cleanly"),
+                        Err(ref err) => {
+                            error!(
+                                our_id=%self.context.our_id(),
+                                err=display_error(err),
+                                "could not join server task cleanly"
+                            )
+                        }
                     }
                 }
             }
 
             // Ensure there are no ongoing metrics updates.
-            utils::wait_for_arc_drop(self.net_metrics, MAX_METRICS_DROP_ATTEMPTS, DROP_RETRY_DELAY).await;
+            utils::wait_for_arc_drop(
+                self.net_metrics,
+                MAX_METRICS_DROP_ATTEMPTS,
+                DROP_RETRY_DELAY,
+            )
+            .await;
         }
         .boxed()
     }
@@ -921,29 +925,56 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::IncomingConnection { incoming, span } => {
+        match (event, self.status.clone()) {
+            (_, ComponentStatus::Fatal(msg)) => {
+                error!(msg, "should not handle this event when network component has fatal error");
+                return Effects::new();
+            }
+            (Event::Initialize, ComponentStatus::Uninitialized) => {
+                match self.initialize(effect_builder) {
+                    Ok(effects) => effects,
+                    Err(error) => {
+                        error!(%error, "failed to initialize network component");
+                        self.status = ComponentStatus::Fatal(error.to_string());
+                        return Effects::new();
+                    }
+                }
+            }
+            (_, ComponentStatus::Uninitialized) => {
+                error!("should not handle this event when network component is uninitialized");
+                self.status = ComponentStatus::Fatal("attempt to use uninitialized network component".to_string());
+                return Effects::new();
+            }
+            (Event::Initialize, ComponentStatus::Initialized) => {
+                error!("should not initialize when network component is already initialized");
+                self.status = ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
+                return Effects::new();
+            }
+            (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {
                 self.handle_incoming_connection(incoming, span)
             }
-            Event::IncomingMessage { peer_id, msg, span } => {
+            (Event::IncomingMessage { peer_id, msg, span }, ComponentStatus::Initialized) => {
                 self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
             }
-            Event::IncomingClosed {
-                result,
-                peer_id,
-                peer_addr,
-                span,
-            } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
+            (
+                Event::IncomingClosed {
+                    result,
+                    peer_id,
+                    peer_addr,
+                    span,
+                },
+                ComponentStatus::Initialized,
+            ) => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
-            Event::OutgoingConnection { outgoing, span } => {
+            (Event::OutgoingConnection { outgoing, span }, ComponentStatus::Initialized) => {
                 self.handle_outgoing_connection(*outgoing, span)
             }
 
-            Event::OutgoingDropped { peer_id, peer_addr } => {
+            (Event::OutgoingDropped { peer_id, peer_addr }, ComponentStatus::Initialized) => {
                 self.handle_outgoing_dropped(*peer_id, peer_addr)
             }
 
-            Event::NetworkRequest { req } => {
+            (Event::NetworkRequest { req }, ComponentStatus::Initialized) => {
                 match *req {
                     NetworkRequest::SendMessage {
                         dest,
@@ -998,7 +1029,7 @@ where
                     }
                 }
             }
-            Event::NetworkInfoRequest { req } => match *req {
+            (Event::NetworkInfoRequest { req }, ComponentStatus::Initialized) => match *req {
                 NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
                 NetworkInfoRequest::FullyConnectedPeers { responder } => {
                     let mut symmetric_peers: Vec<NodeId> = self
@@ -1028,7 +1059,7 @@ where
                     responder.respond(symmetric_validator_peers).ignore()
                 }
             },
-            Event::PeerAddressReceived(gossiped_address) => {
+            (Event::PeerAddressReceived(gossiped_address), ComponentStatus::Initialized) => {
                 let requests = self.outgoing_manager.learn_addr(
                     gossiped_address.into(),
                     false,
@@ -1036,7 +1067,10 @@ where
                 );
                 self.process_dial_requests(requests)
             }
-            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)) => {
+            (
+                Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)),
+                ComponentStatus::Initialized,
+            ) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
                 warn!(%peer_id, "adding peer to blocklist after transgression");
@@ -1049,15 +1083,21 @@ where
                     Effects::new()
                 }
             }
-            Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::LinearChainBlock { .. }
-                | ContractRuntimeAnnouncement::CommitStepSuccess { .. },
+            (
+                Event::ContractRuntimeAnnouncement(
+                    ContractRuntimeAnnouncement::LinearChainBlock { .. }
+                    | ContractRuntimeAnnouncement::CommitStepSuccess { .. },
+                ),
+                ComponentStatus::Initialized,
             ) => Effects::new(),
-            Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::UpcomingEraValidators {
-                    era_that_is_ending,
-                    mut upcoming_era_validators,
-                },
+            (
+                Event::ContractRuntimeAnnouncement(
+                    ContractRuntimeAnnouncement::UpcomingEraValidators {
+                        era_that_is_ending,
+                        mut upcoming_era_validators,
+                    },
+                ),
+                ComponentStatus::Initialized,
             ) => {
                 if era_that_is_ending < self.active_era {
                     debug!("ignoring past era end announcement");
@@ -1103,9 +1143,12 @@ where
 
                 Effects::new()
             }
-
-            Event::GossipOurAddress => {
-                let our_address = GossipedAddress::new(self.context.public_addr);
+            (Event::GossipOurAddress, ComponentStatus::Initialized) => {
+                let our_address = GossipedAddress::new(
+                    self.context
+                        .public_addr()
+                        .expect("component not initialized properly"),
+                );
 
                 let mut effects = effect_builder
                     .begin_gossip(our_address, Source::Ourself)
@@ -1117,7 +1160,7 @@ where
                 );
                 effects
             }
-            Event::SweepOutgoing => {
+            (Event::SweepOutgoing, ComponentStatus::Initialized) => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
 
@@ -1131,12 +1174,31 @@ where
 
                 effects
             }
-            Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
-                self.context.is_syncing.store(false, Ordering::SeqCst);
+            (
+                Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
+                ComponentStatus::Initialized,
+            ) => {
+                self.context.is_syncing().store(false, Ordering::SeqCst);
                 self.close_incoming_connections();
                 Effects::new()
             }
         }
+    }
+}
+
+impl<REv, P> InitializedComponent<REv> for SmallNetwork<REv, P>
+where
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>
+        + From<BlocklistAnnouncement>,
+    P: Payload,
+{
+    fn status(&self) -> ComponentStatus {
+        self.status.clone()
     }
 }
 
@@ -1190,8 +1252,9 @@ where
         // We output only the most important fields of the component, as it gets unwieldy quite fast
         // otherwise.
         f.debug_struct("SmallNetwork")
-            .field("our_id", &self.context.our_id)
-            .field("public_addr", &self.context.public_addr)
+            .field("our_id", &self.context.our_id())
+            .field("status", &self.status)
+            .field("public_addr", &self.context.public_addr())
             .finish()
     }
 }

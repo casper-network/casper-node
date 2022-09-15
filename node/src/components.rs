@@ -48,7 +48,6 @@ pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod blocks_accumulator;
 pub(crate) mod chain_synchronizer;
-pub(crate) mod chainspec_loader;
 pub(crate) mod complete_block_synchronizer;
 pub(crate) mod consensus;
 pub mod contract_runtime;
@@ -60,6 +59,7 @@ pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
 pub(crate) mod rest_server;
 pub mod rpc_server;
+pub(crate) mod upgrade_watcher;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
@@ -67,15 +67,28 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
+pub(crate) mod deploy_buffer;
+
+use std::fmt::{Debug, Display};
+use datasize::DataSize;
+use serde::Deserialize;
+
 // TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
 //       remove once the macro is deleted.
 #[cfg(test)]
 pub(crate) use crate::testing::fake_deploy_acceptor;
-
 use crate::{
     effect::{EffectBuilder, Effects},
     NodeRng,
 };
+
+#[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
+pub(crate) enum ComponentStatus {
+    #[default]
+    Uninitialized,
+    Initialized,
+    Fatal(String),
+}
 
 /// Core Component.
 ///
@@ -119,3 +132,39 @@ pub(crate) trait Component<REv> {
         event: Self::Event,
     ) -> Effects<Self::Event>;
 }
+
+pub(crate) trait InitializedComponent<REv>: Component<REv> {
+    fn status(&self) -> ComponentStatus;
+
+    fn is_uninitialized(&self) -> bool {
+        self.status() == ComponentStatus::Uninitialized
+    }
+
+    fn is_initialized(&self) -> bool {
+        self.status() == ComponentStatus::Initialized
+    }
+
+    fn is_fatal(&self) -> bool {
+        matches!(self.status() , ComponentStatus::Fatal(_))
+    }
+}
+
+pub(crate) trait PortBoundComponent<REv> : InitializedComponent<REv>
+{
+    type Error: Display + Debug;
+    type ComponentEvent;
+
+    fn bind(&mut self, enabled: bool, effect_builder: EffectBuilder<REv>) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
+        if enabled == false {
+            return (Effects::new(), ComponentStatus::Initialized);
+        }
+
+        match self.listen(effect_builder){
+            Ok(effects) => (effects, ComponentStatus::Initialized),
+            Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error)))
+        }
+    }
+
+    fn listen(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
+}
+

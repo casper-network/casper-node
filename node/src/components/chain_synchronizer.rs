@@ -21,7 +21,7 @@ use crate::{
             BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
         },
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
+            ChainspecRawBytesRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, NetworkInfoRequest, NodeStateRequest,
         },
         EffectBuilder, EffectExt, Effects,
@@ -77,7 +77,7 @@ where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<BlockAndDeploys>>
@@ -261,7 +261,7 @@ where
     REv: From<StorageRequest>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<BlockHeadersBatch>>

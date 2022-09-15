@@ -133,7 +133,6 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
@@ -142,6 +141,7 @@ use crate::{
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::FromIncoming,
+        upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::announcements::{BlocksAccumulatorAnnouncement, ChainSynchronizerAnnouncement},
@@ -157,17 +157,17 @@ use crate::{
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
-    ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-    ControlLogicAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-    LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    BlockProposerAnnouncement, BlocklistAnnouncement, ConsensusAnnouncement,
+    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+    GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    NodeStateRequest, StateStoreRequest, StorageRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -540,7 +540,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Extract the event queue handle out of the effect builder.
-    #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
         self.event_queue
     }
@@ -952,11 +951,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
-        REv: From<ChainspecLoaderAnnouncement>,
+        REv: From<UpgradeWatcherAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
                 QueueKind::Regular,
             )
             .await
@@ -1868,12 +1867,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested chainspec info from the chainspec loader.
-    pub(crate) async fn get_chainspec_info(self) -> ChainspecInfo
+    /// Gets the next scheduled upgrade, if any.
+    pub(crate) async fn get_next_upgrade(self) -> Option<NextUpgrade>
     where
-        REv: From<ChainspecLoaderRequest> + Send,
+        REv: From<UpgradeWatcherRequest> + Send,
     {
-        self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
+        self.make_request(UpgradeWatcherRequest, QueueKind::Regular)
             .await
     }
 
@@ -2104,7 +2103,7 @@ impl<REv> EffectBuilder<REv> {
     /// block after a restart.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
+        REv: From<StorageRequest> + From<ChainspecRawBytesRequest>,
     {
         // TODO (#3233): If there was an upgrade changing the validator set at `era_id`, the switch
         // block at this era will be the immediate switch block created after the upgrade. We should
@@ -2128,7 +2127,7 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecRawBytesRequest>,
     {
         // try just reading the era validators first
         let maybe_era_validators = self.get_era_validators(era_id).await;
@@ -2224,26 +2223,14 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn control_announce_missing_validator_set(self, era_id: EraId)
-    where
-        REv: From<ControlLogicAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ControlLogicAnnouncement::MissingValidatorSet { era_id },
-                QueueKind::Control,
-            )
-            .await
-    }
-
     /// Get the bytes for the chainspec file and genesis_accounts
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
     where
-        REv: From<ChainspecLoaderRequest> + Send,
+        REv: From<ChainspecRawBytesRequest> + Send,
     {
         self.make_request(
-            ChainspecLoaderRequest::GetChainspecRawBytes,
+            ChainspecRawBytesRequest::GetChainspecRawBytes,
             QueueKind::Regular,
         )
         .await

@@ -70,18 +70,15 @@ reactor!(Reactor {
     type Config = FetcherTestConfig;
 
     components: {
-        chainspec_loader = has_effects ChainspecLoader(
-            &RESOURCES_PATH.join("local"),
-            effect_builder
-        );
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
             Ratio::new(1, 3),
-            chainspec_loader.hard_reset_to_start_of_era(),
-            chainspec_loader.chainspec().protocol_config.version,
-            &chainspec_loader.chainspec().network_config.name,
-            chainspec_loader.chainspec().core_config.unbonding_delay,
+            // TODO: Load the local chainspec file.
+            false, // chainspec_loader.hard_reset_to_start_of_era(),
+            ProtocolVersion::V1_0_0, // chainspec_loader.chainspec().protocol_config.version,
+            "casper-example", // &chainspec_loader.chainspec().network_config.name,
+            14, // chainspec_loader.chainspec().core_config.unbonding_delay,
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(

@@ -9,9 +9,10 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
-use anyhow::{self, Context};
+use anyhow::{self, bail, Context};
 use prometheus::Registry;
 use regex::Regex;
 use stats_alloc::{StatsAlloc, INSTRUMENTED_SYSTEM};
@@ -19,11 +20,12 @@ use structopt::StructOpt;
 use toml::{value::Table, Value};
 use tracing::{error, info};
 
+use crate::utils::Loadable;
 use crate::{
     logging,
     reactor::{participating, ReactorExit, Runner},
     setup_signal_hooks,
-    types::ExitCode,
+    types::{Chainspec, ChainspecRawBytes, ExitCode},
     utils::WithDir,
 };
 
@@ -141,6 +143,21 @@ impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<i32> {
         match self {
+            // Cli::EdsFU { config, config_ext } => {
+            // config combinator
+            // chainspec fuckery
+            // load chainspec(s)
+            // check in era
+            // if not, shut down
+            // ? do we need a runner
+            // need scheduler
+            //
+            // instantiate reactor
+            // run reactor
+            // start in Initializing state
+            // init'ing its components
+            // doing whatever work required to get them into that state
+            // }
             Cli::Validator { config, config_ext } => {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();
@@ -156,8 +173,17 @@ impl Cli {
 
                 let registry = Registry::new();
 
+                let (chainspec, chainspec_raw_bytes) =
+                    <(Chainspec, ChainspecRawBytes)>::from_path(validator_config.dir())?;
+
+                if !chainspec.is_valid() {
+                    bail!("invalid chainspec");
+                }
+
                 let mut participating_runner = Runner::<participating::Reactor>::with_metrics(
                     validator_config,
+                    Arc::new(chainspec),
+                    Arc::new(chainspec_raw_bytes),
                     &mut rng,
                     &registry,
                 )

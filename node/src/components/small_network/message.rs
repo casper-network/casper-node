@@ -117,17 +117,17 @@ impl<P: Payload> Message<P> {
 }
 
 /// A pair of secret keys used by consensus.
-pub(super) struct ConsensusKeyPair {
+pub(super) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
 
-impl ConsensusKeyPair {
+impl NodeKeyPair {
     /// Creates a new key pair for consensus signing.
-    pub(super) fn new(secret_key: Arc<SecretKey>, public_key: PublicKey) -> Self {
+    pub(super) fn new(key_pair: (Arc<SecretKey>, PublicKey)) -> Self {
         Self {
-            secret_key,
-            public_key,
+            secret_key: key_pair.0,
+            public_key: key_pair.1,
         }
     }
 
@@ -150,7 +150,7 @@ pub(crate) struct ConsensusCertificate {
 
 impl ConsensusCertificate {
     /// Creates a new consensus certificate from a connection ID and key pair.
-    pub(super) fn create(connection_id: ConnectionId, key_pair: &ConsensusKeyPair) -> Self {
+    pub(super) fn create(connection_id: ConnectionId, key_pair: &NodeKeyPair) -> Self {
         let signature = key_pair.sign(connection_id.as_bytes());
         ConsensusCertificate {
             public_key: key_pair.public_key.clone(),
@@ -171,7 +171,7 @@ impl ConsensusCertificate {
         let public_key = PublicKey::from(&secret_key);
         ConsensusCertificate::create(
             ConnectionId::random(rng),
-            &ConsensusKeyPair::new(Arc::new(secret_key), public_key),
+            &NodeKeyPair::new((Arc::new(secret_key), public_key)),
         )
     }
 }

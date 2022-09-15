@@ -30,7 +30,7 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ProtocolVersion,
+    EraId, ProtocolVersion,
 };
 
 #[cfg(test)]
@@ -103,6 +103,14 @@ impl Chainspec {
     /// Returns the protocol version of the chainspec.
     pub(crate) fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_config.version
+    }
+
+    /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
+    /// subsequent eras are deleted from storage.
+    pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
+        self.protocol_config
+            .hard_reset
+            .then(|| self.protocol_config.activation_point.era_id())
     }
 }
 

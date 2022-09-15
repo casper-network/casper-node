@@ -4,7 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

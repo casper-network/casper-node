@@ -18,8 +18,8 @@ use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 use crate::{
     components::{
         chain_synchronizer::Progress,
-        chainspec_loader::NextUpgrade,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+        upgrade_watcher::NextUpgrade,
     },
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap},
 };

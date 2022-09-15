@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
+    sync::Arc,
 };
 
 use derive_more::From;
@@ -62,7 +63,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::{Deploy, FinalitySignature, NodeId},
+    types::{Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
     utils::WithDir,
     NodeRng,
 };
@@ -270,6 +271,8 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
+        _chainspec: Arc<Chainspec>,
+        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,

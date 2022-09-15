@@ -6,6 +6,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -28,7 +29,7 @@ use crate::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, GossiperAnnouncement},
         incoming::GossiperIncoming,
         requests::{
-            BeginGossipRequest, ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest,
+            BeginGossipRequest, ChainspecRawBytesRequest, ContractRuntimeRequest, NetworkRequest,
             StorageRequest,
         },
         EffectBuilder, Effects,
@@ -40,7 +41,7 @@ use crate::{
         network::{Network, NetworkedReactor, Nodes},
         ConditionCheckReactor,
     },
-    types::NodeId,
+    types::{Chainspec, ChainspecRawBytes, NodeId},
     NodeRng,
 };
 
@@ -109,8 +110,8 @@ impl From<StorageRequest> for Event {
     }
 }
 
-impl From<ChainspecLoaderRequest> for Event {
-    fn from(_request: ChainspecLoaderRequest) -> Self {
+impl From<ChainspecRawBytesRequest> for Event {
+    fn from(_request: ChainspecRawBytesRequest) -> Self {
         unreachable!()
     }
 }
@@ -186,17 +187,13 @@ impl Reactor for TestReactor {
 
     fn new(
         cfg: Self::Config,
+        _chainspec: Arc<Chainspec>,
+        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
+        _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(
-            event_queue,
-            cfg,
-            None,
-            registry,
-            ChainInfo::create_for_testing(),
-        )?;
+        let net = SmallNetwork::new(cfg, None, registry, ChainInfo::create_for_testing())?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
@@ -206,7 +203,7 @@ impl Reactor for TestReactor {
                 net,
                 address_gossiper,
             },
-            reactor::wrap_effects(Event::SmallNet, effects),
+            Effects::new(),
         ))
     }
 

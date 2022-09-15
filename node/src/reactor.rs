@@ -31,8 +31,6 @@ mod event_queue_metrics;
 pub(crate) mod participating;
 mod queue_kind;
 
-#[cfg(test)]
-use std::sync::Arc;
 use std::{
     any,
     collections::HashMap,
@@ -42,7 +40,7 @@ use std::{
     mem,
     num::NonZeroU64,
     str::FromStr,
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, Arc},
 };
 
 use datasize::DataSize;
@@ -58,8 +56,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-#[cfg(test)]
-use crate::types::{Chainspec, ChainspecRawBytes};
 use crate::{
     components::{deploy_acceptor, fetcher, fetcher::FetchResponse},
     effect::{
@@ -69,8 +65,8 @@ use crate::{
     },
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, FetcherItem,
-        FinalitySignature, FinalizedApprovalsWithId, NodeId,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        ExitCode, FetcherItem, FinalitySignature, FinalizedApprovalsWithId, NodeId,
     },
     unregister_metric,
     utils::{
@@ -279,6 +275,8 @@ pub(crate) trait Reactor: Sized {
     /// If any instantiation fails, an error is returned.
     fn new(
         cfg: Self::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
@@ -469,6 +467,8 @@ where
     #[instrument("init", level = "debug", skip(cfg, rng, registry))]
     pub(crate) async fn with_metrics(
         cfg: R::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         rng: &mut NodeRng,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
@@ -488,9 +488,15 @@ where
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
         let is_shutting_down = SharedFlag::new();
-
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
+        let (reactor, initial_effects) = R::new(
+            cfg,
+            chainspec,
+            chainspec_raw_bytes,
+            registry,
+            event_queue,
+            rng,
+        )?;
 
         // Run all effects from component instantiation.
         process_effects(None, scheduler, initial_effects)
@@ -763,10 +769,15 @@ where
     /// Creates a new runner from a given configuration.
     ///
     /// Creates a metrics registry that is only going to be used in this runner.
-    pub(crate) async fn new(cfg: R::Config, rng: &mut NodeRng) -> Result<Self, R::Error> {
+    pub(crate) async fn new(
+        cfg: R::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        rng: &mut NodeRng,
+    ) -> Result<Self, R::Error> {
         // Instantiate a new registry for metrics for this reactor.
         let registry = Registry::new();
-        Self::with_metrics(cfg, rng, &registry).await
+        Self::with_metrics(cfg, chainspec, chainspec_raw_bytes, rng, &registry).await
     }
 
     /// Inject (schedule then process) effects created via a call to `create_effects` which is
@@ -832,12 +843,12 @@ impl Runner<participating::Reactor> {
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) = participating::Reactor::new_with_chainspec(
+        let (reactor, initial_effects) = participating::Reactor::new(
             cfg,
-            &registry,
-            event_queue,
             chainspec,
             chainspec_raw_bytes,
+            &registry,
+            event_queue,
             rng,
         )?;
 

@@ -7,11 +7,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, crypto, CLValueError, EraId, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, EraId, PublicKey, U512};
 
-use crate::{
-    components::linear_chain::BlockSignatureError,
-    types::{block::EraReport, Block, BlockHash, Deploy, DeployConfigurationFailure, DeployHash},
+use crate::types::{
+    block::EraReport, Block, BlockHash, Deploy, DeployConfigurationFailure, DeployHash,
 };
 
 /// An error that can arise when creating a block from a finalized block and other components.

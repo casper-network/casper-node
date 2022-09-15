@@ -18,6 +18,7 @@ use crate::{
 
 #[derive(Debug, From)]
 pub(crate) enum Event {
+    Initialize,
     #[from]
     RpcRequest(RpcRequest),
     GetBlockResult {
@@ -60,6 +61,7 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Event::Initialize => write!(formatter, "initialize"),
             Event::RpcRequest(request) => write!(formatter, "{}", request),
             Event::GetBlockResult {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),

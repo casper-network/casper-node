@@ -25,6 +25,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{PublicKey, Timestamp};
 
+use crate::components::{ComponentStatus, InitializedComponent};
 use crate::{
     components::{
         consensus::{BlockContext, ClContext},
@@ -91,7 +92,8 @@ enum BlockProposerState {
         /// The deploy config from the current chainspec.
         deploy_config: DeployConfig,
         /// The configuration, containing local settings for deploy selection.
-        local_config: Config,
+        config: Config,
+        status: ComponentStatus,
     },
     /// Normal operation.
     Ready(BlockProposerReady),
@@ -99,42 +101,53 @@ enum BlockProposerState {
 
 impl BlockProposer {
     /// Creates a new block proposer instance.
-    pub(crate) fn new<REv>(
+    pub(crate) fn new(
         registry: Registry,
-        effect_builder: EffectBuilder<REv>,
-        next_finalized_block: BlockHeight,
         chainspec: &Chainspec,
-        local_config: Config,
-    ) -> Result<(Self, Effects<Event>), prometheus::Error>
-    where
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
-    {
-        debug!(%next_finalized_block, "creating block proposer");
-        let max_ttl = chainspec.deploy_config.max_ttl;
-        let effects = async move {
-            join!(
-                effect_builder.get_finalized_blocks(max_ttl),
-                effect_builder.load_state::<CachedState>(STATE_KEY.into())
-            )
-        }
-        .event(
-            move |(finalized_blocks, maybe_cached_state)| Event::Loaded {
-                finalized_blocks,
-                next_finalized_block,
-                cached_state: maybe_cached_state.unwrap_or_default(),
-            },
-        );
-
-        let block_proposer = BlockProposer {
+        config: Config,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(BlockProposer {
             state: BlockProposerState::Initializing {
                 pending: Vec::new(),
                 deploy_config: chainspec.deploy_config,
-                local_config,
+                config,
+                status: ComponentStatus::Uninitialized,
             },
             metrics: Metrics::new(registry)?,
-        };
+        })
+    }
 
-        Ok((block_proposer, effects))
+    fn initialize<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
+    where
+        REv: From<StorageRequest> + From<StateStoreRequest> + Send,
+    {
+        match &self.state {
+            BlockProposerState::Initializing {
+                pending,
+                deploy_config,
+                config,
+                status,
+            } => {
+                if *status != ComponentStatus::Uninitialized {
+                    return Effects::new();
+                }
+                let max_ttl = deploy_config.max_ttl;
+                async move {
+                    join!(
+                        effect_builder.get_finalized_blocks(max_ttl),
+                        effect_builder.load_state::<CachedState>(STATE_KEY.into())
+                    )
+                }
+                .event(move |(finalized_blocks, maybe_cached_state)| {
+                    Event::Loaded {
+                        finalized_blocks,
+                        next_finalized_block_height: 0,
+                        cached_state: maybe_cached_state.unwrap_or_default(),
+                    }
+                })
+            }
+            BlockProposerState::Ready(_) => Effects::new(),
+        }
     }
 }
 
@@ -162,15 +175,17 @@ where
         // encapsulated in a separate type to simplify the code. The `Initializing` state is simple
         // enough to handle it here directly.
         match (&mut self.state, event) {
+            (_, Event::Initialize) => return self.initialize(effect_builder),
             (
                 BlockProposerState::Initializing {
                     ref mut pending,
                     deploy_config,
-                    local_config,
+                    config,
+                    status: _,
                 },
                 Event::Loaded {
                     finalized_blocks,
-                    next_finalized_block,
+                    next_finalized_block_height: next_finalized_block,
                     cached_state,
                 },
             ) => {
@@ -185,7 +200,7 @@ where
                     sets,
                     deploy_config: *deploy_config,
                     request_queue: Default::default(),
-                    local_config: local_config.clone(),
+                    local_config: config.clone(),
                 };
 
                 // Announce pruned hashes.
@@ -267,6 +282,7 @@ impl BlockProposerReady {
         REv: Send + From<StateStoreRequest> + From<BlockProposerAnnouncement>,
     {
         match event {
+            Event::Initialize => Effects::new(),
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
                     warn!(

@@ -6,18 +6,17 @@ use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 use crate::{
     components::{
         chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
-        diagnostics_port, small_network, storage,
+        diagnostics_port, small_network, storage, upgrade_watcher,
     },
-    types::chainspec,
     utils::{ListeningError, LoadError},
 };
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
 pub(crate) enum Error {
-    /// `ChainspecHandler` component error.
-    #[error("chainspec error: {0}")]
-    Chainspec(#[from] chainspec::Error),
+    /// `UpgradeWatcher` component error.
+    #[error("upgrade watcher error: {0}")]
+    UpgradeWatcher(#[from] upgrade_watcher::Error),
 
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]

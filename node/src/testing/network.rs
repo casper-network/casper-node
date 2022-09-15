@@ -4,6 +4,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     mem,
+    sync::Arc,
     time::Duration,
 };
 
@@ -20,7 +21,8 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
     tls::KeyFingerprint,
-    types::NodeId,
+    types::{Chainspec, ChainspecRawBytes, NodeId},
+    utils::Loadable,
     NodeRng,
 };
 
@@ -115,7 +117,11 @@ where
         cfg: R::Config,
         rng: &'b mut NodeRng,
     ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
+        let (chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        let runner: Runner<ConditionCheckReactor<R>> =
+            Runner::new(cfg, Arc::new(chainspec), Arc::new(chainspec_raw_bytes), rng).await?;
 
         let node_id = runner.reactor().node_id();
 

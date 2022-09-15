@@ -6,19 +6,19 @@ use serde::Serialize;
 use crate::effect::incoming::{BlockAddedRequestIncoming, BlockAddedResponseIncoming};
 use crate::{
     components::{
-        block_proposer, block_validator, blocks_accumulator, chain_synchronizer, chainspec_loader,
+        block_proposer, block_validator, blocks_accumulator, chain_synchronizer,
         complete_block_synchronizer::{self, CompleteBlockSyncRequest},
         consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
         fetcher, gossiper, linear_chain, rest_server, rpc_server,
         small_network::{self, GossipedAddress},
-        storage,
+        storage, upgrade_watcher,
     },
     effect::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, ControlLogicAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
+            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -28,9 +28,10 @@ use crate::{
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -42,12 +43,43 @@ use crate::{
     },
 };
 
+// timing belt event
+// CATCHING_UP
+// match event {
+//     ParticipatingEvent::Initialize(..) => {
+//         // ctor puts into status and we handle pushing various init events here
+//         self.storage.is_init() -> state / or effects if it requires work to be done
+//     }
+//     ParticipatingEvent::GetCaughtUp(..) => {
+//         <- keep on catching up
+//         > sync leap then have convo w accumul
+//                 OR
+//         <- transition to keeping up
+//         <- fatal
+//     }
+//     ParticipatingEvent::StayCaughtUp(..) => {
+//         <- keep on keeping up
+//         <- maybe enuff cycles to attempt 1 sync block
+//         <- get caught up
+//         <- fatal
+//     }
+// }
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
 // Note: The large enum size must be reigned in eventually. This is a stopgap for now.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ParticipatingEvent {
+    // Control logic == Reactor self events
+    // Shutdown the reactor, should only be raised by the reactor itself
+    Shutdown(String),
+    // Check the status of the reactor, should only be raised by the reactor itself
+    CheckStatus,
+    #[from]
+    ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
+
+    // Coordination events == component to component(s) or component to reactor events
     #[from]
     ChainSynchronizer(chain_synchronizer::Event),
     #[from]
@@ -63,7 +95,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
-    ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
+    UpgradeWatcher(#[serde(skip_serializing)] upgrade_watcher::Event),
     #[from]
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
@@ -162,7 +194,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
     #[from]
-    ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
+    UpgradeWatcherRequest(#[serde(skip_serializing)] UpgradeWatcherRequest),
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
@@ -200,7 +232,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
     #[from]
-    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+    UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
     ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
     #[from]
@@ -237,8 +269,6 @@ pub(crate) enum ParticipatingEvent {
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
-    #[from]
-    ControlLogicAnnouncement(ControlLogicAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -261,6 +291,8 @@ impl ReactorEvent for ParticipatingEvent {
     #[inline]
     fn description(&self) -> &'static str {
         match self {
+            ParticipatingEvent::Shutdown(_) => "Shutdown",
+            ParticipatingEvent::CheckStatus => "CheckStatus",
             ParticipatingEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
             ParticipatingEvent::BlockProposer(_) => "BlockProposer",
@@ -268,7 +300,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::RpcServer(_) => "RpcServer",
             ParticipatingEvent::RestServer(_) => "RestServer",
             ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
-            ParticipatingEvent::ChainspecLoader(_) => "ChainspecLoader",
+            ParticipatingEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             ParticipatingEvent::Consensus(_) => "Consensus",
             ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
             ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
@@ -321,7 +353,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
-            ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
+            ParticipatingEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
@@ -334,7 +367,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
-            ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
             ParticipatingEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
@@ -366,7 +399,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
                 "CompleteBlockSynchronizerRequest"
             }
-            ParticipatingEvent::ControlLogicAnnouncement(_) => "ControlLogicAnnouncement",
         }
     }
 }
@@ -422,6 +454,8 @@ impl From<ConsensusRequest> for ParticipatingEvent {
 impl Display for ParticipatingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ParticipatingEvent::Shutdown(msg) => write!(f, "shutdown: {}", msg),
+            ParticipatingEvent::CheckStatus => write!(f, "check status"),
             ParticipatingEvent::ChainSynchronizer(event) => {
                 write!(f, "chain synchronizer: {}", event)
             }
@@ -433,7 +467,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::EventStreamServer(event) => {
                 write!(f, "event stream server: {}", event)
             }
-            ParticipatingEvent::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
+            ParticipatingEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             ParticipatingEvent::Consensus(event) => write!(f, "consensus: {}", event),
             ParticipatingEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             ParticipatingEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
@@ -496,8 +530,11 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
             }
-            ParticipatingEvent::ChainspecLoaderRequest(req) => {
+            ParticipatingEvent::ChainspecRawBytesRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
+            }
+            ParticipatingEvent::UpgradeWatcherRequest(req) => {
+                write!(f, "upgrade watcher request: {}", req)
             }
             ParticipatingEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             ParticipatingEvent::MarkBlockCompletedRequest(req) => {
@@ -590,7 +627,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlockProposerAnnouncement(ann) => {
                 write!(f, "block proposer announcement: {}", ann)
             }
-            ParticipatingEvent::ChainspecLoaderAnnouncement(ann) => {
+            ParticipatingEvent::UpgradeWatcherAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
@@ -598,9 +635,6 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::ChainSynchronizerAnnouncement(ann) => {
                 write!(f, "chain synchronizer announcement: {}", ann)
-            }
-            ParticipatingEvent::ControlLogicAnnouncement(ann) => {
-                write!(f, "control logic announcement: {}", ann)
             }
             ParticipatingEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),

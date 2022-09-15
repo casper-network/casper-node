@@ -17,7 +17,7 @@ use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
+        deploy_acceptor::Error, diagnostics_port::FileSerializer, upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     types::{
@@ -27,31 +27,47 @@ use crate::{
     utils::Source,
 };
 
-#[derive(Serialize)]
-pub(crate) enum ControlLogicAnnouncement {
-    MissingValidatorSet { era_id: EraId },
-}
+// #[derive(Serialize)]
+// pub(crate) enum ControlLogicAnnouncement {
+//     Initialize => {
+// //          ctor puts into status and we handle pushing various init events here
+// //         self.storage.is_init() -> state / or effects if it requires work to be done
+//     },
+//     GetCaughtUp => {
+//         // <- keep on catching up
+//         // > sync leap then have convo w accumul
+//         // OR
+//         // <- transition to keeping up
+//         // <- fatal
+//     }
+//     StayCaughtUp => {
+//         // <- keep on keeping up
+//         // <- maybe enuff cycles to attempt 1 sync block
+//         // <- get caught up
+//         // <- fatal
+//     }
+// }
 
-impl Display for ControlLogicAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
-                write!(f, "missing validator set for era {}", era_id)
-            }
-        }
-    }
-}
-
-impl Debug for ControlLogicAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingValidatorSet { era_id } => f
-                .debug_struct("MissingValidatorSet")
-                .field("era_id", era_id)
-                .finish(),
-        }
-    }
-}
+// impl Display for ControlLogicAnnouncement {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         match self {
+//             ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
+//                 write!(f, "missing validator set for era {}", era_id)
+//             }
+//         }
+//     }
+// }
+//
+// impl Debug for ControlLogicAnnouncement {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         match self {
+//             Self::MissingValidatorSet { era_id } => f
+//                 .debug_struct("MissingValidatorSet")
+//                 .field("era_id", era_id)
+//                 .finish(),
+//         }
+//     }
+// }
 
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
@@ -315,15 +331,15 @@ impl Display for LinearChainAnnouncement {
 
 /// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum ChainspecLoaderAnnouncement {
+pub(crate) enum UpgradeWatcherAnnouncement {
     /// New upgrade recognized.
     UpgradeActivationPointRead(NextUpgrade),
 }
 
-impl Display for ChainspecLoaderAnnouncement {
+impl Display for UpgradeWatcherAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
+            UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
                 write!(f, "read {}", next_upgrade)
             }
         }

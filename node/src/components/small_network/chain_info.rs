@@ -11,7 +11,7 @@ use datasize::DataSize;
 
 use super::{
     counting_format::ConnectionId,
-    message::{ConsensusCertificate, ConsensusKeyPair},
+    message::{ConsensusCertificate, NodeKeyPair},
     Message,
 };
 use crate::types::Chainspec;
@@ -49,7 +49,7 @@ impl ChainInfo {
     pub(super) fn create_handshake<P>(
         &self,
         public_addr: SocketAddr,
-        consensus_keys: Option<&ConsensusKeyPair>,
+        consensus_keys: Option<&NodeKeyPair>,
         connection_id: ConnectionId,
         is_syncing: bool,
     ) -> Message<P> {
