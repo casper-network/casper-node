@@ -17,7 +17,6 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
 
-use crate::reactor::participating::fetchers::Fetchers;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -59,7 +58,9 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::{
-        self, event_queue_metrics::EventQueueMetrics, participating::utils::initialize_component,
+        self,
+        event_queue_metrics::EventQueueMetrics,
+        participating::{fetchers::Fetchers, utils::initialize_component},
         EventQueueHandle, ReactorExit,
     },
     types::{

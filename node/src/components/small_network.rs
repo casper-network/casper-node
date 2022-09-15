@@ -927,7 +927,10 @@ where
     ) -> Effects<Self::Event> {
         match (event, self.status.clone()) {
             (_, ComponentStatus::Fatal(msg)) => {
-                error!(msg, "should not handle this event when network component has fatal error");
+                error!(
+                    msg,
+                    "should not handle this event when network component has fatal error"
+                );
                 return Effects::new();
             }
             (Event::Initialize, ComponentStatus::Uninitialized) => {
@@ -942,12 +945,15 @@ where
             }
             (_, ComponentStatus::Uninitialized) => {
                 error!("should not handle this event when network component is uninitialized");
-                self.status = ComponentStatus::Fatal("attempt to use uninitialized network component".to_string());
+                self.status = ComponentStatus::Fatal(
+                    "attempt to use uninitialized network component".to_string(),
+                );
                 return Effects::new();
             }
             (Event::Initialize, ComponentStatus::Initialized) => {
                 error!("should not initialize when network component is already initialized");
-                self.status = ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
+                self.status =
+                    ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
                 return Effects::new();
             }
             (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {

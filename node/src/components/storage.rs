@@ -1615,8 +1615,8 @@ impl Storage {
         Ok(Some(block_header))
     }
 
-    /// Returns block headers of the trusted block's ancestors, back to the most recent switch block.
-    /// If the trusted one is already a switch block, returns empty vec.
+    /// Returns block headers of the trusted block's ancestors, back to the most recent switch
+    /// block. If the trusted one is already a switch block, returns empty vec.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,

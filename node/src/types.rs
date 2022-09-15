@@ -52,7 +52,7 @@ pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
-pub(crate) use sync_leap::{SyncLeap};
+pub(crate) use sync_leap::SyncLeap;
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
 };

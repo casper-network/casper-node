@@ -151,8 +151,8 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockAdded, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
         TrieOrChunk, TrieOrChunkId,
     },
