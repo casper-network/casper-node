@@ -31,7 +31,7 @@ use crate::{
     types::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
         BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature,
+        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
     },
     utils::WithDir,
 };
@@ -1311,16 +1311,7 @@ fn should_get_trusted_ancestor_headers() {
             .collect()
     };
 
-    {
-        let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_header = blocks.get(6).unwrap().header();
-        let results = storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
-            .unwrap()
-            .unwrap();
-        assert!(results.is_empty(), "should be empty for switch blocks");
-    }
-
+    assert!(get_results(6).is_empty());
     assert_eq!(get_results(8), &[7, 6]);
     assert_eq!(get_results(4), &[3]);
 }
@@ -1450,7 +1441,7 @@ fn should_get_sync_leap() {
     );
 
     // TODO: Add correct sync leap validation.
-    // assert!(sync_leap.validate());
+    // assert!(sync_leap.validate(Ration::new(1, 3)));
 }
 
 #[test]

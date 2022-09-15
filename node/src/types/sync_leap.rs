@@ -26,9 +26,11 @@ pub(crate) struct SyncLeap {
     pub trusted_block_header: BlockHeader,
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.
     /// If the trusted one is already a switch block, this is empty.
+    /// Sorted from highest to lowest.
     pub trusted_ancestor_headers: Vec<BlockHeader>,
     /// The headers of all switch blocks known to the sender, after the trusted block but before
     /// their highest block, with signatures, plus the signed highest block.
+    /// Sorted from lowest to highest.
     pub signed_block_headers: Vec<BlockHeaderWithMetadata>,
 }
 
