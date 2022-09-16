@@ -127,6 +127,7 @@ impl DeployBuffer {
             let footprint = match deploy.footprint() {
                 Ok(deploy_footprint) => deploy_footprint,
                 Err(_) => {
+                    error!(%deploy_hash, "invalid deploy in the proposable set");
                     self.dead.insert(deploy_hash);
                     continue;
                 }
