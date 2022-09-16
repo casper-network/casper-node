@@ -5,8 +5,8 @@ use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
-use crate::{
-    types::{chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash, DeployWithApprovals},
+use crate::types::{
+    chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash, DeployWithApprovals,
 };
 
 #[derive(Debug, Error)]

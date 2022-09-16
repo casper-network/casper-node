@@ -17,14 +17,16 @@ use crate::{
         Component, ComponentStatus, InitializedComponent,
     },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{appendable_block::{AppendableBlock, AddError}, chainspec::DeployConfig,
-            Deploy, DeployWithApprovals, DeployFootprint, DeployHash, FinalizedBlock},
+    types::{
+        appendable_block::{AddError, AppendableBlock},
+        chainspec::DeployConfig,
+        Deploy, DeployFootprint, DeployHash, DeployWithApprovals, FinalizedBlock,
+    },
     NodeRng,
 };
-use event::DeployBufferRequest;
 pub(crate) use config::Config;
+use event::DeployBufferRequest;
 pub(crate) use event::Event;
-
 
 #[derive(DataSize, Debug)]
 struct DeployBuffer {
@@ -138,7 +140,7 @@ impl DeployBuffer {
                     holds.push(deploy_hash);
                 }
                 Err(error) => {
-                    match error{
+                    match error {
                         AddError::Duplicate => {
                             // it should be physically impossible for a duplicate deploy to
                             // be in the deploy buffer, thus this should be unreachable
@@ -153,12 +155,12 @@ impl DeployBuffer {
                             self.dead.insert(deploy_hash);
                             continue;
                         }
-                        AddError::TransferCount |
-                        AddError::DeployCount |
-                        AddError::ApprovalCount |
-                        AddError::GasLimit |
-                        AddError::BlockSize |
-                        AddError::InvalidGasAmount => {
+                        AddError::TransferCount
+                        | AddError::DeployCount
+                        | AddError::ApprovalCount
+                        | AddError::GasLimit
+                        | AddError::BlockSize
+                        | AddError::InvalidGasAmount => {
                             // one or more block limits have been reached
                             break;
                         }
@@ -168,8 +170,10 @@ impl DeployBuffer {
         }
 
         // put a hold on all proposed deploys / transfers
-        self.hold
-            .insert(timestamp, holds.iter().map(|deploy_hash| *deploy_hash).collect());
+        self.hold.insert(
+            timestamp,
+            holds.iter().map(|deploy_hash| *deploy_hash).collect(),
+        );
         ret
     }
 }
@@ -225,9 +229,7 @@ where
             (
                 ComponentStatus::Initialized,
                 Event::Request(DeployBufferRequest::GetAppendableBlock(timestamp, responder)),
-            ) => responder
-                .respond(self.appendable_block(timestamp))
-                .ignore(),
+            ) => responder.respond(self.appendable_block(timestamp)).ignore(),
             (ComponentStatus::Initialized, Event::BlockFinalized(finalized_block)) => {
                 self.block_finalized(&*finalized_block);
                 Effects::new()
