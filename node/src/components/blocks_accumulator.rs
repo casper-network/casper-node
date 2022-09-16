@@ -38,12 +38,21 @@ pub(crate) struct BlocksAccumulator {
     fault_tolerance_fraction: Ratio<u64>,
 }
 
+pub(crate) enum LeapInstruction {
+    Leap,
+    CaughtUp,
+}
+
 impl BlocksAccumulator {
     pub(crate) fn new(fault_tolerance_fraction: Ratio<u64>) -> Self {
         Self {
             block_acceptors: Default::default(),
             fault_tolerance_fraction,
         }
+    }
+
+    pub(crate) fn should_leap(&self, block_hash: &BlockHash) -> LeapInstruction {
+        LeapInstruction::Leap
     }
 
     fn handle_block_added<REv>(

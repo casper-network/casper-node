@@ -11,8 +11,17 @@ mod memory_metrics;
 mod tests;
 mod utils;
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
+use casper_execution_engine::core::{
+    engine_state,
+    engine_state::{ChainspecRegistry, UpgradeConfig, UpgradeSuccess},
+};
+use casper_types::{Key, StoredValue, TimeDiff, Timestamp};
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
@@ -37,7 +46,9 @@ use crate::{
         rpc_server,
         rpc_server::RpcServer,
         small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
-        storage::Storage,
+        storage::{FatalStorageError, Storage},
+        sync_leaper,
+        sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
         Component,
     },
@@ -64,8 +75,8 @@ use crate::{
         EventQueueHandle, ReactorExit,
     },
     types::{
-        BlockAdded, Chainspec, ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, Item,
-        SyncLeap, TrieOrChunk,
+        ActivationPoint, Block, BlockAdded, BlockHash, Chainspec, ChainspecRawBytes, Deploy,
+        ExitCode, FinalitySignature, Item, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -76,6 +87,7 @@ pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
+use crate::components::blocks_accumulator::LeapInstruction;
 
 #[derive(DataSize, Debug)]
 enum ReactorState {
@@ -87,6 +99,7 @@ enum ReactorState {
 /// Participating node reactor.
 #[derive(DataSize, Debug)]
 pub(crate) struct Reactor {
+    trusted_hash: Option<BlockHash>,
     storage: Storage,
     contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
     upgrade_watcher: UpgradeWatcher,
@@ -110,6 +123,7 @@ pub(crate) struct Reactor {
     block_added_gossiper: Gossiper<BlockAdded, ParticipatingEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, ParticipatingEvent>,
 
+    sync_leaper: SyncLeaper,
     block_proposer: BlockProposer, // TODO: handle providing highest block, etc.
     consensus: EraSupervisor,      /* TODO: Update constructor (provide less state) and extend
                                     * handler for the "block added" ann. */
@@ -129,6 +143,10 @@ pub(crate) struct Reactor {
     state: ReactorState,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+
+    max_attempts: usize,
+    attempts: usize,
+    idle_tolerances: TimeDiff,
 }
 
 impl Reactor {
@@ -137,6 +155,7 @@ impl Reactor {
         effect_builder: EffectBuilder<ParticipatingEvent>,
         _rng: &mut NodeRng,
     ) -> Effects<ParticipatingEvent> {
+        const WAIT_SEC: u64 = 15; // TODO: config setting this
         let effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
@@ -183,14 +202,207 @@ impl Reactor {
                 self.state = ReactorState::CatchUp;
             }
             ReactorState::CatchUp => {
-                // check if we should run commit genesis/upgrade and do so if required?
-                // check block accumulator
-                // leap, switch to keep up, or shut down
-                // if no progress is being made, reattempt config'd # of times then shutdown
-                // idleness should be same as consensus
-                // any progress at all will touch the idleness counter (keeping it alive longer)
+                let mut effects = Effects::new();
+                if let Some(timestamp) = self.complete_block_synchronizer.last_progress() {
+                    if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
+                        self.attempts = 0; // if any progress has been made, reset attempts
+                        effects.extend(
+                            effect_builder
+                                .set_timeout(Duration::from_secs(WAIT_SEC))
+                                .event(|_| ParticipatingEvent::CheckStatus),
+                        );
+                        return effects;
+                    } else {
+                        self.attempts += 1;
+                        if self.attempts > self.max_attempts {
+                            effects.extend(effect_builder.immediately().event(|()| {
+                                ParticipatingEvent::Shutdown(
+                                    "catch up process exceeds idle tolerances".to_string(),
+                                )
+                            }));
+                            return effects;
+                        }
+                    }
+                }
+
+                // check optional config trusted hash && optional local tip
+                /*
+                    ++ : self.storage.get_block(config.trusted_hash).height >< tip.height
+                    +- : leap w/ config hash
+                    -+ : leap w/ local tip hash
+                    -- : check pre-genesis and apply or if post-genesis shutdown
+                */
+                let sync_hash = {
+                    if let Some(trusted_hash) = self.trusted_hash {
+                        match self.storage.read_block(&trusted_hash) {
+                            Ok(Some(trusted_block)) => {
+                                match self.linear_chain.highest_block() {
+                                    Some(block) => {
+                                        *block.hash()
+                                        // may want to compare heights
+                                    }
+                                    None => {
+                                        // should be unreachable
+                                        trusted_hash
+                                    }
+                                }
+                            }
+                            Ok(None) => trusted_hash,
+                            Err(_) => {
+                                effects.extend(effect_builder.immediately().event(move |_| {
+                                    ParticipatingEvent::Shutdown(
+                                        "fatal block store error".to_string(),
+                                    )
+                                }));
+                                return effects;
+                            }
+                        }
+                    } else {
+                        match self.linear_chain.highest_block() {
+                            Some(block) => *block.hash(),
+                            None => {
+                                if let ActivationPoint::Genesis(timestamp) =
+                                    self.chainspec.protocol_config.activation_point
+                                {
+                                    // push apply genesis effect
+                                    // TODO: wire up genesis (can't run test network without
+                                    // genesis)
+                                    effects.extend(
+                                        effect_builder
+                                            .immediately()
+                                            .event(|()| ParticipatingEvent::CheckStatus),
+                                    );
+                                    return effects;
+                                } else {
+                                    effects.extend(effect_builder.immediately().event(move |_| {
+                                        ParticipatingEvent::Shutdown(
+                                            "fatal block store error".to_string(),
+                                        )
+                                    }));
+                                    return effects;
+                                }
+                            }
+                        }
+                    }
+                };
+
+                match self.blocks_accumulator.should_leap(&sync_hash) {
+                    LeapInstruction::Leap => {
+                        // the leap outcome needs to get forwarded to the complete block
+                        // synchronizer to make the merry-go-round go round
+                        let peers_to_ask =
+                            self.small_network.peers().keys().take(3).copied().collect(); // todo: randomize this
+                        let trusted_hash = sync_hash;
+                        effects.extend(effect_builder.immediately().event(move |_| {
+                            ParticipatingEvent::SyncLeaper(
+                                sync_leaper::Event::StartPullingSyncLeap {
+                                    trusted_hash: sync_hash,
+                                    peers_to_ask,
+                                },
+                            )
+                        }));
+                        effects.extend(
+                            effect_builder
+                                .immediately()
+                                .event(|()| ParticipatingEvent::CheckStatus),
+                        );
+                        return effects;
+                    }
+                    LeapInstruction::CaughtUp => {
+                        // TODO: maybe do something w/ the UpgradeWatcher announcement for a
+                        // detected upgrade to make this a stronger check
+                        match self.linear_chain.highest_block() {
+                            Some(chain_block) => {
+                                if let ActivationPoint::EraId(era_id) =
+                                    self.chainspec.protocol_config.activation_point
+                                {
+                                    // check if protocol upgrade is necessary
+                                    if era_id == chain_block.header().next_block_era_id() {
+                                        let global_state_update = match self
+                                            .chainspec
+                                            .protocol_config
+                                            .get_update_mapping()
+                                        {
+                                            Ok(global_state_update) => global_state_update,
+                                            Err(err) => {
+                                                effects.extend(effect_builder.immediately().event(
+                                                    move |_| {
+                                                        ParticipatingEvent::Shutdown(
+                                                            err.to_string(),
+                                                        )
+                                                    },
+                                                ));
+                                                return effects;
+                                            }
+                                        };
+                                        let chainspec_registry =
+                                            ChainspecRegistry::new_with_optional_global_state(
+                                                self.chainspec_raw_bytes.chainspec_bytes(),
+                                                self.chainspec_raw_bytes.maybe_global_state_bytes(),
+                                            );
+                                        effects.extend(
+                                            effect_builder
+                                                .upgrade_contract_runtime(Box::new(
+                                                    UpgradeConfig::new(
+                                                        *chain_block.header().state_root_hash(),
+                                                        chain_block.header().protocol_version(),
+                                                        self.chainspec.protocol_config.version,
+                                                        Some(era_id),
+                                                        Some(
+                                                            self.chainspec
+                                                                .core_config
+                                                                .validator_slots,
+                                                        ),
+                                                        Some(
+                                                            self.chainspec
+                                                                .core_config
+                                                                .auction_delay,
+                                                        ),
+                                                        Some(
+                                                            self.chainspec
+                                                                .core_config
+                                                                .locked_funds_period
+                                                                .millis(),
+                                                        ),
+                                                        Some(
+                                                            self.chainspec
+                                                                .core_config
+                                                                .round_seigniorage_rate,
+                                                        ),
+                                                        Some(
+                                                            self.chainspec
+                                                                .core_config
+                                                                .unbonding_delay,
+                                                        ),
+                                                        global_state_update,
+                                                        chainspec_registry,
+                                                    ),
+                                                ))
+                                                .event(ParticipatingEvent::UpgradeResult),
+                                        );
+                                        return effects;
+                                    }
+                                }
+                            }
+                            None => {
+                                // should be unreachable
+                                effects.extend(effect_builder.immediately().event(move |_| {
+                                    ParticipatingEvent::Shutdown(
+                                        "can't be caught up with no block in the block store"
+                                            .to_string(),
+                                    )
+                                }));
+                                return effects;
+                            }
+                        }
+                        self.state = ReactorState::KeepUp;
+                    }
+                }
             }
             ReactorState::KeepUp => {
+                // TODO: if UpgradeWatcher announcement raised, keep track of era id's against the
+                // new activation point
+                // detected upgrade to make this a stronger check
                 // if in validator set and era supervisor is green, validate
                 // else get added blocks for block accumulator and execute them
                 // if falling behind, switch over to catchup
@@ -228,6 +440,8 @@ impl reactor::Reactor for Reactor {
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let protocol_version = chainspec.protocol_config.version;
+
+        let trusted_hash = config.value().node.trusted_hash;
 
         let (root_dir, config) = config.into_parts();
         let storage_config = WithDir::new(&root_dir, config.storage.clone());
@@ -309,6 +523,8 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let sync_leaper = SyncLeaper::new(chainspec.highway_config.finality_threshold_fraction);
+
         let block_proposer =
             BlockProposer::new(registry.clone(), &chainspec, config.block_proposer)?;
 
@@ -372,6 +588,7 @@ impl reactor::Reactor for Reactor {
             deploy_gossiper,
             block_added_gossiper,
             finality_signature_gossiper,
+            sync_leaper,
             block_proposer,
             consensus,
             block_validator,
@@ -384,6 +601,10 @@ impl reactor::Reactor for Reactor {
             memory_metrics,
             event_queue_metrics,
             state: ReactorState::Initialize {},
+            attempts: 0,
+            max_attempts: 3,
+            idle_tolerances: TimeDiff::from_seconds(1200),
+            trusted_hash
         };
 
         let effects = effect_builder
@@ -406,6 +627,51 @@ impl reactor::Reactor for Reactor {
             )
             .ignore(),
             ParticipatingEvent::CheckStatus => self.check_status(effect_builder, rng),
+            ParticipatingEvent::UpgradeResult(result) => {
+                match result {
+                    Ok(UpgradeSuccess { .. }) => {
+                        // info!(
+                        //     network_name = %self.chainspec.network_config.name,
+                        //     %post_state_hash,
+                        //     "upgrade committed"
+                        // );
+                        //
+                        // let initial_pre_state = ExecutionPreState::new(
+                        //     previous_block_header.height() + 1,
+                        //     post_state_hash,
+                        //     previous_block_header.hash(),
+                        //     previous_block_header.accumulated_seed(),
+                        // );
+                        // let finalized_block = FinalizedBlock::new(
+                        //     BlockPayload::default(),
+                        //     Some(EraReport::default()),
+                        //     previous_block_header.timestamp(),
+                        //     previous_block_header.next_block_era_id(),
+                        //     initial_pre_state.next_block_height(),
+                        //     PublicKey::System,
+                        // );
+                        //
+                        // self.execute_immediate_switch_block(
+                        //     effect_builder,
+                        //     initial_pre_state,
+                        //     finalized_block,
+                        // )
+                        // TODO: investigate piggy backing
+                        // effect_builder.enqueue_block_for_execution
+                        // and allowing the contract runtime to handle immediate switch block
+                        // like any other finalized block
+                        effect_builder
+                            .immediately()
+                            .event(|()| ParticipatingEvent::CheckStatus)
+                    }
+                    Err(err) => fatal!(
+                        effect_builder,
+                        "reactor should shut down due to error: {}",
+                        err.to_string(),
+                    )
+                    .ignore(),
+                }
+            }
             // delegate all fetcher activity to self.fetchers.dispatch_fetcher_event(..)
             ParticipatingEvent::DeployFetcher(..)
             | ParticipatingEvent::DeployFetcherRequest(..)
@@ -435,8 +701,10 @@ impl reactor::Reactor for Reactor {
             | ParticipatingEvent::FinalitySignatureFetcherRequest(..) => self
                 .fetchers
                 .dispatch_fetcher_event(effect_builder, rng, event),
-
-            // Participating only
+            ParticipatingEvent::SyncLeaper(event) => reactor::wrap_effects(
+                ParticipatingEvent::SyncLeaper,
+                self.sync_leaper.handle_event(effect_builder, rng, event),
+            ),
             ParticipatingEvent::BlockProposer(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockProposer,
                 self.block_proposer.handle_event(effect_builder, rng, event),

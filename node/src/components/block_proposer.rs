@@ -37,9 +37,8 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Approval, BlockPayload, Chainspec, DeployHash,
-        DeployFootprint, DeployHeader, DeployOrTransferHash,
-        DeployWithApprovals, FinalizedBlock,
+        Approval, BlockPayload, Chainspec, DeployFootprint, DeployHash, DeployHeader,
+        DeployOrTransferHash, DeployWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };

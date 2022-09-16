@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+use casper_execution_engine::core::{engine_state, engine_state::UpgradeSuccess};
 use derive_more::From;
 use serde::Serialize;
 
@@ -10,7 +11,7 @@ use crate::{
         consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
         fetcher, gossiper, linear_chain, rest_server, rpc_server,
         small_network::{self, GossipedAddress},
-        storage, upgrade_watcher,
+        storage, sync_leaper, upgrade_watcher,
     },
     effect::{
         announcements::{
@@ -31,7 +32,7 @@ use crate::{
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
-            UpgradeWatcherRequest,
+            SyncLeapRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -77,6 +78,12 @@ pub(crate) enum ParticipatingEvent {
     CheckStatus,
     #[from]
     ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
+    #[from]
+    UpgradeResult(#[serde(skip_serializing)] Result<UpgradeSuccess, engine_state::Error>),
+
+    // SyncLeaper
+    #[from]
+    SyncLeaper(sync_leaper::Event),
 
     // Coordination events == component to component(s) or component to reactor events
     #[from]
@@ -294,6 +301,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::CheckStatus => "CheckStatus",
             ParticipatingEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
+            ParticipatingEvent::UpgradeResult(_) => "UpgradeResult",
+            ParticipatingEvent::SyncLeaper(_) => "SyncLeaper",
             ParticipatingEvent::BlockProposer(_) => "BlockProposer",
             ParticipatingEvent::Storage(_) => "Storage",
             ParticipatingEvent::RpcServer(_) => "RpcServer",
@@ -460,6 +469,8 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::Storage(event) => write!(f, "storage: {}", event),
             ParticipatingEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
+            ParticipatingEvent::UpgradeResult(result) => write!(f, "upgrade result: {:?}", result),
+            ParticipatingEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             ParticipatingEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
             ParticipatingEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             ParticipatingEvent::RestServer(event) => write!(f, "rest server: {}", event),

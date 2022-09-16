@@ -13,7 +13,7 @@ use casper_types::Motes;
 use super::{BlockHeight, CachedState};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Approval, Block, DeployHeader, DeployFootprint, DeployOrTransferHash, FinalizedBlock},
+    types::{Approval, Block, DeployFootprint, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
 
 /// An event for when using the block proposer as a component.
