@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{TimeDiff, Timestamp};
 
 use super::{BlockHeight, CachedState, FinalizationQueue};
-use crate::types::{Approval, Block, DeployHash, DeployFootprint};
+use crate::types::{Approval, Block, DeployFootprint, DeployHash};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -182,7 +182,9 @@ pub(super) fn prune_pending_deploys(
     deploys: &mut HashMap<DeployHash, PendingDeployInfo>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hashmap_drain_filter_in_place(deploys, |data| data.footprint.header.expired(current_instant))
+    hashmap_drain_filter_in_place(deploys, |data| {
+        data.footprint.header.expired(current_instant)
+    })
 }
 
 #[cfg(test)]

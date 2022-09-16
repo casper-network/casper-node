@@ -213,7 +213,7 @@ impl LinearChain {
         self.protocol_version
     }
 
-    fn latest_block(&self) -> &Option<Block> {
+    pub(crate) fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
     }
 
