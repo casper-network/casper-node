@@ -74,23 +74,17 @@ impl FetcherItem for SyncLeap {
     ) -> Result<(), Self::ValidationError> {
         // TODO: Possibly check the size of the collections.
 
-        // The oldest provided block must be a switch block, so that we know the validators
-        // who are expected to sign later blocks.
-        let oldest_header = self
-            .trusted_ancestor_headers
-            .first()
-            .unwrap_or(&self.trusted_block_header);
         // The header chain should only go back until it hits _one_ switch block.
-        for header in self
-            .trusted_ancestor_headers
-            .iter()
-            .chain(iter::once(&self.trusted_block_header))
+        for header in iter::once(&self.trusted_block_header)
+            .chain(self.trusted_ancestor_headers.iter())
+            .rev()
             .skip(1)
         {
             if header.is_switch_block() {
                 return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
             }
         }
+
         // All headers must have the same protocol versions: sync leaps across upgrade boundaries
         // are not supported.
         let protocol_version = self.trusted_block_header.protocol_version();
@@ -104,10 +98,12 @@ impl FetcherItem for SyncLeap {
         {
             return Err(SyncLeapValidationError::MultipleProtocolVersions);
         }
+
         // The chain from the oldest switch block to the trusted one must be contiguous.
         for (parent_header, child_header) in self
             .trusted_ancestor_headers
             .iter()
+            .rev()
             .chain(iter::once(&self.trusted_block_header))
             .tuple_windows()
         {
@@ -115,6 +111,14 @@ impl FetcherItem for SyncLeap {
                 return Err(SyncLeapValidationError::HeadersNotContiguous);
             }
         }
+
+        // The oldest provided block must be a switch block, so that we know the validators
+        // who are expected to sign later blocks.
+        let oldest_header = self
+            .trusted_ancestor_headers
+            .last()
+            .unwrap_or(&self.trusted_block_header);
+        assert!(oldest_header.is_switch_block());
 
         let mut validator_weights = oldest_header
             .next_era_validator_weights()
@@ -144,6 +148,7 @@ impl FetcherItem for SyncLeap {
             signed_header
                 .validate(&())
                 .map_err(SyncLeapValidationError::BlockWithMetadata)?;
+
             signed_header
                 .block_signatures
                 .verify()
@@ -153,7 +158,7 @@ impl FetcherItem for SyncLeap {
                 signed_header.block_header.next_era_validator_weights()
             {
                 validator_weights = next_validator_weights;
-                validators_era_id = signed_header.block_header.era_id();
+                validators_era_id = signed_header.block_header.era_id().successor();
             }
         }
 

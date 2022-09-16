@@ -4,6 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fs::{self, File},
     iter,
+    rc::Rc,
 };
 
 use num_rational::Ratio;
@@ -12,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
-    system::auction::UnbondingPurse, testing::TestRng, AccessRights, EraId, ExecutionResult,
-    ProtocolVersion, PublicKey, SecretKey, Signature, URef, U512,
+    generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, Signature, URef, U512,
 };
 
 use super::{
@@ -30,7 +31,7 @@ use crate::{
     types::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
         BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature,
+        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
     },
     utils::WithDir,
 };
@@ -76,17 +77,10 @@ fn create_sync_leap_test_chain(non_signed_blocks: &[u64]) -> (Storage, Vec<Block
 
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
-    let validator_1_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
-    let validator_2_public_key = {
-        let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
-        PublicKey::from(&secret_key)
-    };
     let mut trusted_validator_weights = BTreeMap::new();
-    trusted_validator_weights.insert(validator_1_public_key.clone(), U512::from(2000000000000u64));
-    trusted_validator_weights.insert(validator_2_public_key.clone(), U512::from(2000000000000u64));
+
+    let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
+    trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
 
     let mut blocks = vec![];
     [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -121,9 +115,17 @@ fn create_sync_leap_test_chain(non_signed_blocks: &[u64]) -> (Storage, Vec<Block
     blocks.iter().for_each(|block| {
         storage.write_block(block).unwrap();
 
+        let secret_rc = Rc::new(&validator_secret_key);
+        let fs = FinalitySignature::create(
+            *block.hash(),
+            block.header().era_id(),
+            &secret_rc,
+            validator_public_key.clone(),
+        );
+        assert!(fs.is_verified().is_ok());
+
         let mut proofs = BTreeMap::new();
-        proofs.insert(validator_1_public_key.clone(), Signature::System);
-        proofs.insert(validator_2_public_key.clone(), Signature::System);
+        proofs.insert(validator_public_key.clone(), fs.signature);
 
         let block_signatures = BlockSignatures {
             block_hash: *block.hash(),
@@ -1439,8 +1441,7 @@ fn should_get_sync_leap() {
         vec![6, 9, 11]
     );
 
-    // TODO: Add correct sync leap validation.
-    // assert!(sync_leap.validate(Ration::new(1, 3)));
+    assert!(sync_leap.validate(&Ratio::new(1, 3)).is_ok());
 }
 
 #[test]
