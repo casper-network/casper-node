@@ -170,10 +170,7 @@ impl DeployBuffer {
         }
 
         // put a hold on all proposed deploys / transfers
-        self.hold.insert(
-            timestamp,
-            holds.iter().map(|deploy_hash| *deploy_hash).collect(),
-        );
+        self.hold.insert(timestamp, holds.iter().copied().collect());
         ret
     }
 }

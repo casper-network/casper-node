@@ -26,8 +26,7 @@ use crate::{
         incoming::{
             BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
             FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand,
-            TrieRequestIncoming, TrieResponseIncoming,
+            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{MarkBlockCompletedRequest, StateStoreRequest},
         Responder,
@@ -125,10 +124,6 @@ enum Event {
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
-    #[from]
-    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
     #[from]
     BlockAddedRequestIncoming(BlockAddedRequestIncoming),
     #[from]
@@ -255,8 +250,6 @@ impl ReactorTrait for Reactor {
             | Event::GossiperIncomingGossipedAddress(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
-            | Event::SyncLeapRequestIncoming(_)
-            | Event::SyncLeapResponseIncoming(_)
             | Event::BlockAddedRequestIncoming(_)
             | Event::BlockAddedResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)

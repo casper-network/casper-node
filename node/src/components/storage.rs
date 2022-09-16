@@ -193,8 +193,7 @@ pub struct Storage {
     /// Keyed by serialized item ID, contains the serialized item.
     serialized_item_pool: ObjectPool<Box<[u8]>>,
     /// The number of eras relative to the highest block's era which are considered as recent for
-    /// the purpose of deciding how to respond to a
-    /// `NetRequest::BlockHeaderAndFinalitySignaturesByHeight`.
+    /// the purpose of deciding how to respond to a `NetRequest::SyncLeap`.
     recent_era_count: u64,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
@@ -735,6 +734,17 @@ impl Storage {
                 let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
                 let opt_item = self.read_block_signatures(&item_id)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    fetch_response,
+                )?)
+            }
+            NetRequest::SyncLeap(ref serialized_id) => {
+                let item_id = decode_item_id::<SyncLeap>(serialized_id)?;
+                let fetch_response = self.get_sync_leap(item_id, self.recent_era_count)?;
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -2031,6 +2041,60 @@ impl Storage {
         Ok(BlockHeadersBatch::from_vec(headers, block_header_ids))
     }
 
+    pub(crate) fn get_sync_leap(
+        &self,
+        block_hash: BlockHash,
+        allowed_era_diff: u64,
+    ) -> Result<FetchResponse<SyncLeap, BlockHash>, FatalStorageError> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+
+        let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
+            Some(trusted_block_header) => trusted_block_header,
+            None => return Ok(FetchResponse::NotFound(block_hash)),
+        };
+
+        let highest_complete_block_header =
+            match self.get_header_of_highest_complete_block(&mut txn)? {
+                Some(highest_complete_block_header) => highest_complete_block_header,
+                None => return Ok(FetchResponse::NotFound(block_hash)),
+            };
+        if highest_complete_block_header
+            .block_header
+            .era_id()
+            .saturating_sub(trusted_block_header.era_id().into())
+            > allowed_era_diff.into()
+        {
+            return Ok(FetchResponse::NotProvided(block_hash));
+        }
+
+        let trusted_ancestor_headers =
+            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
+                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
+                None => return Ok(FetchResponse::NotFound(block_hash)),
+            };
+
+        if let Some(signed_block_headers) = self.get_signed_block_headers(
+            &mut txn,
+            &trusted_block_header,
+            &highest_complete_block_header,
+            trusted_ancestor_headers
+                .last()
+                .cloned()
+                .unwrap_or_else(|| trusted_block_header.clone()),
+        )? {
+            Ok(FetchResponse::Fetched(SyncLeap {
+                trusted_block_header,
+                trusted_ancestor_headers,
+                signed_block_headers,
+            }))
+        } else {
+            Ok(FetchResponse::NotFound(block_hash))
+        }
+    }
+
     /// Creates a serialized representation of a `FetchResponse` and the resulting message.
     ///
     /// If the given item is `Some`, returns a serialization of `FetchResponse::Fetched`. If
@@ -2293,71 +2357,10 @@ impl Config {
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum SyncLeapResult {
-    HaveIt(SyncLeap),
-    DontHaveIt,
-    TooOld,
-}
-
 // Testing code. The functions below allow direct inspection of the storage component and should
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
-    pub(crate) fn get_sync_leap(
-        &self,
-        block_hash: BlockHash,
-        allowed_era_diff: u64,
-    ) -> Result<SyncLeapResult, FatalStorageError> {
-        let mut txn = self
-            .env
-            .begin_ro_txn()
-            .expect("could not create RO transaction");
-
-        let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
-            Some(trusted_block_header) => trusted_block_header,
-            None => return Ok(SyncLeapResult::DontHaveIt),
-        };
-
-        let highest_complete_block_header =
-            match self.get_header_of_highest_complete_block(&mut txn)? {
-                Some(highest_complete_block_header) => highest_complete_block_header,
-                None => return Ok(SyncLeapResult::DontHaveIt),
-            };
-        if highest_complete_block_header
-            .block_header
-            .era_id()
-            .saturating_sub(trusted_block_header.era_id().into())
-            > allowed_era_diff.into()
-        {
-            return Ok(SyncLeapResult::TooOld);
-        }
-
-        let trusted_ancestor_headers =
-            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
-                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
-                None => return Ok(SyncLeapResult::DontHaveIt),
-            };
-
-        if let Some(signed_block_headers) = self.get_signed_block_headers(
-            &mut txn,
-            &trusted_block_header,
-            &highest_complete_block_header,
-            trusted_ancestor_headers
-                .last()
-                .cloned()
-                .unwrap_or_else(|| trusted_block_header.clone()),
-        )? {
-            Ok(SyncLeapResult::HaveIt(SyncLeap {
-                trusted_block_header,
-                trusted_ancestor_headers,
-                signed_block_headers,
-            }))
-        } else {
-            Ok(SyncLeapResult::DontHaveIt)
-        }
-    }
-
     /// Directly returns a deploy from internal store.
     ///
     /// # Panics

@@ -22,11 +22,9 @@ use super::{
     Storage,
 };
 use crate::{
+    components::fetcher::FetchResponse,
     effect::{requests::StorageRequest, Multiple},
-    storage::{
-        lmdb_ext::{deserialize_internal, serialize_internal},
-        SyncLeapResult,
-    },
+    storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
@@ -1427,7 +1425,7 @@ fn should_get_sync_leap() {
         .unwrap();
 
     let sync_leap = match sync_leap_result {
-        SyncLeapResult::HaveIt(sync_leap) => sync_leap,
+        FetchResponse::Fetched(sync_leap) => sync_leap,
         _ => panic!("should have leap sync"),
     };
 
@@ -1455,7 +1453,7 @@ fn should_respect_allowed_era_diff_in_get_sync_leap() {
         .unwrap();
 
     assert!(
-        matches!(sync_leap_result, SyncLeapResult::TooOld),
+        matches!(sync_leap_result, FetchResponse::NotProvided(_)),
         "should not have sync leap"
     );
 }

@@ -641,7 +641,7 @@ mod tests {
             Ok((reactor, effects))
         }
 
-        fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        fn maybe_exit(&self) -> Option<reactor::ReactorExit> {
             None
         }
     }

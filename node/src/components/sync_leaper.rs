@@ -2,6 +2,7 @@
 
 //! The Sync Leaper
 mod error;
+mod event;
 
 use std::{
     collections::HashMap,
@@ -25,45 +26,8 @@ use crate::{
     types::{BlockHash, NodeId, SyncLeap},
     NodeRng,
 };
-
 pub(crate) use error::{ConstructSyncLeapError, PullSyncLeapError};
-
-#[derive(Debug, Serialize)]
-pub(crate) enum Event {
-    SyncLeapRequest(SyncLeapRequest),
-    StartPullingSyncLeap {
-        trusted_hash: BlockHash,
-        peers_to_ask: Vec<NodeId>,
-    },
-    FetchedSyncLeapFromPeer {
-        trusted_hash: BlockHash,
-        fetch_result: FetchResult<SyncLeap>,
-    },
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Event::SyncLeapRequest(request) => write!(f, "sync leap request: {}", request),
-            Event::StartPullingSyncLeap {
-                trusted_hash,
-                peers_to_ask,
-            } => write!(
-                f,
-                "sync pulling sync leap: {} {:?}",
-                trusted_hash, peers_to_ask
-            ),
-            Event::FetchedSyncLeapFromPeer {
-                trusted_hash,
-                fetch_result,
-            } => write!(
-                f,
-                "fetched sync leap from peer: {} {:?}",
-                trusted_hash, fetch_result
-            ),
-        }
-    }
-}
+pub(crate) use event::Event;
 
 #[derive(Debug, DataSize)]
 pub(crate) struct SyncLeaper {
@@ -180,12 +144,35 @@ impl SyncLeaper {
             error!("tried to start fetching a sync leap without peers to ask");
             return Effects::new();
         }
-        if self.maybe_pull_request_in_progress.is_some() {
-            // TODO: if the trusted hash is the same, maybe another component is just giving us
-            //       more peers? consider handling that in a different way
-            return Effects::new();
-        }
         let mut effects = Effects::new();
+        if let Some(pull_request_in_progress) = self.maybe_pull_request_in_progress.as_mut() {
+            if pull_request_in_progress.trusted_hash != trusted_hash {
+                error!(
+                    current_trusted_hash = %pull_request_in_progress.trusted_hash,
+                    requested_trusted_hash = %trusted_hash,
+                    "tried to start fetching a sync leap for a different trusted hash"
+                );
+                return Effects::new();
+            }
+
+            for peer in peers_to_ask {
+                if pull_request_in_progress.peers.contains_key(&peer) == false {
+                    effects.extend(
+                        effect_builder
+                            .fetch::<SyncLeap>(trusted_hash, peer, self.finality_threshold_fraction)
+                            .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
+                                trusted_hash,
+                                fetch_result,
+                            }),
+                    );
+                    pull_request_in_progress
+                        .peers
+                        .insert(peer, PeerState::RequestSent);
+                }
+            }
+            return effects;
+        }
+
         let peers = peers_to_ask
             .into_iter()
             .map(|peer| {
@@ -197,7 +184,6 @@ impl SyncLeaper {
                             fetch_result,
                         }),
                 );
-                // note the peer states
                 (peer, PeerState::RequestSent)
             })
             .collect();
@@ -206,15 +192,6 @@ impl SyncLeaper {
             peers,
         });
         effects
-    }
-
-    fn handle_construct_request<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        trusted_hash: BlockHash,
-        responder: Responder<Result<SyncLeap, ConstructSyncLeapError>>,
-    ) -> Effects<Event> {
-        Effects::new()
     }
 
     fn handle_fetched_sync_leap(
@@ -311,10 +288,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::SyncLeapRequest(SyncLeapRequest {
-                trusted_hash,
-                responder,
-            }) => self.handle_construct_request(effect_builder, trusted_hash, responder),
             Event::StartPullingSyncLeap {
                 trusted_hash,
                 peers_to_ask,

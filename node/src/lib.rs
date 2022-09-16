@@ -20,6 +20,7 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
+#![allow(clippy::bool_comparison)]
 
 pub(crate) mod components;
 mod config_migration;

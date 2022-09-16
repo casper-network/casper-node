@@ -71,7 +71,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        ExitCode, FetcherItem, FinalitySignature, FinalizedApprovalsWithId, NodeId,
+        ExitCode, FetcherItem, FinalitySignature, FinalizedApprovalsWithId, NodeId, SyncLeap,
     },
     unregister_metric,
     utils::{
@@ -996,6 +996,7 @@ where
         + From<fetcher::Event<BlockHeadersBatch>>
         + From<fetcher::Event<BlockSignatures>>
         + From<fetcher::Event<Deploy>>
+        + From<fetcher::Event<SyncLeap>>
         + From<BlocklistAnnouncement>,
 {
     match message {
@@ -1127,5 +1128,12 @@ where
                 serialized_item,
             )
         }
+        NetResponse::SyncLeap(ref serialized_item) => handle_fetch_response::<R, SyncLeap>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+        ),
     }
 }

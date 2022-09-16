@@ -75,12 +75,6 @@ pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 /// A new finality signature arrived over the network.
 pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
 
-/// A new message requesting a SyncLeap structure.
-pub(crate) type SyncLeapRequestIncoming = MessageIncoming<SyncLeapRequest>;
-
-/// A new message responding to a SyncLeap request.
-pub(crate) type SyncLeapResponseIncoming = MessageIncoming<SyncLeapResponse>;
-
 /// A new message requesting a BlockAdded structure.
 pub(crate) type BlockAddedRequestIncoming = MessageIncoming<BlockAddedRequest>;
 
@@ -119,6 +113,8 @@ pub(crate) enum NetRequest {
     BlockHeadersBatch(Vec<u8>),
     /// Request for finality signatures for a block.
     FinalitySignatures(Vec<u8>),
+    /// Request for a SyncLeap.
+    SyncLeap(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -141,6 +137,7 @@ impl Display for NetRequest {
             NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
             NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
             NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
+            NetRequest::SyncLeap(_) => f.write_str("request for sync leap"),
         }
     }
 }
@@ -164,6 +161,7 @@ impl NetRequest {
             NetRequest::BlockAndDeploys(ref id) => id,
             NetRequest::BlockHeadersBatch(ref id) => id,
             NetRequest::FinalitySignatures(ref id) => id,
+            NetRequest::SyncLeap(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -188,6 +186,7 @@ impl NetRequest {
             NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
             NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
+            NetRequest::SyncLeap(_) => Tag::SyncLeap,
         }
     }
 }
@@ -197,28 +196,18 @@ impl NetRequest {
 /// See `NetRequest` for notes.
 #[derive(Debug, Serialize)]
 pub(crate) enum NetResponse {
-    /// Response of a deploy.
     Deploy(Arc<[u8]>),
-    /// Response of finalized approvals.
     FinalizedApprovals(Arc<[u8]>),
-    /// Response of a block.
     Block(Arc<[u8]>),
-    /// Response of a gossiped public listening address.
     GossipedAddress(Arc<[u8]>),
-    /// Response of a block by its height in the linear chain.
     BlockAndMetadataByHeight(Arc<[u8]>),
-    /// Response of a block header by its hash.
     BlockHeaderByHash(Arc<[u8]>),
-    /// Response of a block header and its finality signatures by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight(Arc<[u8]>),
-    /// Response for a block and its deploys.
     BlockAndDeploys(Arc<[u8]>),
-    /// Response of a block headers batch.
     BlockHeadersBatch(Arc<[u8]>),
-    /// Response of single finality signature.
     FinalitySignature(Arc<[u8]>),
-    /// Response of finality signatures.
     FinalitySignatures(Arc<[u8]>),
+    SyncLeap(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -250,6 +239,7 @@ impl Display for NetResponse {
             NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
             NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
             NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
+            NetResponse::SyncLeap(_) => f.write_str("response for sync leap"),
         }
     }
 }
@@ -271,26 +261,6 @@ pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 impl Display for TrieResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("response, trie")
-    }
-}
-
-/// A request for a SyncLeap.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct SyncLeapRequest(pub(crate) Vec<u8>);
-
-impl Display for SyncLeapRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "request for sync leap")
-    }
-}
-
-/// A response to a request for a SyncLeap.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct SyncLeapResponse(pub(crate) Vec<u8>);
-
-impl Display for SyncLeapResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("response, sync leap")
     }
 }
 

@@ -48,8 +48,7 @@ use crate::{
         incoming::{
             BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
             FinalitySignatureIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
-            SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest, MarkBlockCompletedRequest},
         Responder,
@@ -128,10 +127,6 @@ enum Event {
     TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
-    #[from]
-    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
     #[from]
     BlockAddedRequestIncoming(BlockAddedRequestIncoming),
     #[from]
@@ -231,8 +226,6 @@ impl Display for Event {
             Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::SyncLeapRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::SyncLeapResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::BlockAddedRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::BlockAddedResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
@@ -491,7 +484,8 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)
                 | NetResponse::BlockHeadersBatch(_)
-                | NetResponse::FinalitySignatures(_)) => {
+                | NetResponse::FinalitySignatures(_)
+                | NetResponse::SyncLeap(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
                 }
             },
@@ -502,8 +496,6 @@ impl reactor::Reactor for Reactor {
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)
             | Event::TrieResponseIncoming(_)
-            | Event::SyncLeapRequestIncoming(_)
-            | Event::SyncLeapResponseIncoming(_)
             | Event::BlockAddedRequestIncoming(_)
             | Event::BlockAddedResponseIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()

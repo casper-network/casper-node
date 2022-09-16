@@ -70,26 +70,10 @@ impl CompleteBlockSynchronizer {
 
     // When was progress last made (if any).
     pub(crate) fn last_progress(&self) -> Option<Timestamp> {
-        if self.builders.len() == 0 {
-            return None;
-        }
-        // TODO: make less fugly
-        let mut max = Timestamp::zero();
-        for cbb in self.builders.values() {
-            match cbb.last_progress_time() {
-                Some(timestamp) => {
-                    if timestamp > max {
-                        max = timestamp;
-                    }
-                }
-                None => continue,
-            }
-        }
-        if max == Timestamp::zero() {
-            None
-        } else {
-            Some(max)
-        }
+        self.builders
+            .values()
+            .filter_map(CompleteBlockBuilder::last_progress_time)
+            .max()
     }
 
     fn upsert<REv>(

@@ -23,7 +23,6 @@ use crate::{
             BlockAddedRequest, BlockAddedRequestIncoming, BlockAddedResponse,
             BlockAddedResponseIncoming, ConsensusMessageIncoming, FinalitySignatureIncoming,
             GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
-            SyncLeapRequest, SyncLeapRequestIncoming, SyncLeapResponse, SyncLeapResponseIncoming,
             TrieDemand, TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
@@ -318,8 +317,6 @@ where
         + From<TrieRequestIncoming>
         + From<TrieDemand>
         + From<TrieResponseIncoming>
-        + From<SyncLeapRequestIncoming>
-        + From<SyncLeapResponseIncoming>
         + From<BlockAddedRequestIncoming>
         + From<BlockAddedResponseIncoming>
         + From<FinalitySignatureIncoming>,
@@ -396,9 +393,9 @@ where
                     message: NetRequest::FinalitySignatures(serialized_id),
                 }
                 .into(),
-                Tag::SyncLeap => SyncLeapRequestIncoming {
+                Tag::SyncLeap => NetRequestIncoming {
                     sender,
-                    message: SyncLeapRequest(serialized_id),
+                    message: NetRequest::SyncLeap(serialized_id),
                 }
                 .into(),
                 Tag::BlockAdded => BlockAddedRequestIncoming {
@@ -471,9 +468,9 @@ where
                     message: NetResponse::FinalitySignatures(serialized_item),
                 }
                 .into(),
-                Tag::SyncLeap => SyncLeapResponseIncoming {
+                Tag::SyncLeap => NetResponseIncoming {
                     sender,
-                    message: SyncLeapResponse(serialized_item.to_vec()),
+                    message: NetResponse::SyncLeap(serialized_item),
                 }
                 .into(),
                 Tag::BlockAdded => BlockAddedResponseIncoming {

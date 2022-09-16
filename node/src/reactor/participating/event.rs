@@ -24,8 +24,7 @@ use crate::{
         incoming::{
             BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
             FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponseIncoming,
-            SyncLeapRequestIncoming, SyncLeapResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
@@ -264,10 +263,6 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
-    SyncLeapRequestIncoming(SyncLeapRequestIncoming),
-    #[from]
-    SyncLeapResponseIncoming(SyncLeapResponseIncoming),
-    #[from]
     BlockAddedRequestIncoming(BlockAddedRequestIncoming),
     #[from]
     BlockAddedResponseIncoming(BlockAddedResponseIncoming),
@@ -391,8 +386,6 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             ParticipatingEvent::TrieDemand(_) => "TrieDemand",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
-            ParticipatingEvent::SyncLeapRequestIncoming(_) => "SyncLeapRequestIncoming",
-            ParticipatingEvent::SyncLeapResponseIncoming(_) => "SyncLeapResponseIncoming",
             ParticipatingEvent::BlockAddedRequestIncoming(_) => "BlockAddedRequestIncoming",
             ParticipatingEvent::BlockAddedResponseIncoming(_) => "BlockAddedResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
@@ -656,8 +649,6 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieDemand(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
-            ParticipatingEvent::SyncLeapRequestIncoming(inner) => Display::fmt(inner, f),
-            ParticipatingEvent::SyncLeapResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::BlockAddedRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::BlockAddedResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),

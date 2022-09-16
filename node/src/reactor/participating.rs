@@ -26,6 +26,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::error;
 
+use crate::components::blocks_accumulator::LeapInstruction;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -59,10 +60,7 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
             UpgradeWatcherAnnouncement,
         },
-        incoming::{
-            BlockAddedResponseIncoming, NetResponseIncoming, SyncLeapResponseIncoming,
-            TrieResponseIncoming,
-        },
+        incoming::{BlockAddedResponseIncoming, NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
         EffectBuilder, EffectExt, Effects,
     },
@@ -87,7 +85,6 @@ pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::ParticipatingEvent;
 use memory_metrics::MemoryMetrics;
-use crate::components::blocks_accumulator::LeapInstruction;
 
 #[derive(DataSize, Debug)]
 enum ReactorState {
@@ -604,7 +601,7 @@ impl reactor::Reactor for Reactor {
             attempts: 0,
             max_attempts: 3,
             idle_tolerances: TimeDiff::from_seconds(1200),
-            trusted_hash
+            trusted_hash,
         };
 
         let effects = effect_builder
@@ -1260,23 +1257,6 @@ impl reactor::Reactor for Reactor {
                     &message.0,
                 )
             }
-            ParticipatingEvent::SyncLeapRequestIncoming(_req) => {
-                // if this gets routed to storage, we can remove this SyncLeapRequestIncoming
-                // variant and just use the NetRequestIncoming
-                //    OR
-                // route to SyncLeaper once it's implemented
-                todo!()
-            }
-            ParticipatingEvent::SyncLeapResponseIncoming(SyncLeapResponseIncoming {
-                sender,
-                message,
-            }) => reactor::handle_fetch_response::<Self, SyncLeap>(
-                self,
-                effect_builder,
-                rng,
-                sender,
-                &message.0,
-            ),
             ParticipatingEvent::BlockAddedRequestIncoming(_req) => {
                 // if this gets routed to storage, we can remove this BlockAddedRequestIncoming
                 // variant and just use the NetRequestIncoming

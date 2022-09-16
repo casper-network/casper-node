@@ -53,4 +53,16 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
                 responder,
             })
     }
+
+    fn put_to_storage<REv>(
+        &self,
+        _item: SyncLeap,
+        _peer: NodeId,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Option<Effects<Event<SyncLeap>>>
+    where
+        REv: From<StorageRequest> + Send,
+    {
+        None
+    }
 }
