@@ -321,6 +321,39 @@ impl Display for MessageKind {
     }
 }
 
+/// Multiplexed channel identifier used across a single connection.
+///
+/// Channels are separated mainly to avoid deadlocking issues where two nodes requests a large
+/// amount of items from each other simultaneously, with responses being queued behind requests,
+/// whilst the latter are buffered due to backpressure.
+///
+/// Further separation is done to improve quality of service of certain subsystems, e.g. to
+/// guarantee that consensus is not impaired by the transfer of large trie nodes.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[repr(u8)]
+pub(crate) enum Channel {
+    /// Networking layer messages, e.g. address gossip.
+    Network = 1,
+    /// Data solely used for syncing being requested.
+    ///
+    /// We separate sync data (e.g. trie nodes) requests from regular ("data") requests since the
+    /// former are not required for a validating node to make progress on consensus, thus separating
+    /// these can improve latency.
+    SyncDataRequests = 2,
+    /// Sync data requests being answered.
+    ///
+    /// Responses are separated from requests to ensure liveness (see [`Channel`] documentation).
+    SyncDataResponses = 3,
+    /// Requests for data used during regular validator operation.
+    DataRequests = 4,
+    /// Responses for data used during regular validator operation.
+    DataResponses = 5,
+    /// Consensus-level messages, like finality signature announcements and consensus messages.
+    Consensus = 6,
+    /// Regular gossip announcements and responses (e.g. for deploys and blocks).
+    BulkGossip = 7,
+}
+
 /// Network message payload.
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
@@ -343,6 +376,9 @@ pub(crate) trait Payload:
     ///
     /// This functionality should be removed once multiplexed networking lands.
     fn is_unsafe_for_syncing_peers(&self) -> bool;
+
+    /// Determine which channel a message is supposed to sent/received on.
+    fn get_channel(&self) -> Channel;
 }
 
 /// Network message conversion support.

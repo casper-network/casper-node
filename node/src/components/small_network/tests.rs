@@ -163,6 +163,10 @@ impl Payload for Message {
     fn is_unsafe_for_syncing_peers(&self) -> bool {
         false
     }
+
+    fn get_channel(&self) -> super::Channel {
+        super::Channel::Network
+    }
 }
 
 /// Test reactor.

@@ -88,7 +88,7 @@ pub(crate) use self::{
     error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+    message::{Channel, EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use self::{
     chain_info::ChainInfo,
