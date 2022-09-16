@@ -39,11 +39,11 @@ static ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 #[structopt(version = crate::VERSION_STRING_COLOR.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
-    /// Run the validator node.
+    /// Run the node in standard mode.
     ///
     /// Loads the configuration values from the given configuration file or uses defaults if not
     /// given, then runs the reactor.
-    Validator {
+    Standard {
         /// Path to configuration file.
         config: PathBuf,
 
@@ -51,6 +51,7 @@ pub enum Cli {
             short = "C",
             long,
             env = "NODE_CONFIG",
+            alias = "validator",
             use_delimiter(true),
             value_delimiter(";")
         )]
@@ -158,7 +159,7 @@ impl Cli {
             // init'ing its components
             // doing whatever work required to get them into that state
             // }
-            Cli::Validator { config, config_ext } => {
+            Cli::Standard { config, config_ext } => {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();
 
