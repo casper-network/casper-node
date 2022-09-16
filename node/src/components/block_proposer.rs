@@ -37,7 +37,8 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Approval, BlockPayload, Chainspec, DeployHash, DeployHeader, DeployOrTransferHash,
+        Approval, BlockPayload, Chainspec, DeployHash,
+        DeployFootprint, DeployHeader, DeployOrTransferHash,
         DeployWithApprovals, FinalizedBlock,
     },
     NodeRng,
@@ -45,7 +46,7 @@ use crate::{
 use cached_state::CachedState;
 pub use config::Config;
 use deploy_sets::{BlockProposerDeploySets, PendingDeployInfo, PruneResult};
-pub(crate) use event::{DeployInfo, Event};
+pub(crate) use event::Event;
 use metrics::Metrics;
 
 /// Block proposer component.
@@ -307,9 +308,9 @@ impl BlockProposerReady {
             Event::BufferDeploy {
                 hash,
                 approvals,
-                deploy_info,
+                footprint,
             } => {
-                self.add_deploy(Timestamp::now(), hash, approvals, *deploy_info);
+                self.add_deploy(Timestamp::now(), hash, approvals, *footprint);
                 Effects::new()
             }
             Event::Prune => {
@@ -373,7 +374,7 @@ impl BlockProposerReady {
         current_instant: Timestamp,
         hash: DeployOrTransferHash,
         approvals: BTreeSet<Approval>,
-        deploy_info: DeployInfo,
+        footprint: DeployFootprint,
     ) {
         if hash.is_transfer() {
             // only add the transfer if it isn't contained in a finalized block
@@ -384,14 +385,14 @@ impl BlockProposerReady {
             {
                 info!(%hash, "finalized transfer rejected from the buffer");
                 self.sets
-                    .add_finalized_transfer(*hash.deploy_hash(), deploy_info.header.expires());
+                    .add_finalized_transfer(*hash.deploy_hash(), footprint.header.expires());
                 return;
             }
             self.sets.pending_transfers.insert(
                 *hash.deploy_hash(),
                 PendingDeployInfo {
                     approvals,
-                    info: deploy_info,
+                    footprint,
                     timestamp: current_instant,
                 },
             );
@@ -401,14 +402,14 @@ impl BlockProposerReady {
             if self.sets.finalized_deploys.contains_key(hash.deploy_hash()) {
                 info!(%hash, "finalized deploy rejected from the buffer");
                 self.sets
-                    .add_finalized_deploy(*hash.deploy_hash(), deploy_info.header.expires());
+                    .add_finalized_deploy(*hash.deploy_hash(), footprint.header.expires());
                 return;
             }
             self.sets.pending_deploys.insert(
                 *hash.deploy_hash(),
                 PendingDeployInfo {
                     approvals,
-                    info: deploy_info,
+                    footprint,
                     timestamp: current_instant,
                 },
             );
@@ -420,14 +421,14 @@ impl BlockProposerReady {
     fn handle_finalized_block(&mut self, block: &FinalizedBlock) -> Effects<Event> {
         for deploy_hash in block.deploy_hashes() {
             let expiry = match self.sets.pending_deploys.remove(deploy_hash) {
-                Some(pending_deploy_info) => pending_deploy_info.info.header.expires(),
+                Some(pending_deploy_info) => pending_deploy_info.footprint.header.expires(),
                 None => block.timestamp().saturating_add(self.deploy_config.max_ttl),
             };
             self.sets.add_finalized_deploy(*deploy_hash, expiry);
         }
         for transfer_hash in block.transfer_hashes() {
             let expiry = match self.sets.pending_transfers.remove(transfer_hash) {
-                Some(pending_deploy_info) => pending_deploy_info.info.header.expires(),
+                Some(pending_deploy_info) => pending_deploy_info.footprint.header.expires(),
                 None => block.timestamp().saturating_add(self.deploy_config.max_ttl),
             };
             self.sets.add_finalized_transfer(*transfer_hash, expiry);
@@ -483,7 +484,7 @@ impl BlockProposerReady {
 
         // We prioritize transfers over deploys, so we try to include them first.
         for (hash, pending_deploy_info) in &self.sets.pending_transfers {
-            if !self.deps_resolved(&pending_deploy_info.info.header, &past_deploys)
+            if !self.deps_resolved(&pending_deploy_info.footprint.header, &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
                 || block_timestamp.saturating_diff(pending_deploy_info.timestamp)
@@ -494,7 +495,7 @@ impl BlockProposerReady {
 
             if let Err(err) = appendable_block.add_transfer(
                 DeployWithApprovals::new(*hash, pending_deploy_info.approvals.clone()),
-                &pending_deploy_info.info,
+                &pending_deploy_info.footprint,
             ) {
                 match err {
                     // We added the maximum number of transfers.
@@ -515,7 +516,7 @@ impl BlockProposerReady {
 
         // Now we try to add other deploys to the block.
         for (hash, pending_deploy_info) in &self.sets.pending_deploys {
-            if !self.deps_resolved(&pending_deploy_info.info.header, &past_deploys)
+            if !self.deps_resolved(&pending_deploy_info.footprint.header, &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
                 || block_timestamp.saturating_diff(pending_deploy_info.timestamp)
@@ -526,7 +527,7 @@ impl BlockProposerReady {
 
             if let Err(err) = appendable_block.add_deploy(
                 DeployWithApprovals::new(*hash, pending_deploy_info.approvals.clone()),
-                &pending_deploy_info.info,
+                &pending_deploy_info.footprint,
             ) {
                 match err {
                     // We added the maximum number of deploys.

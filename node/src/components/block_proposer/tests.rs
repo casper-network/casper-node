@@ -163,13 +163,13 @@ fn should_add_and_take_deploys() {
         block_time2,
         deploy1.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy1.deploy_info().unwrap(),
+        deploy1.footprint().unwrap(),
     );
     proposer.add_deploy(
         block_time2,
         deploy2.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy2.deploy_info().unwrap(),
+        deploy2.footprint().unwrap(),
     );
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
@@ -226,13 +226,13 @@ fn should_add_and_take_deploys() {
         block_time2,
         deploy3.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy3.deploy_info().unwrap(),
+        deploy3.footprint().unwrap(),
     );
     proposer.add_deploy(
         block_time2,
         deploy4.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy4.deploy_info().unwrap(),
+        deploy4.footprint().unwrap(),
     );
 
     let block = proposer.propose_block_payload(
@@ -298,25 +298,25 @@ fn should_successfully_prune() {
         creation_time,
         deploy1.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy1.deploy_info().unwrap(),
+        deploy1.footprint().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy2.deploy_info().unwrap(),
+        deploy2.footprint().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy3.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy3.deploy_info().unwrap(),
+        deploy3.footprint().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy4.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy4.deploy_info().unwrap(),
+        deploy4.footprint().unwrap(),
     );
 
     // pending => finalized
@@ -391,7 +391,7 @@ fn should_keep_track_of_unhandled_deploys() {
         creation_time,
         deploy1.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy1.deploy_info().unwrap(),
+        deploy1.footprint().unwrap(),
     );
     // But we DO mark it as finalized, by it's hash
     let block = BlockPayload::new(
@@ -427,7 +427,7 @@ fn should_keep_track_of_unhandled_deploys() {
         creation_time,
         deploy2.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy2.deploy_info().unwrap(),
+        deploy2.footprint().unwrap(),
     );
     assert!(
         proposer.sets.finalized_deploys.contains_key(deploy2.id()),
@@ -626,7 +626,7 @@ fn test_proposer_with(
             creation_time,
             deploy.deploy_or_transfer_hash(),
             BTreeSet::new(),
-            deploy.deploy_info().unwrap(),
+            deploy.footprint().unwrap(),
         );
     }
     for _ in 0..transfer_count {
@@ -635,7 +635,7 @@ fn test_proposer_with(
             creation_time,
             transfer.deploy_or_transfer_hash(),
             BTreeSet::new(),
-            transfer.deploy_info().unwrap(),
+            transfer.footprint().unwrap(),
         );
     }
 
@@ -695,7 +695,7 @@ fn should_return_deploy_dependencies() {
         creation_time,
         deploy2.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy2.deploy_info().unwrap(),
+        deploy2.footprint().unwrap(),
     );
 
     // deploy2 has an unsatisfied dependency
@@ -713,7 +713,7 @@ fn should_return_deploy_dependencies() {
         creation_time,
         deploy1.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy1.deploy_info().unwrap(),
+        deploy1.footprint().unwrap(),
     );
 
     let block = proposer.propose_block_payload(
@@ -763,7 +763,7 @@ fn should_respect_deploy_delay() {
         100.into(),
         deploy.deploy_or_transfer_hash(),
         BTreeSet::new(),
-        deploy.deploy_info().unwrap(),
+        deploy.footprint().unwrap(),
     );
     let block = proposer.propose_block_payload(
         deploy_config,

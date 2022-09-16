@@ -17,12 +17,14 @@ use crate::{
         Component, ComponentStatus, InitializedComponent,
     },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{chainspec::DeployConfig, Deploy, DeployHash, FinalizedBlock},
+    types::{appendable_block::{AppendableBlock, AddError}, chainspec::DeployConfig,
+            Deploy, DeployWithApprovals, DeployFootprint, DeployHash, FinalizedBlock},
     NodeRng,
 };
+use event::DeployBufferRequest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-use event::{DeployBufferRequest, ProposableDeploy};
+
 
 #[derive(DataSize, Debug)]
 struct DeployBuffer {
@@ -65,6 +67,10 @@ impl DeployBuffer {
 
     fn register_deploy(&mut self, deploy: Deploy) {
         let deploy_hash = deploy.id();
+        if deploy.is_valid().is_err() {
+            error!(?deploy_hash, "invalid deploy must not be buffered");
+            return;
+        }
         if self.dead.contains(deploy_hash) {
             debug!(?deploy_hash, "attempt to register already dead deploy");
             return;
@@ -113,84 +119,56 @@ impl DeployBuffer {
             .collect()
     }
 
-    //fn proposable_deploys(&mut self, timestamp: Timestamp) -> BlockPayload {
-    fn proposable_deploys(&mut self, timestamp: Timestamp) -> Vec<ProposableDeploy> {
-        fn skip(current: &mut usize, next: usize, max: usize) -> bool {
-            if *current + next > max {
-                return true;
-            }
-            *current += next;
-            false
-        }
-
-        let max_block_size = self.deploy_config.max_block_size as usize;
-        let max_gas_limit = self.deploy_config.block_gas_limit as usize;
-        let max_approvals = self.deploy_config.block_max_approval_count as usize;
-        let max_transfers = self.deploy_config.block_max_transfer_count as usize;
-        let max_non_transfers = self.deploy_config.block_max_deploy_count as usize;
-
-        let mut total_size = 0;
-        let mut total_gas = 0;
-        let mut total_approvals = 0;
-        let mut transfers_count = 0;
-        let mut non_transfers_count = 0;
-
-        let mut ret = vec![];
+    fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
+        let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
+        let mut holds = vec![];
         for deploy in self.proposable() {
-            if total_size >= max_block_size
-                || total_gas >= max_gas_limit
-                || total_approvals >= max_approvals
-                || (transfers_count >= max_transfers && non_transfers_count >= max_non_transfers)
-            {
-                break;
-            }
-
             let deploy_hash = *deploy.id();
-            if deploy.header().expired(timestamp) {
-                self.dead.insert(deploy_hash);
-                continue;
-            }
-            if skip(
-                &mut total_approvals,
-                deploy.approvals().len(),
-                max_approvals,
-            ) {
-                continue;
-            }
-            if skip(&mut total_size, deploy.serialized_length(), max_block_size) {
-                continue;
-            }
-
-            match deploy.payment().payment_amount(deploy.header().gas_price()) {
-                Some(gas) => {
-                    if skip(&mut total_gas, gas.value().as_usize(), max_gas_limit) {
-                        continue;
+            let footprint = match deploy.footprint() {
+                Ok(deploy_footprint) => deploy_footprint,
+                Err(_) => {
+                    self.dead.insert(deploy_hash);
+                    continue;
+                }
+            };
+            let with_approvals = DeployWithApprovals::new(deploy_hash, deploy.approvals().clone());
+            match ret.add(with_approvals, &footprint) {
+                Ok(_) => {
+                    holds.push(deploy_hash);
+                }
+                Err(error) => {
+                    match error{
+                        AddError::Duplicate => {
+                            // it should be physically impossible for a duplicate deploy to
+                            // be in the deploy buffer, thus this should be unreachable
+                            debug!(?deploy_hash, "duplicated deploy in deploy buffer");
+                            self.dead.insert(deploy_hash);
+                            continue;
+                        }
+                        AddError::InvalidDeploy => {
+                            // it should not be possible for an invalid deploy to get buffered
+                            // in the first place, thus this should be unreachable
+                            debug!(?deploy_hash, "invalid deploy in deploy buffer");
+                            self.dead.insert(deploy_hash);
+                            continue;
+                        }
+                        AddError::TransferCount |
+                        AddError::DeployCount |
+                        AddError::ApprovalCount |
+                        AddError::GasLimit |
+                        AddError::BlockSize |
+                        AddError::InvalidGasAmount => {
+                            // one or more block limits have been reached
+                            break;
+                        }
                     }
                 }
-                None => {
-                    self.dead.insert(*deploy.id());
-                    continue;
-                }
-            }
-
-            let is_transfer = deploy.session().is_transfer();
-            if is_transfer {
-                if skip(&mut transfers_count, 1, max_transfers) {
-                    continue;
-                }
-                ret.push(ProposableDeploy::Transfer(deploy));
-            } else {
-                if skip(&mut non_transfers_count, 1, max_non_transfers) {
-                    continue;
-                }
-                ret.push(ProposableDeploy::Deploy(deploy));
             }
         }
 
         // put a hold on all proposed deploys / transfers
         self.hold
-            .insert(timestamp, ret.iter().map(|pd| pd.deploy_hash()).collect());
-
+            .insert(timestamp, holds.iter().map(|deploy_hash| *deploy_hash).collect());
         ret
     }
 }
@@ -245,9 +223,9 @@ where
             }
             (
                 ComponentStatus::Initialized,
-                Event::Request(DeployBufferRequest::GetProposableDeploys(timestamp, responder)),
+                Event::Request(DeployBufferRequest::GetAppendableBlock(timestamp, responder)),
             ) => responder
-                .respond(self.proposable_deploys(timestamp))
+                .respond(self.appendable_block(timestamp))
                 .ignore(),
             (ComponentStatus::Initialized, Event::BlockFinalized(finalized_block)) => {
                 self.block_finalized(&*finalized_block);

@@ -183,6 +183,7 @@ impl Reactor {
                 self.state = ReactorState::CatchUp;
             }
             ReactorState::CatchUp => {
+                // check if we should run commit genesis/upgrade and do so if required?
                 // check block accumulator
                 // leap, switch to keep up, or shut down
                 // if no progress is being made, reattempt config'd # of times then shutdown
@@ -190,7 +191,6 @@ impl Reactor {
                 // any progress at all will touch the idleness counter (keeping it alive longer)
             }
             ReactorState::KeepUp => {
-                // check if we should run commit genesis/upgrade and do so if required?
                 // if in validator set and era supervisor is green, validate
                 // else get added blocks for block accumulator and execute them
                 // if falling behind, switch over to catchup
@@ -671,8 +671,8 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                let deploy_info = match deploy.deploy_info() {
-                    Ok(deploy_info) => deploy_info,
+                let deploy_footprint = match deploy.footprint() {
+                    Ok(deploy_footprint) => deploy_footprint,
                     Err(error) => {
                         error!(%error, "invalid deploy");
                         return Effects::new();
@@ -685,7 +685,7 @@ impl reactor::Reactor for Reactor {
                     ParticipatingEvent::BlockProposer(block_proposer::Event::BufferDeploy {
                         hash: deploy.deploy_or_transfer_hash(),
                         approvals: deploy.approvals().clone(),
-                        deploy_info: Box::new(deploy_info),
+                        footprint: Box::new(deploy_footprint),
                     }),
                 );
 

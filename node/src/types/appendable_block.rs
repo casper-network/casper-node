@@ -6,8 +6,7 @@ use num_traits::Zero;
 use thiserror::Error;
 
 use crate::{
-    components::block_proposer::DeployInfo,
-    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals},
+    types::{chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash, DeployWithApprovals},
 };
 
 #[derive(Debug, Error)]
@@ -64,6 +63,19 @@ impl AppendableBlock {
         self.total_size
     }
 
+    /// Attempts to add any kind of deploy (transfer or other kind).
+    pub(crate) fn add(
+        &mut self,
+        any_kind_of_deploy_which_by_the_way_includes_transfers: DeployWithApprovals,
+        footprint: &DeployFootprint
+    ) -> Result<(), AddError> {
+        if footprint.is_transfer {
+            self.add_transfer(any_kind_of_deploy_which_by_the_way_includes_transfers, footprint)
+        } else {
+            self.add_deploy(any_kind_of_deploy_which_by_the_way_includes_transfers, footprint)
+        }
+    }
+
     /// Attempts to add a transfer to the block; returns an error if that would violate a validity
     /// condition.
     ///
@@ -72,7 +84,7 @@ impl AppendableBlock {
     pub(crate) fn add_transfer(
         &mut self,
         transfer: DeployWithApprovals,
-        deploy_info: &DeployInfo,
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
             .deploy_and_transfer_set
@@ -80,7 +92,7 @@ impl AppendableBlock {
         {
             return Err(AddError::Duplicate);
         }
-        if !deploy_info
+        if !footprint
             .header
             .is_valid(&self.deploy_config, self.timestamp)
         {
@@ -106,12 +118,12 @@ impl AppendableBlock {
     pub(crate) fn add_deploy(
         &mut self,
         deploy: DeployWithApprovals,
-        deploy_info: &DeployInfo,
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {
             return Err(AddError::Duplicate);
         }
-        if !deploy_info
+        if !footprint
             .header
             .is_valid(&self.deploy_config, self.timestamp)
         {
@@ -126,13 +138,11 @@ impl AppendableBlock {
         // Only deploys count towards the size and gas limits.
         let new_total_size = self
             .total_size
-            .checked_add(deploy_info.size)
+            .checked_add(footprint.size_estimate)
             .filter(|size| *size <= self.deploy_config.max_block_size as usize)
             .ok_or(AddError::BlockSize)?;
-        let payment_amount = deploy_info.payment_amount;
-        let gas_price = deploy_info.header.gas_price();
-        let gas = Gas::from_motes(payment_amount, gas_price).ok_or(AddError::InvalidGasAmount)?;
-        let new_total_gas = self.total_gas.checked_add(gas).ok_or(AddError::GasLimit)?;
+        let gas_estimate = footprint.gas_estimate;
+        let new_total_gas = self.total_gas.checked_add(gas_estimate).ok_or(AddError::GasLimit)?;
         if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
             return Err(AddError::GasLimit);
         }
