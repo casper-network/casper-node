@@ -32,7 +32,13 @@ use casper_hashing::Digest;
 use casper_types::bytesrepr::Bytes;
 #[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
-use casper_types::{bytesrepr::{self, FromBytes, ToBytes}, crypto, runtime_args, system::standard_payment::ARG_AMOUNT, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512, Gas};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    crypto, runtime_args,
+    system::standard_payment::ARG_AMOUNT,
+    ExecutionResult, Gas, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp,
+    U512,
+};
 
 use crate::{
     effect::GossipTarget,
@@ -901,9 +907,7 @@ impl Deploy {
     pub(crate) fn footprint(&self) -> Result<DeployFootprint, Error> {
         let header = self.header().clone();
         let gas_estimate = match self.payment().payment_amount(header.gas_price()) {
-            Some(gas) => {
-                gas
-            }
+            Some(gas) => gas,
             None => {
                 return Err(Error::InvalidPayment);
             }
@@ -914,7 +918,7 @@ impl Deploy {
             header,
             gas_estimate,
             size_estimate,
-            is_transfer
+            is_transfer,
         })
     }
 

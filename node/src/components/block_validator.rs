@@ -36,8 +36,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
-        DeployFootprint, DeployOrTransferHash, DeployWithApprovals, NodeId,
+        appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployFootprint,
+        DeployHash, DeployOrTransferHash, DeployWithApprovals, NodeId,
     },
     NodeRng,
 };

@@ -3,9 +3,14 @@
 //! The Sync Leaper
 mod error;
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
+use datasize::DataSize;
 use num_rational::Ratio;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -23,6 +28,7 @@ use crate::{
 
 pub(crate) use error::{ConstructSyncLeapError, PullSyncLeapError};
 
+#[derive(Debug, Serialize)]
 pub(crate) enum Event {
     SyncLeapRequest(SyncLeapRequest),
     StartPullingSyncLeap {
@@ -35,11 +41,38 @@ pub(crate) enum Event {
     },
 }
 
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::SyncLeapRequest(request) => write!(f, "sync leap request: {}", request),
+            Event::StartPullingSyncLeap {
+                trusted_hash,
+                peers_to_ask,
+            } => write!(
+                f,
+                "sync pulling sync leap: {} {:?}",
+                trusted_hash, peers_to_ask
+            ),
+            Event::FetchedSyncLeapFromPeer {
+                trusted_hash,
+                fetch_result,
+            } => write!(
+                f,
+                "fetched sync leap from peer: {} {:?}",
+                trusted_hash, fetch_result
+            ),
+        }
+    }
+}
+
+#[derive(Debug, DataSize)]
 pub(crate) struct SyncLeaper {
     maybe_pull_request_in_progress: Option<PullRequestInProgress>,
+    #[data_size(skip)]
     finality_threshold_fraction: Ratio<u64>,
 }
 
+#[derive(Debug, DataSize)]
 struct PullRequestInProgress {
     trusted_hash: BlockHash,
     peers: HashMap<NodeId, PeerState>,
@@ -97,6 +130,7 @@ pub(crate) enum PullRequestResult {
     FinalResponse(Result<SyncLeap, PullSyncLeapError>),
 }
 
+#[derive(Debug, DataSize)]
 enum PeerState {
     RequestSent,
     Rejected,

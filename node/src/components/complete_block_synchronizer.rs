@@ -54,6 +54,7 @@ pub(crate) struct CompleteBlockSynchronizer {
     fault_tolerance_fraction: Ratio<u64>,
     builders: HashMap<BlockHash, CompleteBlockBuilder>,
     validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    last_progress: Option<Timestamp>,
 }
 
 impl CompleteBlockSynchronizer {
@@ -63,6 +64,31 @@ impl CompleteBlockSynchronizer {
             fault_tolerance_fraction,
             builders: Default::default(),
             validators: Default::default(),
+            last_progress: None,
+        }
+    }
+
+    // When was progress last made (if any).
+    pub(crate) fn last_progress(&self) -> Option<Timestamp> {
+        if self.builders.len() == 0 {
+            return None;
+        }
+        // TODO: make less fugly
+        let mut max = Timestamp::zero();
+        for cbb in self.builders.values() {
+            match cbb.last_progress_time() {
+                Some(timestamp) => {
+                    if timestamp > max {
+                        max = timestamp;
+                    }
+                }
+                None => continue,
+            }
+        }
+        if max == Timestamp::zero() {
+            None
+        } else {
+            Some(max)
         }
     }
 

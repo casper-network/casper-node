@@ -67,12 +67,18 @@ impl AppendableBlock {
     pub(crate) fn add(
         &mut self,
         any_kind_of_deploy_which_by_the_way_includes_transfers: DeployWithApprovals,
-        footprint: &DeployFootprint
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if footprint.is_transfer {
-            self.add_transfer(any_kind_of_deploy_which_by_the_way_includes_transfers, footprint)
+            self.add_transfer(
+                any_kind_of_deploy_which_by_the_way_includes_transfers,
+                footprint,
+            )
         } else {
-            self.add_deploy(any_kind_of_deploy_which_by_the_way_includes_transfers, footprint)
+            self.add_deploy(
+                any_kind_of_deploy_which_by_the_way_includes_transfers,
+                footprint,
+            )
         }
     }
 
@@ -142,7 +148,10 @@ impl AppendableBlock {
             .filter(|size| *size <= self.deploy_config.max_block_size as usize)
             .ok_or(AddError::BlockSize)?;
         let gas_estimate = footprint.gas_estimate;
-        let new_total_gas = self.total_gas.checked_add(gas_estimate).ok_or(AddError::GasLimit)?;
+        let new_total_gas = self
+            .total_gas
+            .checked_add(gas_estimate)
+            .ok_or(AddError::GasLimit)?;
         if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
             return Err(AddError::GasLimit);
         }
