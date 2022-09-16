@@ -32,16 +32,9 @@ use casper_hashing::Digest;
 use casper_types::bytesrepr::Bytes;
 #[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    crypto, runtime_args,
-    system::standard_payment::ARG_AMOUNT,
-    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp,
-    U512,
-};
+use casper_types::{bytesrepr::{self, FromBytes, ToBytes}, crypto, runtime_args, system::standard_payment::ARG_AMOUNT, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512, Gas};
 
 use crate::{
-    components::block_proposer::DeployInfo,
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
@@ -630,6 +623,19 @@ impl From<&Deploy> for DeployWithApprovals {
     }
 }
 
+/// Information about how much block limit a deploy will consume.
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
+pub struct DeployFootprint {
+    /// A deploy header.
+    pub header: DeployHeader,
+    /// Maximum gas limit of this deploy.
+    pub gas_estimate: Gas,
+    /// Estimated size of this deploy.
+    pub size_estimate: usize,
+    /// Is this deploy a transfer?
+    pub is_transfer: bool,
+}
+
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
 pub struct FinalizedApprovals(BTreeSet<Approval>);
@@ -891,34 +897,24 @@ impl Deploy {
         }
     }
 
-    /// Returns the `DeployInfo`.
-    pub fn deploy_info(&self) -> Result<DeployInfo, Error> {
+    /// Returns the `DeployFootprint`.
+    pub(crate) fn footprint(&self) -> Result<DeployFootprint, Error> {
         let header = self.header().clone();
-        let size = self.serialized_length();
-        let payment_amount = if self.session().is_transfer() {
-            // TODO: we need a non-zero value constant for wasm-less transfer cost.
-            Motes::zero()
-        } else {
-            let payment_item = self.payment().clone();
-
-            // In the happy path for a payment we expect:
-            // - args to exist
-            // - contain "amount"
-            // - be a valid U512 value.
-            let value = payment_item
-                .args()
-                .get(ARG_AMOUNT)
-                .ok_or(Error::InvalidPayment)?;
-            let value = value
-                .clone()
-                .into_t::<U512>()
-                .map_err(|_| Error::InvalidPayment)?;
-            Motes::new(value)
+        let gas_estimate = match self.payment().payment_amount(header.gas_price()) {
+            Some(gas) => {
+                gas
+            }
+            None => {
+                return Err(Error::InvalidPayment);
+            }
         };
-        Ok(DeployInfo {
+        let size_estimate = self.serialized_length();
+        let is_transfer = self.session.is_transfer();
+        Ok(DeployFootprint {
             header,
-            payment_amount,
-            size,
+            gas_estimate,
+            size_estimate,
+            is_transfer
         })
     }
 

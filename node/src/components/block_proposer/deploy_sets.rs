@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{TimeDiff, Timestamp};
 
-use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{Approval, Block, DeployHash};
+use super::{BlockHeight, CachedState, FinalizationQueue};
+use crate::types::{Approval, Block, DeployHash, DeployFootprint};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -30,7 +30,7 @@ impl PruneResult {
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub(super) struct PendingDeployInfo {
     pub(super) approvals: BTreeSet<Approval>,
-    pub(super) info: DeployInfo,
+    pub(super) footprint: DeployFootprint,
     pub(super) timestamp: Timestamp,
 }
 
@@ -182,7 +182,7 @@ pub(super) fn prune_pending_deploys(
     deploys: &mut HashMap<DeployHash, PendingDeployInfo>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hashmap_drain_filter_in_place(deploys, |data| data.info.header.expired(current_instant))
+    hashmap_drain_filter_in_place(deploys, |data| data.footprint.header.expired(current_instant))
 }
 
 #[cfg(test)]
@@ -209,7 +209,7 @@ mod tests {
             *deploy_1.id(),
             PendingDeployInfo {
                 approvals: BTreeSet::new(),
-                info: deploy_1.deploy_info().unwrap(),
+                footprint: deploy_1.footprint().unwrap(),
                 timestamp: now,
             },
         );
@@ -217,7 +217,7 @@ mod tests {
             *deploy_2.id(),
             PendingDeployInfo {
                 approvals: BTreeSet::new(),
-                info: deploy_2.deploy_info().unwrap(),
+                footprint: deploy_2.footprint().unwrap(),
                 timestamp: now,
             },
         );
@@ -225,7 +225,7 @@ mod tests {
             *deploy_3.id(),
             PendingDeployInfo {
                 approvals: BTreeSet::new(),
-                info: deploy_3.deploy_info().unwrap(),
+                footprint: deploy_3.footprint().unwrap(),
                 timestamp: now,
             },
         );
@@ -233,7 +233,7 @@ mod tests {
             *deploy_4.id(),
             PendingDeployInfo {
                 approvals: BTreeSet::new(),
-                info: deploy_4.deploy_info().unwrap(),
+                footprint: deploy_4.footprint().unwrap(),
                 timestamp: now,
             },
         );
@@ -241,7 +241,7 @@ mod tests {
             *deploy_5.id(),
             PendingDeployInfo {
                 approvals: BTreeSet::new(),
-                info: deploy_5.deploy_info().unwrap(),
+                footprint: deploy_5.footprint().unwrap(),
                 timestamp: now,
             },
         );

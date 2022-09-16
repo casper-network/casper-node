@@ -28,7 +28,6 @@ use casper_types::Timestamp;
 
 use crate::{
     components::{
-        block_proposer::DeployInfo,
         consensus::{ClContext, ProposedBlock},
         Component,
     },
@@ -38,7 +37,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, DeployWithApprovals, NodeId,
+        DeployFootprint, DeployOrTransferHash, DeployWithApprovals, NodeId,
     },
     NodeRng,
 };
@@ -134,7 +133,7 @@ pub(crate) enum Event {
     DeployFound {
         dt_hash: DeployOrTransferHash,
         approvals: BTreeSet<Approval>,
-        deploy_info: Box<DeployInfo>,
+        deploy_info: Box<DeployFootprint>,
     },
 
     /// A request to find a specific deploy, potentially from a peer, failed.
@@ -477,7 +476,7 @@ where
             );
             return Event::CannotConvertDeploy(dt_hash);
         }
-        match deploy.deploy_info() {
+        match deploy.footprint() {
             Ok(deploy_info) => Event::DeployFound {
                 dt_hash,
                 approvals: deploy.approvals().clone(),

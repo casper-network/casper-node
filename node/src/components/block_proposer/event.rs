@@ -13,16 +13,8 @@ use casper_types::Motes;
 use super::{BlockHeight, CachedState};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Approval, Block, DeployHeader, DeployOrTransferHash, FinalizedBlock},
+    types::{Approval, Block, DeployHeader, DeployFootprint, DeployOrTransferHash, FinalizedBlock},
 };
-
-/// Information about a deploy.
-#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
-pub struct DeployInfo {
-    pub header: DeployHeader,
-    pub payment_amount: Motes,
-    pub size: usize,
-}
 
 /// An event for when using the block proposer as a component.
 #[derive(DataSize, Debug, From)]
@@ -46,7 +38,7 @@ pub(crate) enum Event {
     BufferDeploy {
         hash: DeployOrTransferHash,
         approvals: BTreeSet<Approval>,
-        deploy_info: Box<DeployInfo>,
+        footprint: Box<DeployFootprint>,
     },
     /// The block proposer has been asked to prune stale deploys.
     Prune,
