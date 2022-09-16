@@ -199,7 +199,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (self.status.clone(), event) {
+        match (&self.status, event) {
             (ComponentStatus::Fatal(msg), _) => {
                 error!(
                     msg,

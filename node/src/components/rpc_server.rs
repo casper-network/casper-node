@@ -94,24 +94,6 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct InnerRpcServer {
-    /// The instant at which the node has started.
-    node_startup_instant: Instant,
-    /// The network name, as specified in the chainspec
-    network_name: String,
-}
-
-impl InnerRpcServer {
-    pub fn node_startup_instant(&self) -> Instant {
-        self.node_startup_instant
-    }
-
-    fn network_name(&self) -> String {
-        self.network_name.clone()
-    }
-}
-
-#[derive(DataSize, Debug)]
 pub(crate) struct RpcServer {
     /// The status.
     status: ComponentStatus,
@@ -125,9 +107,6 @@ pub(crate) struct RpcServer {
     network_name: String,
     /// The uptime start.
     node_startup_instant: Instant,
-    /// Inner JSON-RPC server is present only when enabled in the JSON-RPC
-    /// server config.
-    inner_rpc: Option<InnerRpcServer>,
     /// Inner speculative execution JSON-RPC server is present only when enabled
     /// in the speculative execution JSON-RPC server config.
     /// The inner speculative execution JSON-RPC server as a struct would have
@@ -151,7 +130,6 @@ impl RpcServer {
             api_version,
             network_name,
             node_startup_instant,
-            inner_rpc: None,
             speculative_exec: None,
         }
     }
@@ -587,11 +565,6 @@ where
 
         let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
-
-        self.inner_rpc = Some(InnerRpcServer {
-            node_startup_instant,
-            network_name,
-        });
 
         Ok(Effects::new())
     }
