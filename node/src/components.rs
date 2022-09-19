@@ -61,6 +61,7 @@ pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
 pub(crate) mod rest_server;
 pub mod rpc_server;
+pub(crate) mod trie_accumulator;
 pub(crate) mod upgrade_watcher;
 // The `in_memory_network` is public for use in doctests.
 pub(crate) mod deploy_buffer;

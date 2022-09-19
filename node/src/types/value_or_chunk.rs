@@ -13,7 +13,7 @@ use super::Chunkable;
 ///
 /// Chunk with attached proof is used when the requested
 /// value is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, DataSize)]
 pub enum ValueOrChunk<V> {
     /// Represents a value.
     Value(V),

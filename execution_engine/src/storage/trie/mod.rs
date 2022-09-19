@@ -8,6 +8,7 @@ use std::{
     slice,
 };
 
+use datasize::DataSize;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeMap,
@@ -349,7 +350,7 @@ impl ::std::fmt::Debug for PointerBlock {
 }
 
 /// Newtype representing a trie node in its raw form without deserializing into `Trie`.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, DataSize)]
 pub struct TrieRaw(Bytes);
 
 impl TrieRaw {

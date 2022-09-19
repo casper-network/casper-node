@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::error;
@@ -26,6 +27,24 @@ impl<T: FetcherItem> Error<T> {
             | Error::Rejected { peer, .. }
             | Error::TimedOut { peer, .. }
             | Error::CouldNotConstructGetRequest { peer, .. } => peer,
+        }
+    }
+}
+
+impl<T: FetcherItem> DataSize for Error<T>
+where
+    T::Id: DataSize,
+{
+    const IS_DYNAMIC: bool = <T::Id as DataSize>::IS_DYNAMIC;
+
+    const STATIC_HEAP_SIZE: usize = <T::Id as DataSize>::STATIC_HEAP_SIZE;
+
+    fn estimate_heap_size(&self) -> usize {
+        match self {
+            Error::Absent { id, .. }
+            | Error::Rejected { id, .. }
+            | Error::TimedOut { id, .. }
+            | Error::CouldNotConstructGetRequest { id, .. } => id.estimate_heap_size(),
         }
     }
 }

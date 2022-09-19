@@ -44,6 +44,7 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
         sync_leaper::ConstructSyncLeapError,
+        trie_accumulator::TrieAccumulatorResult,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -1203,6 +1204,24 @@ pub(crate) struct FetcherRequest<T: FetcherItem> {
 impl<T: FetcherItem> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
+    }
+}
+
+/// TrieAccumulator related requests.
+#[derive(Debug, Serialize, DataSize)]
+#[must_use]
+pub(crate) struct TrieAccumulatorRequest {
+    /// The peers to try to fetch from.
+    pub(crate) peers: Vec<NodeId>,
+    /// The hash of the trie node.
+    pub(crate) hash: Digest,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<TrieAccumulatorResult>,
+}
+
+impl Display for TrieAccumulatorRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "request trie by hash {}", self.hash)
     }
 }
 
