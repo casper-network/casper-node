@@ -41,6 +41,7 @@ lmdb = "0.8"
 
 [features]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
+fixture-generators = []
 
 [lib]
 bench = false

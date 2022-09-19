@@ -133,7 +133,7 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -143,13 +143,14 @@ use crate::{
         small_network::FromIncoming,
     },
     contract_runtime::SpeculativeExecutionState,
+    effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
     utils::{SharedFlag, Source},
 };
@@ -164,7 +165,7 @@ use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
     ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    StateStoreRequest, StorageRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -765,13 +766,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network non-joiner peers in random order.
-    pub async fn get_fully_connected_non_joiner_peers(self) -> Vec<NodeId>
+    /// Gets the current network non-syncing peers in random order.
+    pub async fn get_fully_connected_non_syncing_peers(self) -> Vec<NodeId>
     where
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder },
             QueueKind::Regular,
         )
         .await
@@ -1662,6 +1663,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce that the sync process has finished.
+    pub(crate) async fn announce_finished_chain_syncing(self)
+    where
+        REv: From<ChainSynchronizerAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ChainSynchronizerAnnouncement::SyncFinished,
+                QueueKind::Network,
+            )
+            .await
+    }
+
     /// The linear chain has stored a newly-created block.
     pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
@@ -1735,16 +1749,11 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Gets the information about the current run of the node software.
-    pub(crate) async fn get_current_run_info(self) -> CurrentRunInfo
+    pub(crate) async fn get_node_state(self) -> NodeState
     where
-        REv: From<ChainspecLoaderRequest>,
+        REv: From<NodeStateRequest> + Send,
     {
-        self.make_request(
-            ChainspecLoaderRequest::GetCurrentRunInfo,
-            QueueKind::Regular,
-        )
-        .await
+        self.make_request(NodeStateRequest, QueueKind::Api).await
     }
 
     /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
@@ -1963,20 +1972,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the correct era validators set for the given era.
-    /// Takes emergency restarts into account based on the information from the chainspec loader.
+    /// Takes emergency restarts into account based on the information in the immediate switch
+    /// block after a restart.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
         REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
-        let CurrentRunInfo {
-            last_emergency_restart,
-            ..
-        } = self.get_current_run_info().await;
-        let cutoff_era_id = last_emergency_restart.unwrap_or_else(|| EraId::new(0));
-        if era_id < cutoff_era_id {
-            // we don't support getting the validators from before the last emergency restart
-            return None;
-        }
+        // TODO (#3233): If there was an upgrade changing the validator set at `era_id`, the switch
+        // block at this era will be the immediate switch block created after the upgrade. We should
+        // check for such a case and return the validators from the switch block itself then.
+
         // Era 0 contains no blocks other than the genesis immediate switch block which can be used
         // to get the validators for era 0.  For any other era `n`, we need the switch block from
         // era `n-1` to get the validators for `n`.

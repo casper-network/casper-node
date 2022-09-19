@@ -413,6 +413,7 @@ pub trait Auction:
             return Err(Error::InvalidCaller.into());
         }
 
+        let vesting_schedule_period_millis = self.vesting_schedule_period_millis();
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
         let snapshot_size = auction_delay as usize + 1;
@@ -425,7 +426,10 @@ pub trait Auction:
         // Process bids
         let mut bids_modified = false;
         for (validator_public_key, bid) in bids.iter_mut() {
-            if bid.process(era_end_timestamp_millis) {
+            if bid.process_with_vesting_schedule(
+                era_end_timestamp_millis,
+                self.vesting_schedule_period_millis(),
+            ) {
                 bids_modified = true;
             }
 
@@ -439,7 +443,10 @@ pub trait Auction:
             let locked_validators: ValidatorWeights = bids
                 .iter()
                 .filter(|(_public_key, bid)| {
-                    bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
+                    bid.is_locked_with_vesting_schedule(
+                        era_end_timestamp_millis,
+                        vesting_schedule_period_millis,
+                    ) && !bid.inactive()
                 })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
@@ -451,7 +458,10 @@ pub trait Auction:
             let mut unlocked_validators: Vec<(PublicKey, U512)> = bids
                 .iter()
                 .filter(|(_public_key, bid)| {
-                    !bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
+                    !bid.is_locked_with_vesting_schedule(
+                        era_end_timestamp_millis,
+                        vesting_schedule_period_millis,
+                    ) && !bid.inactive()
                 })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;

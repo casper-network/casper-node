@@ -205,14 +205,6 @@ impl Reactor {
                 .chainspec()
                 .highway_config
                 .finality_threshold_fraction,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .last_emergency_restart,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -234,11 +226,12 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .strict_argument_checking,
-            registry,
             chainspec_loader
                 .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation,
+                .core_config
+                .vesting_schedule_period
+                .millis(),
+            registry,
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);

@@ -1,0 +1,14 @@
+[core]
+round_seigniorage_rate = [0, 1]
+validator_slots = 6
+
+[highway]
+maximum_round_exponent = 14
+
+[deploys]
+block_max_transfer_count = 1
+block_max_approval_count = 250
+
+[wasm.host_function_costs]
+transfer_from_purse_to_account = { cost = 160_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+delete = { cost = 14_000, arguments = [0, 0] }

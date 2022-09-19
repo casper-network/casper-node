@@ -44,7 +44,7 @@ use casper_storage::{
         },
     },
 };
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -150,14 +150,11 @@ impl ExecutionPreState {
 
     /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash
     /// activation point.
-    pub fn from_block_header(
-        block_header: &BlockHeader,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Self {
+    pub fn from_block_header(block_header: &BlockHeader) -> Self {
         ExecutionPreState {
             pre_state_root_hash: *block_header.state_root_hash(),
             next_block_height: block_header.height() + 1,
-            parent_hash: block_header.hash(verifiable_chunked_hash_activation),
+            parent_hash: block_header.hash(),
             parent_seed: block_header.accumulated_seed(),
         }
     }
@@ -202,7 +199,6 @@ pub(crate) struct ContractRuntime {
     engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
-    verifiable_chunked_hash_activation: EraId,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -502,7 +498,6 @@ impl ContractRuntime {
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let verifiable_chunked_hash_activation = self.verifiable_chunked_hash_activation();
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -513,7 +508,6 @@ impl ContractRuntime {
                             finalized_block,
                             deploys,
                             transfers,
-                            verifiable_chunked_hash_activation,
                         )
                     })
                     .await;
@@ -548,7 +542,6 @@ impl ContractRuntime {
                             finalized_block,
                             deploys,
                             transfers,
-                            self.verifiable_chunked_hash_activation(),
                         )
                         .ignore(),
                     )
@@ -627,8 +620,8 @@ impl ContractRuntime {
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
         strict_argument_checking: bool,
+        vesting_schedule_period_millis: u64,
         registry: &Registry,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -668,6 +661,7 @@ impl ContractRuntime {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            vesting_schedule_period_millis,
             wasm_config,
             system_config,
         );
@@ -683,14 +677,9 @@ impl ContractRuntime {
             engine_state,
             metrics,
             protocol_version,
-            verifiable_chunked_hash_activation,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
         })
-    }
-
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
     }
 
     /// Commits a genesis request.
@@ -803,7 +792,6 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-        verifiable_chunked_hash_activation: EraId,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -825,7 +813,6 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
-                verifiable_chunked_hash_activation,
             )
         })
         .await
@@ -834,10 +821,7 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        let new_execution_pre_state = ExecutionPreState::from_block_header(
-            block.header(),
-            verifiable_chunked_hash_activation,
-        );
+        let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();

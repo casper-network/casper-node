@@ -27,6 +27,7 @@ const WASM_STRING_PREFIX: &str = "contract-wasm-";
 pub struct TryFromSliceForContractHashError(());
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FromStrError {
     InvalidPrefix,
     Hex(base16::DecodeError),
@@ -281,7 +282,7 @@ impl ToBytes for ContractWasm {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        (&self.bytes).write_bytes(writer)?;
+        self.bytes.write_bytes(writer)?;
         Ok(())
     }
 }

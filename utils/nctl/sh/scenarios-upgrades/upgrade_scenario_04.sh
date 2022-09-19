@@ -91,10 +91,7 @@ function _step_01()
     log_step_upgrades 0 "Begin upgrade_scenario_04"
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
-    source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID" \
-            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_4.chainspec.toml.in" \
-            config_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_configs/upgrade_scenario_4.config.toml"
+    source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
     log "... Starting 5 non-validators"
@@ -131,9 +128,7 @@ function _step_03()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$ACTIVATION_POINT" \
-            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_4.chainspec.toml.in" \
-            config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_4.config.toml"
+            era="$ACTIVATION_POINT"
         echo ""
     done
 
@@ -240,7 +235,7 @@ function _step_07()
 function _step_08()
 {
     log_step_upgrades 8 "awaiting next era"
-    await_n_eras '1' 'true' '5.0' '2'
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180' node_id='2'
 }
 
 # Step 09: Stage nodes 1&10 and restart.
@@ -270,9 +265,7 @@ function _step_09()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$ACTIVATION_POINT" \
-            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_4.chainspec.toml.in" \
-            config_path="$NCTL/sh/scenarios/configs/upgrade_scenario_4.config.toml"
+            era="$ACTIVATION_POINT"
         echo ""
         # add hash to upgrades config
         PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"

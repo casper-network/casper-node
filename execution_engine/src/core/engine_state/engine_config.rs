@@ -12,6 +12,13 @@ pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for strict argument checking.
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
+/// 91 days / 7 days in a week = 13 weeks
+/// Length of total vesting schedule in days.
+const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
+const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
+/// Default length of total vesting schedule period expressed in days.
+pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
+    VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]
@@ -26,6 +33,8 @@ pub struct EngineConfig {
     minimum_delegation_amount: u64,
     /// This flag indicates if arguments passed to contracts are checked against the defined types.
     strict_argument_checking: bool,
+    /// Vesting schedule period in milliseconds.
+    vesting_schedule_period_millis: u64,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
 }
@@ -38,6 +47,7 @@ impl Default for EngineConfig {
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
+            vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
         }
@@ -46,12 +56,14 @@ impl Default for EngineConfig {
 
 impl EngineConfig {
     /// Creates a new engine configuration with provided parameters.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         max_query_depth: u64,
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
         strict_argument_checking: bool,
+        vesting_schedule_period_millis: u64,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
     ) -> EngineConfig {
@@ -61,6 +73,7 @@ impl EngineConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            vesting_schedule_period_millis,
             wasm_config,
             system_config,
         }
@@ -94,5 +107,10 @@ impl EngineConfig {
     /// Get the engine config's strict argument checking flag.
     pub fn strict_argument_checking(&self) -> bool {
         self.strict_argument_checking
+    }
+
+    /// Get the vesting schedule period.
+    pub fn vesting_schedule_period_millis(&self) -> u64 {
+        self.vesting_schedule_period_millis
     }
 }

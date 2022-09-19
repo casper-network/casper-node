@@ -551,7 +551,7 @@ impl<K, V> Trie<K, V> {
         Self: ToBytes,
     {
         self.to_bytes()
-            .map(|bytes| hash_bytes_into_chunks_if_necessary(&bytes))
+            .map(|bytes| Digest::hash_bytes_into_chunks_if_necessary(&bytes))
     }
 
     /// Returns a pointer block, if possible.
@@ -598,19 +598,6 @@ impl<'a> Iterator for DescendantsIterator<'a> {
                 iter.next().map(|pointer| *pointer.hash())
             }
         }
-    }
-}
-
-/// Hash bytes into chunks if necessary.
-pub(crate) fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
-    if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-        Digest::hash(bytes)
-    } else {
-        Digest::hash_merkle_tree(
-            bytes
-                .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-                .map(Digest::hash),
-        )
     }
 }
 

@@ -35,7 +35,6 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -51,7 +50,7 @@ use crate::{
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, StatusFeed,
+        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };
@@ -199,9 +198,9 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<NodeId>>,
     },
-    /// Get only non-joiner peers in random order.
-    FullyConnectedNonJoinerPeers {
-        /// Responder to be called with all connected non-joiner peers in random order.
+    /// Get only non-syncing peers in random order.
+    FullyConnectedNonSyncingPeers {
+        /// Responder to be called with all connected non-syncing peers in random order.
         responder: Responder<Vec<NodeId>>,
     },
 }
@@ -215,8 +214,8 @@ impl Display for NetworkInfoRequest {
             NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
                 write!(formatter, "get fully connected peers")
             }
-            NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder: _ } => {
-                write!(formatter, "get fully connected non-joiner peers")
+            NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
+                write!(formatter, "get fully connected non-syncing peers")
             }
         }
     }
@@ -1210,19 +1209,26 @@ pub(crate) enum ConsensusRequest {
 pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
-    /// Request for information about the current run.
-    GetCurrentRunInfo(Responder<CurrentRunInfo>),
     /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
     /// they are present.
     GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
 }
 
 impl Display for ChainspecLoaderRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
-            ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
             ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
+    }
+}
+
+/// ChainSynchronizer component request.
+#[derive(Debug, Serialize)]
+pub(crate) struct NodeStateRequest(pub(crate) Responder<NodeState>);
+
+impl Display for NodeStateRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "node state request")
     }
 }

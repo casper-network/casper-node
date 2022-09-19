@@ -26,7 +26,6 @@ casper-hashing = { version = "1.4.3", path = "../hashing" }
 casper-json-rpc = { version = "0.1.0", path = "../json_rpc" }
 casper-node-macros = { version = "1.4.3", path = "../node_macros" }
 casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "json-schema", "std"] }
-chrono = "0.4.10"
 datasize = { version = "0.2.10", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 ed25519-dalek = { version = "1", default-features = false, features = ["rand", "serde", "u64_backend"] }
@@ -86,18 +85,18 @@ toml = "0.5.6"
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-futures = "0.2.5"
-tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }
+tracing-subscriber = { version = "0.3.15", features = ["env-filter", "fmt", "json"] }
 uint = "0.9.0"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = { version = "0.3.0", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [build-dependencies]
-vergen = "3"
+vergen = { version = "7", default-features = false, features = ["git"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
-casper-types = { version = "1.4.5", path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
@@ -106,7 +105,8 @@ reqwest = { version = "0.11.3", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
-vendored-openssl = ['openssl/vendored']
+testing = ["casper-types/testing"]
+vendored-openssl = ["openssl/vendored"]
 
 [[bin]]
 name = "casper-node"

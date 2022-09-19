@@ -10,6 +10,9 @@ use crate::error::{Error, ReservedErrorCode};
 /// As per [the JSON-RPC specification](https://www.jsonrpc.org/specification#parameter_structures),
 /// if present these must be a JSON Array or Object.
 ///
+/// **NOTE:** Currently we treat '"params": null' as '"params": []', but this deviation from the
+/// standard will be removed in an upcoming release, and `null` will become an invalid value.
+///
 /// `Params` is effectively a restricted [`serde_json::Value`], and can be converted to a `Value`
 /// using `Value::from()` if required.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -31,11 +34,7 @@ impl Params {
         };
 
         match params {
-            Value::Null => err_invalid_request(
-                "If present, 'params' must be an Array or Object, but was 'null'. If not required \
-                for this request, omit the field or provide an empty Array '[]' or empty Object \
-                '{}'",
-            ),
+            Value::Null => Ok(Params::Array(vec![])),
             Value::Bool(false) => err_invalid_request(
                 "If present, 'params' must be an Array or Object, but was 'false'",
             ),
@@ -148,12 +147,11 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_to_convert_params_from_null() {
-        should_fail_to_convert_invalid_params(
-            Value::Null,
-            "'null'. If not required for this request, omit the field or provide an empty Array \
-            '[]' or empty Object '{}'",
-        )
+    fn should_convert_params_from_null() {
+        let original_id = Value::from(1_i8);
+
+        let params = Params::try_from(&original_id, Value::Null).unwrap();
+        assert!(matches!(params, Params::Array(v) if v.is_empty()));
     }
 
     #[test]

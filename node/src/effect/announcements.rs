@@ -346,3 +346,23 @@ impl Display for ContractRuntimeAnnouncement {
         }
     }
 }
+
+/// A chain synchronizer announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum ChainSynchronizerAnnouncement {
+    /// The node has finished the synchronization it was doing (fast-sync or sync-to-genesis,
+    /// depending on config) and may now accept requests that are unsafe for nodes that are
+    /// synchronizing. Once this message is received, the only way for the peer to signal it's in
+    /// the syncing process is to reconnect.
+    SyncFinished,
+}
+
+impl Display for ChainSynchronizerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ChainSynchronizerAnnouncement::SyncFinished => {
+                write!(f, "synchronization finished")
+            }
+        }
+    }
+}

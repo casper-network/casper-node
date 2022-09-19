@@ -1,5 +1,6 @@
 use std::{error, io, net::SocketAddr, result, sync::Arc};
 
+use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
 use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
@@ -151,6 +152,13 @@ pub enum ConnectionError {
     /// Peer reported an incompatible version.
     #[error("peer is running incompatible version: {0}")]
     IncompatibleVersion(ProtocolVersion),
+    /// Peer is using a different chainspec.
+    #[error("peer is using a different chainspec, hash: {0}")]
+    WrongChainspecHash(Digest),
+    /// Peer should have included the chainspec hash in the handshake message,
+    /// but didn't.
+    #[error("peer did not include chainspec hash in the handshake when it was required")]
+    MissingChainspecHash,
     /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,

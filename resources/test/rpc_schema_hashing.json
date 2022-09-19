@@ -1371,6 +1371,151 @@
             ],
             "description": "The result of executing a single deploy."
           },
+          "FastSync": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not yet started",
+                  "starting",
+                  "finished"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently fetching the trusted block header.",
+                "properties": {
+                  "fetching_trusted_block_header": {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                },
+                "required": [
+                  "fetching_trusted_block_header"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently syncing the trie-store under the given state root hash.",
+                "properties": {
+                  "fetching_global_state_under_given_block": {
+                    "properties": {
+                      "block_height": {
+                        "description": "The height of the block containing the given state root hash.",
+                        "format": "uint64",
+                        "minimum": 0.0,
+                        "type": "integer"
+                      },
+                      "number_of_remaining_tries_to_fetch": {
+                        "description": "The number of remaining tries to fetch (this value can rise and fall as the task proceeds).",
+                        "format": "uint",
+                        "minimum": 0.0,
+                        "type": "integer"
+                      },
+                      "reason": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/FetchingTriesReason"
+                          }
+                        ],
+                        "description": "The reason for syncing the trie-store."
+                      },
+                      "state_root_hash": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Digest"
+                          }
+                        ],
+                        "description": "The global state root hash."
+                      }
+                    },
+                    "required": [
+                      "block_height",
+                      "number_of_remaining_tries_to_fetch",
+                      "reason",
+                      "state_root_hash"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "fetching_global_state_under_given_block"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently fetching the block at the given height and its deploys in preparation for executing it.",
+                "properties": {
+                  "fetching_block_and_deploys_at_given_block_height_before_execution": {
+                    "format": "uint64",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "fetching_block_and_deploys_at_given_block_height_before_execution"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently executing the block at the given height.",
+                "properties": {
+                  "executing_block_at_height": {
+                    "format": "uint64",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "executing_block_at_height"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently retrying the execution of the block at the given height, due to an unexpected mismatch in the previous execution result (due to a mismatch in the deploys' approvals).",
+                "properties": {
+                  "retrying_block_execution": {
+                    "properties": {
+                      "attempt": {
+                        "description": "The retry attempt number.",
+                        "format": "uint",
+                        "minimum": 0.0,
+                        "type": "integer"
+                      },
+                      "block_height": {
+                        "description": "The height of the block being executed.",
+                        "format": "uint64",
+                        "minimum": 0.0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "attempt",
+                      "block_height"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "retrying_block_execution"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "The progress of the fast-sync task, performed by all nodes while in joining mode.\n\nThe fast-sync task generally progresses from each variant to the next linearly.  An exception is that it will cycle repeatedly from `FetchingBlockAndDeploysToExecute` to `ExecutingBlock` (and possibly to `RetryingBlockExecution`) as it iterates forwards one block at a time, fetching then executing."
+          },
+          "FetchingTriesReason": {
+            "description": "The reason for syncing the trie store under a given state root hash.",
+            "enum": [
+              "for fast sync",
+              "preparing for emergency upgrade",
+              "preparing for upgrade"
+            ],
+            "type": "string"
+          },
           "GlobalStateIdentifier": {
             "anyOf": [
               {
@@ -1962,13 +2107,54 @@
             "type": "object"
           },
           "NodeState": {
-            "description": "The various possible states of operation for the node.",
-            "enum": [
-              "FastSyncing",
-              "SyncingToGenesis",
-              "Participating"
+            "anyOf": [
+              {
+                "enum": [
+                  "participating"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The node is currently in joining mode.",
+                "properties": {
+                  "joining": {
+                    "$ref": "#/components/schemas/Progress"
+                  }
+                },
+                "required": [
+                  "joining"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The node is currently in participating mode, but also syncing to genesis in the background.",
+                "properties": {
+                  "participating_and_syncing_to_genesis": {
+                    "properties": {
+                      "sync_progress": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Progress"
+                          }
+                        ],
+                        "description": "The progress of the chain sync-to-genesis task."
+                      }
+                    },
+                    "required": [
+                      "sync_progress"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "participating_and_syncing_to_genesis"
+                ],
+                "type": "object"
+              }
             ],
-            "type": "string"
+            "description": "The various possible states of operation for the node."
           },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
@@ -2044,6 +2230,27 @@
               "$ref": "#/components/schemas/PeerEntry"
             },
             "type": "array"
+          },
+          "Progress": {
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FastSync"
+                  }
+                ],
+                "description": "The chain-synchronizer is performing the fast-sync task."
+              },
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SyncToGenesis"
+                  }
+                ],
+                "description": "The chain-synchronizer is performing the sync-to-genesis task."
+              }
+            ],
+            "description": "The progress of the chain-synchronizer task."
           },
           "ProtocolVersion": {
             "description": "Casper Platform protocol version",
@@ -2365,6 +2572,128 @@
               }
             ],
             "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info)."
+          },
+          "SyncBlock": {
+            "description": "Container pairing the given [`SyncBlockFetching`] progress indicator with the height of the relative block.",
+            "properties": {
+              "block_height": {
+                "description": "The height of the block being synced.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "fetching": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SyncBlockFetching"
+                  }
+                ],
+                "description": "The progress of the sync-block task."
+              }
+            },
+            "required": [
+              "block_height",
+              "fetching"
+            ],
+            "type": "object"
+          },
+          "SyncBlockFetching": {
+            "anyOf": [
+              {
+                "enum": [
+                  "block and deploys",
+                  "block signatures"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently syncing the trie-store under the state root hash held in the block.",
+                "properties": {
+                  "global_state_under_given_block": {
+                    "properties": {
+                      "number_of_remaining_tries_to_fetch": {
+                        "description": "The number of remaining tries to fetch (this value can rise and fall as the task proceeds).",
+                        "format": "uint",
+                        "minimum": 0.0,
+                        "type": "integer"
+                      },
+                      "state_root_hash": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Digest"
+                          }
+                        ],
+                        "description": "The global state root hash."
+                      }
+                    },
+                    "required": [
+                      "number_of_remaining_tries_to_fetch",
+                      "state_root_hash"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "global_state_under_given_block"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "The progress of a single sync-block task, many of which are performed in parallel during sync-to-genesis.\n\nThe task progresses from each variant to the next linearly."
+          },
+          "SyncToGenesis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not yet started",
+                  "starting",
+                  "finished"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently fetching block headers in batches back towards the genesis block.",
+                "properties": {
+                  "fetching_headers_back_to_genesis": {
+                    "properties": {
+                      "lowest_block_height": {
+                        "description": "The current lowest block header retrieved by this fetch-headers-to-genesis task.",
+                        "format": "uint64",
+                        "minimum": 0.0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "lowest_block_height"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "fetching_headers_back_to_genesis"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Currently syncing all blocks from genesis towards the tip of the chain.\n\nThis is done via many parallel sync-block tasks, with each such ongoing task being represented by an entry in the wrapped `Vec`.  The set is sorted ascending by block height.",
+                "properties": {
+                  "syncing_forward_from_genesis": {
+                    "items": {
+                      "$ref": "#/components/schemas/SyncBlock"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "syncing_forward_from_genesis"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "The progress of the sync-to-genesis task, only performed by nodes configured to do this, and performed by them while in participating mode.\n\nThe sync-to-genesis task progresses from each variant to the next linearly."
           },
           "TimeDiff": {
             "description": "Human-readable duration.",
@@ -2813,8 +3142,6 @@
                 "items": {
                   "$ref": "#/components/schemas/U512"
                 },
-                "maxItems": 14,
-                "minItems": 14,
                 "type": [
                   "array",
                   "null"
@@ -3657,7 +3984,7 @@
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
-                  "node_state": "Participating",
+                  "node_state": "participating",
                   "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                   "peers": [
                     {

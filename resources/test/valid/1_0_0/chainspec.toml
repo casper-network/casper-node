@@ -2,8 +2,6 @@
 version = '1.0.0'
 hard_reset = false
 activation_point = 1
-last_emergency_restart = 99
-verifiable_chunked_hash_activation = 0
 
 [network]
 name = 'test-chain'
@@ -15,6 +13,7 @@ minimum_era_height = 9
 validator_slots = 5
 auction_delay = 3
 locked_funds_period = '90days'
+vesting_schedule_period = '13 weeks'
 round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14
 max_associated_keys = 100

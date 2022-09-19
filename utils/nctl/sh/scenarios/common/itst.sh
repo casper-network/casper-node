@@ -140,15 +140,37 @@ function do_stop_node() {
 
 function check_network_sync() {
     local WAIT_TIME_SEC=0
-    log_step "check all node's LFBs are in sync"
+    local FIRST_NODE=${1:-1}
+    local LAST_NODE=${2:-10}
+
+    log_step "checking nodes' $FIRST_NODE to $LAST_NODE LFBs are in sync"
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if [ "$(do_read_lfb_hash '5')" = "$(do_read_lfb_hash '1')" ] && \
-        [ "$(do_read_lfb_hash '4')" = "$(do_read_lfb_hash '1')" ] && \
-        [ "$(do_read_lfb_hash '3')" = "$(do_read_lfb_hash '1')" ] && \
-        [ "$(do_read_lfb_hash '2')" = "$(do_read_lfb_hash '1')" ]; then
-        log "all nodes in sync, proceeding..."
-        break
+
+        declare -a ALL_LFBS
+
+        index=0
+        for i in $(eval echo "{$FIRST_NODE..$LAST_NODE}")
+        do
+            ALL_LFBS[$index]=$(do_read_lfb_hash $i)
+            index=$((index + 1))
+        done
+
+        LFB_COUNT=${#ALL_LFBS[@]}
+        BASE_LFB=${ALL_LFBS[0]}
+        ALL_EQUAL=1
+        for i in $(eval echo "{0..$((LFB_COUNT - 1))}")
+        do
+            if [[ "$BASE_LFB" != "${ALL_LFBS[$i]}" ]]; then
+                ALL_EQUAL=0
+                break
+            fi
+        done
+
+        if [ "$ALL_EQUAL" -eq 1 ]; then
+            log "nodes $FIRST_NODE to $LAST_NODE in sync, proceeding..."
+            break
         fi
+
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to confirm network sync"
@@ -482,4 +504,13 @@ function assert_eviction() {
         fi
         sleep 1
     done
+}
+
+function assert_new_bonded_validator() {
+    local NODE_ID=${1}
+    local HEX=$(get_node_public_key_hex "$NODE_ID")
+    if ! $(nctl-view-chain-auction-info | grep -q "$HEX"); then
+      echo "Could not find key in bids"
+      exit 1
+    fi
 }

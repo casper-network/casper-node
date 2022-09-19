@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use derive_more::From;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
@@ -11,10 +12,11 @@ use casper_types::PublicKey;
 use super::{Error, FastSyncOutcome};
 use crate::{
     contract_runtime::{BlockAndExecutionEffects, BlockExecutionError},
+    effect::requests::NodeStateRequest,
     types::BlockHeader,
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, From)]
 #[allow(clippy::enum_variant_names)]
 pub(crate) enum Event {
     /// The result of running the fast sync task.
@@ -42,6 +44,9 @@ pub(crate) enum Event {
         validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
         result: Result<FastSyncOutcome, Error>,
     },
+    /// A request to provide the node state.
+    #[from]
+    GetNodeState(NodeStateRequest),
 }
 
 impl Display for Event {
@@ -73,6 +78,7 @@ impl Display for Event {
                     fast_sync_result
                 )
             }
+            Event::GetNodeState(_) => write!(formatter, "get node state"),
         }
     }
 }

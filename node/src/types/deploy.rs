@@ -15,7 +15,7 @@ use derive_more::Display;
 use itertools::Itertools;
 use num_traits::Zero;
 use once_cell::sync::{Lazy, OnceCell};
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -29,13 +29,15 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_hashing::Digest;
 #[cfg(test)]
-use casper_types::{bytesrepr::Bytes, testing::TestRng};
+use casper_types::bytesrepr::Bytes;
+#[cfg(any(feature = "testing", test))]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff,
-    Timestamp, U512,
+    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp,
+    U512,
 };
 
 use super::{BlockHash, BlockHashAndHeight, Item, Tag};
@@ -275,8 +277,8 @@ impl DeployHash {
         &self.0
     }
 
-    /// Creates a random deploy hash.
-    #[cfg(test)]
+    /// Returns a random `DeployHash`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         DeployHash(hash)
@@ -548,8 +550,9 @@ impl Approval {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Approval {
+    /// Returns a random `Approval`.
     pub fn random(rng: &mut TestRng) -> Self {
         Self {
             signer: PublicKey::random(rng),
@@ -681,10 +684,7 @@ impl Item for FinalizedApprovalsWithId {
     const TAG: Tag = Tag::FinalizedApprovals;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self) -> Result<(), Self::ValidationError> {
         for approval in &self.approvals.0 {
             crypto::verify(&self.id, approval.signature(), approval.signer()).map_err(|err| {
                 FinalizedApprovalsVerificationError {
@@ -696,7 +696,7 @@ impl Item for FinalizedApprovalsWithId {
         Ok(())
     }
 
-    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+    fn id(&self) -> Self::Id {
         self.id
     }
 }
@@ -1157,16 +1157,16 @@ impl DeployWithFinalizedApprovals {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Deploy {
-    /// Generates a completely random instance.
+    /// Returns a random deploy.
     pub fn random(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
         Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 
-    /// Generates a random instance but using the specified `timestamp` and `ttl`.
+    /// Returns a random deploy but using the specified `timestamp` and `ttl`.
     pub fn random_with_timestamp_and_ttl(
         rng: &mut TestRng,
         timestamp: Timestamp,
@@ -1207,13 +1207,17 @@ impl Deploy {
             None,
         )
     }
+}
 
+#[cfg(test)]
+impl Deploy {
     /// Turns `self` into an invalid deploy by clearing the `chain_name`, invalidating the deploy
     /// hash.
     pub(crate) fn invalidate(&mut self) {
         self.header.chain_name.clear();
     }
 
+    /// Returns a random deploy for a native transfer.
     pub(crate) fn random_valid_native_transfer(rng: &mut TestRng) -> Self {
         let deploy = Self::random(rng);
         let transfer_args = runtime_args! {
@@ -1245,6 +1249,7 @@ impl Deploy {
         )
     }
 
+    /// Returns a random deploy for a native transfer with no dependencies.
     pub(crate) fn random_valid_native_transfer_without_deps(rng: &mut TestRng) -> Self {
         let deploy = Self::random(rng);
         let transfer_args = runtime_args! {
@@ -1276,6 +1281,7 @@ impl Deploy {
         )
     }
 
+    /// Returns a random invalid deploy without a payment amount specified.
     pub(crate) fn random_without_payment_amount(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1284,6 +1290,7 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random invalid deploy with an invalid value for the payment amount.
     pub(crate) fn random_with_mangled_payment_amount(rng: &mut TestRng) -> Self {
         let payment_args = runtime_args! {
             "amount" => "invalid-argument"
@@ -1295,6 +1302,7 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random deploy with custom payment specified as a stored contract by name.
     pub(crate) fn random_with_valid_custom_payment_contract_by_name(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredContractByName {
             name: "Test".to_string(),
@@ -1304,6 +1312,8 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random invalid deploy with custom payment specified as a stored contract by hash,
+    /// but missing the runtime args.
     pub(crate) fn random_with_missing_payment_contract_by_hash(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredContractByHash {
             hash: [19; 32].into(),
@@ -1313,6 +1323,8 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random invalid deploy with custom payment specified as a stored contract by hash,
+    /// but calling an invalid entry point.
     pub(crate) fn random_with_missing_entry_point_in_payment_contract(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredContractByHash {
             hash: [19; 32].into(),
@@ -1322,6 +1334,8 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random deploy with custom payment specified as a stored versioned contract by
+    /// name.
     pub(crate) fn random_with_valid_custom_payment_package_by_name(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredVersionedContractByName {
             name: "Test".to_string(),
@@ -1332,6 +1346,8 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random invalid deploy with custom payment specified as a stored versioned contract
+    /// by hash, but missing the runtime args.
     pub(crate) fn random_with_missing_payment_package_by_hash(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredVersionedContractByHash {
             hash: Default::default(),
@@ -1342,6 +1358,8 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random invalid deploy with custom payment specified as a stored versioned contract
+    /// by hash, but calling an invalid entry point.
     pub(crate) fn random_with_nonexistent_contract_version_in_payment_package(
         rng: &mut TestRng,
     ) -> Self {
@@ -1354,6 +1372,7 @@ impl Deploy {
         Self::random_transfer_with_payment(rng, payment)
     }
 
+    /// Returns a random deploy with custom session specified as a stored contract by name.
     pub(crate) fn random_with_valid_session_contract_by_name(rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredContractByName {
             name: "Test".to_string(),
@@ -1363,6 +1382,8 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid deploy with custom session specified as a stored contract by hash,
+    /// but missing the runtime args.
     pub(crate) fn random_with_missing_session_contract_by_hash(rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredContractByHash {
             hash: Default::default(),
@@ -1372,6 +1393,8 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid deploy with custom session specified as a stored contract by hash,
+    /// but calling an invalid entry point.
     pub(crate) fn random_with_missing_entry_point_in_session_contract(rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredContractByHash {
             hash: [19; 32].into(),
@@ -1381,6 +1404,8 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random deploy with custom session specified as a stored versioned contract by
+    /// name.
     pub(crate) fn random_with_valid_session_package_by_name(rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredVersionedContractByName {
             name: "Test".to_string(),
@@ -1391,6 +1416,8 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid deploy with custom session specified as a stored versioned contract
+    /// by hash, but missing the runtime args.
     pub(crate) fn random_with_missing_session_package_by_hash(rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::StoredVersionedContractByHash {
             hash: Default::default(),
@@ -1401,6 +1428,8 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid deploy with custom session specified as a stored versioned contract
+    /// by hash, but calling an invalid entry point.
     pub(crate) fn random_with_nonexistent_contract_version_in_session_package(
         rng: &mut TestRng,
     ) -> Self {
@@ -1413,6 +1442,7 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid transfer deploy with the "target" runtime arg missing.
     pub(crate) fn random_without_transfer_target(rng: &mut TestRng) -> Self {
         let transfer_args = runtime_args! {
             "amount" => *MAX_PAYMENT,
@@ -1424,6 +1454,7 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid transfer deploy with the "amount" runtime arg missing.
     pub(crate) fn random_without_transfer_amount(rng: &mut TestRng) -> Self {
         let transfer_args = runtime_args! {
             "source" => PublicKey::random(rng).to_account_hash(),
@@ -1435,6 +1466,7 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid transfer deploy with an invalid "amount" runtime arg.
     pub(crate) fn random_with_mangled_transfer_amount(rng: &mut TestRng) -> Self {
         let transfer_args = runtime_args! {
             "amount" => "mangled-transfer-amount",
@@ -1447,6 +1479,7 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid deploy with empty session bytes.
     pub(crate) fn random_with_empty_session_module_bytes(rng: &mut TestRng) -> Self {
         let session = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1455,6 +1488,7 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random invalid deploy with an expired TTL.
     pub(crate) fn random_expired_deploy(rng: &mut TestRng) -> Self {
         let deploy = Self::random_valid_native_transfer(rng);
         let secret_key = SecretKey::random(rng);
@@ -1472,7 +1506,7 @@ impl Deploy {
         )
     }
 
-    /// Creates a deploy with native transfer as payment code.
+    /// Returns a random deploy with native transfer as payment code.
     pub(crate) fn random_with_native_transfer_in_payment_logic(rng: &mut TestRng) -> Self {
         let transfer_args = runtime_args! {
             "amount" => *MAX_PAYMENT,
@@ -1574,15 +1608,12 @@ impl Item for Deploy {
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!
         validate_deploy(self)
     }
 
-    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+    fn id(&self) -> Self::Id {
         *self.id()
     }
 }
@@ -1625,7 +1656,7 @@ impl From<Deploy> for DeployItem {
 ///
 /// Currently a stop-gap measure to associate an immutable deploy with additional metadata. Holds
 /// execution results.
-#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
@@ -1633,7 +1664,7 @@ pub struct DeployMetadata {
 }
 
 /// Additional information describing a deploy.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum DeployMetadataExt {
     /// Holds the execution results of a deploy.
     Metadata(DeployMetadata),
