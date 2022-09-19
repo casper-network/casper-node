@@ -30,7 +30,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{
-        participating::{self, ParticipatingEvent},
+        main_reactor::{Config, MainEvent, MainReactor},
         Reactor, ReactorExit, Runner,
     },
     testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
@@ -50,10 +50,10 @@ struct TestChain {
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
-type Nodes = crate::testing::network::Nodes<FilterReactor<participating::Reactor>>;
+type Nodes = crate::testing::network::Nodes<FilterReactor<MainReactor>>;
 
-impl Runner<ConditionCheckReactor<FilterReactor<participating::Reactor>>> {
-    fn participating(&self) -> &participating::Reactor {
+impl Runner<ConditionCheckReactor<FilterReactor<MainReactor>>> {
+    fn main_reactor(&self) -> &MainReactor {
         self.reactor().inner().inner()
     }
 }
@@ -133,9 +133,9 @@ impl TestChain {
     }
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
-    fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> participating::Config {
+    fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> Config {
         // Set the network configuration.
-        let mut cfg = participating::Config {
+        let mut cfg = Config {
             network: if idx == 0 {
                 small_network::Config::default_local_net_first_node(first_node_port)
             } else {
@@ -166,10 +166,10 @@ impl TestChain {
     async fn create_initialized_network(
         &mut self,
         rng: &mut NodeRng,
-    ) -> anyhow::Result<Network<FilterReactor<participating::Reactor>>> {
+    ) -> anyhow::Result<Network<FilterReactor<MainReactor>>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<FilterReactor<participating::Reactor>> = Network::new();
+        let mut network: Network<FilterReactor<MainReactor>> = Network::new();
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
@@ -178,7 +178,7 @@ impl TestChain {
             let network_identity = NetworkIdentity::with_generated_certs().unwrap();
 
             // We create an initializer reactor here and run it to completion.
-            let _ = Runner::<participating::Reactor>::new_with_chainspec(
+            let _ = Runner::<MainReactor>::new_with_chainspec(
                 WithDir::new(root.clone(), cfg),
                 Arc::clone(&self.chainspec),
                 Arc::clone(&self.chainspec_raw_bytes),
@@ -203,7 +203,7 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
         nodes
             .values()
-            .all(|runner| runner.participating().consensus().current_era() == Some(era_id))
+            .all(|runner| runner.main_reactor().consensus().current_era() == Some(era_id))
     }
 }
 
@@ -219,7 +219,7 @@ impl SwitchBlocks {
         let mut headers = Vec::new();
         for era_number in 0..era_count {
             let mut header_iter = nodes.values().map(|runner| {
-                let storage = runner.participating().storage();
+                let storage = runner.main_reactor().storage();
                 let maybe_block = storage
                     .transactional_get_switch_block_by_era_id(era_number)
                     .expect("failed to get switch block by era id");
@@ -266,7 +266,7 @@ impl SwitchBlocks {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         let request = GetBidsRequest::new(state_root_hash);
         let runner = nodes.values().next().expect("missing node");
-        let engine_state = runner.participating().contract_runtime().engine_state();
+        let engine_state = runner.main_reactor().contract_runtime().engine_state();
         let bids_result = engine_state
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
@@ -275,7 +275,7 @@ impl SwitchBlocks {
 }
 
 #[tokio::test]
-async fn run_participating_network() {
+async fn run_network() {
     testing::init_logging();
 
     let mut rng = crate::new_rng();
@@ -343,8 +343,8 @@ async fn run_equivocator_network() {
         .set_filter(move |event| {
             let now = Timestamp::now();
             match &event {
-                ParticipatingEvent::ConsensusMessageIncoming { .. } => {}
-                ParticipatingEvent::NetworkRequest(
+                MainEvent::ConsensusMessageIncoming { .. } => {}
+                MainEvent::NetworkRequest(
                     NetworkRequest::SendMessage { payload, .. }
                     | NetworkRequest::ValidatorBroadcast { payload, .. }
                     | NetworkRequest::Gossip { payload, .. },
@@ -445,7 +445,7 @@ async fn dont_upgrade_without_switch_block() {
             .await;
         let mut exec_request_received = false;
         runner.reactor_mut().inner_mut().set_filter(move |event| {
-            if let ParticipatingEvent::ContractRuntimeRequest(
+            if let MainEvent::ContractRuntimeRequest(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block, ..
                 },
@@ -474,7 +474,7 @@ async fn dont_upgrade_without_switch_block() {
         |nodes| {
             nodes
                 .values()
-                .all(|runner| runner.participating().maybe_exit().is_some())
+                .all(|runner| runner.main_reactor().maybe_exit().is_some())
         },
         timeout,
     )
@@ -484,7 +484,7 @@ async fn dont_upgrade_without_switch_block() {
     // restart before executing and storing it.
     for runner in net.nodes().values() {
         let header = runner
-            .participating()
+            .main_reactor()
             .storage()
             .read_block_by_height(2)
             .expect("failed to read from storage")
@@ -494,7 +494,7 @@ async fn dont_upgrade_without_switch_block() {
         assert!(header.is_switch_block());
         assert_eq!(
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
-            runner.participating().maybe_exit()
+            runner.main_reactor().maybe_exit()
         );
     }
 }
@@ -562,7 +562,7 @@ async fn should_store_finalized_approvals() {
     let deploy_hash = *deploy_alice_bob.deploy_or_transfer_hash().deploy_hash();
 
     for runner in net.runners_mut() {
-        if runner.participating().consensus().public_key() == &alice_pk {
+        if runner.main_reactor().consensus().public_key() == &alice_pk {
             // Alice will propose the deploy signed by Alice and Bob.
             runner
                 .process_injected_effects(|effect_builder| {
@@ -610,7 +610,7 @@ async fn should_store_finalized_approvals() {
         |nodes| {
             nodes.values().all(|runner| {
                 runner
-                    .participating()
+                    .main_reactor()
                     .storage()
                     .get_deploy_metadata_by_hash(&deploy_hash)
                     .is_some()
@@ -623,7 +623,7 @@ async fn should_store_finalized_approvals() {
     // Check if the approvals agree.
     for runner in net.nodes().values() {
         let maybe_dwa = runner
-            .participating()
+            .main_reactor()
             .storage()
             .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
         let maybe_finalized_approvals = maybe_dwa
@@ -633,7 +633,7 @@ async fn should_store_finalized_approvals() {
         let maybe_original_approvals = maybe_dwa
             .as_ref()
             .map(|dwa| dwa.original_approvals().iter().cloned().collect());
-        if runner.participating().consensus().public_key() != &alice_pk {
+        if runner.main_reactor().consensus().public_key() != &alice_pk {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(
                 maybe_finalized_approvals.as_ref(),
@@ -686,24 +686,24 @@ async fn empty_block_validation_regression() {
         .collect();
     let malicious_runner = net
         .runners_mut()
-        .find(|runner| runner.participating().consensus().public_key() == &malicious_validator)
+        .find(|runner| runner.main_reactor().consensus().public_key() == &malicious_validator)
         .unwrap();
     malicious_runner
         .reactor_mut()
         .inner_mut()
         .set_filter(move |event| match event {
-            ParticipatingEvent::BlockProposerRequest(
-                BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+            MainEvent::BlockProposerRequest(BlockProposerRequest::RequestBlockPayload(
+                BlockPayloadRequest {
                     context,
                     next_finalized,
                     mut accusations,
                     random_bit,
                     responder,
-                }),
-            ) => {
+                },
+            )) => {
                 info!("Accusing everyone else!");
                 accusations = everyone_else.clone();
-                Either::Right(ParticipatingEvent::BlockProposerRequest(
+                Either::Right(MainEvent::BlockProposerRequest(
                     BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                         context,
                         next_finalized,

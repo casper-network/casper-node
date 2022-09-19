@@ -2,10 +2,10 @@ use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use tracing::debug;
 
-use super::Reactor;
+use super::MainReactor;
 use crate::unregister_metric;
 
-/// Metrics for estimated heap memory usage for the participating reactor.
+/// Metrics for estimated heap memory usage for the main reactor.
 #[derive(Debug)]
 pub(super) struct MemoryMetrics {
     mem_total: IntGauge,
@@ -115,7 +115,7 @@ impl MemoryMetrics {
     }
 
     /// Estimates memory usage and updates metrics.
-    pub(super) fn estimate(&self, reactor: &Reactor) {
+    pub(super) fn estimate(&self, reactor: &MainReactor) {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;

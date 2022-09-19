@@ -514,8 +514,8 @@ mod tests {
             EffectExt, Effects,
         },
         reactor::{
-            self, participating::ParticipatingEvent, EventQueueHandle, QueueKind,
-            Reactor as ReactorTrait, ReactorEvent,
+            self, main_reactor::MainEvent, EventQueueHandle, QueueKind, Reactor as ReactorTrait,
+            ReactorEvent,
         },
         testing::{
             self,
@@ -732,13 +732,13 @@ mod tests {
         let scheduler = WeightedRoundRobin::new(QueueKind::weights());
         scheduler
             .push(
-                ParticipatingEvent::SmallNetwork(small_network::Event::SweepOutgoing),
+                MainEvent::SmallNetwork(small_network::Event::SweepOutgoing),
                 QueueKind::Network,
             )
             .await;
         scheduler
             .push(
-                ParticipatingEvent::SmallNetwork(small_network::Event::GossipOurAddress),
+                MainEvent::SmallNetwork(small_network::Event::GossipOurAddress),
                 QueueKind::Regular,
             )
             .await;

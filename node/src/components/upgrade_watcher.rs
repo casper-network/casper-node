@@ -225,10 +225,6 @@ impl UpgradeWatcher {
         })
     }
 
-    /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
-    /// participating reactors' constructors to start the recurring task of checking for upgrades.
-    /// The recurring tasks of the previous reactors will be cancelled when the relevant reactor
-    /// is destroyed during transition.
     fn start_checking_for_upgrades<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,

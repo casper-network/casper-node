@@ -30,7 +30,7 @@
 //! manner using [`Runner::crank`] or indefinitely using [`Runner::run`].
 
 mod event_queue_metrics;
-pub(crate) mod participating;
+pub(crate) mod main_reactor;
 mod queue_kind;
 
 use std::{
@@ -846,20 +846,20 @@ where
 }
 
 #[cfg(test)]
-impl Runner<participating::Reactor> {
+impl Runner<main_reactor::MainReactor> {
     pub(crate) async fn new_with_chainspec(
-        cfg: <participating::Reactor as Reactor>::Config,
+        cfg: <main_reactor::MainReactor as Reactor>::Config,
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         network_identity: NetworkIdentity,
         rng: &mut NodeRng,
-    ) -> Result<Self, <participating::Reactor as Reactor>::Error> {
+    ) -> Result<Self, <main_reactor::MainReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) = participating::Reactor::new(
+        let (reactor, initial_effects) = main_reactor::MainReactor::new(
             cfg,
             chainspec,
             chainspec_raw_bytes,

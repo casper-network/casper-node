@@ -2,7 +2,7 @@ use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
     effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
-    reactor::participating::ParticipatingEvent,
+    reactor::main_reactor::MainEvent,
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
         BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
@@ -79,124 +79,124 @@ impl Fetchers {
 
     pub(super) fn dispatch_fetcher_event(
         &mut self,
-        effect_builder: EffectBuilder<ParticipatingEvent>,
+        effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-        event: ParticipatingEvent,
-    ) -> Effects<ParticipatingEvent> {
+        event: MainEvent,
+    ) -> Effects<MainEvent> {
         match event {
             // BLOCK STUFF
-            ParticipatingEvent::BlockFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockFetcher,
+            MainEvent::BlockFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockFetcher,
                 self.block_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::BlockFetcher,
+            MainEvent::BlockFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockFetcher,
                 self.block_by_hash_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::BlockAddedFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockAddedFetcher,
+            MainEvent::BlockAddedFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockAddedFetcher,
                 self.block_added_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockAddedFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::BlockAddedFetcher,
+            MainEvent::BlockAddedFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockAddedFetcher,
                 self.block_added_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockHeaderFetcher,
+            MainEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockHeaderFetcher,
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockHeaderFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::BlockHeaderFetcher,
+            MainEvent::BlockHeaderFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockHeaderFetcher,
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::BlockAndDeploysFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockAndDeploysFetcher,
+            MainEvent::BlockAndDeploysFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockAndDeploysFetcher,
                 self.block_and_deploys_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockAndDeploysFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::BlockAndDeploysFetcher,
+            MainEvent::BlockAndDeploysFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockAndDeploysFetcher,
                 self.block_and_deploys_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::BlockHeadersBatchFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockHeadersBatchFetcher,
+            MainEvent::BlockHeadersBatchFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockHeadersBatchFetcher,
                 self.block_headers_batch_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockHeadersBatchFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::BlockHeadersBatchFetcher,
+            MainEvent::BlockHeadersBatchFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockHeadersBatchFetcher,
                 self.block_headers_batch_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::FinalitySignaturesFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::FinalitySignaturesFetcher,
+            MainEvent::FinalitySignaturesFetcher(event) => reactor::wrap_effects(
+                MainEvent::FinalitySignaturesFetcher,
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::FinalitySignaturesFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::FinalitySignaturesFetcher,
+            MainEvent::FinalitySignaturesFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::FinalitySignaturesFetcher,
                 self.finality_signatures_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::FinalitySignatureFetcher(_) => todo!(),
-            ParticipatingEvent::FinalitySignatureFetcherRequest(_) => todo!(),
+            MainEvent::FinalitySignatureFetcher(_) => todo!(),
+            MainEvent::FinalitySignatureFetcherRequest(_) => todo!(),
 
             // DEPLOY STUFF (NOTE: FINALIZED APPROVALS PERTAIN TO DEPLOYS AND ARE DIFFERENT FROM
             // FINALIZATION SIGNATURES)
-            ParticipatingEvent::DeployFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::DeployFetcher,
+            MainEvent::DeployFetcher(event) => reactor::wrap_effects(
+                MainEvent::DeployFetcher,
                 self.deploy_fetcher.handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::DeployFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::DeployFetcher,
+            MainEvent::DeployFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::DeployFetcher,
                 self.deploy_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::FinalizedApprovalsFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::FinalizedApprovalsFetcher,
+            MainEvent::FinalizedApprovalsFetcher(event) => reactor::wrap_effects(
+                MainEvent::FinalizedApprovalsFetcher,
                 self.finalized_approvals_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::FinalizedApprovalsFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::FinalizedApprovalsFetcher,
+            MainEvent::FinalizedApprovalsFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::FinalizedApprovalsFetcher,
                 self.finalized_approvals_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
 
             // CATCHING UP STUFF
-            ParticipatingEvent::SyncLeapFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::SyncLeapFetcher,
+            MainEvent::SyncLeapFetcher(event) => reactor::wrap_effects(
+                MainEvent::SyncLeapFetcher,
                 self.sync_leap_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::SyncLeapFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::SyncLeapFetcher,
+            MainEvent::SyncLeapFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::SyncLeapFetcher,
                 self.sync_leap_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::TrieOrChunkFetcher,
+            MainEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
+                MainEvent::TrieOrChunkFetcher,
                 self.trie_or_chunk_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::TrieOrChunkFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::TrieOrChunkFetcher,
+            MainEvent::TrieOrChunkFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::TrieOrChunkFetcher,
                 self.trie_or_chunk_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
 
             // MISC DISPATCHING
-            ParticipatingEvent::DeployAcceptorAnnouncement(
+            MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => reactor::wrap_effects(
-                ParticipatingEvent::DeployFetcher,
+                MainEvent::DeployFetcher,
                 self.deploy_fetcher.handle_event(
                     effect_builder,
                     rng,
@@ -208,28 +208,26 @@ impl Fetchers {
             ),
 
             // TODO: KILL BY HEIGHT FETCHING WITH FIRE
-            ParticipatingEvent::BlockByHeightFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockByHeightFetcher,
+            MainEvent::BlockByHeightFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockByHeightFetcher,
                 self.block_by_height_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockByHeightFetcherRequest(request) => reactor::wrap_effects(
-                ParticipatingEvent::BlockByHeightFetcher,
+            MainEvent::BlockByHeightFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockByHeightFetcher,
                 self.block_by_height_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            ParticipatingEvent::BlockHeaderByHeightFetcher(event) => reactor::wrap_effects(
-                ParticipatingEvent::BlockHeaderByHeightFetcher,
+            MainEvent::BlockHeaderByHeightFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockHeaderByHeightFetcher,
                 self.block_header_and_finality_signatures_by_height_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::BlockHeaderByHeightFetcherRequest(request) => {
-                reactor::wrap_effects(
-                    ParticipatingEvent::BlockHeaderByHeightFetcher,
-                    self.block_header_and_finality_signatures_by_height_fetcher
-                        .handle_event(effect_builder, rng, request.into()),
-                )
-            }
+            MainEvent::BlockHeaderByHeightFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockHeaderByHeightFetcher,
+                self.block_header_and_finality_signatures_by_height_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
 
             // YEAH YEAH, I KNOW
             _ => Effects::new(),

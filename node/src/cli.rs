@@ -23,7 +23,7 @@ use tracing::info;
 use crate::{
     components::small_network::Identity as NetworkIdentity,
     logging,
-    reactor::{participating, ReactorExit, Runner},
+    reactor::{main_reactor, ReactorExit, Runner},
     setup_signal_hooks,
     types::{Chainspec, ChainspecRawBytes, ExitCode},
     utils::{Loadable, WithDir},
@@ -187,7 +187,7 @@ impl Cli {
                 ))
                 .context("failed to create a network identity")?;
 
-                let mut participating_runner = Runner::<participating::Reactor>::with_metrics(
+                let mut main_runner = Runner::<main_reactor::MainReactor>::with_metrics(
                     validator_config,
                     Arc::new(chainspec),
                     Arc::new(chainspec_raw_bytes),
@@ -197,7 +197,7 @@ impl Cli {
                 )
                 .await?;
 
-                match participating_runner.run(&mut rng).await {
+                match main_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
                 }
             }
@@ -252,7 +252,7 @@ impl Cli {
     fn init(
         config: &Path,
         config_ext: Vec<ConfigExt>,
-    ) -> anyhow::Result<WithDir<participating::Config>> {
+    ) -> anyhow::Result<WithDir<main_reactor::Config>> {
         // Determine the parent directory of the configuration file, if any.
         // Otherwise, we default to `/`.
         let root = config
@@ -274,11 +274,11 @@ impl Cli {
             item.update_toml_table(&mut config_table)?;
         }
 
-        // Create participating config, including any overridden values.
-        let participating_config: participating::Config = config_table.try_into()?;
-        logging::init_with_config(&participating_config.logging)?;
+        // Create main config, including any overridden values.
+        let main_config: main_reactor::Config = config_table.try_into()?;
+        logging::init_with_config(&main_config.logging)?;
 
-        Ok(WithDir::new(root, participating_config))
+        Ok(WithDir::new(root, main_config))
     }
 }
 
