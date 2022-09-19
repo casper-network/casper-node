@@ -33,7 +33,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         blocks_accumulator::BlocksAccumulator,
         chain_synchronizer::{self, ChainSynchronizer},
-        complete_block_synchronizer::{self, CompleteBlockSynchronizer},
+        block_synchronizer::{self, BlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
@@ -128,7 +128,7 @@ pub(crate) struct Reactor {
     linear_chain: LinearChainComponent, // TODO: Maybe redundant.
     chain_synchronizer: ChainSynchronizer<ParticipatingEvent>, // TODO: To be removed.
     blocks_accumulator: BlocksAccumulator,
-    complete_block_synchronizer: CompleteBlockSynchronizer,
+    complete_block_synchronizer: BlockSynchronizer,
 
     // Non-components.
     diagnostics_port: DiagnosticsPort,
@@ -561,7 +561,7 @@ impl reactor::Reactor for Reactor {
 
         let blocks_accumulator =
             BlocksAccumulator::new(chainspec.highway_config.finality_threshold_fraction);
-        let complete_block_synchronizer = CompleteBlockSynchronizer::new(
+        let complete_block_synchronizer = BlockSynchronizer::new(
             config.complete_block_synchronizer,
             chainspec.highway_config.finality_threshold_fraction,
         );
@@ -1049,7 +1049,7 @@ impl reactor::Reactor for Reactor {
                     effect_builder,
                     rng,
                     ParticipatingEvent::CompleteBlockSynchronizer(
-                        complete_block_synchronizer::Event::EraValidators {
+                        block_synchronizer::Event::EraValidators {
                             validators: upcoming_era_validators.clone(),
                         },
                     ),
@@ -1188,7 +1188,7 @@ impl reactor::Reactor for Reactor {
                 match &ann {
                     BlocklistAnnouncement::OffenseCommitted(node_id) => {
                         let event = ParticipatingEvent::CompleteBlockSynchronizer(
-                            complete_block_synchronizer::Event::DisconnectFromPeer(**node_id),
+                            block_synchronizer::Event::DisconnectFromPeer(**node_id),
                         );
                         effects.extend(self.dispatch_event(effect_builder, rng, event));
                     }

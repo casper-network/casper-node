@@ -156,7 +156,7 @@ impl SyncLeaper {
             }
 
             for peer in peers_to_ask {
-                if pull_request_in_progress.peers.contains_key(&peer) == false {
+                if false == pull_request_in_progress.peers.contains_key(&peer) {
                     effects.extend(
                         effect_builder
                             .fetch::<SyncLeap>(trusted_hash, peer, self.finality_threshold_fraction)

@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::{
     components::{
         block_proposer, block_validator, blocks_accumulator, chain_synchronizer,
-        complete_block_synchronizer::{self, CompleteBlockSyncRequest},
+        block_synchronizer::{self, CompleteBlockSyncRequest},
         consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
         fetcher, gossiper, linear_chain, rest_server, rpc_server,
         small_network::{self, GossipedAddress},
@@ -150,7 +150,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
     #[from]
-    CompleteBlockSynchronizer(#[serde(skip_serializing)] complete_block_synchronizer::Event),
+    CompleteBlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
 
     // Requests
     #[from]

@@ -1,4 +1,4 @@
-mod complete_block_builder;
+mod block_builder;
 mod config;
 mod event;
 
@@ -25,7 +25,7 @@ use crate::{
     NodeRng,
 };
 
-use complete_block_builder::{BlockAcquisitionState, CompleteBlockBuilder, NeedNext};
+use block_builder::{BlockAcquisitionState, BlockBuilder, NeedNext};
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
@@ -48,18 +48,18 @@ impl Display for CompleteBlockSyncRequest {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct CompleteBlockSynchronizer {
+pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
-    builders: HashMap<BlockHash, CompleteBlockBuilder>,
+    builders: HashMap<BlockHash, BlockBuilder>,
     validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     last_progress: Option<Timestamp>,
 }
 
-impl CompleteBlockSynchronizer {
+impl BlockSynchronizer {
     pub(crate) fn new(config: Config, fault_tolerance_fraction: Ratio<u64>) -> Self {
-        CompleteBlockSynchronizer {
+        BlockSynchronizer {
             timeout: config.timeout(),
             fault_tolerance_fraction,
             builders: Default::default(),
@@ -72,7 +72,7 @@ impl CompleteBlockSynchronizer {
     pub(crate) fn last_progress(&self) -> Option<Timestamp> {
         self.builders
             .values()
-            .filter_map(CompleteBlockBuilder::last_progress_time)
+            .filter_map(BlockBuilder::last_progress_time)
             .max()
     }
 
@@ -99,7 +99,7 @@ impl CompleteBlockSynchronizer {
                     }
                     Some(validators) => validators.clone(),
                 };
-                let builder = CompleteBlockBuilder::new(
+                let builder = BlockBuilder::new(
                     request.block_hash,
                     request.era_id,
                     validators,
@@ -126,7 +126,7 @@ pub(crate) enum BlockSyncState {
     Completed,
 }
 
-impl CompleteBlockSynchronizer {
+impl BlockSynchronizer {
     fn block_state(self, block_hash: &BlockHash) -> BlockSyncState {
         match self.builders.get(block_hash) {
             None => BlockSyncState::Unknown,
@@ -267,7 +267,7 @@ impl CompleteBlockSynchronizer {
     }
 }
 
-impl<REv> Component<REv> for CompleteBlockSynchronizer
+impl<REv> Component<REv> for BlockSynchronizer
 where
     REv: From<FetcherRequest<BlockAdded>>
         + From<FetcherRequest<Deploy>>

@@ -9,7 +9,7 @@ use serde::Serialize;
 use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
-    components::{complete_block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
+    components::{block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
     types::{BlockAdded, BlockHash, Deploy, FinalitySignature, NodeId, TrieOrChunk, TrieOrChunkId},
 };
 

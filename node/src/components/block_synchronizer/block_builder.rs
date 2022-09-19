@@ -48,7 +48,7 @@ pub(crate) enum BlockAcquisitionState {
 }
 
 #[derive(DataSize, Debug)]
-pub(super) struct CompleteBlockBuilder {
+pub(super) struct BlockBuilder {
     block_hash: BlockHash,
     builder_state: BlockAcquisitionState,
     state_root_hash: Option<Digest>,
@@ -63,14 +63,14 @@ pub(super) struct CompleteBlockBuilder {
     last_progress_time: Option<Timestamp>,
 }
 
-impl CompleteBlockBuilder {
+impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,
         era_id: EraId,
         validators: BTreeMap<PublicKey, U512>,
         get_everything: bool,
     ) -> Self {
-        CompleteBlockBuilder {
+        BlockBuilder {
             block_hash,
             builder_state: BlockAcquisitionState::Initialized,
             state_root_hash: None,

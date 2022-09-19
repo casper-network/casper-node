@@ -54,7 +54,7 @@ use signal_hook::{consts::TERM_SIGNALS, flag};
 
 pub(crate) use components::{
     block_proposer::Config as BlockProposerConfig,
-    complete_block_synchronizer::Config as CompleteBlockSynchronizerConfig,
+    block_synchronizer::Config as CompleteBlockSynchronizerConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_buffer::Config as DeployBufferConfig,

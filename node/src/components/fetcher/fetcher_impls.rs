@@ -11,3 +11,4 @@ mod finality_signature_fetcher;
 mod finalized_approvals_with_id_fetcher;
 mod sync_leap_fetcher;
 mod trie_or_chunk_fetcher;
+mod global_state_fetcher;

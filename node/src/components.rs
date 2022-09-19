@@ -47,10 +47,10 @@
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
 pub(crate) mod block_proposer;
+pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
 pub(crate) mod blocks_accumulator;
 pub(crate) mod chain_synchronizer;
-pub(crate) mod complete_block_synchronizer;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
@@ -65,6 +65,7 @@ pub(crate) mod trie_accumulator;
 pub(crate) mod upgrade_watcher;
 // The `in_memory_network` is public for use in doctests.
 pub(crate) mod deploy_buffer;
+pub(crate) mod global_state_synchronizer;
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
