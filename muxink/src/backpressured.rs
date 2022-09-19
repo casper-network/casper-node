@@ -8,7 +8,7 @@
 //! more data locally or pause sending.
 //!
 //! The issue with this type of implementation is that if multiple channels (see [`crate::mux`]) are
-//! used across a shared TCP connection, a single blocking channel will block all the other channel
+//! used across a shared TCP connection, a single blocking channel will block all the other channels
 //! (see [Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)). Furthermore,
 //! deadlocks can occur if the data sent is a request which requires a response - should two peers
 //! make requests of each other at the same and end up backpressured, they may end up simultaneously
@@ -33,13 +33,14 @@ use crate::error::Error;
 /// and expect an appropriate amount of ACKs to flow back through it.
 ///
 /// In other words, the `BackpressuredSink` will send `window_size` items at most to the sink
-/// without expecting to have received one or more ACK through the `ack_stream`.
+/// without having received one or more ACKs through the `ack_stream`.
 ///
 /// The ACKs sent back must be `u64`s, the sink will expect to receive at most one ACK per item
 /// sent. The first sent item is expected to receive an ACK of `1u64`, the second `2u64` and so on.
 ///
-/// ACKs may not be sent out of order, but may be combined - an ACK of `n` implicitly indicates ACKs
-/// for all previously unsent ACKs less than `n`.
+/// ACKs are not acknowledgments for a specific item being processed but indicate the total number
+/// of processed items instead, thus they are unordered. They may be combined, an ACK of `n` implies
+/// all missing ACKs `< n`.
 pub struct BackpressuredSink<S, A, Item> {
     /// The inner sink that items will be forwarded to.
     inner: S,
