@@ -914,7 +914,7 @@ impl RpcWithParams for QueryBalance {
                 None => {
                     return Err(Error::new(
                         ErrorCode::NoSuchBlock,
-                        "query-balance failed to retrieve highest block header",
+                        "get-balance failed to retrieve highest block header",
                     ))
                 }
                 Some(block_header) => *block_header.state_root_hash(),
@@ -962,7 +962,7 @@ impl RpcWithParams for QueryBalance {
                 info!(
                     %state_root_hash,
                     %purse_uref,
-                    "query-balance failed: root not found"
+                    "get-balance failed: root not found"
                 );
                 return Err(Error::new(
                     ErrorCode::FailedToGetBalance,
@@ -973,7 +973,7 @@ impl RpcWithParams for QueryBalance {
                 ));
             }
             Err(error) => {
-                info!("query-balance failed to execute: {}", error);
+                info!("get-balance failed to execute: {}", error);
                 return Err(Error::new(
                     ErrorCode::GetBalanceFailedToExecute,
                     error.to_string(),

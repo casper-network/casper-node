@@ -141,7 +141,7 @@ function main() {
     test_get_era_info "$BLOCK_HASH"
     # 23. Test query-global-state subcommand
     test_query_global_state "$BLOCK_HASH" "$DEPLOY_HASH"
-    # 24. Test query-balance subcommand
+    # 24. Test get-balance subcommand
     test_query_balance "$BLOCK_HASH" "$ED25519_HEX" "2500000000"
     # 25. Test get-account subcommand
     test_get_account "$ED25519_HEX" "$ED25519_ACC_HASH"
@@ -471,7 +471,7 @@ function test_get_account() {
     fi
 }
 
-# casper-client query-balance
+# casper-client get-balance
 # ... checks valid json with jq
 # ... verifys some data matches expected outcome
 function test_query_balance() {
@@ -480,9 +480,9 @@ function test_query_balance() {
     local BALANCE_TO=${3}
     local OUTPUT
 
-    log_step "Testing Client Subcommand: query-balance"
+    log_step "Testing Client Subcommand: get-balance"
 
-    OUTPUT=$($(get_path_to_client) query-balance \
+    OUTPUT=$($(get_path_to_client) get-balance \
         --node-address "$(get_node_address_rpc)" \
         --block-identifier "$BLOCK_HASH" \
         --purse-identifier "$TRANFER_TO_PUBLIC_KEY")
