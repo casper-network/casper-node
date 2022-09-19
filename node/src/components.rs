@@ -58,7 +58,6 @@ pub(crate) mod deploy_buffer;
 pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
-pub(crate) mod global_state_synchronizer;
 pub(crate) mod gossiper;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
@@ -70,7 +69,6 @@ pub mod rpc_server;
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;
-pub(crate) mod trie_accumulator;
 pub(crate) mod upgrade_watcher;
 
 use datasize::DataSize;

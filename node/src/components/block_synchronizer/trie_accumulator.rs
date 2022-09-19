@@ -33,21 +33,19 @@ use crate::{
 };
 
 #[derive(Debug, From, Error, Clone, Serialize)]
-pub(crate) enum TrieAccumulatorError {
-    #[error("Fetcher error: {0}")]
+pub(crate) enum Error {
+    #[error("trie accumulator fetcher error: {0}")]
     Fetcher(FetcherError<TrieOrChunk>),
-    #[error("Serialization error: {0}")]
+    #[error("trie accumulator serialization error: {0}")]
     Bytesrepr(bytesrepr::Error),
-    #[error("Couldn't fetch trie chunk ({0}, {1})")]
+    #[error("trie accumulator couldn't fetch trie chunk ({0}, {1})")]
     Absent(Digest, u64),
 }
 
-pub(crate) type TrieAccumulatorResult = Result<Box<TrieRaw>, TrieAccumulatorError>;
-
 #[derive(DataSize, Debug)]
-pub(crate) struct PartialChunks {
+struct PartialChunks {
     peers: Vec<NodeId>,
-    responders: Vec<Responder<TrieAccumulatorResult>>,
+    responders: Vec<Responder<Result<Box<TrieRaw>, Error>>>,
     chunks: HashMap<u64, ChunkWithProof>,
 }
 
@@ -83,7 +81,7 @@ impl PartialChunks {
         }
     }
 
-    fn respond(self, value: TrieAccumulatorResult) -> Effects<Event> {
+    fn respond(self, value: Result<Box<TrieRaw>, Error>) -> Effects<Event> {
         self.responders
             .into_iter()
             .flat_map(|responder| responder.respond(value.clone()).ignore())
@@ -92,11 +90,11 @@ impl PartialChunks {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct TrieAccumulator {
+pub(super) struct TrieAccumulator {
     partial_chunks: HashMap<Digest, PartialChunks>,
 }
 
-#[derive(DataSize, Debug, From)]
+#[derive(DataSize, Debug, From, Serialize)]
 pub(crate) enum Event {
     #[from]
     Request(TrieAccumulatorRequest),
@@ -130,10 +128,7 @@ impl TrieAccumulator {
         trie_or_chunk: TrieOrChunk,
     ) -> Effects<Event>
     where
-        REv: From<FetcherRequest<TrieOrChunk>>
-            + From<ControlAnnouncement>
-            + From<BlocklistAnnouncement>
-            + Send,
+        REv: From<FetcherRequest<TrieOrChunk>> + From<BlocklistAnnouncement> + Send,
     {
         let TrieOrChunkId(_index, hash) = trie_or_chunk.id();
         match trie_or_chunk {
@@ -157,10 +152,7 @@ impl TrieAccumulator {
         chunk: ChunkWithProof,
     ) -> Effects<Event>
     where
-        REv: From<FetcherRequest<TrieOrChunk>>
-            + From<ControlAnnouncement>
-            + From<BlocklistAnnouncement>
-            + Send,
+        REv: From<FetcherRequest<TrieOrChunk>> + From<BlocklistAnnouncement> + Send,
     {
         let digest = chunk.proof().root_hash();
         let index = chunk.proof().index();
@@ -186,8 +178,7 @@ impl TrieAccumulator {
                             %digest, %missing_index,
                             "no peers to download the next chunk from, giving up",
                         );
-                        return partial_chunks
-                            .respond(Err(TrieAccumulatorError::Absent(digest, index)));
+                        return partial_chunks.respond(Err(Error::Absent(digest, index)));
                     }
                 };
                 let next_id = TrieOrChunkId(missing_index, digest);
@@ -227,10 +218,7 @@ impl TrieAccumulator {
 
 impl<REv> Component<REv> for TrieAccumulator
 where
-    REv: From<FetcherRequest<TrieOrChunk>>
-        + From<ControlAnnouncement>
-        + From<BlocklistAnnouncement>
-        + Send,
+    REv: From<FetcherRequest<TrieOrChunk>> + From<BlocklistAnnouncement> + Send,
 {
     type Event = Event;
 
@@ -248,6 +236,7 @@ where
                 peers,
             }) => {
                 let trie_id = TrieOrChunkId(0, hash);
+                // TODO - use more than one peer at a time?
                 let peer = match peers.last() {
                     Some(peer) => *peer,
                     None => {

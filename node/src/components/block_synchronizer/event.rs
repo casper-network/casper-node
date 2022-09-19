@@ -8,6 +8,7 @@ use serde::Serialize;
 
 use casper_types::{EraId, PublicKey, U512};
 
+use super::GlobalStateSynchronizerEvent;
 use crate::{
     components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
     types::{BlockAdded, BlockHash, Deploy, FinalitySignature, NodeId, TrieOrChunk, TrieOrChunkId},
@@ -39,6 +40,9 @@ pub(crate) enum Event {
         id: TrieOrChunkId,
         fetch_result: FetchResult<TrieOrChunk>,
     },
+
+    #[from]
+    GlobalStateSynchronizer(GlobalStateSynchronizerEvent),
 }
 
 impl Display for Event {
@@ -86,6 +90,9 @@ impl Display for Event {
                     write!(f, "fetching {} for {}, {}", id, block_hash, fetcher_error)
                 }
             },
+            Event::GlobalStateSynchronizer(event) => {
+                write!(f, "{:?}", event)
+            }
         }
     }
 }

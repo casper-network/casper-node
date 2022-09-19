@@ -2,10 +2,10 @@ use datasize::DataSize;
 use serde::Deserialize;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig,
-    CompleteBlockSynchronizerConfig, ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig,
-    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig,
-    RpcServerConfig, SmallNetworkConfig, SpeculativeExecConfig, StorageConfig,
+    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, BlockSynchronizerConfig,
+    ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig, DiagnosticsPortConfig,
+    EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig,
+    SmallNetworkConfig, SpeculativeExecConfig, StorageConfig,
 };
 
 /// Root configuration.
@@ -42,8 +42,8 @@ pub(crate) struct Config {
     pub(crate) block_proposer: BlockProposerConfig,
     /// Diagnostics port configuration.
     pub(crate) diagnostics_port: DiagnosticsPortConfig,
-    /// Complete block synchronizer.
-    pub(crate) complete_block_synchronizer: CompleteBlockSynchronizerConfig,
+    /// Block synchronizer.
+    pub(crate) block_synchronizer: BlockSynchronizerConfig,
     /// Deploy buffer configuration.
     pub(crate) deploy_buffer: DeployBufferConfig,
 }

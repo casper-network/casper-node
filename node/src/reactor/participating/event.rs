@@ -4,6 +4,8 @@ use casper_execution_engine::core::{engine_state, engine_state::UpgradeSuccess};
 use derive_more::From;
 use serde::Serialize;
 
+use crate::components::block_synchronizer::{GlobalStateSynchronizerEvent, TrieAccumulatorEvent};
+use crate::effect::requests::{SyncGlobalStateRequest, TrieAccumulatorRequest};
 use crate::{
     components::{
         block_proposer,
@@ -151,7 +153,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
     #[from]
-    CompleteBlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
+    BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
 
     // Requests
     #[from]
@@ -212,7 +214,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
     #[from]
-    CompleteBlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
+    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
 
     // Announcements
     #[from]
@@ -397,11 +399,39 @@ impl ReactorEvent for ParticipatingEvent {
                 "FinalitySignatureGossiperAnnouncement"
             }
             ParticipatingEvent::BlocksAccumulator(_) => "BlocksAccumulator",
-            ParticipatingEvent::CompleteBlockSynchronizer(_) => "CompleteBlockSynchronizer",
-            ParticipatingEvent::CompleteBlockSynchronizerRequest(_) => {
-                "CompleteBlockSynchronizerRequest"
-            }
+            ParticipatingEvent::BlockSynchronizer(_) => "BlockSynchronizer",
+            ParticipatingEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
         }
+    }
+}
+
+impl From<SyncGlobalStateRequest> for ParticipatingEvent {
+    fn from(request: SyncGlobalStateRequest) -> Self {
+        ParticipatingEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
+            request.into(),
+        ))
+    }
+}
+
+impl From<TrieAccumulatorRequest> for ParticipatingEvent {
+    fn from(request: TrieAccumulatorRequest) -> Self {
+        ParticipatingEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
+            block_synchronizer::GlobalStateSynchronizerEvent::TrieAccumulatorEvent(request.into()),
+        ))
+    }
+}
+
+impl From<GlobalStateSynchronizerEvent> for ParticipatingEvent {
+    fn from(event: GlobalStateSynchronizerEvent) -> Self {
+        ParticipatingEvent::BlockSynchronizer(event.into())
+    }
+}
+
+impl From<TrieAccumulatorEvent> for ParticipatingEvent {
+    fn from(event: TrieAccumulatorEvent) -> Self {
+        ParticipatingEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
+            event.into(),
+        ))
     }
 }
 
@@ -523,8 +553,8 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::BlocksAccumulator(event) => {
                 write!(f, "blocks accumulator: {}", event)
             }
-            ParticipatingEvent::CompleteBlockSynchronizer(event) => {
-                write!(f, "complete block synchronizer: {}", event)
+            ParticipatingEvent::BlockSynchronizer(event) => {
+                write!(f, "block synchronizer: {}", event)
             }
             ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             ParticipatingEvent::ChainSynchronizerRequest(req) => {
@@ -594,8 +624,8 @@ impl Display for ParticipatingEvent {
                 write!(f, "block validator request: {}", req)
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
-            ParticipatingEvent::CompleteBlockSynchronizerRequest(req) => {
-                write!(f, "complete block synchronizer request: {}", req)
+            ParticipatingEvent::BlockSynchronizerRequest(req) => {
+                write!(f, "block synchronizer request: {}", req)
             }
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             ParticipatingEvent::DumpConsensusStateRequest(req) => {

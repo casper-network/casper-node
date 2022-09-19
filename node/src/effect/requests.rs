@@ -35,6 +35,7 @@ use casper_types::{
 
 use crate::{
     components::{
+        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
@@ -44,14 +45,13 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
         sync_leaper::ConstructSyncLeapError,
-        trie_accumulator::TrieAccumulatorResult,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHashAndHeight, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
         DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
@@ -1216,12 +1216,31 @@ pub(crate) struct TrieAccumulatorRequest {
     /// The peers to try to fetch from.
     pub(crate) peers: Vec<NodeId>,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<TrieAccumulatorResult>,
+    pub(crate) responder: Responder<Result<Box<TrieRaw>, TrieAccumulatorError>>,
 }
 
 impl Display for TrieAccumulatorRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request trie by hash {}", self.hash)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SyncGlobalStateRequest {
+    pub(crate) block_hash_and_height: BlockHashAndHeight,
+    pub(crate) state_root_hash: Digest,
+    pub(crate) peers: HashSet<NodeId>,
+    #[serde(skip)]
+    pub(crate) responder: Responder<Result<(), GlobalStateSynchronizerError>>,
+}
+
+impl Display for SyncGlobalStateRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "request to sync global state at {}",
+            self.block_hash_and_height
+        )
     }
 }
 

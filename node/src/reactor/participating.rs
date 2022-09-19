@@ -30,10 +30,10 @@ use crate::components::blocks_accumulator::LeapInstruction;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
+        block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
         blocks_accumulator::BlocksAccumulator,
         chain_synchronizer::{self, ChainSynchronizer},
-        block_synchronizer::{self, BlockSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
@@ -128,7 +128,7 @@ pub(crate) struct Reactor {
     linear_chain: LinearChainComponent, // TODO: Maybe redundant.
     chain_synchronizer: ChainSynchronizer<ParticipatingEvent>, // TODO: To be removed.
     blocks_accumulator: BlocksAccumulator,
-    complete_block_synchronizer: BlockSynchronizer,
+    block_synchronizer: BlockSynchronizer,
 
     // Non-components.
     diagnostics_port: DiagnosticsPort,
@@ -200,7 +200,7 @@ impl Reactor {
             }
             ReactorState::CatchUp => {
                 let mut effects = Effects::new();
-                if let Some(timestamp) = self.complete_block_synchronizer.last_progress() {
+                if let Some(timestamp) = self.block_synchronizer.last_progress() {
                     if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
                         self.attempts = 0; // if any progress has been made, reset attempts
                         effects.extend(
@@ -561,8 +561,8 @@ impl reactor::Reactor for Reactor {
 
         let blocks_accumulator =
             BlocksAccumulator::new(chainspec.highway_config.finality_threshold_fraction);
-        let complete_block_synchronizer = BlockSynchronizer::new(
-            config.complete_block_synchronizer,
+        let block_synchronizer = BlockSynchronizer::new(
+            config.block_synchronizer,
             chainspec.highway_config.finality_threshold_fraction,
         );
 
@@ -592,7 +592,7 @@ impl reactor::Reactor for Reactor {
             linear_chain,
             chain_synchronizer,
             blocks_accumulator,
-            complete_block_synchronizer,
+            block_synchronizer,
             diagnostics_port,
             metrics,
             memory_metrics,
@@ -728,9 +728,9 @@ impl reactor::Reactor for Reactor {
                 self.blocks_accumulator
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::CompleteBlockSynchronizer(event) => reactor::wrap_effects(
-                ParticipatingEvent::CompleteBlockSynchronizer,
-                self.complete_block_synchronizer
+            ParticipatingEvent::BlockSynchronizer(event) => reactor::wrap_effects(
+                ParticipatingEvent::BlockSynchronizer,
+                self.block_synchronizer
                     .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::BlockProposerRequest(req) => self.dispatch_event(
@@ -747,9 +747,9 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
-            ParticipatingEvent::CompleteBlockSynchronizerRequest(req) => reactor::wrap_effects(
-                ParticipatingEvent::CompleteBlockSynchronizer,
-                self.complete_block_synchronizer
+            ParticipatingEvent::BlockSynchronizerRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::BlockSynchronizer,
+                self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
             ParticipatingEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
@@ -1048,7 +1048,7 @@ impl reactor::Reactor for Reactor {
                 let mut events = self.dispatch_event(
                     effect_builder,
                     rng,
-                    ParticipatingEvent::CompleteBlockSynchronizer(
+                    ParticipatingEvent::BlockSynchronizer(
                         block_synchronizer::Event::EraValidators {
                             validators: upcoming_era_validators.clone(),
                         },
@@ -1187,7 +1187,7 @@ impl reactor::Reactor for Reactor {
                 let mut effects = Effects::new();
                 match &ann {
                     BlocklistAnnouncement::OffenseCommitted(node_id) => {
-                        let event = ParticipatingEvent::CompleteBlockSynchronizer(
+                        let event = ParticipatingEvent::BlockSynchronizer(
                             block_synchronizer::Event::DisconnectFromPeer(**node_id),
                         );
                         effects.extend(self.dispatch_event(effect_builder, rng, event));

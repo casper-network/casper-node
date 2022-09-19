@@ -1,6 +1,8 @@
 mod block_builder;
 mod config;
 mod event;
+mod global_state_synchronizer;
+mod trie_accumulator;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap},
@@ -20,14 +22,24 @@ use crate::{
         Component,
     },
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
+    reactor,
     storage::StorageRequest,
     types::{BlockAdded, BlockHash, Deploy, FinalitySignature, FinalitySignatureId, NodeId},
     NodeRng,
 };
 
+use crate::effect::announcements::BlocklistAnnouncement;
+use crate::effect::requests::{ContractRuntimeRequest, TrieAccumulatorRequest};
+use crate::types::TrieOrChunk;
 use block_builder::{BlockAcquisitionState, BlockBuilder, NeedNext};
 pub(crate) use config::Config;
 pub(crate) use event::Event;
+use global_state_synchronizer::GlobalStateSynchronizer;
+pub(crate) use global_state_synchronizer::{
+    Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
+};
+use trie_accumulator::TrieAccumulator;
+pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub(crate) struct BlockSyncRequest {
@@ -55,6 +67,7 @@ pub(crate) struct BlockSynchronizer {
     builders: HashMap<BlockHash, BlockBuilder>,
     validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     last_progress: Option<Timestamp>,
+    global_state_synchronizer: GlobalStateSynchronizer,
 }
 
 impl BlockSynchronizer {
@@ -65,6 +78,9 @@ impl BlockSynchronizer {
             builders: Default::default(),
             validators: Default::default(),
             last_progress: None,
+            global_state_synchronizer: GlobalStateSynchronizer::new(
+                config.max_parallel_trie_fetches() as usize,
+            ),
         }
     }
 
@@ -272,7 +288,11 @@ where
     REv: From<FetcherRequest<BlockAdded>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
+        + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocklistAnnouncement>
         + From<StorageRequest>
+        + From<TrieAccumulatorRequest>
+        + From<ContractRuntimeRequest>
         + Send,
 {
     type Event = Event;
@@ -280,7 +300,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -295,6 +315,11 @@ where
             Event::FinalitySignatureFetched(result) => {
                 self.handle_finality_signature_fetched(result)
             }
+            Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
+                Event::GlobalStateSynchronizer,
+                self.global_state_synchronizer
+                    .handle_event(effect_builder, rng, event),
+            ),
             _ => todo!(),
         }
     }

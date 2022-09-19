@@ -134,6 +134,7 @@ use casper_types::{
 
 use crate::{
     components::{
+        block_synchronizer::TrieAccumulatorError,
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
@@ -143,7 +144,6 @@ use crate::{
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::FromIncoming,
-        trie_accumulator::TrieAccumulatorResult,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -1629,7 +1629,11 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn fetch_trie(self, hash: Digest, peers: Vec<NodeId>) -> TrieAccumulatorResult
+    pub(crate) async fn fetch_trie(
+        self,
+        hash: Digest,
+        peers: Vec<NodeId>,
+    ) -> Result<Box<TrieRaw>, TrieAccumulatorError>
     where
         REv: From<TrieAccumulatorRequest>,
     {
