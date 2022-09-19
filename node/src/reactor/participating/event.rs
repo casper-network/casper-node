@@ -6,10 +6,11 @@ use serde::Serialize;
 
 use crate::{
     components::{
-        block_proposer, block_validator, blocks_accumulator, chain_synchronizer,
-        block_synchronizer::{self, CompleteBlockSyncRequest},
-        consensus, contract_runtime, deploy_acceptor, diagnostics_port, event_stream_server,
-        fetcher, gossiper, linear_chain, rest_server, rpc_server,
+        block_proposer,
+        block_synchronizer::{self, BlockSyncRequest},
+        block_validator, blocks_accumulator, chain_synchronizer, consensus, contract_runtime,
+        deploy_acceptor, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
+        rest_server, rpc_server,
         small_network::{self, GossipedAddress},
         storage, sync_leaper, upgrade_watcher,
     },
@@ -211,7 +212,7 @@ pub(crate) enum ParticipatingEvent {
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
     #[from]
-    CompleteBlockSynchronizerRequest(#[serde(skip_serializing)] CompleteBlockSyncRequest),
+    CompleteBlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
 
     // Announcements
     #[from]

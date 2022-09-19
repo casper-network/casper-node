@@ -6,6 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, warn};
 
@@ -31,7 +32,7 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Debug, From, Error, Clone)]
+#[derive(Debug, From, Error, Clone, Serialize)]
 pub(crate) enum TrieAccumulatorError {
     #[error("Fetcher error: {0}")]
     Fetcher(FetcherError<TrieOrChunk>),

@@ -143,6 +143,7 @@ use crate::{
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::FromIncoming,
+        trie_accumulator::TrieAccumulatorResult,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -169,7 +170,8 @@ use requests::{
     BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
     ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    NodeStateRequest, StateStoreRequest, StorageRequest, UpgradeWatcherRequest,
+    NodeStateRequest, StateStoreRequest, StorageRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1620,6 +1622,21 @@ impl<REv> EffectBuilder<REv> {
                 id,
                 peer,
                 validation_metadata,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn fetch_trie(self, hash: Digest, peers: Vec<NodeId>) -> TrieAccumulatorResult
+    where
+        REv: From<TrieAccumulatorRequest>,
+    {
+        self.make_request(
+            |responder| TrieAccumulatorRequest {
+                hash,
+                peers,
                 responder,
             },
             QueueKind::Regular,

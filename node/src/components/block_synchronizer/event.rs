@@ -9,7 +9,7 @@ use serde::Serialize;
 use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
-    components::{block_synchronizer::CompleteBlockSyncRequest, fetcher::FetchResult},
+    components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
     types::{BlockAdded, BlockHash, Deploy, FinalitySignature, NodeId, TrieOrChunk, TrieOrChunkId},
 };
 
@@ -17,7 +17,7 @@ use crate::{
 pub(crate) enum Event {
     /// The initiating event to fetch an item by its id.
     #[from]
-    Upsert(CompleteBlockSyncRequest),
+    Upsert(BlockSyncRequest),
 
     /// Received announcement about upcoming era validators.
     EraValidators {

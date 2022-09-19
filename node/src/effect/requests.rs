@@ -1211,10 +1211,10 @@ impl<T: FetcherItem> Display for FetcherRequest<T> {
 #[derive(Debug, Serialize, DataSize)]
 #[must_use]
 pub(crate) struct TrieAccumulatorRequest {
-    /// The peers to try to fetch from.
-    pub(crate) peers: Vec<NodeId>,
     /// The hash of the trie node.
     pub(crate) hash: Digest,
+    /// The peers to try to fetch from.
+    pub(crate) peers: Vec<NodeId>,
     /// Responder to call with the result.
     pub(crate) responder: Responder<TrieAccumulatorResult>,
 }

@@ -30,14 +30,14 @@ pub(crate) use config::Config;
 pub(crate) use event::Event;
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub(crate) struct CompleteBlockSyncRequest {
+pub(crate) struct BlockSyncRequest {
     pub(crate) block_hash: BlockHash,
     pub(crate) era_id: EraId,
     pub(crate) should_fetch_execution_state: bool,
     pub(crate) peer: NodeId,
 }
 
-impl Display for CompleteBlockSyncRequest {
+impl Display for BlockSyncRequest {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -79,7 +79,7 @@ impl BlockSynchronizer {
     fn upsert<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request: CompleteBlockSyncRequest,
+        request: BlockSyncRequest,
     ) -> Effects<Event>
     where
         REv: From<FetcherRequest<BlockAdded>> + Send,
