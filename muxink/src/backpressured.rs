@@ -25,7 +25,7 @@ use std::{
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 
-use crate::error::Error;
+use crate::{error::Error, try_ready};
 
 /// A back-pressuring sink.
 ///
@@ -77,6 +77,30 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
     pub fn into_inner(self) -> (S, A) {
         (self.inner, self.ack_stream)
     }
+
+    /// Validates a received ack.
+    ///
+    /// Returns an error if the `ACK` was a duplicate or from the future.
+    fn validate_ack<E>(&mut self, ack_received: u64) -> Result<(), Error<E>>
+    where
+        E: std::error::Error,
+    {
+        if ack_received > self.last_request {
+            return Err(Error::UnexpectedAck {
+                actual: ack_received,
+                items_sent: self.last_request,
+            });
+        }
+
+        if ack_received <= self.received_ack {
+            return Err(Error::DuplicateAck {
+                ack_received,
+                highest: self.received_ack,
+            });
+        }
+
+        Ok(())
+    }
 }
 
 impl<Item, A, S> Sink<Item> for BackpressuredSink<S, A, Item>
@@ -101,19 +125,7 @@ where
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(ack_received)) => {
-                    if ack_received > self_mut.last_request {
-                        return Poll::Ready(Err(Error::UnexpectedAck {
-                            actual: ack_received,
-                            items_sent: self_mut.last_request,
-                        }));
-                    }
-
-                    if ack_received <= self_mut.received_ack {
-                        return Poll::Ready(Err(Error::DuplicateAck {
-                            ack_received,
-                            highest: self_mut.received_ack,
-                        }));
-                    }
+                    try_ready!(self_mut.validate_ack(self_mut.received_ack));
 
                     self_mut.received_ack = ack_received;
                 }
