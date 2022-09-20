@@ -33,6 +33,13 @@ popd || exit
 pushd "$NCTL_CASPER_CLIENT_HOME" || \
     { echo "Could not find the casper-client-rs repo - have you cloned it into your working directory?"; exit; }
 
+while getopts 'd' opt; do 
+    case $opt in
+        d ) export NCTL_COMPILE_TARGET="debug";;
+        * ) echo "nctl-compile only accepts optional flag -d to compile in debug mode."
+    esac
+done 
+
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
     cargo build
 else

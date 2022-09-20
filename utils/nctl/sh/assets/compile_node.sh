@@ -12,6 +12,13 @@ source "$NCTL"/sh/utils/main.sh
 
 pushd "$NCTL_CASPER_HOME" || exit
 
+while getopts 'd' opt; do 
+    case $opt in
+        d ) export NCTL_COMPILE_TARGET="debug";;
+        * ) echo "nctl-compile only accepts optional flag -d to compile in debug mode."
+    esac
+done
+
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
     cargo build --package casper-node
 else
