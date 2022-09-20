@@ -40,6 +40,8 @@ pub struct CoreConfig {
     pub(crate) minimum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
+    /// How many peers to simultaneously ask when sync leaping.
+    pub(crate) sync_leap_simultaneous_peer_requests: u32,
 }
 
 impl CoreConfig {
@@ -91,6 +93,7 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
+        let maximum_simultaneous_peer_requests = rng.gen();
 
         CoreConfig {
             era_duration,
@@ -105,6 +108,7 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            sync_leap_simultaneous_peer_requests: maximum_simultaneous_peer_requests,
         }
     }
 }
@@ -124,6 +128,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
+        buffer.extend(self.sync_leap_simultaneous_peer_requests.to_bytes()?);
         Ok(buffer)
     }
 
@@ -140,6 +145,9 @@ impl ToBytes for CoreConfig {
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.strict_argument_checking.serialized_length()
+            + self
+                .sync_leap_simultaneous_peer_requests
+                .serialized_length()
     }
 }
 
@@ -157,6 +165,7 @@ impl FromBytes for CoreConfig {
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
+        let (maximum_simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -170,6 +179,7 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            sync_leap_simultaneous_peer_requests: maximum_simultaneous_peer_requests,
         };
         Ok((config, remainder))
     }

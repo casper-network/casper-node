@@ -3,6 +3,7 @@ mod error;
 mod event;
 
 use std::collections::{btree_map::Entry, BTreeMap};
+use std::hash::Hash;
 
 use datasize::DataSize;
 use num_rational::Ratio;
@@ -11,9 +12,10 @@ use tracing::{error, warn};
 use casper_types::PublicKey;
 
 use crate::{
+    components::blocks_accumulator::LeapInstruction::Leap,
     components::Component,
     effect::{announcements::BlocklistAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{BlockAdded, BlockHash, FetcherItem, FinalitySignature, NodeId},
+    types::{Block, BlockAdded, BlockHash, FetcherItem, FinalitySignature, NodeId},
     NodeRng,
 };
 
@@ -34,6 +36,7 @@ enum SignaturesFinality {
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
+    block_parents: BTreeMap<BlockHash, BlockHash>,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
 }
@@ -41,18 +44,66 @@ pub(crate) struct BlocksAccumulator {
 pub(crate) enum LeapInstruction {
     Leap,
     CaughtUp,
+    SyncForExec(BlockHash),
+}
+
+pub(crate) enum StartingWith {
+    Block(Box<Block>),
+    Hash(BlockHash),
+}
+
+impl StartingWith {
+    pub(crate) fn block_hash(&self) -> &BlockHash {
+        match self {
+            StartingWith::Block(block) => block.as_ref().hash(),
+            StartingWith::Hash(hash) => hash,
+        }
+    }
 }
 
 impl BlocksAccumulator {
     pub(crate) fn new(fault_tolerance_fraction: Ratio<u64>) -> Self {
         Self {
             block_acceptors: Default::default(),
+            block_parents: Default::default(),
             fault_tolerance_fraction,
         }
     }
 
-    pub(crate) fn should_leap(&self, block_hash: &BlockHash) -> LeapInstruction {
-        LeapInstruction::Leap
+    pub(crate) fn should_leap(&self, starting_with: StartingWith) -> LeapInstruction {
+        const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3u64; // TODO: make chainspec or cfg setting
+        let validators = &BTreeMap::new(); // TODO: really gotta get this dealt with.
+        let block_hash = *starting_with.block_hash();
+        if let Some((highest_block_hash, highest_block_height)) = self.highest_known_block() {
+            let block_height = match starting_with {
+                StartingWith::Block(block) => block.header().height(),
+                StartingWith::Hash(trusted_hash) => match self.block_acceptors.get(&trusted_hash) {
+                    None => Default::default(),
+                    Some(block_acceptor) => match block_acceptor.block_height() {
+                        None => Default::default(),
+                        Some(block_height) => block_height,
+                    },
+                },
+            };
+
+            let height_diff = highest_block_height.saturating_sub(block_height);
+            if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
+                if let Some(child_hash) = self.block_parents.get(&block_hash) {
+                    if let Some(block_acceptor) = self.block_acceptors.get(child_hash) {
+                        if block_acceptor.can_execute(self.fault_tolerance_fraction, validators) {
+                            return LeapInstruction::CaughtUp;
+                        }
+                    }
+                    return LeapInstruction::SyncForExec(*child_hash);
+                }
+            }
+        }
+        Leap
+    }
+
+    pub(crate) fn can_execute(&self, block_hash: &BlockHash) -> bool {
+        todo!("use block acceptors to determine if execution can be attempted or not");
+        false
     }
 
     fn handle_block_added<REv>(
@@ -69,6 +120,9 @@ impl BlocksAccumulator {
         // * if missing deploy, fetch deploy and store
 
         let block_hash = *block_added.block.hash();
+        if let Some(parent_hash) = block_added.block.parent() {
+            self.block_parents.insert(*parent_hash, block_hash);
+        }
         let has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 if let Err(err) = block_added.validate(&()) {
@@ -93,7 +147,7 @@ impl BlocksAccumulator {
                     return Effects::new();
                 }
                 accumulated_block
-                    .has_sufficient_signatures(self.fault_tolerance_fraction, BTreeMap::new())
+                    .has_sufficient_signatures(self.fault_tolerance_fraction, &BTreeMap::new())
             }
         };
 
@@ -182,7 +236,7 @@ impl BlocksAccumulator {
                         .ignore();
                 };
                 accumulated_block
-                    .has_sufficient_signatures(self.fault_tolerance_fraction, validator_weights)
+                    .has_sufficient_signatures(self.fault_tolerance_fraction, &validator_weights)
             }
         };
 
@@ -207,7 +261,7 @@ impl BlocksAccumulator {
                         .map(|accumulated_block| {
                             accumulated_block.has_sufficient_signatures(
                                 self.fault_tolerance_fraction,
-                                BTreeMap::new(),
+                                &BTreeMap::new(),
                             )
                         })
                         .unwrap_or_else(|| {
@@ -260,6 +314,57 @@ impl BlocksAccumulator {
         if let Some(accumulated_block) = self.block_acceptors.get_mut(block_hash) {
             accumulated_block.remove_signatures(signers);
         }
+    }
+
+    fn highest_known_block(&self) -> Option<(BlockHash, u64)> {
+        let mut ret: Option<(BlockHash, u64)> = None;
+        for (next_key, next_value) in self
+            .block_acceptors
+            .iter()
+            .filter(|(next_key, next_value)| next_value.has_block_added())
+        {
+            ret = match next_value.block_height() {
+                Some(next_height) => match ret {
+                    Some((_, curr_height)) => {
+                        if next_height > curr_height {
+                            Some((*next_key, next_height))
+                        } else {
+                            ret
+                        }
+                    }
+                    None => Some((*next_key, next_height)),
+                },
+                None => ret,
+            }
+        }
+        ret
+    }
+
+    fn highest_executable_block(&self) -> Option<(BlockHash, u64)> {
+        let era_validator_weights = BTreeMap::new(); //something akin to era_validator_weights_for_block()
+        let mut ret: Option<(BlockHash, u64)> = None;
+        for (next_key, next_value) in
+            self.block_acceptors
+                .iter()
+                .filter(|(next_key, next_value)| {
+                    next_value.can_execute(self.fault_tolerance_fraction, &era_validator_weights)
+                })
+        {
+            ret = match next_value.block_height() {
+                Some(next_height) => match ret {
+                    Some((_, curr_height)) => {
+                        if next_height > curr_height {
+                            Some((*next_key, next_height))
+                        } else {
+                            ret
+                        }
+                    }
+                    None => Some((*next_key, next_height)),
+                },
+                None => ret,
+            }
+        }
+        ret
     }
 }
 

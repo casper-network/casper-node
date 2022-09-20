@@ -13,6 +13,8 @@ mod network_config;
 mod parse_toml;
 mod protocol_config;
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::{fmt::Debug, path::Path};
 
 use datasize::DataSize;
@@ -21,6 +23,7 @@ use rand::Rng;
 use serde::Serialize;
 use tracing::{error, warn};
 
+use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
@@ -30,7 +33,7 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion,
+    EraId, Key, ProtocolVersion, StoredValue,
 };
 
 #[cfg(test)]
@@ -111,6 +114,39 @@ impl Chainspec {
         self.protocol_config
             .hard_reset
             .then(|| self.protocol_config.activation_point.era_id())
+    }
+
+    pub(crate) fn ee_upgrade_config(
+        &self,
+        pre_state_hash: Digest,
+        current_protocol_version: ProtocolVersion,
+        era_id: EraId,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    ) -> Result<UpgradeConfig, String> {
+        let chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes.maybe_global_state_bytes(),
+        );
+        let global_state_update = match self.protocol_config.get_update_mapping() {
+            Ok(global_state_update) => global_state_update,
+            Err(err) => {
+                return Err(format!("failed to generate global state update: {}", err));
+            }
+        };
+
+        Ok(UpgradeConfig::new(
+            pre_state_hash,
+            current_protocol_version,
+            self.protocol_config.version,
+            Some(era_id),
+            Some(self.core_config.validator_slots),
+            Some(self.core_config.auction_delay),
+            Some(self.core_config.locked_funds_period.millis()),
+            Some(self.core_config.round_seigniorage_rate),
+            Some(self.core_config.unbonding_delay),
+            global_state_update,
+            chainspec_registry,
+        ))
     }
 }
 
