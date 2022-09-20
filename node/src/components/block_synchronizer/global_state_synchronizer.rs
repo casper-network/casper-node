@@ -1,4 +1,7 @@
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashSet},
+    time::Duration,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -26,12 +29,6 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
-    #[error(
-        "The GlobalStateSynchronizer is already handling a request for {block_hash_and_height}"
-    )]
-    AlreadyHandlingARequest {
-        block_hash_and_height: BlockHashAndHeight,
-    },
     #[error(transparent)]
     TrieAccumulator(TrieAccumulatorError),
     #[error("ContractRuntime failed to put a trie into global state: {0}")]
@@ -57,8 +54,10 @@ pub(crate) enum Event {
 
 #[derive(Debug, DataSize)]
 struct RequestState {
+    // TODO: Hash is redundant now?
     block_hash_and_height: BlockHashAndHeight,
     missing_descendants: HashSet<Digest>,
+    // TODO: Have one such set for all request states?
     in_flight: HashSet<Digest>,
     peers: HashSet<NodeId>,
     responder: Responder<Result<(), Error>>,
@@ -84,13 +83,19 @@ impl RequestState {
             .collect();
         self.missing_descendants.extend(descendants_to_add);
     }
+
+    /// Returns `true` if the given hash is known to be a missing descendant or an in flight
+    /// request for this state.
+    fn is_relevant(&self, trie_hash: &Digest) -> bool {
+        self.in_flight.contains(&trie_hash) || self.missing_descendants.contains(&trie_hash)
+    }
 }
 
 #[derive(Debug, DataSize)]
 pub(super) struct GlobalStateSynchronizer {
     max_parallel_trie_fetches: usize,
     trie_accumulator: TrieAccumulator,
-    current_request_state: Option<RequestState>,
+    request_states: BTreeMap<BlockHash, RequestState>,
 }
 
 impl GlobalStateSynchronizer {
@@ -98,7 +103,7 @@ impl GlobalStateSynchronizer {
         Self {
             max_parallel_trie_fetches,
             trie_accumulator: TrieAccumulator::new(),
-            current_request_state: None,
+            request_states: Default::default(),
         }
     }
 
@@ -110,27 +115,15 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + Send,
     {
-        match &mut self.current_request_state {
-            None => {
-                self.current_request_state = Some(RequestState::new(request));
+        match self
+            .request_states
+            .entry(request.block_hash_and_height.block_hash)
+        {
+            Entry::Vacant(entry) => {
+                entry.insert(RequestState::new(request));
             }
-            Some(request_state)
-                if request_state.block_hash_and_height != request.block_hash_and_height =>
-            {
-                debug!(
-                    handling_block=%request_state.block_hash_and_height,
-                    requested_block=%request.block_hash_and_height,
-                    "already handling a request"
-                );
-                return request
-                    .responder
-                    .respond(Err(Error::AlreadyHandlingARequest {
-                        block_hash_and_height: request_state.block_hash_and_height,
-                    }))
-                    .ignore();
-            }
-            Some(request_state) => {
-                request_state.peers.extend(request.peers);
+            Entry::Occupied(entry) => {
+                entry.into_mut().peers.extend(request.peers);
             }
         }
 
@@ -141,51 +134,49 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + Send,
     {
-        let request_state = match &mut self.current_request_state {
-            Some(state) => state,
-            None => {
-                debug!("calling parallel_fetch with no current request");
-                return Effects::new();
-            }
-        };
-
-        // if there are no missing descendants and no tries in flight, we're finished
-        if request_state.missing_descendants.is_empty() && request_state.in_flight.is_empty() {
-            return self.finish_request();
-        }
-
-        // if we're not finished, figure out how many new fetching tasks we can start
-        let num_fetches_to_start = self
-            .max_parallel_trie_fetches
-            .saturating_sub(request_state.in_flight.len());
-        let mut requested_hashes = HashSet::new();
         let mut effects = Effects::new();
+        let mut finished = vec![];
+        for (block_hash, request_state) in &mut self.request_states {
+            // if there are no missing descendants and no tries in flight, we're finished
+            if request_state.missing_descendants.is_empty() && request_state.in_flight.is_empty() {
+                finished.push(*block_hash);
+                continue;
+            }
 
-        for trie_hash in request_state
-            .missing_descendants
-            .iter()
-            .filter(|trie_hash| !request_state.in_flight.contains(*trie_hash))
-            .take(num_fetches_to_start)
-            .cloned()
-        {
-            effects.extend(
-                effect_builder
-                    .fetch_trie(trie_hash, request_state.peers.iter().copied().collect())
-                    .event(move |trie_accumulator_result| Event::FetchedTrie {
-                        trie_hash,
-                        trie_accumulator_result,
-                    }),
-            );
-            requested_hashes.insert(trie_hash);
+            // if we're not finished, figure out how many new fetching tasks we can start
+            let num_fetches_to_start = self
+                .max_parallel_trie_fetches
+                .saturating_sub(request_state.in_flight.len());
+            let mut requested_hashes = HashSet::new();
+
+            for trie_hash in request_state
+                .missing_descendants
+                .iter()
+                .filter(|trie_hash| !request_state.in_flight.contains(*trie_hash))
+                .take(num_fetches_to_start)
+                .cloned()
+            {
+                effects.extend(
+                    effect_builder
+                        .fetch_trie(trie_hash, request_state.peers.iter().copied().collect())
+                        .event(move |trie_accumulator_result| Event::FetchedTrie {
+                            trie_hash,
+                            trie_accumulator_result,
+                        }),
+                );
+                requested_hashes.insert(trie_hash);
+            }
+
+            request_state.in_flight.extend(requested_hashes);
+            request_state.missing_descendants = request_state
+                .missing_descendants
+                .difference(&request_state.in_flight)
+                .copied()
+                .collect();
         }
-
-        request_state.in_flight.extend(requested_hashes);
-        request_state.missing_descendants = request_state
-            .missing_descendants
-            .difference(&request_state.in_flight)
-            .copied()
-            .collect();
-
+        for block_hash in finished {
+            effects.extend(self.finish_request(block_hash));
+        }
         effects
     }
 
@@ -202,7 +193,13 @@ impl GlobalStateSynchronizer {
             Ok(trie_raw) => trie_raw,
             Err(error) => {
                 debug!(%error, "error fetching a trie");
-                return self.cancel_request(Error::TrieAccumulator(error));
+                let canceled = self.affected_block_hashes(&trie_hash);
+                return canceled
+                    .into_iter()
+                    .flat_map(|block_hash| {
+                        self.cancel_request(block_hash, Error::TrieAccumulator(error.clone()))
+                    })
+                    .collect();
             }
         };
 
@@ -215,15 +212,15 @@ impl GlobalStateSynchronizer {
             })
     }
 
-    fn cancel_request(&mut self, error: Error) -> Effects<Event> {
-        match self.current_request_state.take() {
+    fn cancel_request(&mut self, block_hash: BlockHash, error: Error) -> Effects<Event> {
+        match self.request_states.remove(&block_hash) {
             Some(request_state) => request_state.responder.respond(Err(error)).ignore(),
             None => Effects::new(),
         }
     }
 
-    fn finish_request(&mut self) -> Effects<Event> {
-        match self.current_request_state.take() {
+    fn finish_request(&mut self, block_hash: BlockHash) -> Effects<Event> {
+        match self.request_states.remove(&block_hash) {
             Some(request_state) => request_state.responder.respond(Ok(())).ignore(),
             None => Effects::new(),
         }
@@ -238,25 +235,35 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + Send,
     {
-        let request_state = match &mut self.current_request_state {
-            Some(state) => state,
-            None => {
-                debug!(%trie_hash, "calling handle_put_trie_result with no current request");
-                return Effects::new();
-            }
-        };
-
+        let mut effects = Effects::new();
+        let block_hashes = self.affected_block_hashes(&trie_hash);
         match put_trie_result {
             Ok(missing_descendants) => {
-                request_state.add_missing_descendants(missing_descendants);
-                request_state.in_flight.remove(&trie_hash);
-                self.parallel_fetch(effect_builder)
+                for block_hash in block_hashes {
+                    if let Some(request_state) = self.request_states.get_mut(&block_hash) {
+                        request_state.add_missing_descendants(missing_descendants.clone());
+                        request_state.in_flight.remove(&trie_hash);
+                        request_state.missing_descendants.remove(&trie_hash);
+                    }
+                }
             }
             Err(error) => {
                 warn!(%trie_hash, %error, "couldn't put trie into global state");
-                self.cancel_request(Error::PutTrie(error))
+                for block_hash in block_hashes {
+                    effects.extend(self.cancel_request(block_hash, Error::PutTrie(error.clone())));
+                }
             }
         }
+        effects.extend(self.parallel_fetch(effect_builder));
+        effects
+    }
+
+    fn affected_block_hashes(&self, trie_hash: &Digest) -> Vec<BlockHash> {
+        self.request_states
+            .iter()
+            .filter(|(_, state)| state.is_relevant(&trie_hash))
+            .map(|(block_hash, _)| *block_hash)
+            .collect()
     }
 }
 

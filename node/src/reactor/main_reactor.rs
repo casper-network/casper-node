@@ -25,6 +25,8 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::error;
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -80,8 +82,6 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-#[cfg(test)]
-use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
