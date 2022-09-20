@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
 * The network handshake now contains the hash of the chainspec used and will be successful only if they match.
 * Add an `identity` option to load existing network identity certificates signed by a CA.
+* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
