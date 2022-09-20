@@ -48,14 +48,14 @@ pub(crate) enum LeapInstruction {
 }
 
 pub(crate) enum StartingWith {
-    Block(Block),
+    Block(Box<Block>),
     Hash(BlockHash),
 }
 
 impl StartingWith {
-    fn block_hash(&self) -> &BlockHash {
+    pub(crate) fn block_hash(&self) -> &BlockHash {
         match self {
-            StartingWith::Block(block) => block.hash(),
+            StartingWith::Block(block) => block.as_ref().hash(),
             StartingWith::Hash(hash) => hash,
         }
     }
@@ -323,16 +323,18 @@ impl BlocksAccumulator {
             .iter()
             .filter(|(next_key, next_value)| next_value.has_block_added())
         {
-            ret = {
-                if let Some(next_height) = next_value.block_height() {
-                    if let Some((_, curr_height)) = ret {
+            ret = match next_value.block_height() {
+                Some(next_height) => match ret {
+                    Some((_, curr_height)) => {
                         if next_height > curr_height {
-                            ret = Some((*next_key, next_height));
-                            continue;
+                            Some((*next_key, next_height))
+                        } else {
+                            ret
                         }
                     }
-                }
-                ret
+                    None => Some((*next_key, next_height)),
+                },
+                None => ret,
             }
         }
         ret
@@ -348,16 +350,18 @@ impl BlocksAccumulator {
                     next_value.can_execute(self.fault_tolerance_fraction, &era_validator_weights)
                 })
         {
-            ret = {
-                if let Some(next_height) = next_value.block_height() {
-                    if let Some((_, curr_height)) = ret {
+            ret = match next_value.block_height() {
+                Some(next_height) => match ret {
+                    Some((_, curr_height)) => {
                         if next_height > curr_height {
-                            ret = Some((*next_key, next_height));
-                            continue;
+                            Some((*next_key, next_height))
+                        } else {
+                            ret
                         }
                     }
-                }
-                ret
+                    None => Some((*next_key, next_height)),
+                },
+                None => ret,
             }
         }
         ret

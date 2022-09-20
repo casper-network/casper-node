@@ -230,22 +230,22 @@ impl MainReactor {
                     -+ : leap w/ local tip hash
                     -- : check pre-genesis and apply or if post-genesis shutdown
                 */
-                let sync_hash = {
+                let starting_with = {
                     if let Some(trusted_hash) = self.trusted_hash {
                         match self.storage.read_block(&trusted_hash) {
                             Ok(Some(trusted_block)) => {
                                 match self.linear_chain.highest_block() {
                                     Some(block) => {
-                                        *block.hash()
+                                        StartingWith::Block(Box::new(block.clone()))
                                         // may want to compare heights
                                     }
                                     None => {
                                         // should be unreachable
-                                        trusted_hash
+                                        StartingWith::Hash(trusted_hash)
                                     }
                                 }
                             }
-                            Ok(None) => trusted_hash,
+                            Ok(None) => StartingWith::Hash(trusted_hash),
                             Err(_) => {
                                 effects.extend(effect_builder.immediately().event(move |_| {
                                     MainEvent::Shutdown("fatal block store error".to_string())
@@ -255,7 +255,7 @@ impl MainReactor {
                         }
                     } else {
                         match self.linear_chain.highest_block() {
-                            Some(block) => *block.hash(),
+                            Some(block) => StartingWith::Block(Box::new(block.clone())),
                             None => {
                                 if let ActivationPoint::Genesis(timestamp) =
                                     self.chainspec.protocol_config.activation_point
@@ -280,10 +280,8 @@ impl MainReactor {
                     }
                 };
 
-                match self
-                    .blocks_accumulator
-                    .should_leap(StartingWith::Hash(sync_hash))
-                {
+                let trusted_hash = *starting_with.block_hash();
+                match self.blocks_accumulator.should_leap(starting_with) {
                     LeapInstruction::Leap => {
                         let peers_to_ask = self
                             .small_network
@@ -296,10 +294,9 @@ impl MainReactor {
                             .into_keys()
                             .into_iter()
                             .collect_vec();
-                        let trusted_hash = sync_hash;
                         effects.extend(effect_builder.immediately().event(move |_| {
                             MainEvent::SyncLeaper(sync_leaper::Event::StartPullingSyncLeap {
-                                trusted_hash: sync_hash,
+                                trusted_hash,
                                 peers_to_ask,
                             })
                         }));
