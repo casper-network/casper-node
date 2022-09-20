@@ -483,13 +483,17 @@ mod tests {
 
     #[test]
     fn schema() {
-        // To generate the contents to replace the input JSON file, run the test
-        // and print the `actual_schema_string` by uncommenting the `println!`
-        // towards the end of the test.
+        // To generate the contents to replace the input JSON file, uncomment the `println!` and run
+        // the test as follows:
         //
         // ```
         // cargo t components::rpc_server::tests::schema -- --nocapture
         // ```
+
+        // println!(
+        //     "{}",
+        //     serde_json::to_string_pretty(&schema_for_value!(OPEN_RPC_SCHEMA.clone())).unwrap()
+        // );
 
         let schema_path = format!(
             "{}/../resources/test/rpc_schema_hashing.json",
