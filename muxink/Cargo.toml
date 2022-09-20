@@ -12,6 +12,7 @@ serde = { version = "1.0.138", optional = true }
 thiserror = "1.0.31"
 tokio = { version = "1", features = [ "full" ] }      # TODO: Reduce features.
 tokio-util = "0.7.2"
+tracing = "0.1.18"
 casper-types = { path = "../types", optional = true }
 
 [dev-dependencies]
