@@ -27,7 +27,7 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub(crate) enum Error {
     #[error(transparent)]
     TrieAccumulator(TrieAccumulatorError),
@@ -55,10 +55,8 @@ pub(crate) enum Event {
 #[derive(Debug, DataSize)]
 struct RequestState {
     missing_descendants: HashSet<Digest>,
-    // TODO: Have one such set for all request states?
-    in_flight: HashSet<Digest>,
     peers: HashSet<NodeId>,
-    responder: Responder<Result<(), Error>>,
+    responders: Vec<Responder<Result<(), Error>>>,
 }
 
 impl RequestState {
@@ -67,24 +65,32 @@ impl RequestState {
         missing_descendants_for_current_block.insert(request.state_root_hash);
         Self {
             missing_descendants: missing_descendants_for_current_block,
-            in_flight: HashSet::new(),
             peers: request.peers,
-            responder: request.responder,
+            responders: vec![request.responder],
         }
     }
 
-    fn add_missing_descendants(&mut self, missing_descendants: Vec<Digest>) {
-        let descendants_to_add: Vec<_> = missing_descendants
-            .into_iter()
-            .filter(|descendant_hash| !self.in_flight.contains(descendant_hash))
-            .collect();
-        self.missing_descendants.extend(descendants_to_add);
+    /// Extends the responders and known peers based on an additional request.
+    fn add_request(&mut self, request: SyncGlobalStateRequest) {
+        self.peers.extend(request.peers);
+        self.responders.push(request.responder);
     }
 
-    /// Returns `true` if the given hash is known to be a missing descendant or an in flight
-    /// request for this state.
+    /// Consumes this request state and sends the response on all responders.
+    fn respond(self, response: Result<(), Error>) -> Effects<Event> {
+        self.responders
+            .into_iter()
+            .flat_map(|responder| responder.respond(response.clone()).ignore())
+            .collect()
+    }
+
+    fn add_missing_descendants(&mut self, missing_descendants: Vec<Digest>) {
+        self.missing_descendants.extend(missing_descendants);
+    }
+
+    /// Returns `true` if the given hash is known to be a missing descendant for this state.
     fn is_relevant(&self, trie_hash: &Digest) -> bool {
-        self.in_flight.contains(&trie_hash) || self.missing_descendants.contains(&trie_hash)
+        self.missing_descendants.contains(&trie_hash)
     }
 }
 
@@ -93,6 +99,7 @@ pub(super) struct GlobalStateSynchronizer {
     max_parallel_trie_fetches: usize,
     trie_accumulator: TrieAccumulator,
     request_states: BTreeMap<BlockHash, RequestState>,
+    in_flight: HashSet<Digest>,
 }
 
 impl GlobalStateSynchronizer {
@@ -101,6 +108,7 @@ impl GlobalStateSynchronizer {
             max_parallel_trie_fetches,
             trie_accumulator: TrieAccumulator::new(),
             request_states: Default::default(),
+            in_flight: Default::default(),
         }
     }
 
@@ -117,7 +125,7 @@ impl GlobalStateSynchronizer {
                 entry.insert(RequestState::new(request));
             }
             Entry::Occupied(entry) => {
-                entry.into_mut().peers.extend(request.peers);
+                entry.into_mut().add_request(request);
             }
         }
 
@@ -131,8 +139,8 @@ impl GlobalStateSynchronizer {
         let mut effects = Effects::new();
         let mut finished = vec![];
         for (block_hash, request_state) in &mut self.request_states {
-            // if there are no missing descendants and no tries in flight, we're finished
-            if request_state.missing_descendants.is_empty() && request_state.in_flight.is_empty() {
+            // if there are no missing descendants, we're finished
+            if request_state.missing_descendants.is_empty() {
                 finished.push(*block_hash);
                 continue;
             }
@@ -140,13 +148,14 @@ impl GlobalStateSynchronizer {
             // if we're not finished, figure out how many new fetching tasks we can start
             let num_fetches_to_start = self
                 .max_parallel_trie_fetches
-                .saturating_sub(request_state.in_flight.len());
+                .saturating_sub(self.in_flight.len());
             let mut requested_hashes = HashSet::new();
 
+            let in_flight = &self.in_flight;
             for trie_hash in request_state
                 .missing_descendants
                 .iter()
-                .filter(|trie_hash| !request_state.in_flight.contains(*trie_hash))
+                .filter(|trie_hash| !in_flight.contains(*trie_hash))
                 .take(num_fetches_to_start)
                 .cloned()
             {
@@ -161,12 +170,7 @@ impl GlobalStateSynchronizer {
                 requested_hashes.insert(trie_hash);
             }
 
-            request_state.in_flight.extend(requested_hashes);
-            request_state.missing_descendants = request_state
-                .missing_descendants
-                .difference(&request_state.in_flight)
-                .copied()
-                .collect();
+            self.in_flight.extend(requested_hashes);
         }
         for block_hash in finished {
             effects.extend(self.finish_request(block_hash));
@@ -208,14 +212,14 @@ impl GlobalStateSynchronizer {
 
     fn cancel_request(&mut self, block_hash: BlockHash, error: Error) -> Effects<Event> {
         match self.request_states.remove(&block_hash) {
-            Some(request_state) => request_state.responder.respond(Err(error)).ignore(),
+            Some(request_state) => request_state.respond(Err(error)),
             None => Effects::new(),
         }
     }
 
     fn finish_request(&mut self, block_hash: BlockHash) -> Effects<Event> {
         match self.request_states.remove(&block_hash) {
-            Some(request_state) => request_state.responder.respond(Ok(())).ignore(),
+            Some(request_state) => request_state.respond(Ok(())),
             None => Effects::new(),
         }
     }
@@ -231,12 +235,12 @@ impl GlobalStateSynchronizer {
     {
         let mut effects = Effects::new();
         let block_hashes = self.affected_block_hashes(&trie_hash);
+        self.in_flight.remove(&trie_hash);
         match put_trie_result {
             Ok(missing_descendants) => {
                 for block_hash in block_hashes {
                     if let Some(request_state) = self.request_states.get_mut(&block_hash) {
                         request_state.add_missing_descendants(missing_descendants.clone());
-                        request_state.in_flight.remove(&trie_hash);
                         request_state.missing_descendants.remove(&trie_hash);
                     }
                 }
