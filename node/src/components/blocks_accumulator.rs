@@ -5,11 +5,12 @@ mod event;
 use std::collections::{btree_map::Entry, BTreeMap};
 use std::hash::Hash;
 
+use casper_types::system::auction::ValidatorWeights;
 use datasize::DataSize;
 use num_rational::Ratio;
 use tracing::{error, warn};
 
-use casper_types::PublicKey;
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::blocks_accumulator::LeapInstruction::Leap,
@@ -39,6 +40,7 @@ pub(crate) struct BlocksAccumulator {
     block_parents: BTreeMap<BlockHash, BlockHash>,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
+    validator_sets: BTreeMap<EraId, ValidatorWeights>,
 }
 
 pub(crate) enum LeapInstruction {
@@ -67,6 +69,7 @@ impl BlocksAccumulator {
             block_acceptors: Default::default(),
             block_parents: Default::default(),
             fault_tolerance_fraction,
+            validator_sets: BTreeMap::new(),
         }
     }
 
@@ -123,6 +126,7 @@ impl BlocksAccumulator {
         if let Some(parent_hash) = block_added.block.parent() {
             self.block_parents.insert(*parent_hash, block_hash);
         }
+        let era_id = block_added.block.header().era_id();
         let has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 if let Err(err) = block_added.validate(&()) {
@@ -146,8 +150,11 @@ impl BlocksAccumulator {
                 if let Err(_error) = accumulated_block.register_block(block_added) {
                     return Effects::new();
                 }
-                accumulated_block
-                    .has_sufficient_signatures(self.fault_tolerance_fraction, &BTreeMap::new())
+                match self.validator_sets.get(&era_id) {
+                    Some(validators) => accumulated_block
+                        .has_sufficient_signatures(self.fault_tolerance_fraction, validators),
+                    None => SignaturesFinality::NotSufficient,
+                }
             }
         };
 
