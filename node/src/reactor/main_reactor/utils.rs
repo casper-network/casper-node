@@ -1,8 +1,17 @@
+use crate::components::blocks_accumulator::LeapInstruction;
+use crate::components::sync_leaper;
+use crate::types::{ActivationPoint, Block, BlockHash, Chainspec, ChainspecRawBytes, NodeId};
 use crate::{
     components::InitializedComponent,
     effect::{EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::MainEvent,
 };
+use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
+use casper_hashing::Digest;
+use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
+use std::borrow::Borrow;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 pub(super) fn initialize_component(
     effect_builder: EffectBuilder<MainEvent>,
@@ -25,4 +34,38 @@ pub(super) fn initialize_component(
         }));
     }
     None
+}
+
+/// Check if protocol upgrade is necessary.
+pub(super) fn maybe_upgrade(
+    effect_builder: EffectBuilder<MainEvent>,
+    block: &Block,
+    chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+) -> Option<Effects<MainEvent>> {
+    match chainspec.protocol_config.activation_point {
+        ActivationPoint::Genesis(_) => return None,
+        ActivationPoint::EraId(era_id) => {
+            if era_id != block.header().next_block_era_id() {
+                return None;
+            }
+            match chainspec.ee_upgrade_config(
+                *block.header().state_root_hash(),
+                block.header().protocol_version(),
+                era_id,
+                chainspec_raw_bytes.clone(),
+            ) {
+                Ok(cfg) => Some(
+                    effect_builder
+                        .upgrade_contract_runtime(Box::new(cfg))
+                        .event(MainEvent::UpgradeResult),
+                ),
+                Err(msg) => Some(
+                    effect_builder
+                        .immediately()
+                        .event(move |_| MainEvent::Shutdown(msg)),
+                ),
+            }
+        }
+    }
 }

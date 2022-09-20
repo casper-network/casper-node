@@ -52,8 +52,9 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use itertools::max;
 use prometheus::Registry;
-use rand::{prelude::SliceRandom, seq::IteratorRandom};
+use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -859,6 +860,15 @@ where
         }
 
         ret
+    }
+
+    pub(crate) fn peers_random(&self, rng: &mut NodeRng, up_to: u32) -> BTreeMap<NodeId, String> {
+        self.peers()
+            .into_iter()
+            .choose_multiple(rng, up_to as usize)
+            .into_iter()
+            .map(|(k, v)| (k, v.clone()))
+            .collect()
     }
 
     /// Returns the node id of this network node.

@@ -105,7 +105,7 @@ impl BlockAcceptor {
     pub(super) fn has_sufficient_signatures(
         &self,
         fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: BTreeMap<PublicKey, U512>,
+        trusted_validator_weights: &BTreeMap<PublicKey, U512>,
     ) -> SignaturesFinality {
         // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid
         // creating it from `BTreeMap<PublicKey, FinalitySignature>` on every call.
@@ -136,5 +136,33 @@ impl BlockAcceptor {
     pub(super) fn remove_signatures(&mut self, signers: &[PublicKey]) {
         self.signatures
             .retain(|public_key, _| !signers.contains(public_key))
+    }
+
+    pub(super) fn has_block_added(&self) -> bool {
+        self.block_added.is_some()
+    }
+
+    pub(super) fn can_execute(
+        &self,
+        fault_tolerance_fraction: Ratio<u64>,
+        trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    ) -> bool {
+        if self.block_added.is_none() {
+            return false;
+        }
+        if let SignaturesFinality::Sufficient =
+            self.has_sufficient_signatures(fault_tolerance_fraction, trusted_validator_weights)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    pub(super) fn block_height(&self) -> Option<u64> {
+        if let Some(block_added) = &self.block_added {
+            Some(block_added.block.header().height())
+        } else {
+            None
+        }
     }
 }

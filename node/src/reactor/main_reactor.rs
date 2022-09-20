@@ -21,16 +21,16 @@ use casper_execution_engine::core::{
 };
 use casper_types::{Key, StoredValue, TimeDiff, Timestamp};
 use datasize::DataSize;
+use itertools::Itertools;
 use prometheus::Registry;
 use tracing::error;
 
-use crate::components::blocks_accumulator::LeapInstruction;
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        blocks_accumulator::BlocksAccumulator,
+        blocks_accumulator::{BlocksAccumulator, LeapInstruction, StartingWith},
         chain_synchronizer::{self, ChainSynchronizer},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
@@ -67,12 +67,15 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{fetchers::Fetchers, utils::initialize_component},
+        main_reactor::{
+            fetchers::Fetchers,
+            utils::{initialize_component, maybe_upgrade},
+        },
         EventQueueHandle, ReactorExit,
     },
     types::{
         ActivationPoint, Block, BlockAdded, BlockHash, Chainspec, ChainspecRawBytes, Deploy,
-        ExitCode, FinalitySignature, Item, SyncLeap, TrieOrChunk,
+        ExitCode, FinalitySignature, Item, NodeId, SyncLeap, TrieOrChunk,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -148,7 +151,7 @@ impl MainReactor {
     fn check_status(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
     ) -> Effects<MainEvent> {
         const WAIT_SEC: u64 = 15; // TODO: config setting this
         let effects = Effects::new();
@@ -277,12 +280,22 @@ impl MainReactor {
                     }
                 };
 
-                match self.blocks_accumulator.should_leap(&sync_hash) {
+                match self
+                    .blocks_accumulator
+                    .should_leap(StartingWith::Hash(sync_hash))
+                {
                     LeapInstruction::Leap => {
-                        // the leap outcome needs to get forwarded to the complete block
-                        // synchronizer to make the merry-go-round go round
-                        let peers_to_ask =
-                            self.small_network.peers().keys().take(3).copied().collect(); // todo: randomize this
+                        let peers_to_ask = self
+                            .small_network
+                            .peers_random(
+                                rng,
+                                self.chainspec
+                                    .core_config
+                                    .sync_leap_simultaneous_peer_requests,
+                            )
+                            .into_keys()
+                            .into_iter()
+                            .collect_vec();
                         let trusted_hash = sync_hash;
                         effects.extend(effect_builder.immediately().event(move |_| {
                             MainEvent::SyncLeaper(sync_leaper::Event::StartPullingSyncLeap {
@@ -301,72 +314,15 @@ impl MainReactor {
                         // TODO: maybe do something w/ the UpgradeWatcher announcement for a
                         // detected upgrade to make this a stronger check
                         match self.linear_chain.highest_block() {
-                            Some(chain_block) => {
-                                if let ActivationPoint::EraId(era_id) =
-                                    self.chainspec.protocol_config.activation_point
-                                {
-                                    // check if protocol upgrade is necessary
-                                    if era_id == chain_block.header().next_block_era_id() {
-                                        let global_state_update = match self
-                                            .chainspec
-                                            .protocol_config
-                                            .get_update_mapping()
-                                        {
-                                            Ok(global_state_update) => global_state_update,
-                                            Err(err) => {
-                                                effects.extend(effect_builder.immediately().event(
-                                                    move |_| MainEvent::Shutdown(err.to_string()),
-                                                ));
-                                                return effects;
-                                            }
-                                        };
-                                        let chainspec_registry =
-                                            ChainspecRegistry::new_with_optional_global_state(
-                                                self.chainspec_raw_bytes.chainspec_bytes(),
-                                                self.chainspec_raw_bytes.maybe_global_state_bytes(),
-                                            );
-                                        effects.extend(
-                                            effect_builder
-                                                .upgrade_contract_runtime(Box::new(
-                                                    UpgradeConfig::new(
-                                                        *chain_block.header().state_root_hash(),
-                                                        chain_block.header().protocol_version(),
-                                                        self.chainspec.protocol_config.version,
-                                                        Some(era_id),
-                                                        Some(
-                                                            self.chainspec
-                                                                .core_config
-                                                                .validator_slots,
-                                                        ),
-                                                        Some(
-                                                            self.chainspec
-                                                                .core_config
-                                                                .auction_delay,
-                                                        ),
-                                                        Some(
-                                                            self.chainspec
-                                                                .core_config
-                                                                .locked_funds_period
-                                                                .millis(),
-                                                        ),
-                                                        Some(
-                                                            self.chainspec
-                                                                .core_config
-                                                                .round_seigniorage_rate,
-                                                        ),
-                                                        Some(
-                                                            self.chainspec
-                                                                .core_config
-                                                                .unbonding_delay,
-                                                        ),
-                                                        global_state_update,
-                                                        chainspec_registry,
-                                                    ),
-                                                ))
-                                                .event(MainEvent::UpgradeResult),
-                                        );
-                                        return effects;
-                                    }
+                            Some(block) => {
+                                if let Some(upgrade_effects) = maybe_upgrade(
+                                    effect_builder,
+                                    block,
+                                    self.chainspec.clone(),
+                                    self.chainspec_raw_bytes.clone(),
+                                ) {
+                                    effects.extend(upgrade_effects);
+                                    return effects;
                                 }
                             }
                             None => {
@@ -380,9 +336,14 @@ impl MainReactor {
                                 return effects;
                             }
                         }
-                        self.state = ReactorState::KeepUp;
+                    }
+                    LeapInstruction::SyncForExec(block_hash) => {
+                        // pass block_hash to block_synchronizer
+                        todo!()
                     }
                 }
+
+                self.state = ReactorState::KeepUp;
             }
             ReactorState::KeepUp => {
                 // TODO: if UpgradeWatcher announcement raised, keep track of era id's against the
