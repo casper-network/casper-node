@@ -54,8 +54,6 @@ pub(crate) enum Event {
 
 #[derive(Debug, DataSize)]
 struct RequestState {
-    // TODO: Hash is redundant now?
-    block_hash_and_height: BlockHashAndHeight,
     missing_descendants: HashSet<Digest>,
     // TODO: Have one such set for all request states?
     in_flight: HashSet<Digest>,
@@ -68,7 +66,6 @@ impl RequestState {
         let mut missing_descendants_for_current_block = HashSet::new();
         missing_descendants_for_current_block.insert(request.state_root_hash);
         Self {
-            block_hash_and_height: request.block_hash_and_height,
             missing_descendants: missing_descendants_for_current_block,
             in_flight: HashSet::new(),
             peers: request.peers,
@@ -115,10 +112,7 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + Send,
     {
-        match self
-            .request_states
-            .entry(request.block_hash_and_height.block_hash)
-        {
+        match self.request_states.entry(request.block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(RequestState::new(request));
             }

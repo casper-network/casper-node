@@ -51,7 +51,7 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHashAndHeight, BlockHeader,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
         DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
@@ -1227,7 +1227,7 @@ impl Display for TrieAccumulatorRequest {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SyncGlobalStateRequest {
-    pub(crate) block_hash_and_height: BlockHashAndHeight,
+    pub(crate) block_hash: BlockHash,
     pub(crate) state_root_hash: Digest,
     pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
@@ -1239,7 +1239,7 @@ impl Display for SyncGlobalStateRequest {
         write!(
             formatter,
             "request to sync global state at {}",
-            self.block_hash_and_height
+            self.block_hash
         )
     }
 }
