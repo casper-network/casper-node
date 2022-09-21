@@ -259,13 +259,17 @@ impl MainReactor {
                 // detected upgrade to make this a stronger check
                 match self.linear_chain.highest_block() {
                     Some(block) => {
-                        if let Some(upgrade_effects) = maybe_upgrade(
+                        let maybe_upgrade = maybe_upgrade(
                             effect_builder,
                             block,
                             self.chainspec.clone(),
                             self.chainspec_raw_bytes.clone(),
-                        ) {
-                            CatchUpInstructions::Do(upgrade_effects);
+                        );
+                        if let Ok(Some(effects)) = maybe_upgrade {
+                            return CatchUpInstructions::Do(effects);
+                        }
+                        if let Err(msg) = maybe_upgrade {
+                            return CatchUpInstructions::Shutdown(msg);
                         }
                     }
                     None => {

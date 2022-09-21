@@ -42,12 +42,12 @@ pub(super) fn maybe_upgrade(
     block: &Block,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-) -> Option<Effects<MainEvent>> {
+) -> Result<Option<Effects<MainEvent>>, String> {
     match chainspec.protocol_config.activation_point {
-        ActivationPoint::Genesis(_) => None,
+        ActivationPoint::Genesis(_) => Ok(None),
         ActivationPoint::EraId(era_id) => {
             if era_id != block.header().next_block_era_id() {
-                return None;
+                return Ok(None);
             }
             match chainspec.ee_upgrade_config(
                 *block.header().state_root_hash(),
@@ -55,16 +55,12 @@ pub(super) fn maybe_upgrade(
                 era_id,
                 chainspec_raw_bytes,
             ) {
-                Ok(cfg) => Some(
+                Ok(cfg) => Ok(Some(
                     effect_builder
                         .upgrade_contract_runtime(Box::new(cfg))
                         .event(MainEvent::UpgradeResult),
-                ),
-                Err(msg) => Some(
-                    effect_builder
-                        .immediately()
-                        .event(move |_| MainEvent::Shutdown(msg)),
-                ),
+                )),
+                Err(msg) => Err(msg),
             }
         }
     }
