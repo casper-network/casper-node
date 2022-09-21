@@ -52,7 +52,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use itertools::max;
+use itertools::{max, Itertools};
 use prometheus::Registry;
 use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 use serde::{Deserialize, Serialize};
@@ -868,6 +868,10 @@ where
             .choose_multiple(rng, up_to as usize)
             .into_iter()
             .collect()
+    }
+
+    pub(crate) fn peers_random_vec(&self, rng: &mut NodeRng, up_to: u32) -> Vec<NodeId> {
+        self.peers_random(rng, up_to).into_keys().collect_vec()
     }
 
     /// Returns the node id of this network node.

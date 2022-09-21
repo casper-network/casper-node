@@ -9,7 +9,7 @@ use crate::{
 
 #[derive(Debug, Serialize)]
 pub(crate) enum Event {
-    StartPullingSyncLeap {
+    AttemptLeap {
         trusted_hash: BlockHash,
         peers_to_ask: Vec<NodeId>,
     },
@@ -22,7 +22,7 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Event::StartPullingSyncLeap {
+            Event::AttemptLeap {
                 trusted_hash,
                 peers_to_ask,
             } => write!(

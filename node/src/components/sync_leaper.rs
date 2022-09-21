@@ -288,7 +288,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::StartPullingSyncLeap {
+            Event::AttemptLeap {
                 trusted_hash,
                 peers_to_ask,
             } => self.handle_pull_request(effect_builder, trusted_hash, peers_to_ask),

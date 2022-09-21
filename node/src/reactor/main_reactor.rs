@@ -147,13 +147,153 @@ pub(crate) struct MainReactor {
     idle_tolerances: TimeDiff,
 }
 
+enum CatchUpInstructions {
+    Do(Effects<MainEvent>),
+    CheckSoon(String),
+    CheckLater(String, u64),
+    Shutdown(String),
+    CaughtUp,
+}
+
 impl MainReactor {
+    fn catch_up_instructions(
+        &mut self,
+        rng: &mut NodeRng,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> CatchUpInstructions {
+        let mut effects = Effects::new();
+        // check idleness & enforce re-attempts if necessary
+        if let Some(timestamp) = self.block_synchronizer.last_progress() {
+            if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
+                self.attempts = 0; // if any progress has been made, reset attempts
+                return CatchUpInstructions::CheckLater(
+                    "block_synchronizer is making progress".to_string(),
+                    Self::WAIT_SEC * 2,
+                );
+            }
+            self.attempts += 1;
+            if self.attempts > self.max_attempts {
+                return CatchUpInstructions::Shutdown(
+                    "catch up process exceeds idle tolerances".to_string(),
+                );
+            }
+        }
+
+        // determine if we should leap, and if so starting from which block_hash
+        let starting_with = match self.trusted_hash {
+            None => {
+                // no trusted hash provided use local tip if available
+                // if we are pre-genesis, wait; if we are not, shutdown
+                match self.linear_chain.highest_block() {
+                    Some(block) => {
+                        // -+ : leap w/ local tip
+                        StartingWith::Block(Box::new(block.clone()))
+                    }
+                    None => {
+                        // if pre-genesis, apply genesis and wait
+                        // if post-genesis, shutdown
+                        if let ActivationPoint::Genesis(timestamp) =
+                            self.chainspec.protocol_config.activation_point
+                        {
+                            // TODO: wire up genesis (can't run test network without genesis)
+                            return CatchUpInstructions::Do(Effects::new());
+                        }
+                        // we are post genesis, have no local blocks and no trusted hash
+                        // so we can't possibly catch up to the network and should shut down
+                        return CatchUpInstructions::Shutdown(
+                            "fatal block store error attempting to read highest block".to_string(),
+                        );
+                    }
+                }
+            }
+            Some(trusted_hash) => {
+                match self.storage.read_block(&trusted_hash) {
+                    Ok(Some(trusted_block)) => {
+                        match self.linear_chain.highest_block() {
+                            Some(block) => {
+                                // ++ : leap w/ the higher of local tip or trusted hash
+                                if trusted_block.height() > block.height() {
+                                    StartingWith::Hash(trusted_hash)
+                                } else {
+                                    StartingWith::Block(Box::new(block.clone()))
+                                }
+                            }
+                            None => {
+                                // should be unreachable if we've gotten this far
+                                StartingWith::Hash(trusted_hash)
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        // +- : leap w/ config hash
+                        StartingWith::Hash(trusted_hash)
+                    }
+                    Err(_) => {
+                        return CatchUpInstructions::Shutdown(
+                            "fatal block store error when attempting to read block under trusted hash".to_string(),
+                        );
+                    }
+                }
+            }
+        };
+
+        let trusted_hash = *starting_with.block_hash();
+        match self.blocks_accumulator.should_leap(starting_with) {
+            LeapInstruction::Leap => {
+                let peers_to_ask = self.small_network.peers_random_vec(
+                    rng,
+                    self.chainspec
+                        .core_config
+                        .sync_leap_simultaneous_peer_requests,
+                );
+                effects.extend(effect_builder.immediately().event(move |_| {
+                    MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                        trusted_hash,
+                        peers_to_ask,
+                    })
+                }));
+                return CatchUpInstructions::Do(effects);
+            }
+            LeapInstruction::CaughtUp => {
+                // TODO: maybe do something w/ the UpgradeWatcher announcement for a
+                // detected upgrade to make this a stronger check
+                match self.linear_chain.highest_block() {
+                    Some(block) => {
+                        if let Some(upgrade_effects) = maybe_upgrade(
+                            effect_builder,
+                            block,
+                            self.chainspec.clone(),
+                            self.chainspec_raw_bytes.clone(),
+                        ) {
+                            CatchUpInstructions::Do(upgrade_effects);
+                        }
+                    }
+                    None => {
+                        // should be unreachable
+                        return CatchUpInstructions::Shutdown(
+                            "can't be caught up with no block in the block store".to_string(),
+                        );
+                    }
+                }
+            }
+            LeapInstruction::SyncForExec(block_hash) => {
+                // pass block_hash to block_synchronizer
+                todo!()
+            }
+        }
+
+        // there are no catch up or shutdown instructions, so we must be caught up
+        CatchUpInstructions::CaughtUp
+    }
+
+    // put in the config
+    const WAIT_SEC: u64 = 5;
+
     fn check_status(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Effects<MainEvent> {
-        const WAIT_SEC: u64 = 15; // TODO: config setting this
         let effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
@@ -199,149 +339,39 @@ impl MainReactor {
                 }
                 self.state = ReactorState::CatchUp;
             }
-            ReactorState::CatchUp => {
-                let mut effects = Effects::new();
-                if let Some(timestamp) = self.block_synchronizer.last_progress() {
-                    if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
-                        self.attempts = 0; // if any progress has been made, reset attempts
-                        effects.extend(
-                            effect_builder
-                                .set_timeout(Duration::from_secs(WAIT_SEC))
-                                .event(|_| MainEvent::CheckStatus),
-                        );
-                        return effects;
-                    } else {
-                        self.attempts += 1;
-                        if self.attempts > self.max_attempts {
-                            effects.extend(effect_builder.immediately().event(|()| {
-                                MainEvent::Shutdown(
-                                    "catch up process exceeds idle tolerances".to_string(),
-                                )
-                            }));
-                            return effects;
-                        }
-                    }
+            ReactorState::CatchUp => match self.catch_up_instructions(rng, effect_builder) {
+                CatchUpInstructions::Do(effects) => {
+                    let mut ret = Effects::new();
+                    ret.extend(effects);
+                    ret.extend(
+                        effect_builder
+                            .set_timeout(Duration::from_secs(Self::WAIT_SEC))
+                            .event(|_| MainEvent::CheckStatus),
+                    );
+                    return ret;
                 }
-
-                // check optional config trusted hash && optional local tip
-                /*
-                    ++ : self.storage.get_block(config.trusted_hash).height >< tip.height
-                    +- : leap w/ config hash
-                    -+ : leap w/ local tip hash
-                    -- : check pre-genesis and apply or if post-genesis shutdown
-                */
-                let starting_with = {
-                    if let Some(trusted_hash) = self.trusted_hash {
-                        match self.storage.read_block(&trusted_hash) {
-                            Ok(Some(trusted_block)) => {
-                                match self.linear_chain.highest_block() {
-                                    Some(block) => {
-                                        StartingWith::Block(Box::new(block.clone()))
-                                        // may want to compare heights
-                                    }
-                                    None => {
-                                        // should be unreachable
-                                        StartingWith::Hash(trusted_hash)
-                                    }
-                                }
-                            }
-                            Ok(None) => StartingWith::Hash(trusted_hash),
-                            Err(_) => {
-                                effects.extend(effect_builder.immediately().event(move |_| {
-                                    MainEvent::Shutdown("fatal block store error".to_string())
-                                }));
-                                return effects;
-                            }
-                        }
-                    } else {
-                        match self.linear_chain.highest_block() {
-                            Some(block) => StartingWith::Block(Box::new(block.clone())),
-                            None => {
-                                if let ActivationPoint::Genesis(timestamp) =
-                                    self.chainspec.protocol_config.activation_point
-                                {
-                                    // push apply genesis effect
-                                    // TODO: wire up genesis (can't run test network without
-                                    // genesis)
-                                    effects.extend(
-                                        effect_builder
-                                            .immediately()
-                                            .event(|()| MainEvent::CheckStatus),
-                                    );
-                                    return effects;
-                                } else {
-                                    effects.extend(effect_builder.immediately().event(move |_| {
-                                        MainEvent::Shutdown("fatal block store error".to_string())
-                                    }));
-                                    return effects;
-                                }
-                            }
-                        }
-                    }
-                };
-
-                let trusted_hash = *starting_with.block_hash();
-                match self.blocks_accumulator.should_leap(starting_with) {
-                    LeapInstruction::Leap => {
-                        let peers_to_ask = self
-                            .small_network
-                            .peers_random(
-                                rng,
-                                self.chainspec
-                                    .core_config
-                                    .sync_leap_simultaneous_peer_requests,
-                            )
-                            .into_keys()
-                            .into_iter()
-                            .collect_vec();
-                        effects.extend(effect_builder.immediately().event(move |_| {
-                            MainEvent::SyncLeaper(sync_leaper::Event::StartPullingSyncLeap {
-                                trusted_hash,
-                                peers_to_ask,
-                            })
-                        }));
-                        effects.extend(
-                            effect_builder
-                                .immediately()
-                                .event(|()| MainEvent::CheckStatus),
-                        );
-                        return effects;
-                    }
-                    LeapInstruction::CaughtUp => {
-                        // TODO: maybe do something w/ the UpgradeWatcher announcement for a
-                        // detected upgrade to make this a stronger check
-                        match self.linear_chain.highest_block() {
-                            Some(block) => {
-                                if let Some(upgrade_effects) = maybe_upgrade(
-                                    effect_builder,
-                                    block,
-                                    self.chainspec.clone(),
-                                    self.chainspec_raw_bytes.clone(),
-                                ) {
-                                    effects.extend(upgrade_effects);
-                                    return effects;
-                                }
-                            }
-                            None => {
-                                // should be unreachable
-                                effects.extend(effect_builder.immediately().event(move |_| {
-                                    MainEvent::Shutdown(
-                                        "can't be caught up with no block in the block store"
-                                            .to_string(),
-                                    )
-                                }));
-                                return effects;
-                            }
-                        }
-                    }
-                    LeapInstruction::SyncForExec(block_hash) => {
-                        // pass block_hash to block_synchronizer
-                        todo!()
-                    }
+                CatchUpInstructions::CheckLater(_, wait) => {
+                    return effect_builder
+                        .set_timeout(Duration::from_secs(wait))
+                        .event(|_| MainEvent::CheckStatus);
                 }
-
-                self.state = ReactorState::KeepUp;
-            }
+                CatchUpInstructions::CheckSoon(_) => {
+                    return effect_builder
+                        .set_timeout(Duration::from_secs(Self::WAIT_SEC))
+                        .event(|_| MainEvent::CheckStatus);
+                }
+                CatchUpInstructions::Shutdown(msg) => {
+                    return effect_builder
+                        .immediately()
+                        .event(move |_| MainEvent::Shutdown(msg))
+                }
+                CatchUpInstructions::CaughtUp => {
+                    self.state = ReactorState::KeepUp;
+                    return effect_builder
+                        .set_timeout(Duration::from_secs(0))
+                        .event(|_| MainEvent::CheckStatus);
+                }
+            },
             ReactorState::KeepUp => {
                 // TODO: if UpgradeWatcher announcement raised, keep track of era id's against the
                 // new activation point
