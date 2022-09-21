@@ -416,8 +416,7 @@ pub(crate) struct LockedLineWriter(Arc<Mutex<File>>);
 impl LockedLineWriter {
     /// Creates a new `LockedLineWriter`.
     ///
-    /// This function does not panic - if any error occurs, it will be written to the log and
-    /// ignored.
+    /// This function does not panic - if any error occurs, it will be logged and ignored.
     pub(crate) fn new(file: File) -> Self {
         LockedLineWriter(Arc::new(Mutex::new(file)))
     }
