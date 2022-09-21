@@ -15,13 +15,14 @@ use std::{
     any,
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
-    io,
+    fs::File,
+    io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -403,6 +404,37 @@ pub(crate) async fn wait_for_arc_drop<T>(
     );
 
     false
+}
+
+/// A thread-safe wrapper around a file that writes chunks.
+///
+/// A chunk can (but needn't) be a line. The writer guarantees it will be written to the wrapped
+/// file, even if other threads are attempting to write chunks at the same time.
+#[derive(Clone)]
+pub(crate) struct LockedLineWriter(Arc<Mutex<File>>);
+
+impl LockedLineWriter {
+    /// Creates a new `LockedLineWriter`.
+    ///
+    /// This function does not panic - if any error occurs, it will be written to the log and
+    /// ignored.
+    pub(crate) fn new(file: File) -> Self {
+        LockedLineWriter(Arc::new(Mutex::new(file)))
+    }
+
+    /// Writes a chunk to the wrapped file.
+    pub(crate) fn write_line(&self, line: &str) {
+        match self.0.lock() {
+            Ok(mut guard) => {
+                if let Err(err) = guard.write_all(line.as_bytes()) {
+                    warn!(%line, %err, "could not finish writing line");
+                }
+            }
+            Err(_) => {
+                error!(%line, "line writer lock poisoned, lost line");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
