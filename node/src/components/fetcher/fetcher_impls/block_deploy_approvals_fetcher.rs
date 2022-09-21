@@ -40,26 +40,17 @@ impl ItemFetcher<BlockDeployApprovals> for Fetcher<BlockDeployApprovals> {
         REv: From<StorageRequest> + Send,
     {
         effect_builder
-            .get_block_and_deploys_from_storage(id)
+            .get_block_and_finalized_deploys_from_storage(id)
             .event(move |mut result| Event::GetFromStorageResult {
                 id,
                 peer,
                 validation_metadata: (),
                 maybe_item: Box::new(result.map(|block_and_deploys| {
-                    // TODO: Get the _finalized_ approvals.
-                    BlockDeployApprovals::new(
-                        id,
-                        block_and_deploys
-                            .deploys
-                            .into_iter()
-                            .map(|deploy| {
-                                (
-                                    *deploy.id(),
-                                    FinalizedApprovals::new(deploy.approvals().clone()),
-                                )
-                            })
-                            .collect(),
-                    )
+                    let approvals = block_and_deploys.deploys.into_iter().map(|deploy| {
+                        let deploy_approvals = deploy.approvals().clone();
+                        (*deploy.id(), FinalizedApprovals::new(deploy_approvals))
+                    });
+                    BlockDeployApprovals::new(id, approvals.collect())
                 })),
                 responder,
             })

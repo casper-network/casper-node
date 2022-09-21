@@ -321,6 +321,14 @@ pub(crate) enum StorageRequest {
         /// storage.
         responder: Responder<Option<BlockAndDeploys>>,
     },
+    /// Retrieve block and finalized deploys with given hash.
+    GetBlockAndFinalizedDeploys {
+        /// Hash of block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<BlockAndDeploys>>,
+    },
     /// Retrieve highest block.
     GetHighestBlock {
         /// Responder.
@@ -550,6 +558,9 @@ impl Display for StorageRequest {
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
             StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
                 write!(formatter, "get block and deploys {}", block_hash)
+            }
+            StorageRequest::GetBlockAndFinalizedDeploys { block_hash, .. } => {
+                write!(formatter, "get block and finalized deploys {}", block_hash)
             }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetHighestBlockHeader { .. } => {

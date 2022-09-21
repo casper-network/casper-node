@@ -1120,6 +1120,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block and its deploys from the store.
+    // TODO: Is this needed in addition to get_block_and_finalized_deploys_from_storage?
     pub(crate) async fn get_block_and_deploys_from_storage(
         self,
         block_hash: BlockHash,
@@ -1129,6 +1130,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAndDeploys {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its finalized deploys from the store.
+    pub(crate) async fn get_block_and_finalized_deploys_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockAndDeploys>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndFinalizedDeploys {
                 block_hash,
                 responder,
             },

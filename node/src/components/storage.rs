@@ -51,6 +51,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use itertools::Itertools;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
@@ -580,23 +581,14 @@ impl Storage {
                 let id = decode_item_id::<BlockDeployApprovals>(serialized_id)?;
 
                 let opt_item = self
-                    .read_block_and_deploys_by_hash(id)
+                    .read_block_and_finalized_deploys_by_hash(id)
                     .map_err(FatalStorageError::from)?
                     .map(|block_and_deploys| {
-                        // TODO: Get the _finalized_ approvals.
-                        BlockDeployApprovals::new(
-                            id,
-                            block_and_deploys
-                                .deploys
-                                .into_iter()
-                                .map(|deploy| {
-                                    (
-                                        *deploy.id(),
-                                        FinalizedApprovals::new(deploy.approvals().clone()),
-                                    )
-                                })
-                                .collect(),
-                        )
+                        let approvals = block_and_deploys.deploys.into_iter().map(|deploy| {
+                            let deploy_approvals = deploy.approvals().clone();
+                            (*deploy.id(), FinalizedApprovals::new(deploy_approvals))
+                        });
+                        BlockDeployApprovals::new(id, approvals.collect())
                     });
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
@@ -1208,6 +1200,12 @@ impl Storage {
             } => responder
                 .respond(self.read_block_and_deploys_by_hash(block_hash)?)
                 .ignore(),
+            StorageRequest::GetBlockAndFinalizedDeploys {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_block_and_finalized_deploys_by_hash(block_hash)?)
+                .ignore(),
             StorageRequest::GetHeadersBatch {
                 block_headers_id,
                 responder,
@@ -1437,6 +1435,7 @@ impl Storage {
 
     /// Retrieves single block and all of its deploys.
     /// If any of the deploys can't be found, returns `Ok(None)`.
+    // TODO: Is this needed in addition to read_block_and_finalized_deploys_by_hash?
     fn read_block_and_deploys_by_hash(
         &self,
         hash: BlockHash,
@@ -1455,6 +1454,31 @@ impl Storage {
                     .map(|deploys| BlockAndDeploys { block, deploys }))
             }
         }
+    }
+
+    /// Retrieves single block and all of its deploys, with the finalized approvals.
+    /// If any of the deploys can't be found, returns `Ok(None)`.
+    fn read_block_and_finalized_deploys_by_hash(
+        &self,
+        hash: BlockHash,
+    ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let block = match self.get_single_block(&mut txn, &hash)? {
+            None => return Ok(None),
+            Some(block) => block,
+        };
+        let deploy_hashes = block
+            .deploy_hashes()
+            .iter()
+            .chain(block.transfer_hashes())
+            .copied()
+            .collect_vec();
+        Ok(self
+            .get_deploys_with_finalized_approvals(&mut txn, &deploy_hashes)?
+            .into_iter()
+            .map(|maybe_deploy| maybe_deploy.map(|deploy| deploy.into_naive()))
+            .collect::<Option<Vec<Deploy>>>()
+            .map(|deploys| BlockAndDeploys { block, deploys }))
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
