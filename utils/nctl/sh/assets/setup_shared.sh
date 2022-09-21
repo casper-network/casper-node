@@ -395,6 +395,7 @@ function setup_asset_node_configs()
         # Set paths to node's config.
         PATH_TO_CONFIG="$(get_path_to_node "$IDX")/config/$PROTOCOL_VERSION"
         PATH_TO_CONFIG_FILE="$PATH_TO_CONFIG/config.toml"
+        PATH_TO_LOGS=$(get_path_to_node_logs "$IDX")
 
         # Set node configuration.
         if [ $IS_GENESIS == true ]; then
@@ -413,6 +414,7 @@ function setup_asset_node_configs()
             "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
             "cfg['network']['bind_address']='$(get_network_bind_address "$IDX")';"
             "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
+            "cfg['network']['keylog_path']='$PATH_TO_LOGS/tlskeys';"
             "cfg['storage']['path']='../../storage';"
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$IDX")';"
             "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
