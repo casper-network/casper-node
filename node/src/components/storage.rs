@@ -81,11 +81,11 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockHash, BlockHashAndHeight,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalizedApprovals,
-        FinalizedApprovalsWithId, Item, NodeId, SyncLeap,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockDeployApprovals, BlockHash,
+        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, Item, NodeId, SyncLeap,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -576,20 +576,26 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::FinalizedApprovals(ref serialized_id) => {
-                let id = decode_item_id::<FinalizedApprovalsWithId>(serialized_id)?;
+            NetRequest::BlockDeployApprovals(ref serialized_id) => {
+                let id = decode_item_id::<BlockDeployApprovals>(serialized_id)?;
+
                 let opt_item = self
-                    .env
-                    .begin_ro_txn()
-                    .map_err(Into::into)
-                    .and_then(|mut txn| {
-                        self.get_deploy_with_finalized_approvals(&mut txn, &id)
-                            .map_err(FatalStorageError::from)
-                    })?
-                    .map(|deploy| {
-                        FinalizedApprovalsWithId::new(
+                    .read_block_and_deploys_by_hash(id)
+                    .map_err(FatalStorageError::from)?
+                    .map(|block_and_deploys| {
+                        // TODO: Get the _finalized_ approvals.
+                        BlockDeployApprovals::new(
                             id,
-                            FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
+                            block_and_deploys
+                                .deploys
+                                .into_iter()
+                                .map(|deploy| {
+                                    (
+                                        *deploy.id(),
+                                        FinalizedApprovals::new(deploy.approvals().clone()),
+                                    )
+                                })
+                                .collect(),
                         )
                     });
                 let fetch_response = FetchResponse::from_opt(id, opt_item);

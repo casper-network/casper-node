@@ -47,10 +47,10 @@ use crate::{
     },
     storage::StorageRequest,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockDeployApprovals, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, FetcherItem, FinalizedApprovals,
-        FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId, TrieOrChunk, TrieOrChunkId,
+        BlockWithMetadata, Deploy, DeployHash, FetcherItem, FinalizedApprovals, FinalizedBlock,
+        Item, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::work_queue::WorkQueue,
 };
@@ -675,25 +675,25 @@ where
 /// Fetches finalized approvals for a deploy.
 /// Note: this function doesn't store the approvals. They are intended to be stored after
 /// confirming that the execution results match the received block.
-async fn fetch_finalized_approvals<REv>(
-    deploy_hash: DeployHash,
-    peer: NodeId,
-    ctx: &ChainSyncContext<'_, REv>,
-) -> Result<FinalizedApprovalsWithId, fetcher::Error<FinalizedApprovalsWithId>>
-where
-    REv: From<FetcherRequest<FinalizedApprovalsWithId>>,
-{
-    let fetched_approvals = ctx
-        .effect_builder
-        .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer, ())
-        .await?;
-    match fetched_approvals {
-        FetchedData::FromStorage { item: approvals } => Ok(*approvals),
-        FetchedData::FromPeer {
-            item: approvals, ..
-        } => Ok(*approvals),
-    }
-}
+// async fn fetch_block_deploy_approvals<REv>(
+//     deploy_hash: DeployHash,
+//     peer: NodeId,
+//     ctx: &ChainSyncContext<'_, REv>,
+// ) -> Result<BlockDeployApprovals, fetcher::Error<BlockDeployApprovals>>
+// where
+//     REv: From<FetcherRequest<BlockDeployApprovals>>,
+// {
+//     let fetched_approvals = ctx
+//         .effect_builder
+//         .fetch::<BlockDeployApprovals>(deploy_hash, peer, ())
+//         .await?;
+//     match fetched_approvals {
+//         FetchedData::FromStorage { item: approvals } => Ok(*approvals),
+//         FetchedData::FromPeer {
+//             item: approvals, ..
+//         } => Ok(*approvals),
+//     }
+// }
 
 /// Key block info used for verifying finality signatures.
 ///
@@ -1912,7 +1912,7 @@ where
         + From<FetcherRequest<BlockWithMetadata>>
         + From<FetcherRequest<BlockHeaderWithMetadata>>
         + From<FetcherRequest<Deploy>>
-        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<BlockDeployApprovals>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
@@ -2027,11 +2027,12 @@ async fn retry_execution_with_approvals_from_peer<REv>(
     ctx: &ChainSyncContext<'_, REv>,
 ) -> Result<BlockAndExecutionEffects, Error>
 where
-    REv: From<FetcherRequest<FinalizedApprovalsWithId>> + From<ContractRuntimeRequest>,
+    REv: From<FetcherRequest<BlockDeployApprovals>> + From<ContractRuntimeRequest>,
 {
     for deploy in deploys.iter_mut().chain(transfers.iter_mut()) {
-        let new_approvals = fetch_finalized_approvals(*deploy.id(), peer, ctx).await?;
-        deploy.replace_approvals(new_approvals.into_inner());
+        // TODO: Remove this module?
+        // let new_approvals = fetch_block_deploy_approvals(*deploy.id(), peer, ctx).await?;
+        // deploy.replace_approvals(new_approvals.into_inner());
     }
     Ok(ctx
         .effect_builder
@@ -2054,7 +2055,7 @@ async fn fetch_and_execute_blocks<REv>(
 ) -> Result<BlockHeader, Error>
 where
     REv: From<FetcherRequest<BlockWithMetadata>>
-        + From<FetcherRequest<FinalizedApprovalsWithId>>
+        + From<FetcherRequest<BlockDeployApprovals>>
         + From<FetcherRequest<Deploy>>
         + From<NetworkInfoRequest>
         + From<ContractRuntimeRequest>

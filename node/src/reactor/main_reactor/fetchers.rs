@@ -4,9 +4,9 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, Deploy,
-        FinalizedApprovalsWithId, SyncLeap, TrieOrChunk,
+        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
+        Deploy, SyncLeap, TrieOrChunk,
     },
     FetcherConfig, NodeRng,
 };
@@ -22,7 +22,7 @@ pub(super) struct Fetchers {
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     block_and_deploys_fetcher: Fetcher<BlockAndDeploys>,
-    finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
+    finalized_approvals_fetcher: Fetcher<BlockDeployApprovals>,
     block_headers_batch_fetcher: Fetcher<BlockHeadersBatch>,
     finality_signatures_fetcher: Fetcher<BlockSignatures>,
     sync_leap_fetcher: Fetcher<SyncLeap>,
@@ -159,13 +159,13 @@ impl Fetchers {
                 self.deploy_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            MainEvent::FinalizedApprovalsFetcher(event) => reactor::wrap_effects(
-                MainEvent::FinalizedApprovalsFetcher,
+            MainEvent::BlockDeployApprovalsFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockDeployApprovalsFetcher,
                 self.finalized_approvals_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::FinalizedApprovalsFetcherRequest(request) => reactor::wrap_effects(
-                MainEvent::FinalizedApprovalsFetcher,
+            MainEvent::BlockDeployApprovalsFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockDeployApprovalsFetcher,
                 self.finalized_approvals_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),

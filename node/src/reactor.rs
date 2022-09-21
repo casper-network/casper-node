@@ -69,9 +69,9 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        ExitCode, FetcherItem, FinalitySignature, FinalizedApprovalsWithId, NodeId, SyncLeap,
+        Block, BlockAndDeploys, BlockDeployApprovals, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
+        Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, NodeId, SyncLeap,
     },
     unregister_metric,
     utils::{
@@ -986,7 +986,7 @@ fn handle_get_response<R>(
 where
     R: Reactor,
     <R as Reactor>::Event: From<deploy_acceptor::Event>
-        + From<fetcher::Event<FinalizedApprovalsWithId>>
+        + From<fetcher::Event<BlockDeployApprovals>>
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockWithMetadata>>
@@ -1043,7 +1043,7 @@ where
             <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
         }
         NetResponse::FinalizedApprovals(ref serialized_item) => {
-            handle_fetch_response::<R, FinalizedApprovalsWithId>(
+            handle_fetch_response::<R, BlockDeployApprovals>(
                 reactor,
                 effect_builder,
                 rng,

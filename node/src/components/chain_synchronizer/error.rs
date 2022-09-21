@@ -14,8 +14,9 @@ use crate::{
         linear_chain::BlockSignatureError,
     },
     types::{
-        Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FetcherItem, FinalizedApprovalsWithId, TrieOrChunk,
+        Block, BlockAndDeploys, BlockDeployApprovals, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockWithMetadata, Deploy, FetcherItem,
+        TrieOrChunk,
     },
 };
 
@@ -96,7 +97,7 @@ pub(crate) enum Error {
     DeployWithMetadataFetcher(#[from] fetcher::Error<Deploy>),
 
     #[error(transparent)]
-    FinalizedApprovalsFetcher(#[from] fetcher::Error<FinalizedApprovalsWithId>),
+    BlockDeployApprovalsFetcher(#[from] fetcher::Error<BlockDeployApprovals>),
 
     #[error(transparent)]
     FinalitySignatures(

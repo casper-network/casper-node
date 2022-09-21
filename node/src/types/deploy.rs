@@ -665,67 +665,72 @@ impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
     }
 }
 
-/// A set of finalized approvals together with data identifying the deploy.
+/// A set of finalized approval sets for a block.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
-pub struct FinalizedApprovalsWithId {
-    id: DeployHash,
-    approvals: FinalizedApprovals,
+pub struct BlockDeployApprovals {
+    block_hash: BlockHash,
+    approvals: Vec<(DeployHash, FinalizedApprovals)>,
 }
 
-impl FinalizedApprovalsWithId {
-    /// Creates a new instance of `FinalizedApprovalsWithId`.
-    pub fn new(id: DeployHash, approvals: FinalizedApprovals) -> Self {
-        Self { id, approvals }
+impl BlockDeployApprovals {
+    /// Creates a new instance of `BlockDeployApprovals`.
+    pub fn new(block_hash: BlockHash, approvals: Vec<(DeployHash, FinalizedApprovals)>) -> Self {
+        Self {
+            block_hash,
+            approvals,
+        }
     }
 
-    /// Return the inner set of approvals.
-    pub fn into_inner(self) -> BTreeSet<Approval> {
-        self.approvals.into_inner()
+    /// Returns the inner set of approvals.
+    pub fn approvals(&self) -> &Vec<(DeployHash, FinalizedApprovals)> {
+        &self.approvals
     }
 }
 
 /// Error type containing the error message passed from `crypto::verify`
 #[derive(Debug, Error)]
 #[error("invalid approval from {signer}: {error}")]
-pub struct FinalizedApprovalsVerificationError {
+pub struct BlockDeployApprovalsVerificationError {
     signer: PublicKey,
     error: String,
 }
 
-impl Item for FinalizedApprovalsWithId {
-    type Id = DeployHash;
+impl Item for BlockDeployApprovals {
+    type Id = BlockHash;
 
-    const TAG: Tag = Tag::FinalizedApprovals;
+    const TAG: Tag = Tag::BlockDeployApprovals;
 
     fn id(&self) -> Self::Id {
-        self.id
+        self.block_hash
     }
 }
 
-impl FetcherItem for FinalizedApprovalsWithId {
-    type ValidationError = FinalizedApprovalsVerificationError;
-    type ValidationMetadata = ();
+impl FetcherItem for BlockDeployApprovals {
+    type ValidationError = BlockDeployApprovalsVerificationError;
+    type ValidationMetadata = (); // TODO: Optional approvals root hash?
 
     fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
-        for approval in &self.approvals.0 {
-            crypto::verify(&self.id, approval.signature(), approval.signer()).map_err(|err| {
-                FinalizedApprovalsVerificationError {
-                    signer: approval.signer().clone(),
-                    error: format!("{}", err),
-                }
-            })?;
+        for (deploy_hash, approval_set) in &self.approvals {
+            for approval in &approval_set.0 {
+                crypto::verify(deploy_hash, approval.signature(), approval.signer()).map_err(
+                    |err| BlockDeployApprovalsVerificationError {
+                        signer: approval.signer().clone(),
+                        error: format!("{}", err),
+                    },
+                )?;
+            }
         }
         Ok(())
     }
 }
 
-impl Display for FinalizedApprovalsWithId {
+impl Display for BlockDeployApprovals {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "finalized approvals for {}: {}",
-            self.id,
-            DisplayIter::new(self.approvals.0.iter())
+            "finalized approvals for block {}: {}",
+            self.block_hash,
+            self.approvals.len() // TODO: DisplayIter::new(self.approvals.iter())?
         )
     }
 }

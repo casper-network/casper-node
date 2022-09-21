@@ -41,10 +41,10 @@ pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use deploy::{
-    Approval, Deploy, DeployConfigurationFailure, DeployFootprint, DeployHash, DeployHeader,
-    DeployMetadata, DeployMetadataExt, DeployOrTransferHash, DeployWithApprovals,
-    DeployWithFinalizedApprovals, Error as DeployError,
-    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals, FinalizedApprovalsWithId,
+    Approval, BlockDeployApprovals, Deploy, DeployConfigurationFailure, DeployFootprint,
+    DeployHash, DeployHeader, DeployMetadata, DeployMetadataExt, DeployOrTransferHash,
+    DeployWithApprovals, DeployWithFinalizedApprovals, Error as DeployError,
+    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

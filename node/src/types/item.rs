@@ -36,7 +36,7 @@ pub enum Tag {
     /// A deploy.
     Deploy,
     /// Finalized approvals for a deploy.
-    FinalizedApprovals,
+    BlockDeployApprovals,
     /// A block.
     Block,
     /// A gossiped public listening address.

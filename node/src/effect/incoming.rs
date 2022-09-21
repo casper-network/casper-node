@@ -92,7 +92,7 @@ pub(crate) enum NetRequest {
     /// Request for a deploy.
     Deploy(Vec<u8>),
     /// Request for finalized approvals.
-    FinalizedApprovals(Vec<u8>),
+    BlockDeployApprovals(Vec<u8>),
     /// Request for a block.
     Block(Vec<u8>),
     /// Request for a gossiped finality signature.
@@ -121,7 +121,7 @@ impl Display for NetRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
-            NetRequest::FinalizedApprovals(_) => f.write_str("request for finalized approvals"),
+            NetRequest::BlockDeployApprovals(_) => f.write_str("request for finalized approvals"),
             NetRequest::Block(_) => f.write_str("request for block"),
             NetRequest::FinalitySignature(_) => {
                 f.write_str("request for gossiped finality signature")
@@ -151,7 +151,7 @@ impl NetRequest {
     pub(crate) fn unique_id(&self) -> Vec<u8> {
         let id = match self {
             NetRequest::Deploy(ref id) => id,
-            NetRequest::FinalizedApprovals(ref id) => id,
+            NetRequest::BlockDeployApprovals(ref id) => id,
             NetRequest::Block(ref id) => id,
             NetRequest::FinalitySignature(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
@@ -174,7 +174,7 @@ impl NetRequest {
     pub(crate) fn tag(&self) -> Tag {
         match self {
             NetRequest::Deploy(_) => Tag::Deploy,
-            NetRequest::FinalizedApprovals(_) => Tag::FinalizedApprovals,
+            NetRequest::BlockDeployApprovals(_) => Tag::BlockDeployApprovals,
             NetRequest::Block(_) => Tag::Block,
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
             NetRequest::GossipedAddress(_) => Tag::GossipedAddress,

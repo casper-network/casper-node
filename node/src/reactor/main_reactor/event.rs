@@ -40,9 +40,9 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, FinalitySignature,
-        FinalizedApprovalsWithId, SyncLeap, TrieOrChunk,
+        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy,
+        FinalitySignature, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -139,7 +139,7 @@ pub(crate) enum MainEvent {
     #[from]
     BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
     #[from]
-    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
+    BlockDeployApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<BlockDeployApprovals>),
     #[from]
     FinalitySignatureFetcher(#[serde(skip_serializing)] fetcher::Event<FinalitySignature>),
     #[from]
@@ -181,8 +181,8 @@ pub(crate) enum MainEvent {
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
     #[from]
-    FinalizedApprovalsFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<FinalizedApprovalsWithId>,
+    BlockDeployApprovalsFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<BlockDeployApprovals>,
     ),
     #[from]
     FinalitySignatureFetcherRequest(#[serde(skip_serializing)] FetcherRequest<FinalitySignature>),
@@ -324,7 +324,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
             MainEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
             MainEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
-            MainEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
+            MainEvent::BlockDeployApprovalsFetcher(_) => "BlockDeployApprovalsFetcher",
             MainEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
             MainEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
             MainEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
@@ -340,7 +340,9 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockHeaderByHeightFetcherRequest(_) => "BlockHeaderByHeightFetcherRequest",
             MainEvent::BlockAndDeploysFetcherRequest(_) => "BlockAndDeploysFetcherRequest",
             MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
-            MainEvent::FinalizedApprovalsFetcherRequest(_) => "FinalizedApprovalsFetcherRequest",
+            MainEvent::BlockDeployApprovalsFetcherRequest(_) => {
+                "BlockDeployApprovalsFetcherRequest"
+            }
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
             MainEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
@@ -520,7 +522,7 @@ impl Display for MainEvent {
             MainEvent::BlockAndDeploysFetcher(event) => {
                 write!(f, "block and deploys fetcher: {}", event)
             }
-            MainEvent::FinalizedApprovalsFetcher(event) => {
+            MainEvent::BlockDeployApprovalsFetcher(event) => {
                 write!(f, "finalized approvals fetcher: {}", event)
             }
             MainEvent::FinalitySignatureFetcher(event) => {
@@ -584,7 +586,7 @@ impl Display for MainEvent {
             MainEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
             }
-            MainEvent::FinalizedApprovalsFetcherRequest(request) => {
+            MainEvent::BlockDeployApprovalsFetcherRequest(request) => {
                 write!(f, "finalized approvals fetcher request: {}", request)
             }
             MainEvent::FinalitySignatureFetcherRequest(request) => {
