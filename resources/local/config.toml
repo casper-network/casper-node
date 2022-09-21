@@ -138,6 +138,15 @@ bind_address = '0.0.0.0:34553'
 # one connection.
 known_addresses = ['127.0.0.1:34553']
 
+# TLS keylog location
+#
+# If set, the node will write all keys generated during all TLS connections to the given file path.
+# This option is intended for debugging only, do NOT enable this on production systems.
+#
+# The specified location will be appended to, even across node restarts, so it may grow large if
+# unattended.
+# keylog_path = "/path/to/keylog"
+
 # The interval between each fresh round of gossiping the node's public address.
 gossip_interval = '30sec'
 
