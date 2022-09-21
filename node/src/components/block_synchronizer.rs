@@ -31,7 +31,9 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
     reactor,
     storage::StorageRequest,
-    types::{BlockAdded, BlockHash, Deploy, FinalitySignature, FinalitySignatureId, NodeId},
+    types::{
+        BlockAdded, BlockHash, BlockHeader, Deploy, FinalitySignature, FinalitySignatureId, NodeId,
+    },
     NodeRng,
 };
 
@@ -148,6 +150,7 @@ impl BlockSynchronizer {
     fn next<REv>(&mut self, effect_builder: EffectBuilder<REv>, rng: &mut NodeRng) -> Effects<Event>
     where
         REv: From<FetcherRequest<BlockAdded>>
+            + From<FetcherRequest<BlockHeader>>
             + From<FetcherRequest<Deploy>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
@@ -159,7 +162,13 @@ impl BlockSynchronizer {
             match next {
                 // No further parts of the block are missing. Nothing to do.
                 NeedNext::Nothing => {}
-                NeedNext::BlockHeader(block_hash) => todo!(),
+                NeedNext::BlockHeader(block_hash) => {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<BlockHeader>(block_hash, node_id, ())
+                            .event(Event::BlockHeaderFetched)
+                    }))
+                }
                 NeedNext::BlockBody(block_hash) => {
                     // TODO - change to fetch block/block-body
                     results.extend(peers.into_iter().flat_map(|node_id| {
@@ -207,6 +216,51 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    fn handle_block_header_fetched(
+        &mut self,
+        result: Result<FetchedData<BlockHeader>, Error<BlockHeader>>,
+    ) -> Effects<Event> {
+        let (block_hash, maybe_block_header, maybe_peer_id): (
+            BlockHash,
+            Option<Box<BlockHeader>>,
+            Option<NodeId>,
+        ) = match result {
+            Ok(FetchedData::FromPeer { item, peer }) => (item.id(), Some(item), Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
+            Err(err) => {
+                debug!(%err, "failed to fetch block header");
+                match err {
+                    Error::Absent { id, peer }
+                    | Error::Rejected { id, peer }
+                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
+                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                }
+            }
+        };
+
+        let builder = match self.builders.get_mut(&block_hash) {
+            Some(builder) => builder,
+            None => {
+                debug!("unexpected block header");
+                return Effects::new();
+            }
+        };
+
+        match maybe_block_header {
+            None => {
+                builder.demote_peer(maybe_peer_id);
+            }
+            Some(block_header) => match builder.apply_header(*block_header, maybe_peer_id) {
+                Ok(_) => {}
+                Err(err) => {
+                    error!(%err, "failed to apply block header");
+                }
+            },
+        };
+
+        Effects::new()
+    }
+
     fn handle_block_added_fetched(
         &mut self,
         result: Result<FetchedData<BlockAdded>, Error<BlockAdded>>,
@@ -223,12 +277,9 @@ impl BlockSynchronizer {
                 match err {
                     Error::Absent { id, peer }
                     | Error::Rejected { id, peer }
-                    | Error::TimedOut { id, peer } => {
-                        (id, None::<Option<Box<BlockAdded>>>, Some(peer))
-                    }
+                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
                     Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
-                };
-                return Effects::new();
+                }
             }
         };
 
@@ -241,14 +292,16 @@ impl BlockSynchronizer {
         };
 
         match maybe_block_added {
-            None => builder.demote_peer(maybe_peer_id),
+            None => {
+                builder.demote_peer(maybe_peer_id);
+            }
             Some(block_added) => match builder.apply_block(&block_added, maybe_peer_id) {
                 Ok(_) => {}
                 Err(err) => {
                     error!(%err, "failed to apply block-added");
                 }
             },
-        }
+        };
 
         Effects::new()
     }
@@ -298,6 +351,7 @@ impl BlockSynchronizer {
 impl<REv> Component<REv> for BlockSynchronizer
 where
     REv: From<FetcherRequest<BlockAdded>>
+        + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
@@ -323,6 +377,7 @@ where
             Event::Upsert(request) => self.upsert(effect_builder, request),
             Event::Next => self.next(effect_builder, rng),
             Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
+            Event::BlockHeaderFetched(result) => self.handle_block_header_fetched(result),
             Event::BlockAddedFetched(result) => self.handle_block_added_fetched(result),
             Event::FinalitySignatureFetched(result) => {
                 self.handle_finality_signature_fetched(result)

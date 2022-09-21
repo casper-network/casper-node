@@ -11,7 +11,10 @@ use casper_types::{EraId, PublicKey, U512};
 use super::GlobalStateSynchronizerEvent;
 use crate::{
     components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
-    types::{BlockAdded, BlockHash, Deploy, FinalitySignature, NodeId, TrieOrChunk, TrieOrChunkId},
+    types::{
+        BlockAdded, BlockHash, BlockHeader, Deploy, FinalitySignature, NodeId, TrieOrChunk,
+        TrieOrChunkId,
+    },
 };
 
 #[derive(From, Debug, Serialize)]
@@ -29,6 +32,8 @@ pub(crate) enum Event {
 
     DisconnectFromPeer(NodeId),
 
+    #[from]
+    BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
     BlockAddedFetched(FetchResult<BlockAdded>),
     #[from]
@@ -59,6 +64,12 @@ impl Display for Event {
             }
             Event::DisconnectFromPeer(peer) => {
                 write!(f, "disconnected from peer {}", peer)
+            }
+            Event::BlockHeaderFetched(Ok(fetched_item)) => {
+                write!(f, "{}", fetched_item)
+            }
+            Event::BlockHeaderFetched(Err(fetcher_error)) => {
+                write!(f, "{}", fetcher_error)
             }
             Event::BlockAddedFetched(Ok(fetched_item)) => {
                 write!(f, "{}", fetched_item)
