@@ -188,12 +188,12 @@ impl BlockBuilder {
 
     pub(crate) fn apply_block(
         &mut self,
-        block_added: &BlockAdded,
+        block: &Block,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_body(&block_added.block, self.should_fetch_execution_state)
+            .with_body(&block, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisitionError(error));

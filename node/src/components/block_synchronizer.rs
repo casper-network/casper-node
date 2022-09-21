@@ -41,7 +41,7 @@ use crate::components::fetcher::Error;
 
 use crate::effect::announcements::BlocklistAnnouncement;
 use crate::effect::requests::{ContractRuntimeRequest, TrieAccumulatorRequest};
-use crate::types::{Item, TrieOrChunk, ValidatorMatrix};
+use crate::types::{Block, Item, TrieOrChunk, ValidatorMatrix};
 pub(crate) use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
@@ -261,6 +261,51 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    fn handle_block_fetched(
+        &mut self,
+        result: Result<FetchedData<Block>, Error<Block>>,
+    ) -> Effects<Event> {
+        let (block_hash, maybe_block, maybe_peer_id): (
+            BlockHash,
+            Option<Box<Block>>,
+            Option<NodeId>,
+        ) = match result {
+            Ok(FetchedData::FromPeer { item, peer }) => (item.id(), Some(item), Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
+            Err(err) => {
+                debug!(%err, "failed to fetch block-added");
+                match err {
+                    Error::Absent { id, peer }
+                    | Error::Rejected { id, peer }
+                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
+                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                }
+            }
+        };
+
+        let builder = match self.builders.get_mut(&block_hash) {
+            Some(builder) => builder,
+            None => {
+                debug!("unexpected block");
+                return Effects::new();
+            }
+        };
+
+        match maybe_block {
+            None => {
+                builder.demote_peer(maybe_peer_id);
+            }
+            Some(block) => match builder.apply_block(&block, maybe_peer_id) {
+                Ok(_) => {}
+                Err(err) => {
+                    error!(%err, "failed to apply block");
+                }
+            },
+        };
+
+        Effects::new()
+    }
+
     fn handle_block_added_fetched(
         &mut self,
         result: Result<FetchedData<BlockAdded>, Error<BlockAdded>>,
@@ -295,7 +340,7 @@ impl BlockSynchronizer {
             None => {
                 builder.demote_peer(maybe_peer_id);
             }
-            Some(block_added) => match builder.apply_block(&block_added, maybe_peer_id) {
+            Some(block_added) => match builder.apply_block(&block_added.block, maybe_peer_id) {
                 Ok(_) => {}
                 Err(err) => {
                     error!(%err, "failed to apply block-added");
