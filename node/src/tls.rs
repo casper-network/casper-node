@@ -368,7 +368,9 @@ fn set_context_options(
 
     if let Some(writer) = keylog {
         ctx.set_keylog_callback(move |_ssl_ref, str| {
-            writer.write_line(str);
+            let mut line = str.to_owned();
+            line.push('\n');
+            writer.write_line(&line);
         });
     }
 
