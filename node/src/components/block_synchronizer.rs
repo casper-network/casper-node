@@ -97,6 +97,7 @@ impl BlockSynchronizer {
         self.builders
             .values()
             .filter_map(BlockBuilder::last_progress_time)
+            .chain(self.global_sync.last_progress_timestamp().into_iter())
             .max()
     }
 

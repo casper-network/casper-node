@@ -12,6 +12,7 @@ use tracing::{debug, warn};
 
 use casper_execution_engine::{core::engine_state, storage::trie::TrieRaw};
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
+use casper_types::Timestamp;
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent};
 use crate::effect::announcements::BlocklistAnnouncement;
@@ -71,9 +72,12 @@ impl RequestState {
     }
 
     /// Extends the responders and known peers based on an additional request.
-    fn add_request(&mut self, request: SyncGlobalStateRequest) {
+    /// Returns `true` if we added some new peers to the peers list.
+    fn add_request(&mut self, request: SyncGlobalStateRequest) -> bool {
+        let old_peers_len = self.peers.len();
         self.peers.extend(request.peers);
         self.responders.push(request.responder);
+        old_peers_len != self.peers.len()
     }
 
     /// Consumes this request state and sends the response on all responders.
@@ -100,6 +104,7 @@ pub(super) struct GlobalStateSynchronizer {
     trie_accumulator: TrieAccumulator,
     request_states: BTreeMap<BlockHash, RequestState>,
     in_flight: HashSet<Digest>,
+    last_progress_timestamp: Option<Timestamp>,
 }
 
 impl GlobalStateSynchronizer {
@@ -109,7 +114,16 @@ impl GlobalStateSynchronizer {
             trie_accumulator: TrieAccumulator::new(),
             request_states: Default::default(),
             in_flight: Default::default(),
+            last_progress_timestamp: None,
         }
+    }
+
+    fn touch(&mut self) {
+        self.last_progress_timestamp = Some(Timestamp::now());
+    }
+
+    pub(super) fn last_progress_timestamp(&self) -> Option<Timestamp> {
+        self.last_progress_timestamp
     }
 
     fn handle_request<REv>(
@@ -123,9 +137,12 @@ impl GlobalStateSynchronizer {
         match self.request_states.entry(request.block_hash) {
             Entry::Vacant(entry) => {
                 entry.insert(RequestState::new(request));
+                self.touch();
             }
             Entry::Occupied(entry) => {
-                entry.into_mut().add_request(request);
+                if entry.into_mut().add_request(request) {
+                    self.touch();
+                }
             }
         }
 
@@ -201,6 +218,8 @@ impl GlobalStateSynchronizer {
             }
         };
 
+        self.touch();
+
         // TODO - what if we got this from storage - should we rewrite it?
         effect_builder
             .put_trie_and_find_missing_descendant_trie_keys(*trie_raw)
@@ -244,6 +263,7 @@ impl GlobalStateSynchronizer {
                         request_state.missing_descendants.remove(&trie_hash);
                     }
                 }
+                self.touch();
             }
             Err(error) => {
                 warn!(%trie_hash, %error, "couldn't put trie into global state");
@@ -252,6 +272,7 @@ impl GlobalStateSynchronizer {
                 }
             }
         }
+
         effects.extend(self.parallel_fetch(effect_builder));
         effects
     }
