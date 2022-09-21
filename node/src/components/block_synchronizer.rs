@@ -161,7 +161,11 @@ impl BlockSynchronizer {
         for builder in self.builders.values_mut() {
             let (peers, next) = builder.next_needed(rng).build();
             match next {
+                // No further parts of the block are missing. Nothing to do.
+                NeedNext::Nothing => {}
+                NeedNext::BlockHeader(block_hash) => todo!(),
                 NeedNext::BlockBody(block_hash) => {
+                    // TODO - change to fetch block/block-body
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<BlockAdded>(block_hash, node_id, ())
@@ -169,6 +173,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
+                    // TODO - fetch all signatures
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         validators.iter().flat_map(move |public_key| {
                             let id = FinalitySignatureId {
@@ -182,7 +187,7 @@ impl BlockSynchronizer {
                         })
                     }))
                 }
-                NeedNext::GlobalState(_) => {}
+                NeedNext::GlobalState(_) => todo!(),
                 NeedNext::Deploy(deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -190,9 +195,8 @@ impl BlockSynchronizer {
                             .event(Event::DeployFetched)
                     }))
                 }
-                NeedNext::ExecutionResults(_) => {}
-                // No further parts of the block are missing. Nothing to do.
-                NeedNext::Nothing => {}
+                NeedNext::ExecutionResults(block_hash) => todo!(),
+                NeedNext::EraValidators(era_id) => todo!(),
                 // We expect to be told about new peers automatically; do nothing.
                 NeedNext::Peers => {}
             }

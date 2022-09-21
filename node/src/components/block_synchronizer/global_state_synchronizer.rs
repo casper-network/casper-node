@@ -90,7 +90,7 @@ impl RequestState {
 
     /// Returns `true` if the given hash is known to be a missing descendant for this state.
     fn is_relevant(&self, trie_hash: &Digest) -> bool {
-        self.missing_descendants.contains(&trie_hash)
+        self.missing_descendants.contains(trie_hash)
     }
 }
 
@@ -259,7 +259,7 @@ impl GlobalStateSynchronizer {
     fn affected_block_hashes(&self, trie_hash: &Digest) -> Vec<BlockHash> {
         self.request_states
             .iter()
-            .filter(|(_, state)| state.is_relevant(&trie_hash))
+            .filter(|(_, state)| state.is_relevant(trie_hash))
             .map(|(block_hash, _)| *block_hash)
             .collect()
     }

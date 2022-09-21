@@ -9,11 +9,11 @@ use casper_types::PublicKey;
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum SignatureState {
     Vacant,
-    Signature(FinalitySignature),
+    Signature(Box<FinalitySignature>),
 }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(super) struct SignatureAcquisition {
+pub(crate) struct SignatureAcquisition {
     inner: BTreeMap<PublicKey, SignatureState>,
 }
 
@@ -22,7 +22,7 @@ impl SignatureAcquisition {
         let mut inner = BTreeMap::new();
         validators
             .into_iter()
-            .map(|v| inner.insert(v, SignatureState::Vacant));
+            .map(|validator| inner.insert(validator, SignatureState::Vacant));
         SignatureAcquisition { inner }
     }
 
@@ -30,7 +30,7 @@ impl SignatureAcquisition {
         if self.inner.contains_key(&finality_signature.public_key) {
             self.inner.insert(
                 finality_signature.public_key.clone(),
-                SignatureState::Signature(finality_signature),
+                SignatureState::Signature(Box::new(finality_signature)),
             );
         }
     }
@@ -48,7 +48,7 @@ impl SignatureAcquisition {
             .iter()
             .filter_map(|(k, v)| match v {
                 SignatureState::Vacant => None,
-                SignatureState::Signature(fs) => Some(fs.clone()),
+                SignatureState::Signature(finality_signature) => Some(*finality_signature.clone()),
             })
             .collect()
     }

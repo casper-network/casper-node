@@ -75,7 +75,7 @@ impl BlockBuilder {
             validator_matrix,
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
-                SignatureAcquisition::new(public_keys),
+                SignatureAcquisition::new(todo!("public_keys")),
             ),
             peer_list: PeerList::new(simultaneous_peers),
             should_fetch_execution_state,
@@ -108,11 +108,10 @@ impl BlockBuilder {
     }
 
     pub(crate) fn is_complete(&self) -> bool {
-        if let BlockAcquisitionState::HaveStrictFinalitySignatures(_) = self.acquisition_state {
-            true
-        } else {
-            false
-        }
+        matches!(
+            self.acquisition_state,
+            BlockAcquisitionState::HaveStrictFinalitySignatures(_)
+        )
     }
 
     pub(crate) fn register_peer(&mut self, peer: NodeId) {
@@ -178,12 +177,9 @@ impl BlockBuilder {
         block_header: BlockHeader,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        match self.acquisition_state.with_header(block_header) {
-            Ok(ret) => self.acquisition_state = ret,
-            Err(err) => {
-                self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisitionError(err));
-            }
+        if let Err(error) = self.acquisition_state.with_header(block_header) {
+            self.disqualify_peer(maybe_peer);
+            return Err(Error::BlockAcquisitionError(error));
         }
         self.touch();
         self.promote_peer(maybe_peer);
@@ -195,15 +191,12 @@ impl BlockBuilder {
         block_added: &BlockAdded,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        match self
+        if let Err(error) = self
             .acquisition_state
             .with_body(&block_added.block, self.should_fetch_execution_state)
         {
-            Ok(ret) => self.acquisition_state = ret,
-            Err(err) => {
-                self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisitionError(err));
-            }
+            self.disqualify_peer(maybe_peer);
+            return Err(Error::BlockAcquisitionError(error));
         }
         self.touch();
         self.promote_peer(maybe_peer);
@@ -220,19 +213,16 @@ impl BlockBuilder {
 
     pub(crate) fn apply_finality_signatures(
         &mut self,
-        finality_signature: Vec<FinalitySignature>,
+        finality_signatures: Vec<FinalitySignature>,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        match self.acquisition_state.with_signatures(
-            finality_signature,
+        if let Err(error) = self.acquisition_state.with_signatures(
+            finality_signatures,
             self.validator_matrix.clone(),
             self.should_fetch_execution_state,
         ) {
-            Ok(ret) => self.acquisition_state = ret,
-            Err(err) => {
-                self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisitionError(err));
-            }
+            self.disqualify_peer(maybe_peer);
+            return Err(Error::BlockAcquisitionError(error));
         }
         self.touch();
         self.promote_peer(maybe_peer);
@@ -244,15 +234,12 @@ impl BlockBuilder {
         global_state: Digest,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        match self
+        if let Err(error) = self
             .acquisition_state
             .with_global_state(global_state, self.should_fetch_execution_state)
         {
-            Ok(ret) => self.acquisition_state = ret,
-            Err(err) => {
-                self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisitionError(err));
-            }
+            self.disqualify_peer(maybe_peer);
+            return Err(Error::BlockAcquisitionError(error));
         }
         self.touch();
         self.promote_peer(maybe_peer);
@@ -264,15 +251,12 @@ impl BlockBuilder {
         deploy_hash: DeployHash,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        match self
+        if let Err(error) = self
             .acquisition_state
             .with_deploy(deploy_hash, self.should_fetch_execution_state)
         {
-            Ok(ret) => self.acquisition_state = ret,
-            Err(err) => {
-                self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisitionError(err));
-            }
+            self.disqualify_peer(maybe_peer);
+            return Err(Error::BlockAcquisitionError(error));
         }
         self.touch();
         self.promote_peer(maybe_peer);
@@ -306,7 +290,9 @@ impl BlockBuilder {
     }
 
     pub(crate) fn apply_peers(&mut self, peers: Vec<NodeId>) -> Result<(), Error> {
-        peers.iter().map(|p| self.peer_list.register_peer(*p));
+        peers
+            .into_iter()
+            .for_each(|peer| self.peer_list.register_peer(peer));
         self.touch();
         Ok(())
     }

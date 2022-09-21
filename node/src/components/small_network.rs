@@ -867,7 +867,6 @@ where
             .into_iter()
             .choose_multiple(rng, up_to as usize)
             .into_iter()
-            .map(|(k, v)| (k, v.clone()))
             .collect()
     }
 

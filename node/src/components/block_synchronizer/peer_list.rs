@@ -148,31 +148,32 @@ impl PeerList {
     }
 
     pub(super) fn qualified_peers(&self, rng: &mut NodeRng) -> Vec<NodeId> {
-        let up_to = self.simultaneous_peers;
+        let up_to = self.simultaneous_peers as usize;
 
         // get most useful up to limit
         let mut peers: Vec<NodeId> = self
             .peer_list
             .iter()
-            .filter(|(k, v)| **v == PeerQuality::Reliable)
-            .choose_multiple(rng, up_to as usize)
+            .filter(|(_peer, quality)| **quality == PeerQuality::Reliable)
+            .choose_multiple(rng, up_to)
             .into_iter()
-            .map(|(k, _)| *k)
+            .map(|(peer, _)| *peer)
             .collect();
 
         // if below limit get semi-useful
-        let missing: usize = peers.len().saturating_sub(up_to as usize);
+        let missing: usize = peers.len().saturating_sub(up_to);
         if missing > 0 {
             let mut better_than_nothing = self
                 .peer_list
                 .iter()
-                .filter(|(_, v)| **v == PeerQuality::Unreliable || **v == PeerQuality::Unknown)
+                .filter(|(_peer, quality)| {
+                    **quality == PeerQuality::Unreliable || **quality == PeerQuality::Unknown
+                })
                 .choose_multiple(rng, missing)
                 .into_iter()
-                .map(|(k, _)| *k)
-                .collect_vec();
+                .map(|(peer, _)| *peer);
 
-            peers.append(&mut better_than_nothing);
+            peers.extend(better_than_nothing);
         }
 
         peers

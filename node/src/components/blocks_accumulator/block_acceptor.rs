@@ -117,7 +117,7 @@ impl BlockAcceptor {
             });
 
         match linear_chain::check_sufficient_block_signatures(
-            &trusted_validator_weights,
+            trusted_validator_weights,
             fault_tolerance_fraction,
             Some(&block_signatures),
         ) {
@@ -155,14 +155,12 @@ impl BlockAcceptor {
         {
             return true;
         }
-        return false;
+        false
     }
 
     pub(super) fn block_height(&self) -> Option<u64> {
-        if let Some(block_added) = &self.block_added {
-            Some(block_added.block.header().height())
-        } else {
-            None
-        }
+        self.block_added
+            .as_ref()
+            .map(|block_added| block_added.block.header().height())
     }
 }

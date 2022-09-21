@@ -12,7 +12,7 @@ pub(crate) enum NeedNext {
     FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     GlobalState(Digest),
     Deploy(DeployHash),
-    ExecutionResults(DeployHash),
+    ExecutionResults(BlockHash),
     EraValidators(EraId),
     Peers,
 }

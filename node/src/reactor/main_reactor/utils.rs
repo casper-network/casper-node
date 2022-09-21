@@ -44,7 +44,7 @@ pub(super) fn maybe_upgrade(
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 ) -> Option<Effects<MainEvent>> {
     match chainspec.protocol_config.activation_point {
-        ActivationPoint::Genesis(_) => return None,
+        ActivationPoint::Genesis(_) => None,
         ActivationPoint::EraId(era_id) => {
             if era_id != block.header().next_block_era_id() {
                 return None;
@@ -53,7 +53,7 @@ pub(super) fn maybe_upgrade(
                 *block.header().state_root_hash(),
                 block.header().protocol_version(),
                 era_id,
-                chainspec_raw_bytes.clone(),
+                chainspec_raw_bytes,
             ) {
                 Ok(cfg) => Some(
                     effect_builder

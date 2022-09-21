@@ -40,17 +40,16 @@ impl ValidatorMatrix {
         self.inner = self.inner.split_off(&earliest_era_to_keep);
     }
 
-    pub(crate) fn validator_public_keys(&self, era_id: EraId) -> Vec<PublicKey> {
-        match self.inner.get(&era_id) {
-            Some(validators) => validators.into_iter().map(|(k, _)| k.clone()).collect(),
-            None => vec![],
-        }
+    pub(crate) fn validator_public_keys(&self, era_id: EraId) -> Option<Vec<PublicKey>> {
+        self.inner
+            .get(&era_id)
+            .map(|validators| validators.keys().cloned().collect())
     }
 
     pub(crate) fn missing_signatures(
         &self,
         era_id: EraId,
-        signatures: &Vec<FinalitySignature>,
+        signatures: &[FinalitySignature],
     ) -> Result<Vec<PublicKey>, ()> {
         let signed = signatures
             .iter()
@@ -73,7 +72,7 @@ impl ValidatorMatrix {
     pub(crate) fn get_weight(&self, era_id: EraId, public_key: &PublicKey) -> U512 {
         match self.inner.get(&era_id) {
             None => U512::zero(),
-            Some(inner) => match inner.get(&public_key) {
+            Some(inner) => match inner.get(public_key) {
                 None => U512::zero(),
                 Some(w) => *w,
             },
@@ -81,7 +80,7 @@ impl ValidatorMatrix {
     }
 
     pub(crate) fn get_total_weight(&self, era_id: EraId) -> Option<U512> {
-        Some(self.inner.get(&era_id)?.values().map(|w| *w).sum())
+        Some(self.inner.get(&era_id)?.values().copied().sum())
     }
 
     pub(crate) fn have_sufficient_weight(
