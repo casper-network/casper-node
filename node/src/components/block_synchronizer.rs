@@ -115,26 +115,21 @@ impl BlockSynchronizer {
             }
             Entry::Vacant(entry) => {
                 let era_id = request.era_id;
-                let validator_matrix = {
-                    let era_validators = match self.validators.get(&era_id) {
-                        None => {
-                            debug!(
-                                era_id = %era_id,
-                                "missing validators for given era"
-                            );
-                            return Effects::new();
-                        }
-                        Some(validators) => validators.clone(),
-                    };
-                    let mut validator_matrix = ValidatorMatrix::new(self.fault_tolerance_fraction);
-                    validator_matrix.register_era(era_id, era_validators);
-                    Rc::new(validator_matrix)
+                let mut validator_matrix = ValidatorMatrix::new(self.fault_tolerance_fraction);
+                match self.validators.get(&era_id) {
+                    None => {
+                        debug!(
+                            era_id = %era_id,
+                            "missing validators for given era"
+                        );
+                    }
+                    Some(validators) => validator_matrix.register_era(era_id, validators.clone()),
                 };
 
                 entry.insert(BlockBuilder::new(
                     request.block_hash,
                     era_id,
-                    validator_matrix,
+                    Rc::new(validator_matrix),
                     request.should_fetch_execution_state,
                 ));
             }
