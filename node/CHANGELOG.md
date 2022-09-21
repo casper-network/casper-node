@@ -10,6 +10,26 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+
+## 1.4.8
+
+### Added
+* Add an `identity` option to load existing network identity certificates signed by a CA.
+
+
+
+### Changed
+* Update `casper-execution-engine`.
+
+
+
+## 1.4.7
+
+### Changed
+* Update `casper-execution-engine` and three `openssl` crates to latest versions.
+
+
+
 ## 1.4.6
 
 ### Changed

@@ -139,6 +139,14 @@ max_incoming_message_rate_non_validators = 3000
 # Any weight set to 0 means that the category of traffic is exempt from throttling.
 estimator_weights = { consensus=0, deploy_requests=1 }
 
+# Identity of a node
+#
+# When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
+# This option makes sense for some private chains where for security reasons joining new nodes is restricted.
+# [network.identity]
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
+# ca_certificate = "ca_cert.pem"
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server

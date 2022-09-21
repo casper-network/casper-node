@@ -143,7 +143,7 @@ impl Reactor for TestReactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let small_network_identity = SmallNetworkIdentity::new()?;
+        let small_network_identity = SmallNetworkIdentity::with_generated_certs()?;
         let (net, effects) = SmallNetwork::new(
             event_queue,
             cfg,

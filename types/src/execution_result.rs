@@ -657,7 +657,7 @@ impl Distribution<Transform> for Standard {
             11 => {
                 let mut named_keys = Vec::new();
                 for _ in 0..rng.gen_range(1..6) {
-                    let _ = named_keys.push(NamedKey {
+                    named_keys.push(NamedKey {
                         name: rng.gen::<u64>().to_string(),
                         key: rng.gen::<u64>().to_string(),
                     });

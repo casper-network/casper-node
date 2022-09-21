@@ -495,7 +495,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
-            &*chainspec_loader.chainspec(),
+            chainspec_loader.chainspec(),
             registry,
         )?;
 

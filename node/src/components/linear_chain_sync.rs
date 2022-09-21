@@ -567,8 +567,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     pub(crate) fn latest_block(&self) -> Option<&Block> {
         match &self.state {
-            State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
-            State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
+            State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(latest_block),
+            State::SyncingDescendants { latest_block, .. } => Some(latest_block),
             State::Done(latest_block) => latest_block.as_deref(),
             State::None => None,
         }
