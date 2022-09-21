@@ -5,8 +5,8 @@ use thiserror::Error;
 use tokio::{sync::AcquireError, task::JoinError};
 
 use casper_execution_engine::core::{engine_state, engine_state::GetEraValidatorsError};
-use casper_global_state::storage::trie::TrieOrChunk;
 use casper_hashing::Digest;
+use casper_storage::global_state::storage::trie::TrieOrChunk;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::{

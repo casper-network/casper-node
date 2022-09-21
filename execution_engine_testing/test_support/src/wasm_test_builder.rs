@@ -9,7 +9,10 @@ use std::{
     sync::Arc,
 };
 
-use casper_global_state::storage::lmdb::DatabaseFlags;
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::storage::lmdb::DatabaseFlags,
+};
 use filesize::PathExt;
 use log::LevelFilter;
 use num_rational::Ratio;
@@ -40,10 +43,11 @@ use casper_execution_engine::{
         utils::OS_PAGE_SIZE,
     },
 };
-use casper_global_state::{
+use casper_hashing::Digest;
+use casper_storage::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
-        global_state::{
+        state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
             StateReader,
         },
@@ -52,7 +56,6 @@ use casper_global_state::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes},
@@ -90,7 +93,7 @@ pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 const GLOBAL_STATE_DIR: &str = "global_state";
 
 /// Wasm test builder where state is held in LMDB.
-pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
+pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>;
 
 /// Wasm test builder where Lmdb state is held in a automatically cleaned up temporary directory.
 // pub type TempLmdbWasmTestBuilder = WasmTestBuilder<TemporaryLmdbGlobalState>;
@@ -200,7 +203,13 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
-        let engine_state = EngineState::new(global_state, engine_config);
+
+        let data_access_layer = DataAccessLayer {
+            block_store: BlockStore::new(),
+            state: global_state,
+        };
+        let engine_state = EngineState::new(data_access_layer, engine_config);
+
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
@@ -309,7 +318,12 @@ impl LmdbWasmTestBuilder {
             }
         };
 
-        let engine_state = EngineState::new(global_state, engine_config);
+        let data_access_layer = DataAccessLayer {
+            block_store: BlockStore::new(),
+            state: global_state,
+        };
+
+        let engine_state = EngineState::new(data_access_layer, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),

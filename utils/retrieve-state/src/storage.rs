@@ -9,15 +9,18 @@ use num_rational::Ratio;
 use tracing::info;
 
 use casper_execution_engine::core::engine_state::{EngineConfig, EngineState};
-use casper_global_state::storage::{
-    global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-    trie_store::lmdb::LmdbTrieStore,
-};
 use casper_hashing::Digest;
 use casper_node::{
     storage::Storage,
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
+};
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::storage::{
+        state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
+    },
 };
 use casper_types::ProtocolVersion;
 
@@ -59,12 +62,19 @@ fn create_lmdb_environment(
 }
 
 /// Loads an existing execution engine.
+#[allow(clippy::type_complexity)]
 pub fn load_execution_engine(
     ee_lmdb_path: impl AsRef<Path>,
     default_max_db_size: usize,
     state_root_hash: Digest,
     manual_sync_enabled: bool,
-) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
+) -> Result<
+    (
+        Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+        Arc<LmdbEnvironment>,
+    ),
+    anyhow::Error,
+> {
     let lmdb_data_file = ee_lmdb_path.as_ref().join("data.lmdb");
     if !ee_lmdb_path.as_ref().join("data.lmdb").exists() {
         return Err(anyhow::anyhow!(
@@ -80,8 +90,12 @@ pub fn load_execution_engine(
         lmdb_trie_store,
         state_root_hash,
     );
+    let data_access_layer = DataAccessLayer {
+        block_store: BlockStore::new(),
+        state: global_state,
+    };
     Ok((
-        Arc::new(EngineState::new(global_state, EngineConfig::default())),
+        Arc::new(EngineState::new(data_access_layer, EngineConfig::default())),
         lmdb_environment,
     ))
 }

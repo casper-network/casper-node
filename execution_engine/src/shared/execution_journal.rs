@@ -4,7 +4,7 @@ use std::{iter::IntoIterator, vec::IntoIter};
 
 use datasize::DataSize;
 
-use casper_global_state::shared::transform::Transform;
+use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
     ExecutionEffect as JsonExecutionEffect, Key, TransformEntry as JsonTransformEntry,
 };

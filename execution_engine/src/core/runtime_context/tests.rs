@@ -9,9 +9,9 @@ use std::{
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
-use casper_global_state::{
+use casper_storage::global_state::{
     shared::{transform::Transform, CorrelationId},
-    storage::global_state::{self, lmdb::LmdbGlobalStateView, StateProvider},
+    storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
 use casper_types::{
     account::{
@@ -45,7 +45,7 @@ fn new_tracking_copy(
     init_account: Account,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) =
-        global_state::make_temporary_global_state([(init_key, init_account.into())]);
+        state::make_temporary_global_state([(init_key, init_account.into())]);
 
     let reader = global_state
         .checkout(state_root_hash)

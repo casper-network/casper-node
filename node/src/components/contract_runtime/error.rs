@@ -4,7 +4,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_execution_engine::core::engine_state::{Error as EngineStateError, StepError};
-use casper_global_state::storage::error::lmdb::Error as StorageLmdbError;
+use casper_storage::global_state::storage::error::lmdb::Error as StorageLmdbError;
 
 use crate::{
     components::contract_runtime::ExecutionPreState,

@@ -13,7 +13,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::core::engine_state::{
     genesis::GenesisValidator, GenesisAccount, RewardItem, SlashItem, StepSuccess,
 };
-use casper_global_state::shared::transform::Transform;
+use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
     system::auction::{
         Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,

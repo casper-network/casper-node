@@ -1,5 +1,5 @@
 //! Effects that are produced as part of execution.
-use casper_global_state::shared::{transform::Transform, AdditiveMap};
+use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
 use casper_types::Key;
 
 use super::op::Op;
