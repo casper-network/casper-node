@@ -300,6 +300,8 @@ impl MainReactor {
             }
         }
 
+        let leap_results = self.sync_leaper.leap_status();
+
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstructions::CaughtUp
     }

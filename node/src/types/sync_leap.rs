@@ -43,6 +43,14 @@ impl SyncLeap {
             .max()
             .unwrap_or_else(|| self.trusted_block_header.era_id())
     }
+
+    pub(crate) fn highest_block_height(&self) -> u64 {
+        self.signed_block_headers
+            .iter()
+            .map(|header_with_metadata| header_with_metadata.block_header.height())
+            .max()
+            .unwrap_or_else(|| self.trusted_block_header.height())
+    }
 }
 
 impl Display for SyncLeap {

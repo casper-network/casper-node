@@ -4,12 +4,14 @@
 mod error;
 mod event;
 
+use std::collections::BTreeMap;
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
 };
 
 use datasize::DataSize;
+use itertools::Itertools;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
@@ -26,73 +28,8 @@ use crate::{
     types::{BlockHash, NodeId, SyncLeap},
     NodeRng,
 };
-pub(crate) use error::{ConstructSyncLeapError, PullSyncLeapError};
+pub(crate) use error::{ConstructSyncLeapError, LeapActivityError};
 pub(crate) use event::Event;
-
-#[derive(Debug, DataSize)]
-pub(crate) struct SyncLeaper {
-    maybe_pull_request_in_progress: Option<PullRequestInProgress>,
-    #[data_size(skip)]
-    finality_threshold_fraction: Ratio<u64>,
-}
-
-#[derive(Debug, DataSize)]
-struct PullRequestInProgress {
-    trusted_hash: BlockHash,
-    peers: HashMap<NodeId, PeerState>,
-}
-
-impl PullRequestInProgress {
-    fn poll_response(&self) -> PullRequestResult {
-        let num_in_flight = self
-            .peers
-            .values()
-            .filter(|state| matches!(state, PeerState::RequestSent))
-            .count();
-        let num_responded = self.peers.len() - num_in_flight;
-        if num_in_flight == 0 && num_responded == 0 {
-            PullRequestResult::NotPulling
-        } else if num_in_flight > 0 && num_responded == 0 {
-            PullRequestResult::AwaitingResponses
-        } else if num_in_flight > 0 && num_responded > 0 {
-            PullRequestResult::PartialResponse(self.best_response())
-        } else {
-            PullRequestResult::FinalResponse(self.best_response())
-        }
-    }
-
-    fn best_response(&self) -> Result<SyncLeap, PullSyncLeapError> {
-        let reject_count = self
-            .peers
-            .values()
-            .filter(|peer_state| matches!(peer_state, PeerState::Rejected))
-            .count();
-
-        self.peers
-            .values()
-            .filter_map(|peer_state| match peer_state {
-                PeerState::Fetched(sync_leap) => Some(*sync_leap.clone()),
-                _ => None,
-            })
-            .max_by_key(|sync_leap| sync_leap.highest_era())
-            .ok_or(
-                // sync_leaps is empty, so our best response is either that the trusted hash was
-                // too old or that we just couldn't fetch a SyncLeap
-                if reject_count > 0 {
-                    PullSyncLeapError::TrustedHashTooOld(self.trusted_hash)
-                } else {
-                    PullSyncLeapError::CouldntFetch(self.trusted_hash)
-                },
-            )
-    }
-}
-
-pub(crate) enum PullRequestResult {
-    NotPulling,
-    AwaitingResponses,
-    PartialResponse(Result<SyncLeap, PullSyncLeapError>),
-    FinalResponse(Result<SyncLeap, PullSyncLeapError>),
-}
 
 #[derive(Debug, DataSize)]
 enum PeerState {
@@ -102,72 +39,198 @@ enum PeerState {
     Fetched(Box<SyncLeap>),
 }
 
+#[derive(Debug, DataSize)]
+pub(crate) enum LeapStatus {
+    Inactive,
+    Awaiting {
+        block_hash: BlockHash,
+        in_flight: usize,
+    },
+    Received {
+        block_hash: BlockHash,
+        best_available: SyncLeap,
+        from_peers: Vec<NodeId>,
+        in_flight: usize,
+    },
+    Failed {
+        block_hash: BlockHash,
+        error: LeapActivityError,
+        from_peers: Vec<NodeId>,
+        in_flight: usize,
+    },
+}
+
+impl LeapStatus {
+    fn in_flight(&self) -> usize {
+        match self {
+            LeapStatus::Inactive => 0,
+            LeapStatus::Awaiting { in_flight, .. }
+            | LeapStatus::Received { in_flight, .. }
+            | LeapStatus::Failed { in_flight, .. } => *in_flight,
+        }
+    }
+
+    fn active(&self) -> bool {
+        self.in_flight() > 0
+    }
+}
+
+#[derive(Debug, DataSize)]
+struct LeapActivity {
+    block_hash: BlockHash,
+    peers: HashMap<NodeId, PeerState>,
+}
+
+impl LeapActivity {
+    fn status(&self) -> LeapStatus {
+        let block_hash = self.block_hash;
+        let in_flight = self
+            .peers
+            .values()
+            .filter(|state| matches!(state, PeerState::RequestSent))
+            .count();
+        let responsed = self.peers.len() - in_flight;
+        if in_flight == 0 && responsed == 0 {
+            return LeapStatus::Failed {
+                block_hash,
+                in_flight,
+                error: LeapActivityError::NoPeers(block_hash),
+                from_peers: vec![],
+            };
+        }
+
+        if in_flight > 0 && responsed == 0 {
+            return LeapStatus::Awaiting {
+                block_hash,
+                in_flight,
+            };
+        }
+        match self.best_response() {
+            Ok((best_available, from_peers)) => LeapStatus::Received {
+                block_hash,
+                in_flight,
+                best_available,
+                from_peers,
+            },
+            Err(error) => LeapStatus::Failed {
+                block_hash,
+                from_peers: vec![],
+                in_flight,
+                error,
+            },
+        }
+    }
+
+    fn best_response(&self) -> Result<(SyncLeap, Vec<NodeId>), LeapActivityError> {
+        let reject_count = self
+            .peers
+            .values()
+            .filter(|peer_state| matches!(peer_state, PeerState::Rejected))
+            .count();
+
+        let mut peers = vec![];
+        let mut maybe_ret: Option<&Box<SyncLeap>> = None;
+        for (peer, peer_state) in &self.peers {
+            match peer_state {
+                PeerState::RequestSent | PeerState::Rejected | PeerState::CouldntFetch => {
+                    continue;
+                }
+                PeerState::Fetched(sync_leap) => {
+                    let height = sync_leap.highest_block_height();
+                    match &maybe_ret {
+                        None => {
+                            maybe_ret = Some(sync_leap);
+                            peers.push(*peer);
+                        }
+                        Some(v) => {
+                            if v.highest_block_height() > height {
+                                peers.push(*peer);
+                                continue;
+                            }
+                            maybe_ret = Some(sync_leap);
+                            peers = vec![*peer];
+                        }
+                    }
+                }
+            }
+        }
+
+        match maybe_ret {
+            Some(v) => Ok((*v.clone(), peers)),
+            None => {
+                if reject_count > 0 {
+                    Err(LeapActivityError::TooOld(self.block_hash, peers))
+                } else {
+                    Err(LeapActivityError::Unobtainable(self.block_hash, peers))
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, DataSize)]
+pub(crate) struct SyncLeaper {
+    leap_activity: Option<LeapActivity>,
+    #[data_size(skip)]
+    finality_threshold_fraction: Ratio<u64>,
+}
+
 impl SyncLeaper {
     pub(crate) fn new(finality_threshold_fraction: Ratio<u64>) -> SyncLeaper {
         SyncLeaper {
-            maybe_pull_request_in_progress: None,
+            leap_activity: None,
             finality_threshold_fraction,
         }
     }
 
-    pub(crate) fn poll_response(&mut self) -> PullRequestResult {
-        match &self.maybe_pull_request_in_progress {
-            None => PullRequestResult::NotPulling,
-            Some(pull_request_in_progress) => {
-                let result = pull_request_in_progress.poll_response();
-                match result {
-                    PullRequestResult::NotPulling => {
-                        error!("a sync leap pull request was constructed without peers to ask");
-                        self.maybe_pull_request_in_progress = None;
-                    }
-                    PullRequestResult::FinalResponse(_) => {
-                        self.maybe_pull_request_in_progress = None;
-                    }
-                    // nothing to do for other variants
-                    _ => (),
+    pub(crate) fn leap_status(&mut self) -> LeapStatus {
+        match &self.leap_activity {
+            None => LeapStatus::Inactive,
+            Some(activity) => {
+                let result = activity.status();
+                if result.active() == false {
+                    self.leap_activity = None;
                 }
                 result
             }
         }
     }
 
-    fn handle_pull_request<REv>(
+    fn register_leap_attempt<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        trusted_hash: BlockHash,
+        block_hash: BlockHash,
         peers_to_ask: Vec<NodeId>,
     ) -> Effects<Event>
     where
         REv: From<FetcherRequest<SyncLeap>> + Send,
     {
+        let mut effects = Effects::new();
         if peers_to_ask.is_empty() {
             error!("tried to start fetching a sync leap without peers to ask");
-            return Effects::new();
+            return effects;
         }
-        let mut effects = Effects::new();
-        if let Some(pull_request_in_progress) = self.maybe_pull_request_in_progress.as_mut() {
-            if pull_request_in_progress.trusted_hash != trusted_hash {
+        if let Some(leap_activity) = self.leap_activity.as_mut() {
+            if leap_activity.block_hash != block_hash {
                 error!(
-                    current_trusted_hash = %pull_request_in_progress.trusted_hash,
-                    requested_trusted_hash = %trusted_hash,
+                    current_trusted_hash = %leap_activity.block_hash,
+                    requested_trusted_hash = %block_hash,
                     "tried to start fetching a sync leap for a different trusted hash"
                 );
-                return Effects::new();
+                return effects;
             }
 
             for peer in peers_to_ask {
-                if false == pull_request_in_progress.peers.contains_key(&peer) {
+                if false == leap_activity.peers.contains_key(&peer) {
                     effects.extend(
                         effect_builder
-                            .fetch::<SyncLeap>(trusted_hash, peer, self.finality_threshold_fraction)
+                            .fetch::<SyncLeap>(block_hash, peer, self.finality_threshold_fraction)
                             .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                                trusted_hash,
+                                trusted_hash: block_hash,
                                 fetch_result,
                             }),
                     );
-                    pull_request_in_progress
-                        .peers
-                        .insert(peer, PeerState::RequestSent);
+                    leap_activity.peers.insert(peer, PeerState::RequestSent);
                 }
             }
             return effects;
@@ -178,59 +241,57 @@ impl SyncLeaper {
             .map(|peer| {
                 effects.extend(
                     effect_builder
-                        .fetch::<SyncLeap>(trusted_hash, peer, self.finality_threshold_fraction)
+                        .fetch::<SyncLeap>(block_hash, peer, self.finality_threshold_fraction)
                         .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                            trusted_hash,
+                            trusted_hash: block_hash,
                             fetch_result,
                         }),
                 );
                 (peer, PeerState::RequestSent)
             })
             .collect();
-        self.maybe_pull_request_in_progress = Some(PullRequestInProgress {
-            trusted_hash,
-            peers,
-        });
+        self.leap_activity = Some(LeapActivity { block_hash, peers });
         effects
     }
 
-    fn handle_fetched_sync_leap(
+    fn fetch_received(
         &mut self,
-        trusted_hash: BlockHash,
+        block_hash: BlockHash,
         fetch_result: FetchResult<SyncLeap>,
     ) -> Effects<Event> {
-        let request_in_progress = match &mut self.maybe_pull_request_in_progress {
-            Some(request_in_progress) => request_in_progress,
+        let effects = Effects::new();
+        let leap_activity = match &mut self.leap_activity {
+            Some(leap_activity) => leap_activity,
             None => {
                 warn!(
-                    %trusted_hash,
+                    %block_hash,
                     "received a sync leap response while no requests were in progress"
                 );
-                return Effects::new();
+                return effects;
             }
         };
 
-        if request_in_progress.trusted_hash != trusted_hash {
+        if leap_activity.block_hash != block_hash {
             warn!(
-                requested_hash=%request_in_progress.trusted_hash,
-                response_hash=%trusted_hash,
-                "trusted hash in the response doesn't match the one requested"
+                requested_hash=%leap_activity.block_hash,
+                response_hash=%block_hash,
+                "block hash in the response doesn't match the one requested"
             );
-            return Effects::new();
+            return effects;
         }
 
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
-                error!(%trusted_hash, "fetched a sync leap from storage - should never happen");
+                error!(%block_hash, "fetched a sync leap from storage - should never happen");
                 return Effects::new();
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
-                let peer_state = match request_in_progress.peers.get_mut(&peer) {
+                let peer_state = match leap_activity.peers.get_mut(&peer) {
                     Some(state) => state,
                     None => {
                         warn!(
                             ?peer,
-                            %trusted_hash,
+                            %block_hash,
                             "received a sync leap response from an unknown peer"
                         );
                         return Effects::new();
@@ -239,39 +300,38 @@ impl SyncLeaper {
                 *peer_state = PeerState::Fetched(Box::new(*item));
             }
             Err(fetcher::Error::Rejected { peer, .. }) => {
-                let peer_state = match request_in_progress.peers.get_mut(&peer) {
+                let peer_state = match leap_activity.peers.get_mut(&peer) {
                     Some(state) => state,
                     None => {
                         warn!(
                             ?peer,
-                            %trusted_hash,
+                            %block_hash,
                             "received a sync leap response from an unknown peer"
                         );
-                        return Effects::new();
+                        return effects;
                     }
                 };
-                info!(%peer, %trusted_hash, "peer rejected our request for a sync leap");
+                info!(%peer, %block_hash, "peer rejected our request for a sync leap");
                 *peer_state = PeerState::Rejected;
             }
             Err(error) => {
                 let peer = error.peer();
-                info!(?error, %peer, %trusted_hash, "failed to fetch a sync leap from peer");
-                let peer_state = match request_in_progress.peers.get_mut(peer) {
+                info!(?error, %peer, %block_hash, "failed to fetch a sync leap from peer");
+                let peer_state = match leap_activity.peers.get_mut(peer) {
                     Some(state) => state,
                     None => {
                         warn!(
                             ?peer,
-                            %trusted_hash,
+                            %block_hash,
                             "received a sync leap response from an unknown peer"
                         );
-                        return Effects::new();
+                        return effects;
                     }
                 };
                 *peer_state = PeerState::CouldntFetch;
             }
         }
-
-        Effects::new()
+        effects
     }
 }
 
@@ -291,11 +351,11 @@ where
             Event::AttemptLeap {
                 trusted_hash,
                 peers_to_ask,
-            } => self.handle_pull_request(effect_builder, trusted_hash, peers_to_ask),
+            } => self.register_leap_attempt(effect_builder, trusted_hash, peers_to_ask),
             Event::FetchedSyncLeapFromPeer {
                 trusted_hash,
                 fetch_result,
-            } => self.handle_fetched_sync_leap(trusted_hash, fetch_result),
+            } => self.fetch_received(trusted_hash, fetch_result),
         }
     }
 }

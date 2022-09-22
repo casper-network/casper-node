@@ -1,16 +1,19 @@
-use crate::types::BlockHash;
+use datasize::DataSize;
 
-#[derive(Debug, Clone)]
-pub(crate) enum PullSyncLeapError {
-    TrustedHashTooOld(BlockHash),
-    CouldntFetch(BlockHash),
-    OtherRequestInProgress(BlockHash),
+use crate::types::{BlockHash, NodeId};
+
+#[derive(Debug, Clone, DataSize)]
+pub(crate) enum LeapActivityError {
+    TooOld(BlockHash, Vec<NodeId>),
+    Unobtainable(BlockHash, Vec<NodeId>),
+    TooBusy(BlockHash),
+    NoPeers(BlockHash),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DataSize)]
 pub(crate) enum ConstructSyncLeapError {
-    TrustedHashTooOld(BlockHash),
-    TrustedHashUnknown(BlockHash),
+    TooOld(BlockHash),
+    UnknownHash(BlockHash),
     CouldntProve,
     StorageError,
 }
