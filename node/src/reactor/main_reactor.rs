@@ -15,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_execution_engine::core::engine_state::GenesisSuccess;
 use casper_execution_engine::core::{
     engine_state,
     engine_state::{ChainspecRegistry, UpgradeConfig, UpgradeSuccess},
@@ -25,6 +26,7 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::error;
 
+use crate::reactor::main_reactor::utils::maybe_pre_genesis;
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -182,27 +184,28 @@ impl MainReactor {
         // determine if we should leap, and if so starting from which block_hash
         let starting_with = match self.trusted_hash {
             None => {
-                // no trusted hash provided use local tip if available
-                // if we are pre-genesis, wait; if we are not, shutdown
                 match self.linear_chain.highest_block() {
+                    // no trusted hash provided use local tip if available
                     Some(block) => {
                         // -+ : leap w/ local tip
                         StartingWith::Block(Box::new(block.clone()))
                     }
                     None => {
-                        // if pre-genesis, apply genesis and wait
-                        // if post-genesis, shutdown
-                        if let ActivationPoint::Genesis(timestamp) =
-                            self.chainspec.protocol_config.activation_point
-                        {
-                            // TODO: wire up genesis (can't run test network without genesis)
-                            return CatchUpInstructions::Do(Effects::new());
+                        // if we are pre-genesis, attempt to apply genesis; if we are not shutdown
+                        match maybe_pre_genesis(
+                            effect_builder,
+                            self.chainspec.clone(),
+                            self.chainspec_raw_bytes.clone(),
+                        ) {
+                            Ok(effects) => {
+                                return CatchUpInstructions::Do(effects);
+                            }
+                            Err(msg) => {
+                                // we are post genesis, have no local blocks, and no trusted hash
+                                // so we can't possibly catch up to the network and should shut down
+                                return CatchUpInstructions::Shutdown(msg);
+                            }
                         }
-                        // we are post genesis, have no local blocks and no trusted hash
-                        // so we can't possibly catch up to the network and should shut down
-                        return CatchUpInstructions::Shutdown(
-                            "fatal block store error attempting to read highest block".to_string(),
-                        );
                     }
                 }
             }
@@ -604,6 +607,17 @@ impl reactor::Reactor for MainReactor {
             )
             .ignore(),
             MainEvent::CheckStatus => self.check_status(effect_builder, rng),
+            MainEvent::GenesisResult(result) => match result {
+                Ok(_success) => effect_builder
+                    .immediately()
+                    .event(|()| MainEvent::CheckStatus),
+                Err(err) => {
+                    let msg = format!("{:?}", err);
+                    effect_builder
+                        .immediately()
+                        .event(|()| MainEvent::Shutdown(msg))
+                }
+            },
             MainEvent::UpgradeResult(result) => {
                 match result {
                     Ok(UpgradeSuccess { .. }) => {

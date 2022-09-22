@@ -8,7 +8,7 @@ use crate::{
 };
 use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
+use casper_types::{EraId, Key, ProtocolVersion, StoredValue, Timestamp};
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -62,6 +62,28 @@ pub(super) fn maybe_upgrade(
                 )),
                 Err(msg) => Err(msg),
             }
+        }
+    }
+}
+
+/// Check if running genesis is necessary.
+pub(super) fn maybe_pre_genesis(
+    effect_builder: EffectBuilder<MainEvent>,
+    chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+) -> Result<Effects<MainEvent>, String> {
+    match chainspec.protocol_config.activation_point {
+        ActivationPoint::Genesis(timestamp) => {
+            if Timestamp::now() > timestamp {
+                Err("we are not pre-genesis".to_string())
+            } else {
+                Ok(effect_builder
+                    .commit_genesis(chainspec, chainspec_raw_bytes)
+                    .event(MainEvent::GenesisResult))
+            }
+        }
+        ActivationPoint::EraId(_) => {
+            Err("should not call this if not on a genesis chainspec".to_string())
         }
     }
 }
