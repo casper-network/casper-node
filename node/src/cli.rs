@@ -43,6 +43,7 @@ pub enum Cli {
     ///
     /// Loads the configuration values from the given configuration file or uses defaults if not
     /// given, then runs the reactor.
+    #[structopt(alias = "validator")]
     Standard {
         /// Path to configuration file.
         config: PathBuf,
@@ -51,7 +52,6 @@ pub enum Cli {
             short = "C",
             long,
             env = "NODE_CONFIG",
-            alias = "validator",
             use_delimiter(true),
             value_delimiter(";")
         )]
