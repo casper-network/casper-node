@@ -24,15 +24,15 @@ enum PeerQuality {
 pub(super) struct PeerList {
     peer_list: BTreeMap<NodeId, PeerQuality>,
     latch: Timestamp,
-    simultaneous_peers: u8,
+    max_simultaneous_peers: u32,
 }
 
 impl PeerList {
-    pub(super) fn new(simultaneous_peers: u8) -> Self {
+    pub(super) fn new(max_simultaneous_peers: u32) -> Self {
         PeerList {
             peer_list: BTreeMap::new(),
             latch: Timestamp::now(),
-            simultaneous_peers,
+            max_simultaneous_peers,
         }
     }
     pub(super) fn register_peer(&mut self, peer: NodeId) {
@@ -138,7 +138,7 @@ impl PeerList {
             return true;
         }
         // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers
-        let reliability_goal = self.simultaneous_peers as usize;
+        let reliability_goal = self.max_simultaneous_peers as usize;
         self.peer_list
             .iter()
             .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
@@ -148,7 +148,7 @@ impl PeerList {
     }
 
     pub(super) fn qualified_peers(&self, rng: &mut NodeRng) -> Vec<NodeId> {
-        let up_to = self.simultaneous_peers as usize;
+        let up_to = self.max_simultaneous_peers as usize;
 
         // get most useful up to limit
         let mut peers: Vec<NodeId> = self

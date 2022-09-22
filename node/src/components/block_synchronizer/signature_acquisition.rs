@@ -52,4 +52,19 @@ impl SignatureAcquisition {
             })
             .collect()
     }
+
+    pub(super) fn is_non_vacant(&self) -> bool {
+        self.inner.is_empty() == false
+            && self
+                .inner
+                .iter()
+                .filter(|(k, v)| **v != SignatureState::Vacant)
+                .collect_vec()
+                .is_empty()
+                == false
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
 }

@@ -285,6 +285,13 @@ impl MainReactor {
             }
             LeapInstruction::SyncForExec(block_hash) => {
                 // pass block_hash to block_synchronizer
+                let ret = self.block_synchronizer.sync(
+                    block_hash,
+                    false,
+                    self.chainspec
+                        .core_config
+                        .sync_leap_simultaneous_peer_requests,
+                );
                 todo!()
             }
         }

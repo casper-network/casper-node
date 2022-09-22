@@ -94,6 +94,24 @@ impl BlockSynchronizer {
         }
     }
 
+    pub(crate) fn sync(
+        &mut self,
+        block_hash: BlockHash,
+        should_fetch_execution_state: bool,
+        max_simultaneous_peers: u32,
+    ) {
+        if let None = self.builders.get_mut(&block_hash) {
+            self.builders.insert(
+                block_hash,
+                BlockBuilder::new_minimal(
+                    block_hash,
+                    should_fetch_execution_state,
+                    max_simultaneous_peers,
+                ),
+            );
+        }
+    }
+
     // When was progress last made (if any).
     pub(crate) fn last_progress(&self) -> Option<Timestamp> {
         self.builders
@@ -128,11 +146,14 @@ impl BlockSynchronizer {
                     Some(validators) => validator_matrix.register_era(era_id, validators.clone()),
                 };
 
+                let max_simultaneous_peers = 3; //TODO: get from config
+
                 entry.insert(BlockBuilder::new(
                     request.block_hash,
                     era_id,
                     Rc::new(validator_matrix),
                     request.should_fetch_execution_state,
+                    max_simultaneous_peers,
                 ));
             }
         }
