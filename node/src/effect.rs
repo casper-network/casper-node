@@ -1693,31 +1693,31 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Executes a finalized block.
-    pub(crate) async fn execute_finalized_block(
-        self,
-        protocol_version: ProtocolVersion,
-        execution_pre_state: ExecutionPreState,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
-    ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::ExecuteBlock {
-                protocol_version,
-                execution_pre_state,
-                finalized_block,
-                deploys,
-                transfers,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
+    // /// Executes a finalized block.
+    // pub(crate) async fn execute_finalized_block(
+    //     self,
+    //     protocol_version: ProtocolVersion,
+    //     execution_pre_state: ExecutionPreState,
+    //     finalized_block: FinalizedBlock,
+    //     deploys: Vec<Deploy>,
+    //     transfers: Vec<Deploy>,
+    // ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
+    // where
+    //     REv: From<ContractRuntimeRequest>,
+    // {
+    //     self.make_request(
+    //         |responder| ContractRuntimeRequest::ExecuteBlock {
+    //             protocol_version,
+    //             execution_pre_state,
+    //             finalized_block,
+    //             deploys,
+    //             transfers,
+    //             responder,
+    //         },
+    //         QueueKind::Regular,
+    //     )
+    //     .await
+    // }
 
     /// Enqueues a finalized proto-block execution.
     ///

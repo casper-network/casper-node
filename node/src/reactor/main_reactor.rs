@@ -463,7 +463,7 @@ impl MainReactor {
     }
 
     fn handle_commit_genesis_result(
-        &self,
+        &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         result: Result<GenesisSuccess, engine_state::Error>,
     ) -> Effects<MainEvent> {
@@ -496,6 +496,8 @@ impl MainReactor {
                     BlockHash::default(),
                     Digest::default(),
                 );
+                self.contract_runtime.set_initial_state(initial_pre_state);
+
                 let finalized_block = FinalizedBlock::new(
                     BlockPayload::default(),
                     Some(EraReport::default()),
@@ -511,18 +513,16 @@ impl MainReactor {
                 //     .immediately()
                 //     .event(|()| MainEvent::CheckStatus)
 
-                self.execute_immediate_switch_block(
-                    effect_builder,
-                    initial_pre_state,
-                    finalized_block,
-                )
+                effect_builder
+                    .enqueue_block_for_execution(finalized_block, vec![], vec![])
+                    .ignore()
             }
             Err(error) => enqueue_shutdown(error),
         }
     }
 
     fn handle_upgrade_result(
-        &self,
+        &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         previous_block_header: Box<BlockHeader>,
         result: Result<UpgradeSuccess, engine_state::Error>,
@@ -537,18 +537,21 @@ impl MainReactor {
                     "upgrade committed"
                 );
 
+                let next_block_height = previous_block_header.height() + 1;
                 let initial_pre_state = ExecutionPreState::new(
-                    previous_block_header.height() + 1,
+                    next_block_height,
                     post_state_hash,
                     previous_block_header.hash(),
                     previous_block_header.accumulated_seed(),
                 );
+                self.contract_runtime.set_initial_state(initial_pre_state);
+
                 let finalized_block = FinalizedBlock::new(
                     BlockPayload::default(),
                     Some(EraReport::default()),
                     previous_block_header.timestamp(),
                     previous_block_header.next_block_era_id(),
-                    initial_pre_state.next_block_height(),
+                    next_block_height,
                     PublicKey::System,
                 );
 
@@ -557,67 +560,13 @@ impl MainReactor {
                 // effect_builder
                 //     .immediately()
                 //     .event(|()| MainEvent::CheckStatus)
-                self.execute_immediate_switch_block(
-                    effect_builder,
-                    initial_pre_state,
-                    finalized_block,
-                )
+
+                effect_builder
+                    .enqueue_block_for_execution(finalized_block, vec![], vec![])
+                    .ignore()
             }
             Err(error) => enqueue_shutdown(error),
         }
-    }
-
-    /// Creates a switch block after an upgrade or genesis. This block has the system public key as
-    /// a proposer and doesn't contain any deploys or transfers. It is the only block in its era,
-    /// and no consensus instance is run for era 0 or an upgrade point era.
-    fn execute_immediate_switch_block(
-        &self,
-        effect_builder: EffectBuilder<MainEvent>,
-        initial_pre_state: ExecutionPreState,
-        finalized_block: FinalizedBlock,
-    ) -> Effects<MainEvent> {
-        let protocol_version = self.chainspec.protocol_version();
-        async move {
-            let block_and_execution_effects = effect_builder
-                .execute_finalized_block(
-                    protocol_version,
-                    initial_pre_state,
-                    finalized_block,
-                    vec![],
-                    vec![],
-                )
-                .await?;
-            effect_builder
-                .put_block_to_storage(block_and_execution_effects.block.clone())
-                .await;
-            effect_builder
-                .mark_block_completed(block_and_execution_effects.block.height())
-                .await;
-            info!(
-                immediate_switch_block = ?block_and_execution_effects.block.clone(),
-                "immediate switch block after upgrade/genesis stored"
-            );
-            Ok(block_and_execution_effects)
-        }
-        .event(MainEvent::ExecuteImmediateSwitchBlockResult)
-    }
-
-    fn handle_execute_immediate_switch_block_result(
-        &self,
-        effect_builder: EffectBuilder<MainEvent>,
-        result: Result<BlockAndExecutionEffects, BlockExecutionError>,
-    ) -> Effects<MainEvent> {
-        let immediate_switch_block_and_exec_effects = match result {
-            Ok(block_and_execution_effects) => block_and_execution_effects,
-            Err(error) => {
-                error!(%error, "failed to execute immediate switch block");
-                return enqueue_shutdown(error);
-            }
-        };
-
-        // TODO - use switch block and effects - maybe nothing needed here
-
-        Effects::new()
     }
 }
 
@@ -842,9 +791,6 @@ impl reactor::Reactor for MainReactor {
                 previous_block_header,
                 result,
             } => self.handle_upgrade_result(effect_builder, previous_block_header, result),
-            MainEvent::ExecuteImmediateSwitchBlockResult(result) => {
-                self.handle_execute_immediate_switch_block_result(effect_builder, result)
-            }
             // delegate all fetcher activity to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::DeployFetcher(..)
             | MainEvent::DeployFetcherRequest(..)

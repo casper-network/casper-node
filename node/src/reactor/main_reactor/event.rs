@@ -48,27 +48,6 @@ use crate::{
     },
 };
 
-// timing belt event
-// CATCHING_UP
-// match event {
-//     MainEvent::Initialize(..) => {
-//         // ctor puts into status and we handle pushing various init events here
-//         self.storage.is_init() -> state / or effects if it requires work to be done
-//     }
-//     MainEvent::GetCaughtUp(..) => {
-//         <- keep on catching up
-//         > sync leap then have convo w accumul OR
-//         <- transition to keeping up
-//         <- fatal
-//     }
-//     MainEvent::StayCaughtUp(..) => {
-//         <- keep on keeping up
-//         <- maybe enuff cycles to attempt 1 sync block
-//         <- get caught up
-//         <- fatal
-//     }
-// }
-
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -90,10 +69,6 @@ pub(crate) enum MainEvent {
         #[serde(skip_serializing)]
         result: Result<UpgradeSuccess, engine_state::Error>,
     },
-    #[from]
-    ExecuteImmediateSwitchBlockResult(
-        #[serde(skip_serializing)] Result<BlockAndExecutionEffects, BlockExecutionError>,
-    ),
 
     // SyncLeaper
     #[from]
@@ -313,7 +288,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::SmallNetwork(_) => "SmallNetwork",
             MainEvent::GenesisResult(_) => "GenesisResult",
             MainEvent::UpgradeResult { .. } => "UpgradeResult",
-            MainEvent::ExecuteImmediateSwitchBlockResult(_) => "ExecuteImmediateSwitchBlockResult",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::BlockProposer(_) => "BlockProposer",
             MainEvent::Storage(_) => "Storage",
@@ -499,9 +473,6 @@ impl Display for MainEvent {
             MainEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             MainEvent::GenesisResult(result) => write!(f, "genesis result: {:?}", result),
             MainEvent::UpgradeResult { result, .. } => write!(f, "upgrade result: {:?}", result),
-            MainEvent::ExecuteImmediateSwitchBlockResult(result) => {
-                write!(f, "execute immediate switch block result: {:?}", result)
-            }
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),

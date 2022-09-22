@@ -2034,20 +2034,22 @@ where
         // let new_approvals = fetch_block_deploy_approvals(*deploy.id(), peer, ctx).await?;
         // deploy.replace_approvals(new_approvals.into_inner());
     }
-    Ok(ctx
-        .effect_builder
-        .execute_finalized_block(
-            block.protocol_version(),
-            execution_pre_state.clone(),
-            FinalizedBlock::from(block.clone()),
-            deploys.to_owned(),
-            transfers.to_owned(),
-        )
-        .await?)
+    todo!();
+    // Ok(ctx
+    //     .effect_builder
+    //     .execute_finalized_block(
+    //         block.protocol_version(),
+    //         execution_pre_state.clone(),
+    //         FinalizedBlock::from(block.clone()),
+    //         deploys.to_owned(),
+    //         transfers.to_owned(),
+    //     )
+    //     .await?)
 }
 
 /// Executes forwards from the block after `highest_synced_block_header` until we can get no higher
 /// block from any peer, or the block we executed is in the current era.
+#[allow(clippy::diverging_sub_expression)]
 async fn fetch_and_execute_blocks<REv>(
     highest_synced_block_header: &BlockHeader,
     highest_synced_key_block_info: KeyBlockInfo,
@@ -2118,16 +2120,17 @@ where
             "executing block",
         );
         ctx.progress.start_executing_block(block.height());
-        let block_and_execution_effects = ctx
-            .effect_builder
-            .execute_finalized_block(
-                block.protocol_version(),
-                execution_pre_state.clone(),
-                FinalizedBlock::from(block.clone()),
-                deploys.clone(),
-                transfers.clone(),
-            )
-            .await?;
+        let block_and_execution_effects: BlockAndExecutionEffects = todo!();
+        // ctx
+        // .effect_builder
+        // .execute_finalized_block(
+        //     block.protocol_version(),
+        //     execution_pre_state.clone(),
+        //     FinalizedBlock::from(block.clone()),
+        //     deploys.clone(),
+        //     transfers.clone(),
+        // )
+        // .await?;
 
         let mut blocks_match = block == *block_and_execution_effects.block();
 
