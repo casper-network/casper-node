@@ -41,7 +41,7 @@ use crate::components::fetcher::Error;
 
 use crate::effect::announcements::BlocklistAnnouncement;
 use crate::effect::requests::{ContractRuntimeRequest, TrieAccumulatorRequest};
-use crate::types::{Block, Item, TrieOrChunk, ValidatorMatrix};
+use crate::types::{Block, BlockHeaderWithMetadata, Item, SyncLeap, TrieOrChunk, ValidatorMatrix};
 pub(crate) use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
@@ -109,6 +109,50 @@ impl BlockSynchronizer {
                     max_simultaneous_peers,
                 ),
             );
+        }
+    }
+
+    pub(crate) fn leap(
+        &mut self,
+        block_hash: BlockHash,
+        sync_leap: SyncLeap,
+        peers: Vec<NodeId>,
+        should_fetch_execution_state: bool,
+        max_simultaneous_peers: u32,
+    ) {
+        fn apply_sigs(
+            builder: &mut BlockBuilder,
+            maybe_fat_block_header: Option<BlockHeaderWithMetadata>,
+        ) {
+            if let Some(data) = maybe_fat_block_header {
+                let block_hash = builder.block_hash();
+                let era_id = data.block_header.era_id();
+                for (pk, sig) in data.block_signatures.proofs {
+                    builder.apply_finality_signature(
+                        FinalitySignature::new(block_hash, era_id, sig, pk),
+                        None,
+                    );
+                }
+            }
+        }
+
+        let maybe_fat_block_header = sync_leap.highest_block_header();
+        match self.builders.get_mut(&block_hash) {
+            None => {
+                // create a builder from the leap results
+                let mut builder = BlockBuilder::new_leap(
+                    block_hash,
+                    sync_leap,
+                    peers,
+                    should_fetch_execution_state,
+                    max_simultaneous_peers,
+                );
+                apply_sigs(&mut builder, maybe_fat_block_header);
+                self.builders.insert(block_hash, builder);
+            }
+            Some(builder) => {
+                apply_sigs(builder, maybe_fat_block_header);
+            }
         }
     }
 

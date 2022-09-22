@@ -1,5 +1,6 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashSet};
+use std::env::var;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 use std::rc::Rc;
@@ -94,19 +95,62 @@ impl BlockBuilder {
         }
     }
 
+    pub(crate) fn block_hash(&self) -> BlockHash {
+        self.block_hash
+    }
+
+    pub(crate) fn new_leap(
+        block_hash: BlockHash,
+        sync_leap: crate::types::SyncLeap,
+        peers: Vec<NodeId>,
+        should_fetch_execution_state: bool,
+        max_simultaneous_peers: u32,
+    ) -> Self {
+        if let Some(fat_block_header) = sync_leap.highest_block_header() {
+            let block_header = fat_block_header.block_header;
+            let sigs = fat_block_header.block_signatures;
+            let era_id = Some(block_header.era_id());
+            let validator_matrix = None;
+            let public_keys = sigs.proofs.into_iter().map(|(k, _)| k).collect_vec();
+            let signature_acquisition = SignatureAcquisition::new(public_keys);
+            let acquisition_state = BlockAcquisitionState::HaveBlockHeader(
+                Box::new(block_header),
+                signature_acquisition,
+            );
+            let mut peer_list = PeerList::new(max_simultaneous_peers);
+            peers.iter().map(|p| peer_list.register_peer(*p));
+
+            BlockBuilder {
+                block_hash,
+                era_id,
+                validator_matrix,
+                acquisition_state,
+                peer_list,
+                should_fetch_execution_state,
+                started: None,
+                last_progress_time: None,
+            }
+        } else {
+            BlockBuilder::new_minimal(
+                block_hash,
+                should_fetch_execution_state,
+                max_simultaneous_peers,
+            )
+        }
+    }
+
     pub(crate) fn new_minimal(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
-        //let public_keys = validator_matrix.validator_public_keys(era_id);
         BlockBuilder {
             block_hash,
             era_id: None,
             validator_matrix: None,
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
-                SignatureAcquisition::new(todo!("public_keys")),
+                SignatureAcquisition::new(vec![]),
             ),
             peer_list: PeerList::new(max_simultaneous_peers),
             should_fetch_execution_state,

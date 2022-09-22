@@ -26,6 +26,7 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::error;
 
+use crate::components::sync_leaper::LeapStatus;
 use crate::reactor::main_reactor::utils::maybe_pre_genesis;
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -301,6 +302,48 @@ impl MainReactor {
         }
 
         let leap_results = self.sync_leaper.leap_status();
+        match leap_results {
+            LeapStatus::Inactive => {
+                return CatchUpInstructions::CheckSoon(
+                    "sync leaper is currently inactive".to_string(),
+                );
+            }
+            LeapStatus::Awaiting { .. } => {
+                return CatchUpInstructions::CheckLater(
+                    "sync leaper is currently inactive".to_string(),
+                    Self::WAIT_SEC,
+                );
+            }
+            LeapStatus::Received {
+                best_available,
+                in_flight,
+                block_hash,
+                from_peers,
+            } => {
+                // TODO: im not convinced we should be doing applying leap results
+                // imperatively, but I told Fraser I'd give it a shot so here we are.
+                // consider it a talking point -Ed :)
+                self.block_synchronizer.leap(
+                    block_hash,
+                    best_available,
+                    from_peers,
+                    true,
+                    self.chainspec
+                        .core_config
+                        .sync_leap_simultaneous_peer_requests,
+                );
+
+                return CatchUpInstructions::CheckLater(
+                    "sync leaper is currently inactive".to_string(),
+                    Self::WAIT_SEC,
+                );
+            }
+            LeapStatus::Failed { error, .. } => {
+                // not sure what we should do next, other than allow
+                // reattempt to correct
+                return CatchUpInstructions::CheckSoon(format!("{}", error));
+            }
+        }
 
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstructions::CaughtUp
