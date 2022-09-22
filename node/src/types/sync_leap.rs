@@ -11,6 +11,7 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
+use crate::types::BlockSignatures;
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
@@ -42,6 +43,29 @@ impl SyncLeap {
             .map(|header_with_metadata| header_with_metadata.block_header.era_id())
             .max()
             .unwrap_or_else(|| self.trusted_block_header.era_id())
+    }
+
+    pub(crate) fn highest_block_height(&self) -> u64 {
+        self.signed_block_headers
+            .iter()
+            .map(|header_with_metadata| header_with_metadata.block_header.height())
+            .max()
+            .unwrap_or_else(|| self.trusted_block_header.height())
+    }
+
+    pub(crate) fn highest_block_header(&self) -> Option<BlockHeaderWithMetadata> {
+        let highest = self.highest_block_height();
+        self.signed_block_headers
+            .iter()
+            .map(|header_with_metadata| header_with_metadata.clone())
+            .find_or_first(|x| x.block_header.height() == highest)
+    }
+
+    pub(crate) fn highest_block_signatures(&self) -> Option<BlockSignatures> {
+        match self.highest_block_header() {
+            None => None,
+            Some(v) => Some(v.block_signatures),
+        }
     }
 }
 

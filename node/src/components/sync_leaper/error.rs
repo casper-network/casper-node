@@ -1,16 +1,42 @@
-use crate::types::BlockHash;
+use datasize::DataSize;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone)]
-pub(crate) enum PullSyncLeapError {
-    TrustedHashTooOld(BlockHash),
-    CouldntFetch(BlockHash),
-    OtherRequestInProgress(BlockHash),
+use crate::types::{BlockHash, NodeId};
+
+#[derive(Debug, Clone, DataSize)]
+pub(crate) enum LeapActivityError {
+    TooOld(BlockHash, Vec<NodeId>),
+    Unobtainable(BlockHash, Vec<NodeId>),
+    TooBusy(BlockHash),
+    NoPeers(BlockHash),
 }
 
-#[derive(Debug, Clone)]
+impl Display for LeapActivityError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            LeapActivityError::TooOld(bh, ..) => write!(formatter, "block_hash too old: {}", bh),
+            LeapActivityError::Unobtainable(bh, ..) => {
+                write!(formatter, "unable to acquire data for block_hash: {}", bh)
+            }
+            LeapActivityError::TooBusy(bh) => {
+                write!(
+                    formatter,
+                    "sync leaper is busy and unable to process block_hash: {}",
+                    bh
+                )
+            }
+            LeapActivityError::NoPeers(bh) => {
+                write!(formatter, "sync leaper has no peers for block_hash: {}", bh)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, DataSize)]
 pub(crate) enum ConstructSyncLeapError {
-    TrustedHashTooOld(BlockHash),
-    TrustedHashUnknown(BlockHash),
+    TooOld(BlockHash),
+    UnknownHash(BlockHash),
     CouldntProve,
     StorageError,
 }

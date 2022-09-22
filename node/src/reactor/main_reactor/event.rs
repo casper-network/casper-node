@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+use casper_execution_engine::core::engine_state::GenesisSuccess;
 use casper_execution_engine::core::{engine_state, engine_state::UpgradeSuccess};
 use derive_more::From;
 use serde::Serialize;
@@ -82,6 +83,8 @@ pub(crate) enum MainEvent {
     ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
     #[from]
     UpgradeResult(#[serde(skip_serializing)] Result<UpgradeSuccess, engine_state::Error>),
+    #[from]
+    GenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
 
     // SyncLeaper
     #[from]
@@ -300,6 +303,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             MainEvent::SmallNetwork(_) => "SmallNetwork",
             MainEvent::UpgradeResult(_) => "UpgradeResult",
+            MainEvent::GenesisResult(_) => "GenesisResult",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::BlockProposer(_) => "BlockProposer",
             MainEvent::Storage(_) => "Storage",
@@ -483,6 +487,7 @@ impl Display for MainEvent {
             }
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
             MainEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
+            MainEvent::GenesisResult(result) => write!(f, "genesis result: {:?}", result),
             MainEvent::UpgradeResult(result) => write!(f, "upgrade result: {:?}", result),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
