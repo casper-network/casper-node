@@ -13,7 +13,6 @@ use tracing::{error, warn};
 use casper_types::{EraId, PublicKey};
 
 use crate::{
-    components::blocks_accumulator::LeapInstruction::Leap,
     components::Component,
     effect::{announcements::BlocklistAnnouncement, EffectBuilder, EffectExt, Effects},
     types::{Block, BlockAdded, BlockHash, FetcherItem, FinalitySignature, NodeId},
@@ -46,7 +45,10 @@ pub(crate) struct BlocksAccumulator {
 pub(crate) enum LeapInstruction {
     Leap,
     CaughtUp,
-    SyncForExec(BlockHash),
+    BlockSync {
+        block_hash: BlockHash,
+        should_fetch_execution_state: bool,
+    },
 }
 
 pub(crate) enum StartingWith {
@@ -74,16 +76,31 @@ impl BlocksAccumulator {
     }
 
     pub(crate) fn should_leap(&self, starting_with: StartingWith) -> LeapInstruction {
-        const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3u64; // TODO: make chainspec or cfg setting
+        const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
         let validators = &BTreeMap::new(); // TODO: really gotta get this dealt with.
+
         let block_hash = *starting_with.block_hash();
         if let Some((highest_block_hash, highest_block_height)) = self.highest_known_block() {
             let block_height = match starting_with {
                 StartingWith::Block(block) => block.header().height(),
                 StartingWith::Hash(trusted_hash) => match self.block_acceptors.get(&trusted_hash) {
-                    None => Default::default(),
+                    None => {
+                        // the accumulator is unaware of the starting-with block
+                        return LeapInstruction::Leap;
+                    }
                     Some(block_acceptor) => match block_acceptor.block_height() {
-                        None => Default::default(),
+                        None => {
+                            // the accumulator doesn't know the height of the starting-with block
+                            // this means we've seen one or more signatures for the block but
+                            // have not seen the block added message for it.
+                            // under normal circumstances this means we're close to the tip
+                            // but it is possible we'll never see the BlockAdded via
+                            // gossiping
+                            return LeapInstruction::BlockSync {
+                                block_hash: trusted_hash,
+                                should_fetch_execution_state: true,
+                            };
+                        }
                         Some(block_height) => block_height,
                     },
                 },
@@ -97,11 +114,14 @@ impl BlocksAccumulator {
                             return LeapInstruction::CaughtUp;
                         }
                     }
-                    return LeapInstruction::SyncForExec(*child_hash);
+                    return LeapInstruction::BlockSync {
+                        block_hash: *child_hash,
+                        should_fetch_execution_state: false,
+                    };
                 }
             }
         }
-        Leap
+        LeapInstruction::Leap
     }
 
     pub(crate) fn can_execute(&self, block_hash: &BlockHash) -> bool {

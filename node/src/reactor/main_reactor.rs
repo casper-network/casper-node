@@ -283,16 +283,21 @@ impl MainReactor {
                     }
                 }
             }
-            LeapInstruction::SyncForExec(block_hash) => {
+            LeapInstruction::BlockSync {
+                block_hash,
+                should_fetch_execution_state,
+            } => {
                 // pass block_hash to block_synchronizer
-                let ret = self.block_synchronizer.sync(
+                self.block_synchronizer.sync(
                     block_hash,
-                    false,
+                    should_fetch_execution_state,
                     self.chainspec
                         .core_config
                         .sync_leap_simultaneous_peer_requests,
                 );
-                todo!()
+                return CatchUpInstructions::CheckSoon(
+                    "block_synchronizer is initialized".to_string(),
+                );
             }
         }
 
