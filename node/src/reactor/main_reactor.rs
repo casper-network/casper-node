@@ -181,7 +181,7 @@ impl MainReactor {
             }
         }
 
-        // determine if we should leap, and if so starting from which block_hash
+        // determine which block / block_hash we should attempt to leap from
         let starting_with = match self.trusted_hash {
             None => {
                 match self.linear_chain.highest_block() {
@@ -240,6 +240,8 @@ impl MainReactor {
             }
         };
 
+        // the block accumulator should be receiving blocks via gossiping
+        // and usually has some awareness of the chain ahead of our tip
         let trusted_hash = *starting_with.block_hash();
         match self.blocks_accumulator.should_leap(starting_with) {
             LeapInstruction::Leap => {
@@ -257,9 +259,22 @@ impl MainReactor {
                 }));
                 return CatchUpInstructions::Do(effects);
             }
+            LeapInstruction::BlockSync {
+                block_hash,
+                should_fetch_execution_state,
+            } => {
+                self.block_synchronizer.sync(
+                    block_hash,
+                    should_fetch_execution_state,
+                    self.chainspec
+                        .core_config
+                        .sync_leap_simultaneous_peer_requests,
+                );
+                return CatchUpInstructions::CheckSoon(
+                    "block_synchronizer is initialized".to_string(),
+                );
+            }
             LeapInstruction::CaughtUp => {
-                // TODO: maybe do something w/ the UpgradeWatcher announcement for a
-                // detected upgrade to make this a stronger check
                 match self.linear_chain.highest_block() {
                     Some(block) => {
                         let maybe_upgrade = maybe_upgrade(
@@ -282,22 +297,6 @@ impl MainReactor {
                         );
                     }
                 }
-            }
-            LeapInstruction::BlockSync {
-                block_hash,
-                should_fetch_execution_state,
-            } => {
-                // pass block_hash to block_synchronizer
-                self.block_synchronizer.sync(
-                    block_hash,
-                    should_fetch_execution_state,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
-                );
-                return CatchUpInstructions::CheckSoon(
-                    "block_synchronizer is initialized".to_string(),
-                );
             }
         }
 
