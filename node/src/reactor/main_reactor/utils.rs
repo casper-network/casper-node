@@ -55,11 +55,17 @@ pub(super) fn maybe_upgrade(
                 era_id,
                 chainspec_raw_bytes,
             ) {
-                Ok(cfg) => Ok(Some(
-                    effect_builder
-                        .upgrade_contract_runtime(Box::new(cfg))
-                        .event(MainEvent::UpgradeResult),
-                )),
+                Ok(cfg) => {
+                    let previous_block_header = Box::new(block.header().clone());
+                    Ok(Some(
+                        effect_builder
+                            .upgrade_contract_runtime(Box::new(cfg))
+                            .event(|result| MainEvent::UpgradeResult {
+                                previous_block_header,
+                                result,
+                            }),
+                    ))
+                }
                 Err(msg) => Err(msg),
             }
         }

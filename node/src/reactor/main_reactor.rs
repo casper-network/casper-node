@@ -20,16 +20,20 @@ use casper_execution_engine::core::{
     engine_state,
     engine_state::{ChainspecRegistry, UpgradeConfig, UpgradeSuccess},
 };
-use casper_types::{Key, StoredValue, TimeDiff, Timestamp};
+use casper_hashing::Digest;
+use casper_types::{EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp};
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
-use tracing::error;
+use tracing::{error, info};
 
+use crate::components::consensus::EraReport;
 use crate::components::sync_leaper::LeapStatus;
+use crate::contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState};
 use crate::reactor::main_reactor::utils::maybe_pre_genesis;
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
+use crate::types::{BlockHeader, BlockPayload, FinalizedBlock};
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -443,7 +447,7 @@ impl MainReactor {
             },
             ReactorState::KeepUp => {
                 // TODO: if UpgradeWatcher announcement raised, keep track of era id's against the
-                // new activation point
+                //       new activation point
                 // detected upgrade to make this a stronger check
                 // if in validator set and era supervisor is green, validate
                 // else get added blocks for block accumulator and execute them
@@ -457,6 +461,168 @@ impl MainReactor {
 
         // TODO: Stall detection should possibly be done in the control logic.
     }
+
+    fn handle_commit_genesis_result(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+        result: Result<GenesisSuccess, engine_state::Error>,
+    ) -> Effects<MainEvent> {
+        match result {
+            Ok(GenesisSuccess {
+                post_state_hash, ..
+            }) => {
+                info!(
+                    %post_state_hash,
+                    network_name = %self.chainspec.network_config.name,
+                    "successfully ran genesis"
+                );
+
+                let genesis_timestamp = match self
+                    .chainspec
+                    .protocol_config
+                    .activation_point
+                    .genesis_timestamp()
+                {
+                    None => {
+                        return enqueue_shutdown("must have genesis timestamp");
+                    }
+                    Some(timestamp) => timestamp,
+                };
+
+                let next_block_height = 0;
+                let initial_pre_state = ExecutionPreState::new(
+                    next_block_height,
+                    post_state_hash,
+                    BlockHash::default(),
+                    Digest::default(),
+                );
+                let finalized_block = FinalizedBlock::new(
+                    BlockPayload::default(),
+                    Some(EraReport::default()),
+                    genesis_timestamp,
+                    EraId::default(),
+                    next_block_height,
+                    PublicKey::System,
+                );
+
+                // TODO - we shouldn't enqueue a CheckStatus from here to avoid starting a second
+                //        "timing belt"
+                // effect_builder
+                //     .immediately()
+                //     .event(|()| MainEvent::CheckStatus)
+
+                self.execute_immediate_switch_block(
+                    effect_builder,
+                    initial_pre_state,
+                    finalized_block,
+                )
+            }
+            Err(error) => enqueue_shutdown(error),
+        }
+    }
+
+    fn handle_upgrade_result(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+        previous_block_header: Box<BlockHeader>,
+        result: Result<UpgradeSuccess, engine_state::Error>,
+    ) -> Effects<MainEvent> {
+        match result {
+            Ok(UpgradeSuccess {
+                post_state_hash, ..
+            }) => {
+                info!(
+                    network_name = %self.chainspec.network_config.name,
+                    %post_state_hash,
+                    "upgrade committed"
+                );
+
+                let initial_pre_state = ExecutionPreState::new(
+                    previous_block_header.height() + 1,
+                    post_state_hash,
+                    previous_block_header.hash(),
+                    previous_block_header.accumulated_seed(),
+                );
+                let finalized_block = FinalizedBlock::new(
+                    BlockPayload::default(),
+                    Some(EraReport::default()),
+                    previous_block_header.timestamp(),
+                    previous_block_header.next_block_era_id(),
+                    initial_pre_state.next_block_height(),
+                    PublicKey::System,
+                );
+
+                // TODO - we shouldn't enqueue a CheckStatus from here to avoid starting a second
+                //        "timing belt"
+                // effect_builder
+                //     .immediately()
+                //     .event(|()| MainEvent::CheckStatus)
+                self.execute_immediate_switch_block(
+                    effect_builder,
+                    initial_pre_state,
+                    finalized_block,
+                )
+            }
+            Err(error) => enqueue_shutdown(error),
+        }
+    }
+
+    /// Creates a switch block after an upgrade or genesis. This block has the system public key as
+    /// a proposer and doesn't contain any deploys or transfers. It is the only block in its era,
+    /// and no consensus instance is run for era 0 or an upgrade point era.
+    fn execute_immediate_switch_block(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+        initial_pre_state: ExecutionPreState,
+        finalized_block: FinalizedBlock,
+    ) -> Effects<MainEvent> {
+        let protocol_version = self.chainspec.protocol_version();
+        async move {
+            let block_and_execution_effects = effect_builder
+                .execute_finalized_block(
+                    protocol_version,
+                    initial_pre_state,
+                    finalized_block,
+                    vec![],
+                    vec![],
+                )
+                .await?;
+            effect_builder
+                .put_block_to_storage(block_and_execution_effects.block.clone())
+                .await;
+            effect_builder
+                .mark_block_completed(block_and_execution_effects.block.height())
+                .await;
+            info!(
+                immediate_switch_block = ?block_and_execution_effects.block.clone(),
+                "immediate switch block after upgrade/genesis stored"
+            );
+            Ok(block_and_execution_effects)
+        }
+        .event(MainEvent::ExecuteImmediateSwitchBlockResult)
+    }
+
+    fn handle_execute_immediate_switch_block_result(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+        result: Result<BlockAndExecutionEffects, BlockExecutionError>,
+    ) -> Effects<MainEvent> {
+        let immediate_switch_block_and_exec_effects = match result {
+            Ok(block_and_execution_effects) => block_and_execution_effects,
+            Err(error) => {
+                error!(%error, "failed to execute immediate switch block");
+                return enqueue_shutdown(error);
+            }
+        };
+
+        // TODO - use switch block and effects - maybe nothing needed here
+
+        Effects::new()
+    }
+}
+
+fn enqueue_shutdown<T: ToString + Send + 'static>(message: T) -> Effects<MainEvent> {
+    async {}.event(move |_| MainEvent::Shutdown(message.to_string()))
 }
 
 impl reactor::Reactor for MainReactor {
@@ -669,61 +835,15 @@ impl reactor::Reactor for MainReactor {
             )
             .ignore(),
             MainEvent::CheckStatus => self.check_status(effect_builder, rng),
-            MainEvent::GenesisResult(result) => match result {
-                Ok(_success) => effect_builder
-                    .immediately()
-                    .event(|()| MainEvent::CheckStatus),
-                Err(err) => {
-                    let msg = format!("{:?}", err);
-                    effect_builder
-                        .immediately()
-                        .event(|()| MainEvent::Shutdown(msg))
-                }
-            },
-            MainEvent::UpgradeResult(result) => {
-                match result {
-                    Ok(UpgradeSuccess { .. }) => {
-                        // info!(
-                        //     network_name = %self.chainspec.network_config.name,
-                        //     %post_state_hash,
-                        //     "upgrade committed"
-                        // );
-                        //
-                        // let initial_pre_state = ExecutionPreState::new(
-                        //     previous_block_header.height() + 1,
-                        //     post_state_hash,
-                        //     previous_block_header.hash(),
-                        //     previous_block_header.accumulated_seed(),
-                        // );
-                        // let finalized_block = FinalizedBlock::new(
-                        //     BlockPayload::default(),
-                        //     Some(EraReport::default()),
-                        //     previous_block_header.timestamp(),
-                        //     previous_block_header.next_block_era_id(),
-                        //     initial_pre_state.next_block_height(),
-                        //     PublicKey::System,
-                        // );
-                        //
-                        // self.execute_immediate_switch_block(
-                        //     effect_builder,
-                        //     initial_pre_state,
-                        //     finalized_block,
-                        // )
-                        // TODO: investigate piggy backing
-                        // effect_builder.enqueue_block_for_execution
-                        // and allowing the contract runtime to handle immediate switch block
-                        // like any other finalized block
-                        effect_builder
-                            .immediately()
-                            .event(|()| MainEvent::CheckStatus)
-                    }
-                    Err(err) => fatal!(
-                        effect_builder,
-                        "reactor should shut down due to error: {}",
-                        err.to_string(),
-                    )
-                    .ignore(),
-                }
+            MainEvent::GenesisResult(result) => {
+                self.handle_commit_genesis_result(effect_builder, result)
+            }
+            MainEvent::UpgradeResult {
+                previous_block_header,
+                result,
+            } => self.handle_upgrade_result(effect_builder, previous_block_header, result),
+            MainEvent::ExecuteImmediateSwitchBlockResult(result) => {
+                self.handle_execute_immediate_switch_block_result(effect_builder, result)
             }
             // delegate all fetcher activity to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::DeployFetcher(..)
