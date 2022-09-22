@@ -392,12 +392,15 @@ gossip_request_timeout = '30sec'
 get_remainder_timeout = '5sec'
 
 
-# =========================================================
-# Configuration options for the complete block synchronizer
-# =========================================================
-[complete_block_synchronizer]
+# ================================================
+# Configuration options for the block synchronizer
+# ================================================
+[block_synchronizer]
 
 timeout = '10mins'
+
+# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+max_parallel_trie_fetches = 5000
 
 
 # =================================
@@ -467,4 +470,4 @@ socket_umask = 0o077
 [deploy_buffer]
 
 # The deploy buffer will check for expired deploys every n seconds.
-expiry_check_seconds = '60s'
+expiry_check_seconds = 60
