@@ -83,7 +83,7 @@ pub(super) fn maybe_pre_genesis(
             }
         }
         ActivationPoint::EraId(_) => {
-            Err("should not call this if not on a genesis chainspec".to_string())
+            Err("should not attempt genesis if not on a genesis chainspec".to_string())
         }
     }
 }

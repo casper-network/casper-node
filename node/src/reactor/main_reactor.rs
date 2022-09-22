@@ -345,6 +345,9 @@ impl MainReactor {
                     return effects;
                 }
                 self.state = ReactorState::CatchUp;
+                return effect_builder
+                    .immediately()
+                    .event(|_| MainEvent::CheckStatus);
             }
             ReactorState::CatchUp => match self.catch_up_instructions(rng, effect_builder) {
                 CatchUpInstructions::Do(effects) => {
@@ -375,7 +378,7 @@ impl MainReactor {
                 CatchUpInstructions::CaughtUp => {
                     self.state = ReactorState::KeepUp;
                     return effect_builder
-                        .set_timeout(Duration::from_secs(0))
+                        .immediately()
                         .event(|_| MainEvent::CheckStatus);
                 }
             },
