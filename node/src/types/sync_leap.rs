@@ -9,6 +9,7 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use casper_types::system::auction::ValidatorWeights;
 use casper_types::{crypto, EraId};
 
 use crate::types::BlockSignatures;
@@ -38,6 +39,7 @@ pub(crate) struct SyncLeap {
 
 impl SyncLeap {
     pub(crate) fn highest_era(&self) -> EraId {
+        // TODO - just use last signed block header
         self.signed_block_headers
             .iter()
             .map(|header_with_metadata| header_with_metadata.block_header.era_id())
@@ -46,6 +48,7 @@ impl SyncLeap {
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
+        // TODO - just use last signed block header
         self.signed_block_headers
             .iter()
             .map(|header_with_metadata| header_with_metadata.block_header.height())
@@ -57,8 +60,10 @@ impl SyncLeap {
         let highest = self.highest_block_height();
         self.signed_block_headers
             .iter()
-            .map(|header_with_metadata| header_with_metadata.clone())
-            .find_or_first(|x| x.block_header.height() == highest)
+            .cloned()
+            .find_or_first(|block_header_with_metadata| {
+                block_header_with_metadata.block_header.height() == highest
+            })
     }
 
     pub(crate) fn highest_block_signatures(&self) -> Option<BlockSignatures> {
@@ -66,6 +71,10 @@ impl SyncLeap {
             None => None,
             Some(v) => Some(v.block_signatures),
         }
+    }
+
+    pub(crate) fn validators_of_highest_block(&self) -> ValidatorWeights {
+        todo!("need to reconsider the case where the trusted block is a switch block")
     }
 }
 

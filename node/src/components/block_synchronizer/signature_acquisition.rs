@@ -54,14 +54,9 @@ impl SignatureAcquisition {
     }
 
     pub(super) fn is_non_vacant(&self) -> bool {
-        self.inner.is_empty() == false
-            && self
-                .inner
-                .iter()
-                .filter(|(k, v)| **v != SignatureState::Vacant)
-                .collect_vec()
-                .is_empty()
-                == false
+        self.inner
+            .iter()
+            .any(|(_public_key, signature)| *signature != SignatureState::Vacant)
     }
 
     pub(super) fn is_empty(&self) -> bool {

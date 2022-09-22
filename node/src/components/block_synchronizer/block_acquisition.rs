@@ -179,7 +179,7 @@ impl BlockAcquisitionState {
     pub(super) fn with_signatures(
         &mut self,
         signatures: Vec<FinalitySignature>,
-        validator_matrix: Rc<ValidatorMatrix>,
+        validator_matrix: &ValidatorMatrix,
         need_execution_state: bool,
     ) -> Result<(), Error> {
         let new_state = match self {
@@ -397,7 +397,7 @@ impl BlockAcquisitionState {
         peer_list: &PeerList,
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
-        validator_matrix: Rc<ValidatorMatrix>,
+        validator_matrix: &ValidatorMatrix,
     ) -> Result<BlockAcquisitionAction, Error> {
         match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => Ok(
@@ -439,7 +439,7 @@ impl BlockAcquisitionState {
         peer_list: &PeerList,
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
-        validator_matrix: Rc<ValidatorMatrix>,
+        validator_matrix: &ValidatorMatrix,
     ) -> Result<BlockAcquisitionAction, Error> {
         // squash complexity of need all / don't need all and other
         // irritating hoop jumping around getting

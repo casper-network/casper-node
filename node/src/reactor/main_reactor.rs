@@ -192,6 +192,8 @@ impl MainReactor {
                         StartingWith::Block(Box::new(block.clone()))
                     }
                     None => {
+                        // TODO - consider avoiding multiple commit_genesis calls.
+
                         // if we are pre-genesis, attempt to apply genesis; if we are not shutdown
                         match maybe_pre_genesis(
                             effect_builder,
@@ -310,7 +312,7 @@ impl MainReactor {
             }
             LeapStatus::Awaiting { .. } => {
                 return CatchUpInstructions::CheckLater(
-                    "sync leaper is currently inactive".to_string(),
+                    "sync leaper is currently awaiting results".to_string(),
                     Self::WAIT_SEC,
                 );
             }
@@ -422,6 +424,7 @@ impl MainReactor {
                         .event(|_| MainEvent::CheckStatus);
                 }
                 CatchUpInstructions::CheckSoon(_) => {
+                    // TODO - do we mean immediately?
                     return effect_builder
                         .set_timeout(Duration::from_secs(Self::WAIT_SEC))
                         .event(|_| MainEvent::CheckStatus);

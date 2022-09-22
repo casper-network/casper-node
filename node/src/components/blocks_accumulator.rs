@@ -90,6 +90,9 @@ impl BlocksAccumulator {
                     }
                     Some(block_acceptor) => match block_acceptor.block_height() {
                         None => {
+                            // TODO - defend against malicious peer gossiping old finality
+                            //        signatures, causing us to not sync leap here.
+
                             // the accumulator doesn't know the height of the starting-with block
                             // this means we've seen one or more signatures for the block but
                             // have not seen the block added message for it.

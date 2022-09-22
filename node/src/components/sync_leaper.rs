@@ -4,6 +4,7 @@
 mod error;
 mod event;
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::{
     collections::HashMap,
@@ -40,6 +41,8 @@ enum PeerState {
 }
 
 #[derive(Debug, DataSize)]
+// TODO - fix
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum LeapStatus {
     Inactive,
     Awaiting {
@@ -132,9 +135,6 @@ impl LeapActivity {
         let mut maybe_ret: Option<&Box<SyncLeap>> = None;
         for (peer, peer_state) in &self.peers {
             match peer_state {
-                PeerState::RequestSent | PeerState::Rejected | PeerState::CouldntFetch => {
-                    continue;
-                }
                 PeerState::Fetched(sync_leap) => {
                     let height = sync_leap.highest_block_height();
                     match &maybe_ret {
@@ -142,21 +142,26 @@ impl LeapActivity {
                             maybe_ret = Some(sync_leap);
                             peers.push(*peer);
                         }
-                        Some(v) => {
-                            if v.highest_block_height() > height {
-                                peers.push(*peer);
-                                continue;
+                        Some(current_ret) => {
+                            match current_ret.highest_block_height().cmp(&height) {
+                                Ordering::Less => {
+                                    maybe_ret = Some(sync_leap);
+                                    peers = vec![*peer];
+                                }
+                                Ordering::Equal => {
+                                    peers.push(*peer);
+                                }
+                                Ordering::Greater => {}
                             }
-                            maybe_ret = Some(sync_leap);
-                            peers = vec![*peer];
                         }
                     }
                 }
+                PeerState::RequestSent | PeerState::Rejected | PeerState::CouldntFetch => {}
             }
         }
 
         match maybe_ret {
-            Some(v) => Ok((*v.clone(), peers)),
+            Some(sync_leap) => Ok((*sync_leap.clone(), peers)),
             None => {
                 if reject_count > 0 {
                     Err(LeapActivityError::TooOld(self.block_hash, peers))

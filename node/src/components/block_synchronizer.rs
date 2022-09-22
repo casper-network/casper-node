@@ -100,16 +100,16 @@ impl BlockSynchronizer {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) {
-        if let None = self.builders.get_mut(&block_hash) {
-            self.builders.insert(
+        // TODO - for the case where the builder already exists and it has
+        // `should_fetch_execution_state == false`, should we toggle fetching of execution state on
+        // here if `should_fetch_execution_state == true`?
+        self.builders.entry(block_hash).or_insert_with(|| {
+            BlockBuilder::new_minimal(
                 block_hash,
-                BlockBuilder::new_minimal(
-                    block_hash,
-                    should_fetch_execution_state,
-                    max_simultaneous_peers,
-                ),
-            );
-        }
+                should_fetch_execution_state,
+                max_simultaneous_peers,
+            )
+        });
     }
 
     pub(crate) fn leap(
@@ -127,9 +127,9 @@ impl BlockSynchronizer {
             if let Some(data) = maybe_fat_block_header {
                 let block_hash = builder.block_hash();
                 let era_id = data.block_header.era_id();
-                for (pk, sig) in data.block_signatures.proofs {
+                for (public_key, sig) in data.block_signatures.proofs {
                     builder.apply_finality_signature(
-                        FinalitySignature::new(block_hash, era_id, sig, pk),
+                        FinalitySignature::new(block_hash, era_id, sig, public_key),
                         None,
                     );
                 }
@@ -144,6 +144,7 @@ impl BlockSynchronizer {
                     block_hash,
                     sync_leap,
                     peers,
+                    self.fault_tolerance_fraction,
                     should_fetch_execution_state,
                     max_simultaneous_peers,
                 );
@@ -195,7 +196,7 @@ impl BlockSynchronizer {
                 entry.insert(BlockBuilder::new(
                     request.block_hash,
                     era_id,
-                    Rc::new(validator_matrix),
+                    validator_matrix,
                     request.should_fetch_execution_state,
                     max_simultaneous_peers,
                 ));
