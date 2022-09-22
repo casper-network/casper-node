@@ -369,7 +369,7 @@ impl MainReactor {
                 if let Some(effects) = initialize_component(
                     effect_builder,
                     &mut self.diagnostics_port,
-                    "diagnotics".to_string(),
+                    "diagnostics".to_string(),
                     MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
                 ) {
                     return effects;
