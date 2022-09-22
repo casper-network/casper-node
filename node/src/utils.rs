@@ -28,6 +28,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use fs2::FileExt;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 #[cfg(test)]
 use once_cell::sync::Lazy;
@@ -425,8 +426,19 @@ impl LockedLineWriter {
     pub(crate) fn write_line(&self, line: &str) {
         match self.0.lock() {
             Ok(mut guard) => {
+                // Acquire a lock on the file. This ensures we do not garble output when multiple
+                // nodes are writing to the same file.
+                if let Err(err) = guard.lock_exclusive() {
+                    warn!(%line, %err, "could not acquire file lock, not writing line");
+                    return;
+                }
+
                 if let Err(err) = guard.write_all(line.as_bytes()) {
                     warn!(%line, %err, "could not finish writing line");
+                }
+
+                if let Err(err) = guard.unlock() {
+                    warn!(%err, "failed to release file lock in locked line writer, ignored");
                 }
             }
             Err(_) => {
