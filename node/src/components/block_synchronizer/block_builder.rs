@@ -320,6 +320,7 @@ impl BlockBuilder {
         }
     }
 
+    // TODO: this needs to be called from somewhere, ya?
     pub(crate) fn apply_global_state(
         &mut self,
         global_state: Digest,

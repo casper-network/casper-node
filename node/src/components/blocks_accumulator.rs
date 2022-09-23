@@ -45,7 +45,7 @@ pub(crate) struct BlocksAccumulator {
     validator_matrix: ValidatorMatrix,
 }
 
-pub(crate) enum LeapInstruction {
+pub(crate) enum SyncInstruction {
     Leap,
     CaughtUp,
     BlockSync {
@@ -77,7 +77,16 @@ impl BlocksAccumulator {
         }
     }
 
-    pub(crate) fn should_leap(&mut self, starting_with: StartingWith) -> LeapInstruction {
+    pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
+        // BEFORE the f-seq cant help you, LEAP
+        // ? |------------- future chain ------------------------>
+        // IN f-seq not in range of tip, LEAP
+        // |------------- future chain ----?-ATTEMPT_EXECUTION_THRESHOLD->
+        // IN f-seq in range of tip, CAUGHT UP (which will ultimately result in EXEC)
+        // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
+        // AFTER the f-seq cant help you, SYNC-all-state
+        // |------------- future chain ------------------------> ?
+
         const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
 
         let block_hash = *starting_with.block_hash();
@@ -89,11 +98,11 @@ impl BlocksAccumulator {
                 StartingWith::Hash(trusted_hash) => match self.block_acceptors.get(&trusted_hash) {
                     None => {
                         // the accumulator is unaware of the starting-with block
-                        return LeapInstruction::Leap;
+                        return SyncInstruction::Leap;
                     }
                     Some(block_acceptor) => match block_acceptor.block_height() {
                         None => {
-                            return LeapInstruction::Leap;
+                            return SyncInstruction::Leap;
                         }
                         Some(block_height) => block_height,
                     },
@@ -105,29 +114,42 @@ impl BlocksAccumulator {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
                     if let Some(block_acceptor) = self.block_acceptors.get_mut(child_hash) {
                         match self.validator_matrix.validator_weights(highest_era_id) {
-                            None => return LeapInstruction::Leap,
+                            None => return SyncInstruction::Leap,
                             Some(_) => {
                                 // TODO: we need to make sure we wait to get enuff finality signatures
                                 if block_acceptor.can_execute() {
-                                    return LeapInstruction::CaughtUp;
+                                    return SyncInstruction::CaughtUp;
                                 }
                             }
                         };
                     }
-                    return LeapInstruction::BlockSync {
+
+                    // not within range of tip, but we have a likely block to attempt
+                    // state acquisition for
+                    let should_fetch_execution_state: bool = true; // figure this bit out
+                    return SyncInstruction::BlockSync {
                         block_hash: *child_hash,
-                        should_fetch_execution_state: false,
+                        should_fetch_execution_state,
                     };
                 }
             }
         }
-        LeapInstruction::Leap
+        SyncInstruction::Leap
     }
 
-    pub(crate) fn can_execute(&self, block_hash: &BlockHash) -> bool {
-        todo!("use block acceptors to determine if execution can be attempted or not");
-        false
-    }
+    // fn can_execute(&self, block_hash: &BlockHash) -> SyncInstruction {
+    //     todo!("use block acceptors to determine if execution can be attempted or not");
+    //     // BEFORE the f-seq cant help you, SyncInstruction::Leap
+    //     // ? |------------- future chain ------------------------>
+    //     // if block.era_id == tip.era_id
+    //     // IN f-seq not in range of tip, SyncInstruction::BlockSync(block_hash, all) else SyncInstruction::Leap
+    //     // |------------- future chain ----?-ATTEMPT_EXECUTION_THRESHOLD-T>
+    //     // IN f-seq in range of tip, SyncInstruction::BlockExec(block_hash) // not all
+    //     // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
+    //     // AFTER the f-seq cant help you, SyncInstruction::Leap // jazz_hands!("not sure")
+    //     // |------------- future chain ------------------------> ?
+    //     SyncInstruction::Leap
+    // }
 
     fn handle_block_added<REv>(
         &mut self,
