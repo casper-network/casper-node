@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     sync::{Arc, RwLock},
@@ -21,7 +22,7 @@ pub(crate) enum SignatureWeight {
     Sufficient,
 }
 
-#[derive(DataSize, Debug, Serialize, Default)]
+#[derive(Clone, DataSize, Debug, Serialize, Default)]
 pub(crate) struct ValidatorMatrix {
     inner: Arc<RwLock<BTreeMap<EraId, EraValidatorWeights>>>,
     #[data_size(skip)]
@@ -91,21 +92,25 @@ impl ValidatorMatrix {
                 .read()
                 .unwrap()
                 .get(&era_id)?
-                .validator_public_keys(),
+                .validator_public_keys()
+                .cloned()
+                .collect(),
         )
     }
 
-    pub(crate) fn missing_signatures(
+    pub(crate) fn missing_validators<'a>(
         &self,
         era_id: EraId,
-        signatures: &[FinalitySignature],
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> Option<Vec<PublicKey>> {
         Some(
             self.inner
                 .read()
                 .unwrap()
                 .get(&era_id)?
-                .missing_signatures(signatures),
+                .missing_validators(validator_keys)
+                .cloned()
+                .collect(),
         )
     }
 
@@ -168,30 +173,26 @@ impl EraValidatorWeights {
         self.validator_weights.is_empty()
     }
 
-    pub(crate) fn weights(&self) -> BTreeMap<PublicKey, U512> {
-        self.validator_weights.clone()
+    pub(crate) fn weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.validator_weights
     }
 
     pub(crate) fn get_total_weight(&self) -> U512 {
         self.validator_weights.values().copied().sum()
     }
 
-    pub(crate) fn validator_public_keys(&self) -> Vec<PublicKey> {
-        self.validator_weights.keys().cloned().collect()
+    pub(crate) fn validator_public_keys(&self) -> impl Iterator<Item = &PublicKey> {
+        self.validator_weights.keys()
     }
 
-    pub(crate) fn missing_signatures(&self, signatures: &[FinalitySignature]) -> Vec<PublicKey> {
-        let signed = signatures
-            .iter()
-            .map(|fs| fs.public_key.clone())
-            .collect_vec();
-        let mut ret = vec![];
-        for (k, v) in self.weights() {
-            if signed.contains(&k) == false {
-                ret.push(k.clone());
-            }
-        }
-        ret
+    pub(crate) fn missing_validators<'a>(
+        &self,
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
+    ) -> impl Iterator<Item = &'_ PublicKey> {
+        let provided_keys: HashSet<_> = validator_keys.cloned().collect();
+        self.validator_weights
+            .keys()
+            .filter(move |&validator| !provided_keys.contains(validator))
     }
 
     pub(crate) fn get_weight(&self, public_key: &PublicKey) -> U512 {
@@ -215,7 +216,7 @@ impl EraValidatorWeights {
         let strict = Ratio::new(1, 2) * (Ratio::from_integer(1) + finality_threshold_fraction);
         let total_era_weight = self.get_total_weight();
         let signature_weight: U512 = validator_keys
-            .map(|validator_key| self.get_weight(&validator_key))
+            .map(|validator_key| self.get_weight(validator_key))
             .sum();
         if signature_weight * U512::from(*strict.denom())
             >= total_era_weight * U512::from(*strict.numer())

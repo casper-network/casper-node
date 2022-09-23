@@ -77,7 +77,7 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
-        let public_keys = validator_weights.validator_public_keys();
+        let public_keys = validator_weights.validator_public_keys().cloned().collect();
         let peer_list = PeerList::new(max_simultaneous_peers);
         BlockBuilder {
             block_hash,

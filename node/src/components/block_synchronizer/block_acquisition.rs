@@ -206,16 +206,17 @@ impl BlockAcquisitionState {
                     .into_iter()
                     .map(|fs| acquired_signatures.apply_signature(fs));
 
-                match validator_weights
-                    .has_sufficient_weight(acquired_signatures.have_signatures())
+                match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient | SignatureWeight::Weak => {
                         // Should not change state.
                         return Ok(());
                     }
-                    SignatureWeight::Sufficient => BlockAcquisitionState::HaveStrictFinalitySignatures(
-                        acquired_signatures.clone(),
-                    ),
+                    SignatureWeight::Sufficient => {
+                        BlockAcquisitionState::HaveStrictFinalitySignatures(
+                            acquired_signatures.clone(),
+                        )
+                    }
                 }
             }
             BlockAcquisitionState::HaveExecutionEffects(header, acquired)
@@ -407,7 +408,10 @@ impl BlockAcquisitionState {
                         peer_list,
                         rng,
                         block_header,
-                        validator_weights.missing_signatures(&acquired.have_signatures()),
+                        validator_weights
+                            .missing_validators(acquired.have_signatures())
+                            .cloned()
+                            .collect(),
                     ))
                 }
             }
@@ -504,7 +508,10 @@ impl BlockAcquisitionState {
                         peer_list,
                         rng,
                         block_header.as_ref(),
-                        validator_weights.missing_signatures(&acquired.have_signatures()),
+                        validator_weights
+                            .missing_validators(acquired.have_signatures())
+                            .cloned()
+                            .collect(),
                     ))
                 }
             }

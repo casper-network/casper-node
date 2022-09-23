@@ -218,7 +218,6 @@ impl BlocksAccumulator {
         }
 
         let block_hash = finality_signature.block_hash;
-        let validator_weights = BTreeMap::new(); // TODO: Use proper weights.
         let mut has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 match BlockAcceptor::new_from_finality_signature(finality_signature) {
