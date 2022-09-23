@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use casper_types::EraId;
+
 use crate::types::{BlockAdded, FinalitySignature, NodeId};
 
 #[derive(Debug)]
@@ -11,6 +13,9 @@ pub(crate) enum Event {
     ReceivedFinalitySignature {
         finality_signature: Box<FinalitySignature>,
         sender: NodeId,
+    },
+    UpdatedValidatorMatrix {
+        era_id: EraId,
     },
 }
 
@@ -25,6 +30,9 @@ impl Display for Event {
                 sender,
             } => {
                 write!(f, "received {} from {}", finality_signature, sender)
+            }
+            Event::UpdatedValidatorMatrix { era_id } => {
+                write!(f, "validator matrix update for era {}", era_id)
             }
         }
     }

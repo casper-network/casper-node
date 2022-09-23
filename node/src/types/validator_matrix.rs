@@ -139,16 +139,18 @@ impl ValidatorMatrix {
         )
     }
 
-    pub(crate) fn is_bogus_validator(&self, era_id: EraId, public_key: &PublicKey) -> bool {
-        self.inner
-            .read()
-            .unwrap()
-            .get(&era_id)
-            .map_or(false, |era_validator_weights| {
-                !era_validator_weights
-                    .validator_public_keys()
-                    .any(|validator_public_key| validator_public_key == public_key)
-            })
+    pub(crate) fn bogus_validators<'a>(
+        &self,
+        era_id: EraId,
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
+    ) -> Option<Vec<PublicKey>> {
+        Some(
+            self.inner
+                .read()
+                .unwrap()
+                .get(&era_id)?
+                .bogus_validators(validator_keys),
+        )
     }
 
     pub(crate) fn fault_tolerance_threshold(&self) -> Ratio<u64> {
@@ -200,11 +202,21 @@ impl EraValidatorWeights {
     pub(crate) fn missing_validators<'a>(
         &self,
         validator_keys: impl Iterator<Item = &'a PublicKey>,
-    ) -> impl Iterator<Item = &'_ PublicKey> {
+    ) -> impl Iterator<Item = &PublicKey> {
         let provided_keys: HashSet<_> = validator_keys.cloned().collect();
         self.validator_weights
             .keys()
             .filter(move |&validator| !provided_keys.contains(validator))
+    }
+
+    pub(crate) fn bogus_validators<'a>(
+        &self,
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
+    ) -> Vec<PublicKey> {
+        validator_keys
+            .filter(move |validator_key| !self.validator_weights.keys().contains(validator_key))
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn get_weight(&self, public_key: &PublicKey) -> U512 {

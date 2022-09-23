@@ -57,6 +57,21 @@ impl BlockAcceptor {
         })
     }
 
+    pub(super) fn remove_bogus_validators(
+        &mut self,
+        validator_matrix: &ValidatorMatrix,
+    ) -> Option<Vec<PublicKey>> {
+        let bogus_validators =
+            validator_matrix.bogus_validators(self.era_id(), self.signatures.keys())?;
+
+        bogus_validators.iter().for_each(|bogus_validator| {
+            debug!(%bogus_validator, "bogus validator");
+            self.signatures.remove(bogus_validator);
+        });
+
+        Some(bogus_validators)
+    }
+
     pub(super) fn register_signature(
         &mut self,
         finality_signature: FinalitySignature,
@@ -103,27 +118,6 @@ impl BlockAcceptor {
 
         self.block_added = Some(block_added);
         Ok(())
-    }
-
-    pub(super) fn has_sufficient_signatures(
-        &self,
-        validator_matrix: &ValidatorMatrix,
-    ) -> Option<SignatureWeight> {
-        // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid
-        // creating it from `BTreeMap<PublicKey, FinalitySignature>` on every call.
-        let mut block_signatures = BlockSignatures::new(self.block_hash, self.era_id);
-        self.signatures
-            .iter()
-            .for_each(|(public_key, finality_signature)| {
-                block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
-            });
-
-        validator_matrix.has_sufficient_weight(self.era_id, self.signatures.keys())
-    }
-
-    pub(super) fn remove_signatures(&mut self, signers: &[&PublicKey]) {
-        self.signatures
-            .retain(|public_key, _| !signers.contains(&public_key))
     }
 
     pub(super) fn has_block_added(&self) -> bool {

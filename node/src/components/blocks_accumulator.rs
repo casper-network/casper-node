@@ -147,7 +147,7 @@ impl BlocksAccumulator {
             self.block_parents.insert(*parent_hash, block_hash);
         }
         let era_id = block_added.block.header().era_id();
-        let has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
+        let can_execute = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 if let Err(err) = block_added.validate(&()) {
                     warn!(%err, "received invalid block");
@@ -163,29 +163,26 @@ impl BlocksAccumulator {
                             .ignore();
                     }
                 };
-                Some(SignatureWeight::Insufficient)
+                false
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
                 if let Err(_error) = accumulated_block.register_block(block_added) {
                     return Effects::new();
                 }
-                accumulated_block.has_sufficient_signatures(&self.validator_matrix)
+                accumulated_block.can_execute(&self.validator_matrix)
             }
         };
 
-        match has_sufficient_signatures {
-            Some(SignatureWeight::Sufficient) => {
-                if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
-                    self.announce(effect_builder, &accumulated_block)
-                } else {
-                    error!(%block_hash, "should have block acceptor for block");
-                    Effects::new()
-                }
-            }
-            Some(SignatureWeight::Insufficient) | Some(SignatureWeight::Weak) | None => {
+        if can_execute {
+            if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
+                self.announce(effect_builder, &accumulated_block)
+            } else {
+                error!(%block_hash, "should have block acceptor for block");
                 Effects::new()
             }
+        } else {
+            Effects::new()
         }
 
         // TODO: Check for duplicated block and given height from given sender.
@@ -208,25 +205,28 @@ impl BlocksAccumulator {
         // }
 
         if let Err(error) = finality_signature.is_verified() {
-            warn!(%error, "received invalid finality signature");
+            warn!(%error, %sender, %finality_signature, "received invalid finality signature");
             return effect_builder
                 .announce_disconnect_from_peer(sender)
                 .ignore();
         }
 
         let block_hash = finality_signature.block_hash;
-
-        if let Entry::Occupied(entry) = self.block_acceptors.entry(block_hash) {
-            let accumulated_block = entry.into_mut();
-            let is_bogus_validator = self
-                .validator_matrix
-                .is_bogus_validator(accumulated_block.era_id(), &finality_signature.public_key);
-            if is_bogus_validator {
-                self.remove_signatures(&block_hash, &[&finality_signature.public_key])
+        let bogus_validators = self.validator_matrix.bogus_validators(
+            finality_signature.era_id,
+            std::iter::once(&finality_signature.public_key),
+        );
+        match bogus_validators {
+            Some(bogus_validators) if !bogus_validators.is_empty() => {
+                warn!(%sender, %finality_signature, "bogus validator");
+                return effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore();
             }
+            Some(_) | None => (),
         }
 
-        let mut has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
+        let mut can_execute = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 match BlockAcceptor::new_from_finality_signature(finality_signature) {
                     Ok(block_acceptor) => entry.insert(block_acceptor),
@@ -236,7 +236,7 @@ impl BlocksAccumulator {
                             .ignore()
                     }
                 };
-                Some(SignatureWeight::Insufficient)
+                false
             }
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
@@ -248,40 +248,39 @@ impl BlocksAccumulator {
                         .announce_disconnect_from_peer(sender)
                         .ignore();
                 };
-                accumulated_block.has_sufficient_signatures(&self.validator_matrix)
+                accumulated_block.can_execute(&self.validator_matrix)
             }
         };
 
-        match has_sufficient_signatures {
-            Some(SignatureWeight::Sufficient) => {
-                if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
-                    self.announce(effect_builder, &accumulated_block)
-                } else {
-                    error!(%block_hash, "should have block acceptor for block");
-                    Effects::new()
-                }
-            }
-            Some(SignatureWeight::Insufficient) | Some(SignatureWeight::Weak) | None => {
+        if can_execute {
+            if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
+                self.announce(effect_builder, &accumulated_block)
+            } else {
+                error!(%block_hash, "should have block acceptor for block");
                 Effects::new()
-            } // TODO: Handle the BogusValidators variant, maybe only in the `handle_finality_signature`
-              // SignaturesFinality::BogusValidators(ref public_keys) => {
-              //     self.remove_signatures(&block_hash, public_keys);
-
-              //     has_sufficient_signatures = self
-              //         .block_acceptors
-              //         .get(&block_hash)
-              //         .map(|accumulated_block| {
-              //             accumulated_block.has_sufficient_signatures(
-              //                 self.fault_tolerance_fraction,
-              //                 &BTreeMap::new(),
-              //             )
-              //         })
-              //         .unwrap_or_else(|| {
-              //             error!(%block_hash, "should have block");
-              //             SignaturesFinality::BogusValidators(public_keys.clone())
-              //         })
-              // }
+            }
+        } else {
+            Effects::new()
         }
+
+        // TODO: Handle the BogusValidators variant, maybe only in the `handle_finality_signature`
+        // SignaturesFinality::BogusValidators(ref public_keys) => {
+        //     self.remove_signatures(&block_hash, public_keys);
+
+        //     has_sufficient_signatures = self
+        //         .block_acceptors
+        //         .get(&block_hash)
+        //         .map(|accumulated_block| {
+        //             accumulated_block.has_sufficient_signatures(
+        //                 self.fault_tolerance_fraction,
+        //                 &BTreeMap::new(),
+        //             )
+        //         })
+        //         .unwrap_or_else(|| {
+        //             error!(%block_hash, "should have block");
+        //             SignaturesFinality::BogusValidators(public_keys.clone())
+        //         })
+        // }
 
         // TODO: Special care for a switch block?
 
@@ -292,6 +291,19 @@ impl BlocksAccumulator {
 
         // TODO: Reject if the era is out of the range we currently handle.
         // TODO: Limit the number of items per peer.
+    }
+
+    fn handle_updated_validator_matrix<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
+    ) -> Effects<Event> {
+        for block_acceptor in self.block_acceptors.values_mut() {
+            block_acceptor.remove_bogus_validators(&self.validator_matrix);
+        }
+
+        // TODO: Disconnect from the peers who gave us the bogus validators.
+        Effects::new()
     }
 
     // fn block_height(&self, block_hash: &BlockHash) -> Option<u64> {
@@ -315,12 +327,6 @@ impl BlocksAccumulator {
         REv: Send,
     {
         todo!()
-    }
-
-    fn remove_signatures(&mut self, block_hash: &BlockHash, signers: &[&PublicKey]) {
-        if let Some(accumulated_block) = self.block_acceptors.get_mut(block_hash) {
-            accumulated_block.remove_signatures(signers);
-        }
     }
 
     fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {
@@ -392,6 +398,9 @@ where
                 finality_signature,
                 sender,
             } => self.handle_finality_signature(effect_builder, *finality_signature, sender),
+            Event::UpdatedValidatorMatrix { era_id } => {
+                self.handle_updated_validator_matrix(effect_builder, era_id)
+            }
         }
     }
 }
