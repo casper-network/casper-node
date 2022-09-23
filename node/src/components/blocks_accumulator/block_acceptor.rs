@@ -121,9 +121,9 @@ impl BlockAcceptor {
         validator_matrix.has_sufficient_weight(self.era_id, self.signatures.keys())
     }
 
-    pub(super) fn remove_signatures(&mut self, signers: &[PublicKey]) {
+    pub(super) fn remove_signatures(&mut self, signers: &[&PublicKey]) {
         self.signatures
-            .retain(|public_key, _| !signers.contains(public_key))
+            .retain(|public_key, _| !signers.contains(&public_key))
     }
 
     pub(super) fn has_block_added(&self) -> bool {

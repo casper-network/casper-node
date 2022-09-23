@@ -185,10 +185,7 @@ impl BlocksAccumulator {
             }
             Some(SignatureWeight::Insufficient) | Some(SignatureWeight::Weak) | None => {
                 Effects::new()
-            } // TODO: Handle the BogusValidators variant, maybe only in the `handle_finality_signature`
-              // Some(SignaturesFinality::BogusValidators(ref public_keys)) => {
-              //     self.remove_signatures(&block_hash, public_keys)
-              // }
+            }
         }
 
         // TODO: Check for duplicated block and given height from given sender.
@@ -218,6 +215,17 @@ impl BlocksAccumulator {
         }
 
         let block_hash = finality_signature.block_hash;
+
+        if let Entry::Occupied(entry) = self.block_acceptors.entry(block_hash) {
+            let accumulated_block = entry.into_mut();
+            let is_bogus_validator = self
+                .validator_matrix
+                .is_bogus_validator(accumulated_block.era_id(), &finality_signature.public_key);
+            if is_bogus_validator {
+                self.remove_signatures(&block_hash, &[&finality_signature.public_key])
+            }
+        }
+
         let mut has_sufficient_signatures = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 match BlockAcceptor::new_from_finality_signature(finality_signature) {
@@ -243,8 +251,6 @@ impl BlocksAccumulator {
                 accumulated_block.has_sufficient_signatures(&self.validator_matrix)
             }
         };
-
-        // TODO: Check for bogus validators here.
 
         match has_sufficient_signatures {
             Some(SignatureWeight::Sufficient) => {
@@ -311,7 +317,7 @@ impl BlocksAccumulator {
         todo!()
     }
 
-    fn remove_signatures(&mut self, block_hash: &BlockHash, signers: &[PublicKey]) {
+    fn remove_signatures(&mut self, block_hash: &BlockHash, signers: &[&PublicKey]) {
         if let Some(accumulated_block) = self.block_acceptors.get_mut(block_hash) {
             accumulated_block.remove_signatures(signers);
         }

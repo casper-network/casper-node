@@ -139,6 +139,18 @@ impl ValidatorMatrix {
         )
     }
 
+    pub(crate) fn is_bogus_validator(&self, era_id: EraId, public_key: &PublicKey) -> bool {
+        self.inner
+            .read()
+            .unwrap()
+            .get(&era_id)
+            .map_or(false, |era_validator_weights| {
+                !era_validator_weights
+                    .validator_public_keys()
+                    .any(|validator_public_key| validator_public_key == public_key)
+            })
+    }
+
     pub(crate) fn fault_tolerance_threshold(&self) -> Ratio<u64> {
         self.finality_threshold_fraction
     }
