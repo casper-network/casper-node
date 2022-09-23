@@ -1,6 +1,5 @@
-use std::collections::HashSet;
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     sync::{Arc, RwLock},
 };
 

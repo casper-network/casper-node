@@ -672,7 +672,7 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis request.
-    fn commit_genesis(
+    pub(crate) fn commit_genesis(
         &self,
         chainspec: &Chainspec,
         chainspec_raw_bytes: &ChainspecRawBytes,
@@ -706,7 +706,7 @@ impl ContractRuntime {
         result
     }
 
-    fn commit_upgrade(
+    pub(crate) fn commit_upgrade(
         &self,
         upgrade_config: UpgradeConfig,
     ) -> Result<UpgradeSuccess, engine_state::Error> {

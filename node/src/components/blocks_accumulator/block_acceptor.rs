@@ -7,12 +7,11 @@ use tracing::{debug, error, warn};
 use casper_types::{EraId, PublicKey, U512};
 
 use super::Error;
-use crate::types::ValidatorMatrix;
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
         BlockAdded, BlockHash, BlockSignatures, EraValidatorWeights, FetcherItem,
-        FinalitySignature, SignatureWeight,
+        FinalitySignature, SignatureWeight, ValidatorMatrix,
     },
     utils::Latch,
 };

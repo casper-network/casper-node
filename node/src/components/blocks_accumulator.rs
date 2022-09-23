@@ -116,7 +116,8 @@ impl BlocksAccumulator {
                         match self.validator_matrix.validator_weights(highest_era_id) {
                             None => return SyncInstruction::Leap,
                             Some(_) => {
-                                // TODO: we need to make sure we wait to get enuff finality signatures
+                                // TODO: we need to make sure we wait to get enuff finality
+                                // signatures
                                 if block_acceptor.can_execute() {
                                     return SyncInstruction::CaughtUp;
                                 }
@@ -142,13 +143,13 @@ impl BlocksAccumulator {
     //     // BEFORE the f-seq cant help you, SyncInstruction::Leap
     //     // ? |------------- future chain ------------------------>
     //     // if block.era_id == tip.era_id
-    //     // IN f-seq not in range of tip, SyncInstruction::BlockSync(block_hash, all) else SyncInstruction::Leap
-    //     // |------------- future chain ----?-ATTEMPT_EXECUTION_THRESHOLD-T>
-    //     // IN f-seq in range of tip, SyncInstruction::BlockExec(block_hash) // not all
-    //     // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
-    //     // AFTER the f-seq cant help you, SyncInstruction::Leap // jazz_hands!("not sure")
-    //     // |------------- future chain ------------------------> ?
-    //     SyncInstruction::Leap
+    //     // IN f-seq not in range of tip, SyncInstruction::BlockSync(block_hash, all) else
+    // SyncInstruction::Leap     // |------------- future chain
+    // ----?-ATTEMPT_EXECUTION_THRESHOLD-T>     // IN f-seq in range of tip,
+    // SyncInstruction::BlockExec(block_hash) // not all     // |------------- future chain
+    // ----?ATTEMPT_EXECUTION_THRESHOLD>     // AFTER the f-seq cant help you,
+    // SyncInstruction::Leap // jazz_hands!("not sure")     // |------------- future chain
+    // ------------------------> ?     SyncInstruction::Leap
     // }
 
     fn handle_block_added<REv>(

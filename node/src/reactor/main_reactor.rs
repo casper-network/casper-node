@@ -72,10 +72,7 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{
-            fetchers::Fetchers,
-            utils::{initialize_component, maybe_pre_genesis, maybe_upgrade},
-        },
+        main_reactor::{fetchers::Fetchers, utils::initialize_component},
         EventQueueHandle, ReactorExit,
     },
     types::{
@@ -367,13 +364,6 @@ impl reactor::Reactor for MainReactor {
             )
             .ignore(),
             MainEvent::CheckStatus => self.check_status(effect_builder, rng),
-            MainEvent::GenesisResult(result) => {
-                self.handle_commit_genesis_result(effect_builder, result)
-            }
-            MainEvent::UpgradeResult {
-                previous_block_header,
-                result,
-            } => self.handle_upgrade_result(effect_builder, previous_block_header, result),
             // delegate all fetcher activity to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::DeployFetcher(..)
             | MainEvent::DeployFetcherRequest(..)

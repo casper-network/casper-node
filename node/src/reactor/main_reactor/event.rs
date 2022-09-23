@@ -62,14 +62,6 @@ pub(crate) enum MainEvent {
     CheckStatus,
     #[from]
     ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
-    #[from]
-    GenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
-    #[from]
-    UpgradeResult {
-        previous_block_header: Box<BlockHeader>,
-        #[serde(skip_serializing)]
-        result: Result<UpgradeSuccess, engine_state::Error>,
-    },
 
     // SyncLeaper
     #[from]
@@ -287,8 +279,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::CheckStatus => "CheckStatus",
             MainEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             MainEvent::SmallNetwork(_) => "SmallNetwork",
-            MainEvent::GenesisResult(_) => "GenesisResult",
-            MainEvent::UpgradeResult { .. } => "UpgradeResult",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::BlockProposer(_) => "BlockProposer",
             MainEvent::Storage(_) => "Storage",
@@ -472,8 +462,6 @@ impl Display for MainEvent {
             }
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
             MainEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
-            MainEvent::GenesisResult(result) => write!(f, "genesis result: {:?}", result),
-            MainEvent::UpgradeResult { result, .. } => write!(f, "upgrade result: {:?}", result),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
