@@ -149,7 +149,7 @@ pub(crate) struct MainReactor {
     attempts: usize,
     idle_tolerances: TimeDiff,
 
-    validator_matrix: Arc<RwLock<ValidatorMatrix>>,
+    validator_matrix: ValidatorMatrix,
 }
 
 enum CatchUpInstruction {
@@ -565,9 +565,8 @@ impl reactor::Reactor for MainReactor {
 
         let protocol_version = chainspec.protocol_config.version;
 
-        let validator_matrix = Arc::new(RwLock::new(ValidatorMatrix::new(
-            chainspec.highway_config.finality_threshold_fraction,
-        )));
+        let validator_matrix =
+            ValidatorMatrix::new(chainspec.highway_config.finality_threshold_fraction);
 
         let trusted_hash = config.value().node.trusted_hash;
 
@@ -1128,8 +1127,6 @@ impl reactor::Reactor for MainReactor {
                 // the components that need to follow the era validators should have
                 // a handle on the validator matrix
                 self.validator_matrix
-                    .write()
-                    .unwrap()
                     .register_eras(upcoming_era_validators.clone());
 
                 // TODO: SmallNetwork should prolly be changed to use the validator matrix as well
