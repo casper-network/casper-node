@@ -389,7 +389,7 @@ impl BlockAcquisitionState {
     pub(super) fn next_action(
         &mut self,
         peer_list: &PeerList,
-        validator_weights: EraValidatorWeights,
+        validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
     ) -> Result<BlockAcquisitionAction, Error> {
@@ -433,7 +433,7 @@ impl BlockAcquisitionState {
     fn resolve_execution_state_divergence(
         &self,
         peer_list: &PeerList,
-        validator_weights: EraValidatorWeights,
+        validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
     ) -> Result<BlockAcquisitionAction, Error> {

@@ -28,7 +28,7 @@ use crate::{
     },
     types::{
         Block, BlockAdded, BlockBody, BlockHash, BlockHeader, DeployHash, EraValidatorWeights,
-        FinalitySignature, NodeId, SignatureWeight, ValidatorMatrix,
+        FinalitySignature, NodeId, SignatureWeight, SyncLeap, ValidatorMatrix,
     },
     utils::Source::Peer,
     NodeRng,
@@ -310,7 +310,7 @@ impl BlockBuilder {
                 self.should_fetch_execution_state,
             ) {
                 self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisitionError(error));
+                return Err(Error::BlockAcquisition(error));
             }
             self.touch();
             self.promote_peer(maybe_peer);

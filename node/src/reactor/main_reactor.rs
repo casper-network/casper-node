@@ -28,7 +28,6 @@ use tracing::{error, info};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
-use crate::types::{BlockHeader, BlockPayload, FinalizedBlock};
 use crate::{
     components::{
         block_proposer::{self, BlockProposer},
@@ -36,7 +35,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         blocks_accumulator::{BlocksAccumulator, LeapInstruction, StartingWith},
         chain_synchronizer::{self, ChainSynchronizer},
-        consensus::{self, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraReport, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::{self, DiagnosticsPort},
@@ -55,6 +54,7 @@ use crate::{
         upgrade_watcher::{self, UpgradeWatcher},
         Component,
     },
+    contract_runtime::ExecutionPreState,
     effect::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
@@ -78,8 +78,9 @@ use crate::{
         EventQueueHandle, ReactorExit,
     },
     types::{
-        ActivationPoint, Block, BlockAdded, BlockHash, Chainspec, ChainspecRawBytes, Deploy,
-        ExitCode, FinalitySignature, Item, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        ActivationPoint, Block, BlockAdded, BlockHash, BlockHeader, BlockPayload, Chainspec,
+        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId,
+        SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,

@@ -11,8 +11,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncReadExt;
 
-use casper_types::system::auction::ValidatorWeights;
-use casper_types::{crypto, EraId, PublicKey, U512};
+use casper_types::{crypto, system::auction::ValidatorWeights, EraId, PublicKey, U512};
 
 use crate::{
     components::linear_chain::{self, BlockSignatureError},

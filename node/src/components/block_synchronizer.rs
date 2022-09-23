@@ -152,7 +152,7 @@ impl BlockSynchronizer {
                             sync_leap,
                             validator_weights,
                             peers,
-                            self.fault_tolerance_fraction,
+                            self.validator_matrix.fault_tolerance_threshold(),
                             should_fetch_execution_state,
                             max_simultaneous_peers,
                         );

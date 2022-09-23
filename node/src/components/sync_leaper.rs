@@ -5,6 +5,7 @@ mod error;
 mod event;
 
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, HashMap},
     fmt::{Display, Formatter},
 };
