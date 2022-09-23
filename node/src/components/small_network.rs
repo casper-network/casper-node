@@ -939,15 +939,15 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (event, self.status.clone()) {
-            (_, ComponentStatus::Fatal(msg)) => {
+        match (self.status.clone(), event) {
+            (ComponentStatus::Fatal(msg), _) => {
                 error!(
                     msg,
                     "should not handle this event when network component has fatal error"
                 );
                 Effects::new()
             }
-            (Event::Initialize, ComponentStatus::Uninitialized) => {
+            (ComponentStatus::Uninitialized, Event::Initialize) => {
                 match self.initialize(effect_builder) {
                     Ok(effects) => effects,
                     Err(error) => {
@@ -957,44 +957,39 @@ where
                     }
                 }
             }
-            (_, ComponentStatus::Uninitialized) => {
-                error!("should not handle this event when network component is uninitialized");
-                self.status = ComponentStatus::Fatal(
-                    "attempt to use uninitialized network component".to_string(),
-                );
+            (ComponentStatus::Uninitialized, _) => {
+                warn!("should not handle this event when network component is uninitialized");
                 Effects::new()
             }
-            (Event::Initialize, ComponentStatus::Initialized) => {
-                error!("should not initialize when network component is already initialized");
-                self.status =
-                    ComponentStatus::Fatal("attempt to reinitialize network component".to_string());
+            (ComponentStatus::Initialized, Event::Initialize) => {
+                // noop
                 Effects::new()
             }
-            (Event::IncomingConnection { incoming, span }, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::IncomingConnection { incoming, span }) => {
                 self.handle_incoming_connection(incoming, span)
             }
-            (Event::IncomingMessage { peer_id, msg, span }, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::IncomingMessage { peer_id, msg, span }) => {
                 self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
             }
             (
+                ComponentStatus::Initialized,
                 Event::IncomingClosed {
                     result,
                     peer_id,
                     peer_addr,
                     span,
                 },
-                ComponentStatus::Initialized,
             ) => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
-            (Event::OutgoingConnection { outgoing, span }, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::OutgoingConnection { outgoing, span }) => {
                 self.handle_outgoing_connection(*outgoing, span)
             }
 
-            (Event::OutgoingDropped { peer_id, peer_addr }, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::OutgoingDropped { peer_id, peer_addr }) => {
                 self.handle_outgoing_dropped(*peer_id, peer_addr)
             }
 
-            (Event::NetworkRequest { req }, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::NetworkRequest { req }) => {
                 match *req {
                     NetworkRequest::SendMessage {
                         dest,
@@ -1049,7 +1044,7 @@ where
                     }
                 }
             }
-            (Event::NetworkInfoRequest { req }, ComponentStatus::Initialized) => match *req {
+            (ComponentStatus::Initialized, Event::NetworkInfoRequest { req }) => match *req {
                 NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
                 NetworkInfoRequest::FullyConnectedPeers { responder } => {
                     let mut symmetric_peers: Vec<NodeId> = self
@@ -1079,7 +1074,7 @@ where
                     responder.respond(symmetric_validator_peers).ignore()
                 }
             },
-            (Event::PeerAddressReceived(gossiped_address), ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::PeerAddressReceived(gossiped_address)) => {
                 let requests = self.outgoing_manager.learn_addr(
                     gossiped_address.into(),
                     false,
@@ -1088,8 +1083,8 @@ where
                 self.process_dial_requests(requests)
             }
             (
-                Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)),
                 ComponentStatus::Initialized,
+                Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)),
             ) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
@@ -1104,20 +1099,20 @@ where
                 }
             }
             (
+                ComponentStatus::Initialized,
                 Event::ContractRuntimeAnnouncement(
                     ContractRuntimeAnnouncement::LinearChainBlock { .. }
                     | ContractRuntimeAnnouncement::CommitStepSuccess { .. },
                 ),
-                ComponentStatus::Initialized,
             ) => Effects::new(),
             (
+                ComponentStatus::Initialized,
                 Event::ContractRuntimeAnnouncement(
                     ContractRuntimeAnnouncement::UpcomingEraValidators {
                         era_that_is_ending,
                         mut upcoming_era_validators,
                     },
                 ),
-                ComponentStatus::Initialized,
             ) => {
                 if era_that_is_ending < self.active_era {
                     debug!("ignoring past era end announcement");
@@ -1163,7 +1158,7 @@ where
 
                 Effects::new()
             }
-            (Event::GossipOurAddress, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::GossipOurAddress) => {
                 let our_address = GossipedAddress::new(
                     self.context
                         .public_addr()
@@ -1180,7 +1175,7 @@ where
                 );
                 effects
             }
-            (Event::SweepOutgoing, ComponentStatus::Initialized) => {
+            (ComponentStatus::Initialized, Event::SweepOutgoing) => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
 
@@ -1195,8 +1190,8 @@ where
                 effects
             }
             (
-                Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
                 ComponentStatus::Initialized,
+                Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
             ) => {
                 self.context.is_syncing().store(false, Ordering::SeqCst);
                 self.close_incoming_connections();

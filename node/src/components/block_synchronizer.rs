@@ -9,17 +9,19 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
-use std::collections::hash_map::ValuesMut;
-use std::rc::Rc;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap},
+    collections::{
+        hash_map::{Entry, ValuesMut},
+        BTreeMap, HashMap,
+    },
     fmt::{self, Display, Formatter},
+    rc::Rc,
 };
 
 use datasize::DataSize;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
@@ -39,9 +41,16 @@ use crate::{
 
 use crate::components::fetcher::Error;
 
-use crate::effect::announcements::BlocklistAnnouncement;
-use crate::effect::requests::{ContractRuntimeRequest, TrieAccumulatorRequest};
-use crate::types::{Block, BlockHeaderWithMetadata, Item, SyncLeap, TrieOrChunk, ValidatorMatrix};
+use crate::{
+    effect::{
+        announcements::BlocklistAnnouncement,
+        requests::{ContractRuntimeRequest, TrieAccumulatorRequest},
+    },
+    types::{
+        Block, BlockHeaderWithMetadata, EraValidatorWeights, Item, SyncLeap, TrieOrChunk,
+        ValidatorMatrix,
+    },
+};
 pub(crate) use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
@@ -55,18 +64,18 @@ pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAc
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub(crate) struct BlockSyncRequest {
-    pub(crate) block_hash: BlockHash,
-    pub(crate) era_id: EraId,
-    pub(crate) should_fetch_execution_state: bool,
-    pub(crate) peer: NodeId,
+    block_hash: BlockHash,
+    era_id: EraId,
+    should_fetch_execution_state: bool,
+    max_simultaneous_peers: u32,
 }
 
 impl Display for BlockSyncRequest {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "complete block ID {} with should fetch execution state: {} from peer {}",
-            self.block_hash, self.should_fetch_execution_state, self.peer
+            "complete block ID {} with should fetch execution state: {}",
+            self.block_hash, self.should_fetch_execution_state
         )
     }
 }
@@ -74,10 +83,8 @@ impl Display for BlockSyncRequest {
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
-    #[data_size(skip)]
-    fault_tolerance_fraction: Ratio<u64>,
     builders: HashMap<BlockHash, BlockBuilder>,
-    validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    validator_matrix: ValidatorMatrix,
     last_progress: Option<Timestamp>,
     global_sync: GlobalStateSynchronizer,
 }
@@ -86,9 +93,8 @@ impl BlockSynchronizer {
     pub(crate) fn new(config: Config, fault_tolerance_fraction: Ratio<u64>) -> Self {
         BlockSynchronizer {
             timeout: config.timeout(),
-            fault_tolerance_fraction,
             builders: Default::default(),
-            validators: Default::default(),
+            validator_matrix: Default::default(),
             last_progress: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
         }
@@ -100,16 +106,16 @@ impl BlockSynchronizer {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) {
-        // TODO - for the case where the builder already exists and it has
-        // `should_fetch_execution_state == false`, should we toggle fetching of execution state on
-        // here if `should_fetch_execution_state == true`?
-        self.builders.entry(block_hash).or_insert_with(|| {
-            BlockBuilder::new_minimal(
+        if self.builders.get_mut(&block_hash).is_none() {
+            self.builders.insert(
                 block_hash,
-                should_fetch_execution_state,
-                max_simultaneous_peers,
-            )
-        });
+                BlockBuilder::new_minimal(
+                    block_hash,
+                    should_fetch_execution_state,
+                    max_simultaneous_peers,
+                ),
+            );
+        }
     }
 
     pub(crate) fn leap(
@@ -120,40 +126,46 @@ impl BlockSynchronizer {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) {
-        fn apply_sigs(
-            builder: &mut BlockBuilder,
-            maybe_fat_block_header: Option<BlockHeaderWithMetadata>,
-        ) {
-            if let Some(data) = maybe_fat_block_header {
-                let block_hash = builder.block_hash();
-                let era_id = data.block_header.era_id();
-                for (public_key, sig) in data.block_signatures.proofs {
-                    builder.apply_finality_signature(
-                        FinalitySignature::new(block_hash, era_id, sig, public_key),
-                        None,
-                    );
-                }
+        fn apply_sigs(builder: &mut BlockBuilder, fat_block_header: BlockHeaderWithMetadata) {
+            let block_hash = builder.block_hash();
+            let era_id = fat_block_header.block_header.era_id();
+            for (public_key, sig) in fat_block_header.block_signatures.proofs {
+                builder.apply_finality_signature(
+                    FinalitySignature::new(block_hash, era_id, sig, public_key),
+                    None,
+                );
             }
         }
 
-        let maybe_fat_block_header = sync_leap.highest_block_header();
-        match self.builders.get_mut(&block_hash) {
-            None => {
-                // create a builder from the leap results
-                let mut builder = BlockBuilder::new_leap(
-                    block_hash,
-                    sync_leap,
-                    peers,
-                    self.fault_tolerance_fraction,
-                    should_fetch_execution_state,
-                    max_simultaneous_peers,
-                );
-                apply_sigs(&mut builder, maybe_fat_block_header);
-                self.builders.insert(block_hash, builder);
-            }
-            Some(builder) => {
-                apply_sigs(builder, maybe_fat_block_header);
-            }
+        sync_leap.apply_validator_weights(&mut self.validator_matrix);
+        if let Some(fat_block_header) = sync_leap.highest_block_header() {
+            match self.builders.get_mut(&block_hash) {
+                Some(builder) => {
+                    apply_sigs(builder, fat_block_header);
+                }
+                None => {
+                    let era_id = fat_block_header.block_header.era_id();
+                    if let Some(vw) = self.validator_matrix.validator_weights(era_id) {
+                        let validator_weights = vw;
+                        let mut builder = BlockBuilder::new_leap(
+                            block_hash,
+                            sync_leap,
+                            validator_weights,
+                            peers,
+                            self.fault_tolerance_fraction,
+                            should_fetch_execution_state,
+                            max_simultaneous_peers,
+                        );
+                        apply_sigs(&mut builder, fat_block_header);
+                        self.builders.insert(block_hash, builder);
+                    } else {
+                        warn!(
+                            "unable to create block builder for block_hash: {}",
+                            block_hash
+                        );
+                    }
+                }
+            };
         }
     }
 
@@ -166,54 +178,36 @@ impl BlockSynchronizer {
             .max()
     }
 
-    fn upsert<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        request: BlockSyncRequest,
-    ) -> Effects<Event>
-    where
-        REv: From<FetcherRequest<BlockAdded>> + Send,
-    {
-        match self.builders.entry(request.block_hash) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().register_peer(request.peer);
-            }
-            Entry::Vacant(entry) => {
-                let era_id = request.era_id;
-                let mut validator_matrix = ValidatorMatrix::new(self.fault_tolerance_fraction);
-                match self.validators.get(&era_id) {
-                    None => {
-                        debug!(
-                            era_id = %era_id,
-                            "missing validators for given era"
-                        );
-                    }
-                    Some(validators) => validator_matrix.register_era(era_id, validators.clone()),
-                };
-
-                let max_simultaneous_peers = 3; //TODO: get from config
-
-                entry.insert(BlockBuilder::new(
-                    request.block_hash,
-                    era_id,
-                    validator_matrix,
-                    request.should_fetch_execution_state,
-                    max_simultaneous_peers,
-                ));
-            }
-        }
-        Effects::new()
-    }
-}
-
-impl BlockSynchronizer {
     fn register_peer(&mut self, block_hash: &BlockHash, peer: NodeId) {
         if let Some(builder) = self.builders.get_mut(block_hash) {
             builder.register_peer(peer)
         }
     }
 
-    fn next<REv>(&mut self, effect_builder: EffectBuilder<REv>, rng: &mut NodeRng) -> Effects<Event>
+    fn upsert(&mut self, request: BlockSyncRequest) {
+        if let Entry::Vacant(v) = self.builders.entry(request.block_hash) {
+            let validator_matrix = &self.validator_matrix;
+            match validator_matrix.validator_weights(request.era_id) {
+                Some(validator_weights) => {
+                    let builder = BlockBuilder::new(
+                        request.block_hash,
+                        request.era_id,
+                        validator_weights,
+                        request.should_fetch_execution_state,
+                        request.max_simultaneous_peers,
+                    );
+                    v.insert(builder);
+                }
+                None => {}
+            }
+        }
+    }
+
+    fn need_next<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+    ) -> Effects<Event>
     where
         REv: From<FetcherRequest<BlockAdded>>
             + From<FetcherRequest<BlockHeader>>
@@ -224,7 +218,7 @@ impl BlockSynchronizer {
         let mut results = Effects::new();
 
         for builder in self.builders.values_mut() {
-            let (peers, next) = builder.next_needed(rng).build();
+            let (peers, next) = builder.need_next(rng).build();
             match next {
                 // No further parts of the block are missing. Nothing to do.
                 NeedNext::Nothing => {}
@@ -275,14 +269,14 @@ impl BlockSynchronizer {
         results
     }
 
-    fn handle_disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
+    fn disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
         for builder in self.builders.values_mut() {
             builder.demote_peer(Some(node_id));
         }
         Effects::new()
     }
 
-    fn handle_block_header_fetched(
+    fn block_header_fetched(
         &mut self,
         result: Result<FetchedData<BlockHeader>, Error<BlockHeader>>,
     ) -> Effects<Event> {
@@ -327,7 +321,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn handle_block_fetched(
+    fn block_fetched(
         &mut self,
         result: Result<FetchedData<Block>, Error<Block>>,
     ) -> Effects<Event> {
@@ -372,7 +366,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn handle_block_added_fetched(
+    fn block_added_fetched(
         &mut self,
         result: Result<FetchedData<BlockAdded>, Error<BlockAdded>>,
     ) -> Effects<Event> {
@@ -417,7 +411,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn handle_finality_signature_fetched(
+    fn finality_signature_fetched(
         &mut self,
         result: Result<FetchedData<FinalitySignature>, Error<FinalitySignature>>,
     ) -> Effects<Event> {
@@ -441,7 +435,6 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    /// Reactor instructing this instance to be stopped
     fn stop(&mut self, block_hash: &BlockHash) {
         match self.builders.get_mut(block_hash) {
             None => {
@@ -481,18 +474,22 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::EraValidators { mut validators } => {
-                self.validators.append(&mut validators);
+            Event::EraValidators {
+                era_validator_weights: validators,
+            } => {
+                self.validator_matrix
+                    .register_era_validator_weights(validators);
                 Effects::new()
             }
-            Event::Upsert(request) => self.upsert(effect_builder, request),
-            Event::Next => self.next(effect_builder, rng),
-            Event::DisconnectFromPeer(node_id) => self.handle_disconnect_from_peer(node_id),
-            Event::BlockHeaderFetched(result) => self.handle_block_header_fetched(result),
-            Event::BlockAddedFetched(result) => self.handle_block_added_fetched(result),
-            Event::FinalitySignatureFetched(result) => {
-                self.handle_finality_signature_fetched(result)
+            Event::Upsert(request) => {
+                self.upsert(request);
+                Effects::new()
             }
+            Event::Next => self.need_next(effect_builder, rng),
+            Event::DisconnectFromPeer(node_id) => self.disconnect_from_peer(node_id),
+            Event::BlockHeaderFetched(result) => self.block_header_fetched(result),
+            Event::BlockAddedFetched(result) => self.block_added_fetched(result),
+            Event::FinalitySignatureFetched(result) => self.finality_signature_fetched(result),
             Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),

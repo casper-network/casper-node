@@ -15,12 +15,13 @@ use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::Timestamp;
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent};
-use crate::effect::announcements::BlocklistAnnouncement;
-use crate::effect::requests::FetcherRequest;
 use crate::{
     components::{fetcher::FetchResult, Component},
     effect::{
-        requests::{ContractRuntimeRequest, SyncGlobalStateRequest, TrieAccumulatorRequest},
+        announcements::BlocklistAnnouncement,
+        requests::{
+            ContractRuntimeRequest, FetcherRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+        },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor,

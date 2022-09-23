@@ -11,14 +11,13 @@ mod utils;
 
 use std::{
     collections::BTreeMap,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
-use casper_execution_engine::core::engine_state::GenesisSuccess;
 use casper_execution_engine::core::{
     engine_state,
-    engine_state::{ChainspecRegistry, UpgradeConfig, UpgradeSuccess},
+    engine_state::{ChainspecRegistry, GenesisSuccess, UpgradeConfig, UpgradeSuccess},
 };
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp};
@@ -27,10 +26,6 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{error, info};
 
-use crate::components::consensus::EraReport;
-use crate::components::sync_leaper::LeapStatus;
-use crate::contract_runtime::{BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState};
-use crate::reactor::main_reactor::utils::maybe_pre_genesis;
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::types::{BlockHeader, BlockPayload, FinalizedBlock};
@@ -56,7 +51,7 @@ use crate::{
         small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
         storage::{FatalStorageError, Storage},
         sync_leaper,
-        sync_leaper::SyncLeaper,
+        sync_leaper::{LeapStatus, SyncLeaper},
         upgrade_watcher::{self, UpgradeWatcher},
         Component,
     },
@@ -78,13 +73,13 @@ use crate::{
         event_queue_metrics::EventQueueMetrics,
         main_reactor::{
             fetchers::Fetchers,
-            utils::{initialize_component, maybe_upgrade},
+            utils::{initialize_component, maybe_pre_genesis, maybe_upgrade},
         },
         EventQueueHandle, ReactorExit,
     },
     types::{
         ActivationPoint, Block, BlockAdded, BlockHash, Chainspec, ChainspecRawBytes, Deploy,
-        ExitCode, FinalitySignature, Item, NodeId, SyncLeap, TrieOrChunk,
+        ExitCode, FinalitySignature, Item, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -152,9 +147,11 @@ pub(crate) struct MainReactor {
     max_attempts: usize,
     attempts: usize,
     idle_tolerances: TimeDiff,
+
+    validator_matrix: Arc<RwLock<ValidatorMatrix>>,
 }
 
-enum CatchUpInstructions {
+enum CatchUpInstruction {
     Do(Effects<MainEvent>),
     CheckSoon(String),
     CheckLater(String, u64),
@@ -167,20 +164,20 @@ impl MainReactor {
         &mut self,
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<MainEvent>,
-    ) -> CatchUpInstructions {
+    ) -> CatchUpInstruction {
         let mut effects = Effects::new();
         // check idleness & enforce re-attempts if necessary
         if let Some(timestamp) = self.block_synchronizer.last_progress() {
             if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
                 self.attempts = 0; // if any progress has been made, reset attempts
-                return CatchUpInstructions::CheckLater(
+                return CatchUpInstruction::CheckLater(
                     "block_synchronizer is making progress".to_string(),
                     Self::WAIT_SEC * 2,
                 );
             }
             self.attempts += 1;
             if self.attempts > self.max_attempts {
-                return CatchUpInstructions::Shutdown(
+                return CatchUpInstruction::Shutdown(
                     "catch up process exceeds idle tolerances".to_string(),
                 );
             }
@@ -205,12 +202,12 @@ impl MainReactor {
                             self.chainspec_raw_bytes.clone(),
                         ) {
                             Ok(effects) => {
-                                return CatchUpInstructions::Do(effects);
+                                return CatchUpInstruction::Do(effects);
                             }
                             Err(msg) => {
                                 // we are post genesis, have no local blocks, and no trusted hash
                                 // so we can't possibly catch up to the network and should shut down
-                                return CatchUpInstructions::Shutdown(msg);
+                                return CatchUpInstruction::Shutdown(msg);
                             }
                         }
                     }
@@ -239,7 +236,7 @@ impl MainReactor {
                         StartingWith::Hash(trusted_hash)
                     }
                     Err(_) => {
-                        return CatchUpInstructions::Shutdown(
+                        return CatchUpInstruction::Shutdown(
                             "fatal block store error when attempting to read block under trusted hash".to_string(),
                         );
                     }
@@ -264,7 +261,7 @@ impl MainReactor {
                         peers_to_ask,
                     })
                 }));
-                return CatchUpInstructions::Do(effects);
+                return CatchUpInstruction::Do(effects);
             }
             LeapInstruction::BlockSync {
                 block_hash,
@@ -277,7 +274,7 @@ impl MainReactor {
                         .core_config
                         .sync_leap_simultaneous_peer_requests,
                 );
-                return CatchUpInstructions::CheckSoon(
+                return CatchUpInstruction::CheckSoon(
                     "block_synchronizer is initialized".to_string(),
                 );
             }
@@ -291,15 +288,15 @@ impl MainReactor {
                             self.chainspec_raw_bytes.clone(),
                         );
                         if let Ok(Some(effects)) = maybe_upgrade {
-                            return CatchUpInstructions::Do(effects);
+                            return CatchUpInstruction::Do(effects);
                         }
                         if let Err(msg) = maybe_upgrade {
-                            return CatchUpInstructions::Shutdown(msg);
+                            return CatchUpInstruction::Shutdown(msg);
                         }
                     }
                     None => {
                         // should be unreachable
-                        return CatchUpInstructions::Shutdown(
+                        return CatchUpInstruction::Shutdown(
                             "can't be caught up with no block in the block store".to_string(),
                         );
                     }
@@ -307,52 +304,8 @@ impl MainReactor {
             }
         }
 
-        let leap_results = self.sync_leaper.leap_status();
-        match leap_results {
-            LeapStatus::Inactive => {
-                return CatchUpInstructions::CheckSoon(
-                    "sync leaper is currently inactive".to_string(),
-                );
-            }
-            LeapStatus::Awaiting { .. } => {
-                return CatchUpInstructions::CheckLater(
-                    "sync leaper is currently awaiting results".to_string(),
-                    Self::WAIT_SEC,
-                );
-            }
-            LeapStatus::Received {
-                best_available,
-                in_flight,
-                block_hash,
-                from_peers,
-            } => {
-                // TODO: im not convinced we should be doing applying leap results
-                // imperatively, but I told Fraser I'd give it a shot so here we are.
-                // consider it a talking point -Ed :)
-                self.block_synchronizer.leap(
-                    block_hash,
-                    best_available,
-                    from_peers,
-                    true,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
-                );
-
-                return CatchUpInstructions::CheckLater(
-                    "sync leaper is currently inactive".to_string(),
-                    Self::WAIT_SEC,
-                );
-            }
-            LeapStatus::Failed { error, .. } => {
-                // not sure what we should do next, other than allow
-                // reattempt to correct
-                return CatchUpInstructions::CheckSoon(format!("{}", error));
-            }
-        }
-
         // there are no catch up or shutdown instructions, so we must be caught up
-        CatchUpInstructions::CaughtUp
+        CatchUpInstruction::CaughtUp
     }
 
     // put in the config
@@ -412,7 +365,7 @@ impl MainReactor {
                     .event(|_| MainEvent::CheckStatus);
             }
             ReactorState::CatchUp => match self.catch_up_instructions(rng, effect_builder) {
-                CatchUpInstructions::Do(effects) => {
+                CatchUpInstruction::Do(effects) => {
                     let mut ret = Effects::new();
                     ret.extend(effects);
                     ret.extend(
@@ -422,23 +375,23 @@ impl MainReactor {
                     );
                     return ret;
                 }
-                CatchUpInstructions::CheckLater(_, wait) => {
+                CatchUpInstruction::CheckLater(_, wait) => {
                     return effect_builder
                         .set_timeout(Duration::from_secs(wait))
                         .event(|_| MainEvent::CheckStatus);
                 }
-                CatchUpInstructions::CheckSoon(_) => {
+                CatchUpInstruction::CheckSoon(_) => {
                     // TODO - do we mean immediately?
                     return effect_builder
                         .set_timeout(Duration::from_secs(Self::WAIT_SEC))
                         .event(|_| MainEvent::CheckStatus);
                 }
-                CatchUpInstructions::Shutdown(msg) => {
+                CatchUpInstruction::Shutdown(msg) => {
                     return effect_builder
                         .immediately()
                         .event(move |_| MainEvent::Shutdown(msg))
                 }
-                CatchUpInstructions::CaughtUp => {
+                CatchUpInstruction::CaughtUp => {
                     self.state = ReactorState::KeepUp;
                     return effect_builder
                         .immediately()
@@ -446,6 +399,8 @@ impl MainReactor {
                 }
             },
             ReactorState::KeepUp => {
+                // TODO: define KeepUpInstruction::??? enum similar
+                // to CatchupInstruction::??? for the below steps
                 // TODO: if UpgradeWatcher announcement raised, keep track of era id's against the
                 //       new activation point
                 // detected upgrade to make this a stronger check
@@ -597,6 +552,10 @@ impl reactor::Reactor for MainReactor {
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let protocol_version = chainspec.protocol_config.version;
+
+        let validator_matrix = Arc::new(RwLock::new(ValidatorMatrix::new(
+            chainspec.highway_config.finality_threshold_fraction,
+        )));
 
         let trusted_hash = config.value().node.trusted_hash;
 
@@ -762,6 +721,7 @@ impl reactor::Reactor for MainReactor {
             max_attempts: 3,
             idle_tolerances: TimeDiff::from_seconds(1200),
             trusted_hash,
+            validator_matrix,
         };
 
         let effects = effect_builder
@@ -1153,27 +1113,25 @@ impl reactor::Reactor for MainReactor {
                     upcoming_era_validators,
                 },
             ) => {
-                let mut events = self.dispatch_event(
+                // the components that need to follow the era validators should have
+                // a handle on the validator matrix
+                self.validator_matrix
+                    .write()
+                    .unwrap()
+                    .register_eras(upcoming_era_validators.clone());
+
+                // TODO: SmallNetwork should prolly be changed to use the validator matrix as well
+                self.dispatch_event(
                     effect_builder,
                     rng,
-                    MainEvent::BlockSynchronizer(block_synchronizer::Event::EraValidators {
-                        validators: upcoming_era_validators.clone(),
-                    }),
-                );
-                events.extend(
-                    self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        MainEvent::SmallNetwork(
-                            ContractRuntimeAnnouncement::UpcomingEraValidators {
-                                era_that_is_ending,
-                                upcoming_era_validators,
-                            }
-                            .into(),
-                        ),
+                    MainEvent::SmallNetwork(
+                        ContractRuntimeAnnouncement::UpcomingEraValidators {
+                            era_that_is_ending,
+                            upcoming_era_validators,
+                        }
+                        .into(),
                     ),
-                );
-                events
+                )
             }
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,

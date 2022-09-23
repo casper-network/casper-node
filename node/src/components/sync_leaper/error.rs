@@ -1,6 +1,8 @@
 use datasize::DataSize;
-use std::fmt;
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
 
 use crate::types::{BlockHash, NodeId};
 

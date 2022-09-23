@@ -25,7 +25,7 @@ use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
-use tracing::error;
+use tracing::{error, warn};
 
 use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
@@ -219,18 +219,6 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        // TODO: Fraser, I don't think this is necessary given that no inbound requests will
-        // enter via the http_server if the port is not bound, and thus there are no such
-        // events ever raised
-        // // For all requests other than `SpeculativeDeployExecute`, we return
-        // // empty effects if the JSON-RPC server is disabled.
-        // let rpc_server = match &self.inner_rpc {
-        //     Some(rpc_server) => rpc_server,
-        //     None => {
-        //         return Effects::new();
-        //     }
-        // };
-
         match (self.status.clone(), event) {
             (ComponentStatus::Fatal(msg), _) => {
                 error!(
@@ -245,15 +233,11 @@ where
                 effects
             }
             (ComponentStatus::Uninitialized, _) => {
-                error!("should not handle this event when component is uninitialized");
-                self.status =
-                    ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
+                warn!("should not handle this event when component is uninitialized");
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
-                error!("should not initialize when component is already initialized");
-                self.status =
-                    ComponentStatus::Fatal("attempt to reinitialize component".to_string());
+                // noop
                 Effects::new()
             }
             (

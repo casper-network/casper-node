@@ -1,23 +1,29 @@
-use itertools::Itertools;
-use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
-use std::hash::Hash;
-use std::{mem, rc::Rc};
+use std::{
+    collections::BTreeMap,
+    fmt::{Display, Formatter},
+    hash::Hash,
+    mem,
+    rc::Rc,
+};
 
 use datasize::DataSize;
+use itertools::Itertools;
 use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{system::auction::EraValidators, EraId, PublicKey, Timestamp, U512};
 
-use crate::components::block_synchronizer::signature_acquisition::SignatureAcquisition;
-use crate::types::{BlockHash, Item, SignatureWeight, ValidatorMatrix};
 use crate::{
     components::block_synchronizer::{
-        deploy_acquisition::DeployAcquisition, deploy_acquisition::DeployState,
-        need_next::NeedNext, peer_list::PeerList,
+        deploy_acquisition::{DeployAcquisition, DeployState},
+        need_next::NeedNext,
+        peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition,
     },
-    types::{Block, BlockHeader, DeployHash, FinalitySignature, NodeId},
+    types::{
+        Block, BlockHash, BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature, Item,
+        NodeId, SignatureWeight, ValidatorMatrix,
+    },
     NodeRng,
 };
 
@@ -73,14 +79,6 @@ impl Display for Error {
         }
     }
 }
-
-// #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Default)]
-// pub(crate) enum GlobalStateStatus {
-//     #[default]
-//     All,
-//     None,
-//     Acquiring(Timestamp),
-// }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 enum ExecutionState {
@@ -179,8 +177,8 @@ impl BlockAcquisitionState {
     pub(super) fn with_signatures(
         &mut self,
         signatures: Vec<FinalitySignature>,
-        validator_matrix: &ValidatorMatrix,
-        need_execution_state: bool,
+        validator_weights: EraValidatorWeights,
+        should_fetch_execution_state: bool,
     ) -> Result<(), Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlockHeader(header, acquired) => {
@@ -188,9 +186,7 @@ impl BlockAcquisitionState {
                     .into_iter()
                     .map(|fs| acquired.apply_signature(fs));
 
-                match validator_matrix
-                    .have_sufficient_weight(header.era_id(), acquired.have_signatures())
-                {
+                match validator_weights.have_sufficient_weight(acquired.have_signatures()) {
                     SignatureWeight::Insufficient => {
                         // Should not change state.
                         return Ok(());
@@ -204,14 +200,14 @@ impl BlockAcquisitionState {
                 }
             }
             BlockAcquisitionState::HaveDeploys(header, acquired_signatures, deploys)
-                if !need_execution_state =>
+                if !should_fetch_execution_state =>
             {
                 signatures
                     .into_iter()
                     .map(|fs| acquired_signatures.apply_signature(fs));
 
-                match validator_matrix
-                    .have_sufficient_weight(header.era_id(), acquired_signatures.have_signatures())
+                match validator_weights
+                    .have_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient | SignatureWeight::Sufficient => {
                         // Should not change state.
@@ -223,15 +219,13 @@ impl BlockAcquisitionState {
                 }
             }
             BlockAcquisitionState::HaveExecutionEffects(header, acquired)
-                if need_execution_state =>
+                if should_fetch_execution_state =>
             {
                 signatures
                     .into_iter()
                     .map(|fs| acquired.apply_signature(fs));
 
-                match validator_matrix
-                    .have_sufficient_weight(header.era_id(), acquired.have_signatures())
-                {
+                match validator_weights.have_sufficient_weight(acquired.have_signatures()) {
                     SignatureWeight::Insufficient | SignatureWeight::Sufficient => {
                         // Should not change state.
                         return Ok(());
@@ -335,8 +329,8 @@ impl BlockAcquisitionState {
                     });
                 }
             }
-            // we never ask for global state in the following states, and thus it is erroneous to attempt
-            // to apply any
+            // we never ask for global state in the following states, and thus it is erroneous to
+            // attempt to apply any
             BlockAcquisitionState::HaveBlock(_, _, _)
             | BlockAcquisitionState::Initialized(_, _)
             | BlockAcquisitionState::HaveBlockHeader(_, _)
@@ -395,55 +389,54 @@ impl BlockAcquisitionState {
     pub(super) fn next_action(
         &mut self,
         peer_list: &PeerList,
+        validator_weights: EraValidatorWeights,
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
-        validator_matrix: &ValidatorMatrix,
     ) -> Result<BlockAcquisitionAction, Error> {
         match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => Ok(
                 BlockAcquisitionAction::block_header(peer_list, rng, *block_hash),
             ),
-            BlockAcquisitionState::HaveBlockHeader(header, signatures) => {
-                let era_id = header.era_id();
-                let block_header = header.as_ref();
-                match validator_matrix.validator_public_keys(era_id) {
-                    None => Ok(BlockAcquisitionAction::era_validators(era_id)),
-                    Some(validators) => Ok(BlockAcquisitionAction::finality_signatures(
+            BlockAcquisitionState::HaveBlockHeader(block_header, acquired) => {
+                if validator_weights.is_empty() {
+                    Ok(BlockAcquisitionAction::era_validators(
+                        validator_weights.era_id(),
+                    ))
+                } else {
+                    Ok(BlockAcquisitionAction::finality_signatures(
                         peer_list,
                         rng,
                         block_header,
-                        validators,
-                    )),
+                        validator_weights.missing_signatures(&acquired.have_signatures()),
+                    ))
                 }
             }
             BlockAcquisitionState::HaveSufficientFinalitySignatures(header, _) => Ok(
                 BlockAcquisitionAction::block_body(peer_list, rng, header.id()),
             ),
+            BlockAcquisitionState::HaveStrictFinalitySignatures(_)
+            | BlockAcquisitionState::Fatal => Ok(BlockAcquisitionAction::noop()),
+
             BlockAcquisitionState::HaveBlock(_, _, _)
             | BlockAcquisitionState::HaveGlobalState(_, _, _)
             | BlockAcquisitionState::HaveDeploys(_, _, _)
             | BlockAcquisitionState::HaveExecutionEffects(_, _) => self
                 .resolve_execution_state_divergence(
                     peer_list,
+                    validator_weights,
                     rng,
                     should_fetch_execution_state,
-                    validator_matrix,
                 ),
-            BlockAcquisitionState::HaveStrictFinalitySignatures(_)
-            | BlockAcquisitionState::Fatal => Ok(BlockAcquisitionAction::noop()),
         }
     }
 
     fn resolve_execution_state_divergence(
         &self,
         peer_list: &PeerList,
+        validator_weights: EraValidatorWeights,
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
-        validator_matrix: &ValidatorMatrix,
     ) -> Result<BlockAcquisitionAction, Error> {
-        // squash complexity of need all / don't need all and other
-        // irritating hoop jumping around getting
-        // deploys, global state, and execution effects
         enum Mode {
             GetGlobalState(Box<BlockHeader>, Digest),
             GetDeploy(Box<BlockHeader>, DeployHash),
@@ -502,17 +495,17 @@ impl BlockAcquisitionState {
                 block_header.id(),
             )),
             Mode::GetStrictSignatures(block_header, acquired) => {
-                let header = block_header.as_ref();
-                let era_id = header.era_id();
-
-                match validator_matrix.missing_signatures(era_id, &acquired.have_signatures()) {
-                    Ok(missing_signatures) => Ok(BlockAcquisitionAction::finality_signatures(
+                if validator_weights.is_empty() {
+                    Ok(BlockAcquisitionAction::era_validators(
+                        validator_weights.era_id(),
+                    ))
+                } else {
+                    Ok(BlockAcquisitionAction::finality_signatures(
                         peer_list,
                         rng,
-                        header,
-                        missing_signatures,
-                    )),
-                    Err(_) => Ok(BlockAcquisitionAction::era_validators(era_id)),
+                        block_header.as_ref(),
+                        validator_weights.missing_signatures(&acquired.have_signatures()),
+                    ))
                 }
             }
             Mode::Err => Err(Error::InvalidStateTransition),

@@ -2,8 +2,10 @@ mod block_acceptor;
 mod error;
 mod event;
 
-use std::collections::{btree_map::Entry, BTreeMap};
-use std::hash::Hash;
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    hash::Hash,
+};
 
 use casper_types::system::auction::ValidatorWeights;
 use datasize::DataSize;
@@ -114,6 +116,7 @@ impl BlocksAccumulator {
                 if let Some(child_hash) = self.block_parents.get(&block_hash) {
                     if let Some(block_acceptor) = self.block_acceptors.get(child_hash) {
                         if block_acceptor.can_execute(self.fault_tolerance_fraction, validators) {
+                            // TODO: we need to make sure we wait to get enuff finality signatures
                             return LeapInstruction::CaughtUp;
                         }
                     }

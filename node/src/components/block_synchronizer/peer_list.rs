@@ -1,13 +1,13 @@
-use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
-use std::time::Duration;
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    time::Duration,
+};
 
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 
-use crate::types::NodeId;
-use crate::NodeRng;
+use crate::{types::NodeId, NodeRng};
 use casper_types::{TimeDiff, Timestamp};
 
 #[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug, Default)]

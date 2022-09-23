@@ -4,10 +4,8 @@
 mod error;
 mod event;
 
-use std::cmp::Ordering;
-use std::collections::BTreeMap;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{Display, Formatter},
 };
 
@@ -51,7 +49,7 @@ pub(crate) enum LeapStatus {
     },
     Received {
         block_hash: BlockHash,
-        best_available: SyncLeap,
+        best_available: Box<SyncLeap>,
         from_peers: Vec<NodeId>,
         in_flight: usize,
     },
@@ -112,7 +110,7 @@ impl LeapActivity {
             Ok((best_available, from_peers)) => LeapStatus::Received {
                 block_hash,
                 in_flight,
-                best_available,
+                best_available: Box::new(best_available),
                 from_peers,
             },
             Err(error) => LeapStatus::Failed {

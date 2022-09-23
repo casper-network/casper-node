@@ -1,17 +1,13 @@
-use crate::components::blocks_accumulator::LeapInstruction;
-use crate::components::sync_leaper;
-use crate::types::{ActivationPoint, Block, BlockHash, Chainspec, ChainspecRawBytes, NodeId};
 use crate::{
-    components::InitializedComponent,
+    components::{blocks_accumulator::LeapInstruction, sync_leaper, InitializedComponent},
     effect::{EffectBuilder, EffectExt, Effects},
-    reactor::main_reactor::MainEvent,
+    reactor::main_reactor::{MainEvent, MainReactor},
+    types::{ActivationPoint, Block, BlockHash, Chainspec, ChainspecRawBytes, NodeId},
 };
 use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue, Timestamp};
-use std::borrow::Borrow;
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::{borrow::Borrow, collections::BTreeMap, sync::Arc};
 
 pub(super) fn initialize_component(
     effect_builder: EffectBuilder<MainEvent>,

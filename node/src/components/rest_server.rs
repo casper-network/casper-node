@@ -150,13 +150,11 @@ where
                 effects
             }
             (ComponentStatus::Uninitialized, _) => {
-                error!("should not handle this event when component is uninitialized");
-                self.status = ComponentStatus::Fatal("attempt to use uninitialized component".to_string());
+                warn!("should not handle this event when component is uninitialized");
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
-                error!("should not initialize when component is already initialized");
-                self.status = ComponentStatus::Fatal("attempt to reinitialize component".to_string());
+                // noop
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::RestRequest(RestRequest::Status { responder })) => {

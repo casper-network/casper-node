@@ -12,8 +12,8 @@ use super::GlobalStateSynchronizerEvent;
 use crate::{
     components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
     types::{
-        BlockAdded, BlockHash, BlockHeader, Deploy, FinalitySignature, NodeId, TrieOrChunk,
-        TrieOrChunkId,
+        BlockAdded, BlockHash, BlockHeader, Deploy, EraValidatorWeights, FinalitySignature, NodeId,
+        TrieOrChunk, TrieOrChunkId,
     },
 };
 
@@ -23,9 +23,9 @@ pub(crate) enum Event {
     #[from]
     Upsert(BlockSyncRequest),
 
-    /// Received announcement about upcoming era validators.
+    /// Received announcement about era validators.
     EraValidators {
-        validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+        era_validator_weights: EraValidatorWeights,
     },
 
     Next,

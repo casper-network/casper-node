@@ -1,10 +1,11 @@
-use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashSet};
-use std::env::var;
-use std::fmt::{Display, Formatter};
-use std::hash::Hash;
-use std::rc::Rc;
-use std::time::Duration;
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashSet},
+    env::var,
+    fmt::{Display, Formatter},
+    hash::Hash,
+    rc::Rc,
+    time::Duration,
+};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -13,39 +14,39 @@ use openssl::pkey::Public;
 use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 use tracing::error;
 
-use crate::components::block_synchronizer::block_acquisition;
-use crate::components::block_synchronizer::block_acquisition::{
-    BlockAcquisitionAction, BlockAcquisitionState,
+use crate::components::block_synchronizer::{
+    block_acquisition,
+    block_acquisition::{BlockAcquisitionAction, BlockAcquisitionState},
 };
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, Timestamp, U512};
+use casper_types::{system::auction::EraValidators, EraId, PublicKey, Timestamp, U512};
 
-use crate::components::block_synchronizer::{
-    deploy_acquisition::DeployAcquisition, need_next::NeedNext, peer_list::PeerList,
-    signature_acquisition::SignatureAcquisition,
+use crate::{
+    components::block_synchronizer::{
+        deploy_acquisition::DeployAcquisition, need_next::NeedNext, peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition,
+    },
+    types::{
+        Block, BlockAdded, BlockBody, BlockHash, BlockHeader, DeployHash, EraValidatorWeights,
+        FinalitySignature, NodeId, SignatureWeight, ValidatorMatrix,
+    },
+    utils::Source::Peer,
+    NodeRng,
 };
-use crate::types::{
-    Block, BlockAdded, BlockBody, BlockHash, BlockHeader, DeployHash, FinalitySignature, NodeId,
-    SignatureWeight, SyncLeap, ValidatorMatrix,
-};
-use crate::utils::Source::Peer;
-use crate::NodeRng;
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {
     BlockAcquisition(block_acquisition::Error),
-    MissingValidatorMatrix(EraId),
-    MissingEraId(BlockHash),
+    MissingValidatorWeights(BlockHash),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::BlockAcquisition(err) => write!(f, "block acquisition error: {}", err),
-            Error::MissingValidatorMatrix(era_id) => {
-                write!(f, "missing validator matrix: {}", era_id)
+            Error::MissingValidatorWeights(block_hash) => {
+                write!(f, "missing validator weights for: {}", block_hash)
             }
-            Error::MissingEraId(block_hash) => write!(f, "missing era id: {}", block_hash),
         }
     }
 }
@@ -58,8 +59,7 @@ pub(crate) struct BlockBuilder {
     peer_list: PeerList,
 
     era_id: Option<EraId>,
-    // TODO - replace with Option<ValidatorWeights>, or make it a non-optional ValidatorMatrix?
-    validator_matrix: Option<ValidatorMatrix>,
+    validator_weights: Option<EraValidatorWeights>,
 
     // progress tracking
     started: Option<Timestamp>,
@@ -73,36 +73,31 @@ impl BlockBuilder {
     pub(crate) fn new(
         block_hash: BlockHash,
         era_id: EraId,
-        validator_matrix: ValidatorMatrix,
+        validator_weights: EraValidatorWeights,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
-        let public_keys = match validator_matrix.validator_public_keys(era_id) {
-            None => vec![],
-            Some(v) => v,
-        };
+        let public_keys = validator_weights.validator_public_keys();
+        let peer_list = PeerList::new(max_simultaneous_peers);
         BlockBuilder {
             block_hash,
             era_id: Some(era_id),
-            validator_matrix: Some(validator_matrix),
+            validator_weights: Some(validator_weights),
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
                 SignatureAcquisition::new(public_keys),
             ),
-            peer_list: PeerList::new(max_simultaneous_peers),
+            peer_list,
             should_fetch_execution_state,
             started: None,
             last_progress_time: None,
         }
     }
 
-    pub(crate) fn block_hash(&self) -> BlockHash {
-        self.block_hash
-    }
-
     pub(crate) fn new_leap(
         block_hash: BlockHash,
         sync_leap: SyncLeap,
+        validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
         fault_tolerance_fraction: Ratio<u64>,
         should_fetch_execution_state: bool,
@@ -112,11 +107,6 @@ impl BlockBuilder {
             let block_header = fat_block_header.block_header;
             let sigs = fat_block_header.block_signatures;
             let era_id = Some(block_header.era_id());
-            let mut validator_matrix = ValidatorMatrix::new(fault_tolerance_fraction);
-            validator_matrix.register_era(
-                block_header.era_id(),
-                sync_leap.validators_of_highest_block(),
-            );
             let public_keys = sigs.proofs.into_iter().map(|(k, _)| k).collect_vec();
             let signature_acquisition = SignatureAcquisition::new(public_keys);
             let acquisition_state = BlockAcquisitionState::HaveBlockHeader(
@@ -129,7 +119,7 @@ impl BlockBuilder {
             BlockBuilder {
                 block_hash,
                 era_id,
-                validator_matrix: Some(validator_matrix),
+                validator_weights: Some(validator_weights),
                 acquisition_state,
                 peer_list,
                 should_fetch_execution_state,
@@ -153,7 +143,7 @@ impl BlockBuilder {
         BlockBuilder {
             block_hash,
             era_id: None,
-            validator_matrix: None,
+            validator_weights: None,
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
                 SignatureAcquisition::new(vec![]),
@@ -170,6 +160,10 @@ impl BlockBuilder {
         self.flush();
         self.touch();
         self.is_fatal()
+    }
+
+    pub(crate) fn block_hash(&self) -> BlockHash {
+        self.block_hash
     }
 
     pub(crate) fn builder_state(&self) -> &BlockAcquisitionState {
@@ -234,7 +228,7 @@ impl BlockBuilder {
         self.last_progress_time = Some(now);
     }
 
-    pub(crate) fn next_needed(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
+    pub(crate) fn need_next(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
         if self.peer_list.need_peers() {
             return BlockAcquisitionAction::peers();
         }
@@ -244,7 +238,7 @@ impl BlockBuilder {
             }
             Some(era_id) => era_id,
         };
-        let validator_matrix = match &self.validator_matrix {
+        let validator_weights = match &self.validator_weights {
             None => {
                 return BlockAcquisitionAction::era_validators(era_id);
             }
@@ -252,9 +246,9 @@ impl BlockBuilder {
         };
         match self.acquisition_state.next_action(
             &self.peer_list,
+            validator_weights,
             rng,
             self.should_fetch_execution_state,
-            validator_matrix,
         ) {
             Ok(ret) => ret,
             Err(err) => {
@@ -309,27 +303,21 @@ impl BlockBuilder {
         finality_signatures: Vec<FinalitySignature>,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        let era_id = match self.era_id {
-            Some(era_id) => era_id,
-            None => return Err(Error::MissingEraId(self.block_hash)),
-        };
-        let validator_matrix = match &self.validator_matrix {
-            Some(validator_matrix) => validator_matrix,
-            None => {
-                return Err(Error::MissingValidatorMatrix(era_id));
+        if let Some(validator_weights) = self.validator_weights.to_owned() {
+            if let Err(error) = self.acquisition_state.with_signatures(
+                finality_signatures,
+                validator_weights,
+                self.should_fetch_execution_state,
+            ) {
+                self.disqualify_peer(maybe_peer);
+                return Err(Error::BlockAcquisitionError(error));
             }
-        };
-        if let Err(error) = self.acquisition_state.with_signatures(
-            finality_signatures,
-            validator_matrix,
-            self.should_fetch_execution_state,
-        ) {
-            self.disqualify_peer(maybe_peer);
-            return Err(Error::BlockAcquisition(error));
+            self.touch();
+            self.promote_peer(maybe_peer);
+            Ok(())
+        } else {
+            Err(Error::MissingValidatorWeights(self.block_hash))
         }
-        self.touch();
-        self.promote_peer(maybe_peer);
-        Ok(())
     }
 
     pub(crate) fn apply_global_state(
@@ -385,9 +373,9 @@ impl BlockBuilder {
 
     pub(crate) fn apply_era_validators(
         &mut self,
-        validator_matrix: ValidatorMatrix,
+        validator_weights: EraValidatorWeights,
     ) -> Result<(), Error> {
-        self.validator_matrix = Some(validator_matrix);
+        self.validator_weights = Some(validator_weights);
         self.touch();
         Ok(())
     }

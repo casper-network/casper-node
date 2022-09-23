@@ -13,9 +13,7 @@ mod network_config;
 mod parse_toml;
 mod protocol_config;
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::{fmt::Debug, path::Path};
+use std::{collections::BTreeMap, fmt::Debug, path::Path, sync::Arc};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -23,9 +21,8 @@ use rand::Rng;
 use serde::Serialize;
 use tracing::{error, warn};
 
-use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_execution_engine::{
-    core::engine_state::genesis::ExecConfig,
+    core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::{ChunkWithProof, Digest};

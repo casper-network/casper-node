@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     iter,
 };
@@ -8,16 +9,17 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::io::AsyncReadExt;
 
 use casper_types::system::auction::ValidatorWeights;
-use casper_types::{crypto, EraId};
+use casper_types::{crypto, EraId, PublicKey, U512};
 
-use crate::types::BlockSignatures;
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, FetcherItem, Item, Tag,
+        BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights, FetcherItem, Item, Tag,
+        ValidatorMatrix,
     },
 };
 
@@ -45,6 +47,28 @@ impl SyncLeap {
             .map(|header_with_metadata| header_with_metadata.block_header.era_id())
             .max()
             .unwrap_or_else(|| self.trusted_block_header.era_id())
+    }
+
+    pub(crate) fn switch_blocks(&self) -> Vec<&BlockHeader> {
+        self.trusted_ancestor_headers
+            .iter()
+            .chain(vec![&self.trusted_block_header])
+            .chain(self.signed_block_headers.iter().map(|v| &v.block_header))
+            .filter(|bh| bh.is_switch_block())
+            .collect()
+    }
+
+    pub(crate) fn apply_validator_weights(&self, validator_matrix: &mut ValidatorMatrix) {
+        let fault_tolerance_fraction = validator_matrix.fault_tolerance_threshold();
+        for switch in self.switch_blocks() {
+            if let Some(validator_weights) = switch.next_era_validator_weights() {
+                validator_matrix.register_era_validator_weights(EraValidatorWeights::new(
+                    switch.next_block_era_id(),
+                    validator_weights.clone(),
+                    fault_tolerance_fraction,
+                ));
+            }
+        }
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
