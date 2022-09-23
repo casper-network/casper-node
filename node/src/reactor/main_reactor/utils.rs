@@ -12,7 +12,7 @@ use std::{borrow::Borrow, collections::BTreeMap, sync::Arc};
 pub(super) fn initialize_component(
     effect_builder: EffectBuilder<MainEvent>,
     component: &mut impl InitializedComponent<MainEvent>,
-    component_name: String,
+    component_name: &str,
     initiating_event: MainEvent,
 ) -> Option<Effects<MainEvent>> {
     if component.is_uninitialized() {
@@ -24,6 +24,7 @@ pub(super) fn initialize_component(
         );
         return Some(effects);
     }
+    let component_name = component_name.to_string();
     if component.is_fatal() {
         return Some(effect_builder.immediately().event(move |()| {
             MainEvent::Shutdown(format!("{} failed to initialize", component_name))

@@ -158,6 +158,9 @@ enum CatchUpInstruction {
     CheckLater(String, u64),
     Shutdown(String),
     CaughtUp,
+    // TODO: These two could potentially be handled directly here
+    // Genesis,
+    // Upgrade,
 }
 
 impl MainReactor {
@@ -323,7 +326,7 @@ impl MainReactor {
                 if let Some(effects) = initialize_component(
                     effect_builder,
                     &mut self.diagnostics_port,
-                    "diagnostics".to_string(),
+                    "diagnostics",
                     MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
                 ) {
                     return effects;
@@ -331,15 +334,23 @@ impl MainReactor {
                 if let Some(effects) = initialize_component(
                     effect_builder,
                     &mut self.upgrade_watcher,
-                    "upgrade_watcher".to_string(),
+                    "upgrade_watcher",
                     MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
                 ) {
                     return effects;
                 }
                 if let Some(effects) = initialize_component(
                     effect_builder,
+                    &mut self.small_network,
+                    "small_network",
+                    MainEvent::SmallNetwork(small_network::Event::Initialize),
+                ) {
+                    return effects;
+                }
+                if let Some(effects) = initialize_component(
+                    effect_builder,
                     &mut self.event_stream_server,
-                    "event_stream_server".to_string(),
+                    "event_stream_server",
                     MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
                 ) {
                     return effects;
@@ -347,7 +358,7 @@ impl MainReactor {
                 if let Some(effects) = initialize_component(
                     effect_builder,
                     &mut self.rest_server,
-                    "rest_server".to_string(),
+                    "rest_server",
                     MainEvent::RestServer(rest_server::Event::Initialize),
                 ) {
                     return effects;
@@ -355,7 +366,7 @@ impl MainReactor {
                 if let Some(effects) = initialize_component(
                     effect_builder,
                     &mut self.rpc_server,
-                    "rpc_server".to_string(),
+                    "rpc_server",
                     MainEvent::RpcServer(rpc_server::Event::Initialize),
                 ) {
                     return effects;
