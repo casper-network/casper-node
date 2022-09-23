@@ -7,6 +7,7 @@ mod display_error;
 pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
+mod latch;
 pub(crate) mod opt_display;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
@@ -37,14 +38,14 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
+use crate::types::NodeId;
 pub(crate) use display_error::display_error;
 pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
+pub(crate) use latch::Latch;
 pub(crate) use round_robin::WeightedRoundRobin;
-
-use crate::types::NodeId;
 
 /// DNS resolution error.
 #[derive(Debug, Error)]

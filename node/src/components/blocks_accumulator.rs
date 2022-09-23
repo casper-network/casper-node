@@ -41,7 +41,7 @@ pub(crate) use event::Event;
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
-    block_parents: BTreeMap<BlockHash, BlockHash>,
+    block_children: BTreeMap<BlockHash, BlockHash>,
     validator_matrix: ValidatorMatrix,
 }
 
@@ -72,12 +72,12 @@ impl BlocksAccumulator {
     pub(crate) fn new(validator_matrix: ValidatorMatrix) -> Self {
         Self {
             block_acceptors: Default::default(),
-            block_parents: Default::default(),
+            block_children: Default::default(),
             validator_matrix,
         }
     }
 
-    pub(crate) fn should_leap(&self, starting_with: StartingWith) -> LeapInstruction {
+    pub(crate) fn should_leap(&mut self, starting_with: StartingWith) -> LeapInstruction {
         const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
 
         let block_hash = *starting_with.block_hash();
@@ -102,13 +102,13 @@ impl BlocksAccumulator {
 
             let height_diff = highest_block_height.saturating_sub(block_height);
             if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
-                if let Some(child_hash) = self.block_parents.get(&block_hash) {
-                    if let Some(block_acceptor) = self.block_acceptors.get(child_hash) {
+                if let Some(child_hash) = self.block_children.get(&block_hash) {
+                    if let Some(block_acceptor) = self.block_acceptors.get_mut(child_hash) {
                         match self.validator_matrix.validator_weights(highest_era_id) {
                             None => return LeapInstruction::Leap,
                             Some(_) => {
                                 // TODO: we need to make sure we wait to get enuff finality signatures
-                                if block_acceptor.can_execute(&self.validator_matrix) {
+                                if block_acceptor.can_execute() {
                                     return LeapInstruction::CaughtUp;
                                 }
                             }
@@ -144,7 +144,7 @@ impl BlocksAccumulator {
 
         let block_hash = *block_added.block.hash();
         if let Some(parent_hash) = block_added.block.parent() {
-            self.block_parents.insert(*parent_hash, block_hash);
+            self.block_children.insert(*parent_hash, block_hash);
         }
         let era_id = block_added.block.header().era_id();
         let can_execute = match self.block_acceptors.entry(block_hash) {
@@ -155,7 +155,10 @@ impl BlocksAccumulator {
                         .announce_disconnect_from_peer(sender)
                         .ignore();
                 }
-                match BlockAcceptor::new_from_block_added(block_added) {
+                match BlockAcceptor::new_from_block_added(
+                    block_added,
+                    self.validator_matrix.validator_weights(era_id),
+                ) {
                     Ok(block_acceptor) => entry.insert(block_acceptor),
                     Err(_error) => {
                         return effect_builder
@@ -170,7 +173,7 @@ impl BlocksAccumulator {
                 if let Err(_error) = accumulated_block.register_block(block_added) {
                     return Effects::new();
                 }
-                accumulated_block.can_execute(&self.validator_matrix)
+                accumulated_block.can_execute()
             }
         };
 
@@ -226,9 +229,13 @@ impl BlocksAccumulator {
             Some(_) | None => (),
         }
 
-        let mut can_execute = match self.block_acceptors.entry(block_hash) {
+        let can_execute = match self.block_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                match BlockAcceptor::new_from_finality_signature(finality_signature) {
+                let era_id = finality_signature.era_id;
+                match BlockAcceptor::new_from_finality_signature(
+                    finality_signature,
+                    self.validator_matrix.validator_weights(era_id),
+                ) {
                     Ok(block_acceptor) => entry.insert(block_acceptor),
                     Err(_error) => {
                         return effect_builder
@@ -248,7 +255,7 @@ impl BlocksAccumulator {
                         .announce_disconnect_from_peer(sender)
                         .ignore();
                 };
-                accumulated_block.can_execute(&self.validator_matrix)
+                accumulated_block.can_execute()
             }
         };
 
@@ -262,25 +269,6 @@ impl BlocksAccumulator {
         } else {
             Effects::new()
         }
-
-        // TODO: Handle the BogusValidators variant, maybe only in the `handle_finality_signature`
-        // SignaturesFinality::BogusValidators(ref public_keys) => {
-        //     self.remove_signatures(&block_hash, public_keys);
-
-        //     has_sufficient_signatures = self
-        //         .block_acceptors
-        //         .get(&block_hash)
-        //         .map(|accumulated_block| {
-        //             accumulated_block.has_sufficient_signatures(
-        //                 self.fault_tolerance_fraction,
-        //                 &BTreeMap::new(),
-        //             )
-        //         })
-        //         .unwrap_or_else(|| {
-        //             error!(%block_hash, "should have block");
-        //             SignaturesFinality::BogusValidators(public_keys.clone())
-        //         })
-        // }
 
         // TODO: Special care for a switch block?
 
@@ -300,9 +288,13 @@ impl BlocksAccumulator {
     ) -> Effects<Event> {
         for block_acceptor in self.block_acceptors.values_mut() {
             block_acceptor.remove_bogus_validators(&self.validator_matrix);
+            // TODO: Disconnect from the peers who gave us the bogus validators.
         }
 
-        // TODO: Disconnect from the peers who gave us the bogus validators.
+        // TODO - announce any blocks which can now be executed?
+
+        // TODO - handle announcing new validator sets
+
         Effects::new()
     }
 
@@ -353,13 +345,12 @@ impl BlocksAccumulator {
         ret
     }
 
-    fn highest_executable_block(&self) -> Option<(BlockHash, u64)> {
+    fn highest_executable_block(&mut self) -> Option<(BlockHash, u64)> {
         let mut ret: Option<(BlockHash, u64)> = None;
-        for (next_key, next_value) in self
-            .block_acceptors
-            .iter()
-            .filter(|(next_key, next_value)| next_value.can_execute(&self.validator_matrix))
-        {
+        for (next_key, next_value) in self.block_acceptors.iter_mut() {
+            if !next_value.can_execute() {
+                continue;
+            }
             ret = match next_value.block_height() {
                 Some(next_height) => match ret {
                     Some((_, curr_height)) => {

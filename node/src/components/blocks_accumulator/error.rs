@@ -15,4 +15,11 @@ pub(super) enum Error {
         finality_signature: FinalitySignature,
         correct_era: EraId,
     },
+    #[error(
+        "validator weights of era {validator_weights_era} provided for block in era {block_era}"
+    )]
+    WrongEraWeights {
+        block_era: EraId,
+        validator_weights_era: EraId,
+    },
 }

@@ -230,7 +230,7 @@ impl EraValidatorWeights {
         &self,
         validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> SignatureWeight {
-        // sufficient is ~33.4%, strict is ~66.7%
+        // sufficient is ~33.4%, strict is ~66.7% by default in highway
         // in some cases, we may already have strict weight or better before even starting.
         // this is optimal, but in the cases where we do not we are willing to start work
         // on acquiring block data on a block for which we have at least sufficient weight.
