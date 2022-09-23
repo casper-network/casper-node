@@ -6,10 +6,13 @@ use tracing::{debug, warn};
 
 use casper_types::{EraId, PublicKey, U512};
 
-use super::{Error, SignaturesFinality};
+use super::Error;
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
-    types::{BlockAdded, BlockHash, BlockSignatures, FetcherItem, FinalitySignature},
+    types::{
+        BlockAdded, BlockHash, BlockSignatures, FetcherItem, FinalitySignature, SignatureWeight,
+        ValidatorMatrix,
+    },
 };
 
 #[derive(DataSize, Debug)]
@@ -104,9 +107,8 @@ impl BlockAcceptor {
 
     pub(super) fn has_sufficient_signatures(
         &self,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: &BTreeMap<PublicKey, U512>,
-    ) -> SignaturesFinality {
+        validator_matrix: &ValidatorMatrix,
+    ) -> Option<SignatureWeight> {
         // TODO: Consider caching the sigs directly in the `BlockSignatures` struct, to avoid
         // creating it from `BTreeMap<PublicKey, FinalitySignature>` on every call.
         let mut block_signatures = BlockSignatures::new(self.block_hash, self.era_id);
@@ -116,21 +118,7 @@ impl BlockAcceptor {
                 block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
             });
 
-        match linear_chain::check_sufficient_block_signatures(
-            trusted_validator_weights,
-            fault_tolerance_fraction,
-            Some(&block_signatures),
-        ) {
-            Ok(_) => SignaturesFinality::Sufficient,
-            Err(err) => match err {
-                BlockSignatureError::BogusValidators {
-                    bogus_validators, ..
-                } => SignaturesFinality::BogusValidators(bogus_validators),
-                BlockSignatureError::InsufficientWeightForFinality { .. } => {
-                    SignaturesFinality::NotSufficient
-                }
-            },
-        }
+        validator_matrix.has_sufficient_weight(self.era_id, self.signatures.keys())
     }
 
     pub(super) fn remove_signatures(&mut self, signers: &[PublicKey]) {
@@ -142,25 +130,22 @@ impl BlockAcceptor {
         self.block_added.is_some()
     }
 
-    pub(super) fn can_execute(
-        &self,
-        fault_tolerance_fraction: Ratio<u64>,
-        trusted_validator_weights: &BTreeMap<PublicKey, U512>,
-    ) -> bool {
+    pub(super) fn can_execute(&self, validator_matrix: &ValidatorMatrix) -> bool {
         if self.block_added.is_none() {
             return false;
         }
-        if let SignaturesFinality::Sufficient =
-            self.has_sufficient_signatures(fault_tolerance_fraction, trusted_validator_weights)
-        {
-            return true;
-        }
-        false
+
+        Some(SignatureWeight::Sufficient)
+            == validator_matrix.has_sufficient_weight(self.era_id(), self.signatures.keys())
     }
 
     pub(super) fn block_height(&self) -> Option<u64> {
         self.block_added
             .as_ref()
             .map(|block_added| block_added.block.header().height())
+    }
+
+    pub(super) fn era_id(&self) -> EraId {
+        self.era_id
     }
 }

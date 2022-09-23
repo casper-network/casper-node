@@ -11,10 +11,14 @@ use serde::Serialize;
 use crate::types::FinalitySignature;
 use casper_types::{EraId, PublicKey, U512};
 
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) enum SignatureWeight {
+    /// Too few signatures to make any guarantees about the block's finality.
     Insufficient,
+    /// At least one honest validator has signed the block.
+    Weak,
+    /// There can be no blocks on other forks that also have this many signatures.
     Sufficient,
-    Strict,
 }
 
 #[derive(DataSize, Debug, Serialize, Default)]
@@ -116,17 +120,17 @@ impl ValidatorMatrix {
         Some(self.inner.read().unwrap().get(&era_id)?.get_total_weight())
     }
 
-    pub(crate) fn have_sufficient_weight(
+    pub(crate) fn has_sufficient_weight<'a>(
         &self,
         era_id: EraId,
-        signatures: Vec<FinalitySignature>,
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> Option<SignatureWeight> {
         Some(
             self.inner
                 .read()
                 .unwrap()
                 .get(&era_id)?
-                .have_sufficient_weight(signatures),
+                .has_sufficient_weight(validator_keys),
         )
     }
 
@@ -197,9 +201,9 @@ impl EraValidatorWeights {
         }
     }
 
-    pub(crate) fn have_sufficient_weight(
+    pub(crate) fn has_sufficient_weight<'a>(
         &self,
-        signatures: Vec<FinalitySignature>,
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> SignatureWeight {
         // sufficient is ~33.4%, strict is ~66.7%
         // in some cases, we may already have strict weight or better before even starting.
@@ -210,19 +214,18 @@ impl EraValidatorWeights {
         let finality_threshold_fraction = self.finality_threshold_fraction;
         let strict = Ratio::new(1, 2) * (Ratio::from_integer(1) + finality_threshold_fraction);
         let total_era_weight = self.get_total_weight();
-        let signature_weight: U512 = signatures
-            .iter()
-            .map(|i| self.get_weight(&i.public_key))
+        let signature_weight: U512 = validator_keys
+            .map(|validator_key| self.get_weight(&validator_key))
             .sum();
         if signature_weight * U512::from(*strict.denom())
             >= total_era_weight * U512::from(*strict.numer())
         {
-            return SignatureWeight::Strict;
+            return SignatureWeight::Sufficient;
         }
         if signature_weight * U512::from(*finality_threshold_fraction.denom())
             >= total_era_weight * U512::from(*finality_threshold_fraction.numer())
         {
-            return SignatureWeight::Sufficient;
+            return SignatureWeight::Weak;
         }
         SignatureWeight::Insufficient
     }

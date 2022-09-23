@@ -186,12 +186,12 @@ impl BlockAcquisitionState {
                     .into_iter()
                     .map(|fs| acquired.apply_signature(fs));
 
-                match validator_weights.have_sufficient_weight(acquired.have_signatures()) {
+                match validator_weights.has_sufficient_weight(acquired.have_signatures()) {
                     SignatureWeight::Insufficient => {
                         // Should not change state.
                         return Ok(());
                     }
-                    SignatureWeight::Sufficient | SignatureWeight::Strict => {
+                    SignatureWeight::Weak | SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveSufficientFinalitySignatures(
                             header.clone(),
                             acquired.clone(),
@@ -207,13 +207,13 @@ impl BlockAcquisitionState {
                     .map(|fs| acquired_signatures.apply_signature(fs));
 
                 match validator_weights
-                    .have_sufficient_weight(acquired_signatures.have_signatures())
+                    .has_sufficient_weight(acquired_signatures.have_signatures())
                 {
-                    SignatureWeight::Insufficient | SignatureWeight::Sufficient => {
+                    SignatureWeight::Insufficient | SignatureWeight::Weak => {
                         // Should not change state.
                         return Ok(());
                     }
-                    SignatureWeight::Strict => BlockAcquisitionState::HaveStrictFinalitySignatures(
+                    SignatureWeight::Sufficient => BlockAcquisitionState::HaveStrictFinalitySignatures(
                         acquired_signatures.clone(),
                     ),
                 }
@@ -225,12 +225,12 @@ impl BlockAcquisitionState {
                     .into_iter()
                     .map(|fs| acquired.apply_signature(fs));
 
-                match validator_weights.have_sufficient_weight(acquired.have_signatures()) {
-                    SignatureWeight::Insufficient | SignatureWeight::Sufficient => {
+                match validator_weights.has_sufficient_weight(acquired.have_signatures()) {
+                    SignatureWeight::Insufficient | SignatureWeight::Weak => {
                         // Should not change state.
                         return Ok(());
                     }
-                    SignatureWeight::Strict => {
+                    SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveStrictFinalitySignatures(acquired.clone())
                     }
                 }

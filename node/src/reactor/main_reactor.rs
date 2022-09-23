@@ -149,6 +149,7 @@ pub(crate) struct MainReactor {
     attempts: usize,
     idle_tolerances: TimeDiff,
 
+    // TODO: fill from: sync_leap, block execution, block_added in blocks accumulator
     validator_matrix: ValidatorMatrix,
 }
 
@@ -474,12 +475,6 @@ impl MainReactor {
                     PublicKey::System,
                 );
 
-                // TODO - we shouldn't enqueue a CheckStatus from here to avoid starting a second
-                //        "timing belt"
-                // effect_builder
-                //     .immediately()
-                //     .event(|()| MainEvent::CheckStatus)
-
                 effect_builder
                     .enqueue_block_for_execution(finalized_block, vec![], vec![])
                     .ignore()
@@ -521,12 +516,6 @@ impl MainReactor {
                     next_block_height,
                     PublicKey::System,
                 );
-
-                // TODO - we shouldn't enqueue a CheckStatus from here to avoid starting a second
-                //        "timing belt"
-                // effect_builder
-                //     .immediately()
-                //     .event(|()| MainEvent::CheckStatus)
 
                 effect_builder
                     .enqueue_block_for_execution(finalized_block, vec![], vec![])

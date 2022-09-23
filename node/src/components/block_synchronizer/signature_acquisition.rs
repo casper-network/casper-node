@@ -43,14 +43,11 @@ impl SignatureAcquisition {
             .collect_vec()
     }
 
-    pub(super) fn have_signatures(&self) -> Vec<FinalitySignature> {
-        self.inner
-            .iter()
-            .filter_map(|(k, v)| match v {
-                SignatureState::Vacant => None,
-                SignatureState::Signature(finality_signature) => Some(*finality_signature.clone()),
-            })
-            .collect()
+    pub(super) fn have_signatures(&self) -> impl Iterator<Item = &PublicKey> {
+        self.inner.iter().filter_map(|(k, v)| match v {
+            SignatureState::Vacant => None,
+            SignatureState::Signature(finality_signature) => Some(k),
+        })
     }
 
     pub(super) fn is_non_vacant(&self) -> bool {
