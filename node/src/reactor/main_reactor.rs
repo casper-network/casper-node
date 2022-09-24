@@ -109,8 +109,7 @@ pub(crate) struct MainReactor {
     // TODO - has its own timing belt - should it?
     address_gossiper: Gossiper<GossipedAddress, MainEvent>,
 
-    rpc_server: RpcServer, /* TODO: make sure the handling in "Initialize & CatchUp" phase is
-                            * correct (explicit error messages, etc.) - needs an init event? */
+    rpc_server: RpcServer,
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     deploy_acceptor: DeployAcceptor, /* TODO: should use
@@ -147,7 +146,7 @@ pub(crate) struct MainReactor {
     attempts: usize,
     idle_tolerances: TimeDiff,
 
-    // TODO: fill from: sync_leap, block execution, block_added in blocks accumulator
+    // TODO: fill from: sync_leap, block execution, block_added
     validator_matrix: ValidatorMatrix,
 }
 

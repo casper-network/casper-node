@@ -1,4 +1,3 @@
-
 use std::{sync::Arc, time::Duration};
 use tracing::info;
 
@@ -255,8 +254,6 @@ impl MainReactor {
             }
         }
         effects
-
-        // TODO: Stall detection should possibly be done in the control logic.
     }
 
     fn catch_up_instructions(

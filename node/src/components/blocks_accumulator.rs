@@ -138,20 +138,6 @@ impl BlocksAccumulator {
         SyncInstruction::Leap
     }
 
-    // fn can_execute(&self, block_hash: &BlockHash) -> SyncInstruction {
-    //     todo!("use block acceptors to determine if execution can be attempted or not");
-    //     // BEFORE the f-seq cant help you, SyncInstruction::Leap
-    //     // ? |------------- future chain ------------------------>
-    //     // if block.era_id == tip.era_id
-    //     // IN f-seq not in range of tip, SyncInstruction::BlockSync(block_hash, all) else
-    // SyncInstruction::Leap     // |------------- future chain
-    // ----?-ATTEMPT_EXECUTION_THRESHOLD-T>     // IN f-seq in range of tip,
-    // SyncInstruction::BlockExec(block_hash) // not all     // |------------- future chain
-    // ----?ATTEMPT_EXECUTION_THRESHOLD>     // AFTER the f-seq cant help you,
-    // SyncInstruction::Leap // jazz_hands!("not sure")     // |------------- future chain
-    // ------------------------> ?     SyncInstruction::Leap
-    // }
-
     fn handle_block_added<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
