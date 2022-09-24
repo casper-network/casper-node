@@ -20,9 +20,9 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlocklistAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
+            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
+            DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
             UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
@@ -32,11 +32,11 @@ use crate::{
             TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
-            BeginGossipRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MarkBlockCompletedRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
-            StateStoreRequest, StorageRequest, SyncGlobalStateRequest, SyncLeapRequest,
-            TrieAccumulatorRequest, UpgradeWatcherRequest,
+            AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
+            BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+            NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest, StorageRequest,
+            SyncGlobalStateRequest, SyncLeapRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -58,7 +58,7 @@ pub(crate) enum MainEvent {
     // Shutdown the reactor, should only be raised by the reactor itself
     Shutdown(String),
     // Check the status of the reactor, should only be raised by the reactor itself
-    CheckStatus,
+    ReactorCrank,
     #[from]
     ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
 
@@ -68,7 +68,7 @@ pub(crate) enum MainEvent {
 
     // Coordination events == component to component(s) or component to reactor events
     #[from]
-    SmallNetwork(small_network::Event<Message>),
+    Network(small_network::Event<Message>),
     #[from]
     Storage(storage::Event),
     #[from]
@@ -181,11 +181,11 @@ pub(crate) enum MainEvent {
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+    BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
     #[from]
-    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
+    AddressGossiperCrank(BeginGossipRequest<GossipedAddress>),
     #[from]
-    StateStoreRequest(StateStoreRequest),
+    AppStateRequest(AppStateRequest),
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
     #[from]
@@ -217,7 +217,7 @@ pub(crate) enum MainEvent {
     #[from]
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement),
+    NetworkPeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
@@ -229,9 +229,9 @@ pub(crate) enum MainEvent {
     #[from]
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
-    NetRequestIncoming(NetRequestIncoming),
+    NetworkPeerRequestingData(NetRequestIncoming),
     #[from]
-    NetResponseIncoming(NetResponseIncoming),
+    NetworkPeerProvidingData(NetResponseIncoming),
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
@@ -269,8 +269,8 @@ impl ReactorEvent for MainEvent {
     fn description(&self) -> &'static str {
         match self {
             MainEvent::Shutdown(_) => "Shutdown",
-            MainEvent::CheckStatus => "CheckStatus",
-            MainEvent::SmallNetwork(_) => "SmallNetwork",
+            MainEvent::ReactorCrank => "CheckStatus",
+            MainEvent::Network(_) => "SmallNetwork",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::DeployBuffer(_) => "DeployBuffer",
             MainEvent::Storage(_) => "Storage",
@@ -324,8 +324,8 @@ impl ReactorEvent for MainEvent {
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             MainEvent::StorageRequest(_) => "StorageRequest",
-            MainEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
-            MainEvent::StateStoreRequest(_) => "StateStoreRequest",
+            MainEvent::BlockCompleteConfirmationRequest(_) => "MarkBlockCompletedRequest",
+            MainEvent::AppStateRequest(_) => "StateStoreRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
@@ -336,16 +336,16 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             MainEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
-            MainEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            MainEvent::NetworkPeerBehaviorAnnouncement(_) => "BlocklistAnnouncement",
             MainEvent::DeployBufferAnnouncement(_) => "DeployBufferAnnouncement",
-            MainEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             MainEvent::BlockAddedGossiperIncoming(_) => "BlockGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
-            MainEvent::NetRequestIncoming(_) => "NetRequestIncoming",
-            MainEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
+            MainEvent::NetworkPeerProvidingData(_) => "NetResponseIncoming",
             MainEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             MainEvent::TrieDemand(_) => "TrieDemand",
             MainEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
@@ -446,9 +446,9 @@ impl Display for MainEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             MainEvent::Shutdown(msg) => write!(f, "shutdown: {}", msg),
-            MainEvent::CheckStatus => write!(f, "check status"),
+            MainEvent::ReactorCrank => write!(f, "check status"),
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
-            MainEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
+            MainEvent::Network(event) => write!(f, "small network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
@@ -523,10 +523,10 @@ impl Display for MainEvent {
                 write!(f, "upgrade watcher request: {}", req)
             }
             MainEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
-            MainEvent::MarkBlockCompletedRequest(req) => {
+            MainEvent::BlockCompleteConfirmationRequest(req) => {
                 write!(f, "mark block completed request: {}", req)
             }
-            MainEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
+            MainEvent::AppStateRequest(req) => write!(f, "state store request: {}", req),
             MainEvent::BlockFetcherRequest(request) => {
                 write!(f, "block fetcher request: {}", request)
             }
@@ -566,7 +566,7 @@ impl Display for MainEvent {
             MainEvent::BlockAddedFetcherRequest(request) => {
                 write!(f, "block added fetcher request: {}", request)
             }
-            MainEvent::BeginAddressGossipRequest(request) => {
+            MainEvent::AddressGossiperCrank(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
             MainEvent::DeployBufferRequest(req) => {
@@ -616,7 +616,7 @@ impl Display for MainEvent {
             MainEvent::UpgradeWatcherAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
-            MainEvent::BlocklistAnnouncement(ann) => {
+            MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
@@ -624,8 +624,8 @@ impl Display for MainEvent {
             MainEvent::BlockAddedGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
+            MainEvent::NetworkPeerProvidingData(inner) => Display::fmt(inner, f),
             MainEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             MainEvent::TrieDemand(inner) => Display::fmt(inner, f),
             MainEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),

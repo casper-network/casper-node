@@ -264,17 +264,17 @@ impl Display for ConsensusAnnouncement {
     }
 }
 
-/// A block-list related announcement.
+/// Notable / unexpected peer behavior has been detected by some part of the system.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlocklistAnnouncement {
+pub(crate) enum PeerBehaviorAnnouncement {
     /// A given peer committed a blockable offense.
     OffenseCommitted(Box<NodeId>),
 }
 
-impl Display for BlocklistAnnouncement {
+impl Display for PeerBehaviorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlocklistAnnouncement::OffenseCommitted(peer) => {
+            PeerBehaviorAnnouncement::OffenseCommitted(peer) => {
                 write!(f, "peer {} committed offense", peer)
             }
         }

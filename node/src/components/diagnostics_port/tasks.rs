@@ -732,13 +732,13 @@ mod tests {
         let scheduler = WeightedRoundRobin::new(QueueKind::weights());
         scheduler
             .push(
-                MainEvent::SmallNetwork(small_network::Event::SweepOutgoing),
+                MainEvent::Network(small_network::Event::SweepOutgoing),
                 QueueKind::Network,
             )
             .await;
         scheduler
             .push(
-                MainEvent::SmallNetwork(small_network::Event::GossipOurAddress),
+                MainEvent::Network(small_network::Event::GossipOurAddress),
                 QueueKind::Regular,
             )
             .await;

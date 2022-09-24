@@ -24,7 +24,7 @@ pub(super) fn initialize_component(
         effects.extend(
             effect_builder
                 .immediately()
-                .event(|()| MainEvent::CheckStatus),
+                .event(|()| MainEvent::ReactorCrank),
         );
         return Some(effects);
     }

@@ -43,7 +43,7 @@ use crate::{
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
-        requests::{ContractRuntimeRequest, MarkBlockCompletedRequest, NetworkRequest},
+        requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -219,7 +219,7 @@ where
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
         + From<NetworkRequest<Message>>
-        + From<MarkBlockCompletedRequest>
+        + From<BlockCompleteConfirmationRequest>
         + Send,
 {
     type Event = Event;
@@ -311,7 +311,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
-            + From<MarkBlockCompletedRequest>
+            + From<BlockCompleteConfirmationRequest>
             + Send,
     {
         match request {
@@ -750,7 +750,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
-            + From<MarkBlockCompletedRequest>
+            + From<BlockCompleteConfirmationRequest>
             + Send,
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();

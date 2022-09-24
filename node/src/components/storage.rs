@@ -75,7 +75,7 @@ use crate::{
     components::{fetcher::FetchResponse, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
-        requests::{MarkBlockCompletedRequest, NetworkRequest, StateStoreRequest},
+        requests::{AppStateRequest, BlockCompleteConfirmationRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -211,10 +211,10 @@ pub(crate) enum Event {
     NetRequestIncoming(Box<NetRequestIncoming>),
     /// Incoming state storage request.
     #[from]
-    StateStoreRequest(StateStoreRequest),
+    StateStoreRequest(AppStateRequest),
     /// Block completion announcement.
     #[from]
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
 }
 
 impl Display for Event {
@@ -478,12 +478,12 @@ impl Storage {
     fn handle_state_store_request<REv>(
         &self,
         _effect_builder: EffectBuilder<REv>,
-        req: StateStoreRequest,
+        req: AppStateRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         // Incoming requests are fairly simple database write. Errors are handled one level above on
         // the call stack, so all we have to do is load or store a value.
         match req {
-            StateStoreRequest::Save {
+            AppStateRequest::Save {
                 key,
                 data,
                 responder,
@@ -491,7 +491,7 @@ impl Storage {
                 self.write_state_store(key, &data)?;
                 Ok(responder.respond(()).ignore())
             }
-            StateStoreRequest::Load { key, responder } => {
+            AppStateRequest::Load { key, responder } => {
                 let bytes = self.read_state_store(&key)?;
                 Ok(responder.respond(bytes).ignore())
             }
@@ -1218,10 +1218,10 @@ impl Storage {
     /// Handles a [`BlockCompletedAnnouncement`].
     fn handle_mark_block_completed_request(
         &mut self,
-        MarkBlockCompletedRequest {
+        BlockCompleteConfirmationRequest {
             block_height,
             responder,
-        }: MarkBlockCompletedRequest,
+        }: BlockCompleteConfirmationRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;

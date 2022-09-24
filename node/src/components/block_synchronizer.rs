@@ -43,7 +43,7 @@ use crate::components::fetcher::Error;
 
 use crate::{
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, TrieAccumulatorRequest},
     },
     types::{
@@ -458,7 +458,7 @@ where
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
-        + From<BlocklistAnnouncement>
+        + From<PeerBehaviorAnnouncement>
         + From<StorageRequest>
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>

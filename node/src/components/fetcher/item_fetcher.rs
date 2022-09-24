@@ -5,7 +5,7 @@ use tracing::{error, trace, warn};
 use super::{Error, Event, FetchResponder, FetchedData, Metrics};
 use crate::{
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -113,7 +113,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<T>>
     where
-        REv: From<StorageRequest> + From<BlocklistAnnouncement> + Send,
+        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
     {
         self.metrics().found_on_peer.inc();
 

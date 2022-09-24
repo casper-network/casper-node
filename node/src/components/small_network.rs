@@ -94,7 +94,7 @@ use self::{
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
-        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
+        announcements::{ContractRuntimeAnnouncement, PeerBehaviorAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
@@ -206,7 +206,7 @@ where
         + FromIncoming<P>
         + From<StorageRequest>
         + From<NetworkRequest<P>>
-        + From<BlocklistAnnouncement>,
+        + From<PeerBehaviorAnnouncement>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -806,7 +806,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: FromIncoming<P> + From<BlocklistAnnouncement>,
+        REv: FromIncoming<P> + From<PeerBehaviorAnnouncement>,
     {
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
@@ -930,7 +930,7 @@ where
         + FromIncoming<P>
         + From<StorageRequest>
         + From<NetworkRequest<P>>
-        + From<BlocklistAnnouncement>,
+        + From<PeerBehaviorAnnouncement>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -1086,7 +1086,7 @@ where
             }
             (
                 ComponentStatus::Initialized,
-                Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)),
+                Event::BlocklistAnnouncement(PeerBehaviorAnnouncement::OffenseCommitted(peer_id)),
             ) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
@@ -1210,7 +1210,7 @@ where
         + FromIncoming<P>
         + From<StorageRequest>
         + From<NetworkRequest<P>>
-        + From<BlocklistAnnouncement>,
+        + From<PeerBehaviorAnnouncement>,
     P: Payload,
 {
     fn status(&self) -> ComponentStatus {

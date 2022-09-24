@@ -16,7 +16,7 @@ use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::Component,
-    effect::{announcements::BlocklistAnnouncement, EffectBuilder, EffectExt, Effects},
+    effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
     types::{
         Block, BlockAdded, BlockHash, FetcherItem, FinalitySignature, NodeId, SignatureWeight,
         ValidatorMatrix,
@@ -145,7 +145,7 @@ impl BlocksAccumulator {
         sender: NodeId,
     ) -> Effects<Event>
     where
-        REv: Send + From<BlocklistAnnouncement>,
+        REv: Send + From<PeerBehaviorAnnouncement>,
     {
         // TODO
         // * check if we have the deploys - if we do, add the finalized approvals to storage
@@ -207,7 +207,7 @@ impl BlocksAccumulator {
         sender: NodeId,
     ) -> Effects<Event>
     where
-        REv: Send + From<BlocklistAnnouncement>,
+        REv: Send + From<PeerBehaviorAnnouncement>,
     {
         // if let Err(error) = finality_signature.is_signer_in_era() {
         //     warn!(%error, "received finality signature from a non-validator");
@@ -380,7 +380,7 @@ impl BlocksAccumulator {
 
 impl<REv> Component<REv> for BlocksAccumulator
 where
-    REv: Send + From<BlocklistAnnouncement>,
+    REv: Send + From<PeerBehaviorAnnouncement>,
 {
     type Event = Event;
 

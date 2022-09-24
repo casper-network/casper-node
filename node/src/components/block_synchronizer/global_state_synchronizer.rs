@@ -18,7 +18,7 @@ use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent};
 use crate::{
     components::{fetcher::FetchResult, Component},
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::PeerBehaviorAnnouncement,
         requests::{
             ContractRuntimeRequest, FetcherRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
@@ -292,7 +292,7 @@ where
     REv: From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>
         + From<FetcherRequest<TrieOrChunk>>
-        + From<BlocklistAnnouncement>
+        + From<PeerBehaviorAnnouncement>
         + Send,
 {
     type Event = Event;

@@ -28,7 +28,7 @@ use crate::{
             FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponse,
             NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
-        requests::{MarkBlockCompletedRequest, StateStoreRequest},
+        requests::{AppStateRequest, BlockCompleteConfirmationRequest},
         Responder,
     },
     fatal,
@@ -93,7 +93,7 @@ enum Event {
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    StateStoreRequest(StateStoreRequest),
+    StateStoreRequest(AppStateRequest),
     #[from]
     FetcherRequestDeploy(FetcherRequest<Deploy>),
     #[from]
@@ -105,9 +105,9 @@ enum Event {
     #[from]
     NetResponseIncoming(NetResponseIncoming),
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement),
+    BlocklistAnnouncement(PeerBehaviorAnnouncement),
     #[from]
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
     #[from]
     TrieDemand(TrieDemand),
     #[from]

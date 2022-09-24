@@ -159,17 +159,17 @@ use crate::{
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlocklistAnnouncement, BlocksAccumulatorAnnouncement, ConsensusAnnouncement,
-    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-    DeployBufferAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
+    BlocksAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+    GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockPayloadRequest, BlockValidationRequest, ChainspecRawBytesRequest,
-    ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
-    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    StateStoreRequest, StorageRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockPayloadRequest,
+    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
+    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    StorageRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -880,10 +880,10 @@ impl<REv> EffectBuilder<REv> {
     /// global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64)
     where
-        REv: From<MarkBlockCompletedRequest>,
+        REv: From<BlockCompleteConfirmationRequest>,
     {
         self.make_request(
-            |responder| MarkBlockCompletedRequest {
+            |responder| BlockCompleteConfirmationRequest {
                 block_height,
                 responder,
             },
@@ -1777,11 +1777,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
     pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
     where
-        REv: From<BlocklistAnnouncement>,
+        REv: From<PeerBehaviorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
+                PeerBehaviorAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
             )
             .await
@@ -1890,13 +1890,13 @@ impl<REv> EffectBuilder<REv> {
     /// If an error occurs during state loading or no data is found, returns `None`.
     pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
     where
-        REv: From<StateStoreRequest>,
+        REv: From<AppStateRequest>,
         for<'de> T: Deserialize<'de>,
     {
         // Due to object safety issues, we cannot ship the actual values around, but only the
         // serialized bytes. Hence we retrieve raw bytes from storage and then deserialize here.
         self.make_request(
-            move |responder| StateStoreRequest::Load { key, responder },
+            move |responder| AppStateRequest::Load { key, responder },
             QueueKind::Regular,
         )
         .await
@@ -1917,13 +1917,13 @@ impl<REv> EffectBuilder<REv> {
     /// be successfully stored should check the return value and act accordingly.
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
-        REv: From<StateStoreRequest>,
+        REv: From<AppStateRequest>,
         T: Serialize,
     {
         match bincode::serialize(&value) {
             Ok(data) => {
                 self.make_request(
-                    move |responder| StateStoreRequest::Save {
+                    move |responder| AppStateRequest::Save {
                         key,
                         data,
                         responder,

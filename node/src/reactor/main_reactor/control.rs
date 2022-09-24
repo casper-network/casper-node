@@ -43,7 +43,7 @@ enum CatchUpInstruction {
 enum KeepUpInstruction {}
 
 impl MainReactor {
-    pub(crate) fn check_status(
+    pub(crate) fn crank(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
@@ -71,7 +71,7 @@ impl MainReactor {
                     effect_builder,
                     &mut self.small_network,
                     "small_network",
-                    MainEvent::SmallNetwork(small_network::Event::Initialize),
+                    MainEvent::Network(small_network::Event::Initialize),
                 ) {
                     return effects;
                 }
@@ -102,7 +102,7 @@ impl MainReactor {
                 self.state = ReactorState::CatchUp;
                 return effect_builder
                     .immediately()
-                    .event(|_| MainEvent::CheckStatus);
+                    .event(|_| MainEvent::ReactorCrank);
             }
             ReactorState::CatchUp => match self.catch_up_instructions(rng, effect_builder) {
                 CatchUpInstruction::CommitGenesis => {
@@ -113,7 +113,7 @@ impl MainReactor {
                             ret.extend(
                                 effect_builder
                                     .set_timeout(Duration::from_secs(WAIT_SEC))
-                                    .event(|_| MainEvent::CheckStatus),
+                                    .event(|_| MainEvent::ReactorCrank),
                             );
                         }
                         Err(msg) => {
@@ -134,7 +134,7 @@ impl MainReactor {
                             ret.extend(
                                 effect_builder
                                     .set_timeout(Duration::from_secs(WAIT_SEC))
-                                    .event(|_| MainEvent::CheckStatus),
+                                    .event(|_| MainEvent::ReactorCrank),
                             );
                         }
                         Err(msg) => {
@@ -153,19 +153,19 @@ impl MainReactor {
                     ret.extend(
                         effect_builder
                             .set_timeout(Duration::from_secs(WAIT_SEC))
-                            .event(|_| MainEvent::CheckStatus),
+                            .event(|_| MainEvent::ReactorCrank),
                     );
                     return ret;
                 }
                 CatchUpInstruction::CheckLater(_, wait) => {
                     return effect_builder
                         .set_timeout(Duration::from_secs(wait))
-                        .event(|_| MainEvent::CheckStatus);
+                        .event(|_| MainEvent::ReactorCrank);
                 }
                 CatchUpInstruction::CheckSoon(_) => {
                     return effect_builder
                         .immediately()
-                        .event(|_| MainEvent::CheckStatus);
+                        .event(|_| MainEvent::ReactorCrank);
                 }
                 CatchUpInstruction::Shutdown(msg) => {
                     return effect_builder
@@ -176,7 +176,7 @@ impl MainReactor {
                     self.state = ReactorState::KeepUp;
                     return effect_builder
                         .immediately()
-                        .event(|_| MainEvent::CheckStatus);
+                        .event(|_| MainEvent::ReactorCrank);
                 }
             },
             ReactorState::KeepUp => {
@@ -230,13 +230,13 @@ impl MainReactor {
                         self.state = ReactorState::CatchUp;
                         return effect_builder
                             .immediately()
-                            .event(|_| MainEvent::CheckStatus);
+                            .event(|_| MainEvent::ReactorCrank);
                     }
                     SyncInstruction::CaughtUp => {
                         // DO STUFF, THEN
                         return effect_builder
                             .set_timeout(Duration::from_secs(WAIT_SEC))
-                            .event(|_| MainEvent::CheckStatus);
+                            .event(|_| MainEvent::ReactorCrank);
                     }
                     SyncInstruction::BlockSync {
                         block_hash,

@@ -64,7 +64,7 @@ use crate::{
         small_network::Identity as NetworkIdentity,
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
+        announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
         incoming::NetResponse,
         Effect, EffectBuilder, EffectExt, Effects,
     },
@@ -957,7 +957,7 @@ fn handle_fetch_response<R, I>(
 where
     I: FetcherItem,
     R: Reactor,
-    <R as Reactor>::Event: From<fetcher::Event<I>> + From<BlocklistAnnouncement>,
+    <R as Reactor>::Event: From<fetcher::Event<I>> + From<PeerBehaviorAnnouncement>,
 {
     match fetcher::Event::<I>::from_get_response_serialized_item(sender, serialized_item) {
         Some(fetcher_event) => {
@@ -997,7 +997,7 @@ where
         + From<fetcher::Event<BlockSignatures>>
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
-        + From<BlocklistAnnouncement>,
+        + From<PeerBehaviorAnnouncement>,
 {
     match message {
         NetResponse::Deploy(ref serialized_item) => {

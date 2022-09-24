@@ -682,23 +682,23 @@ impl Display for StorageRequest {
 // the request has been completed before it can exit, i.e. it awaits the response. Otherwise, the
 // joiner reactor might exit before handling the announcement and it would go un-actioned.
 #[derive(Debug, Serialize)]
-pub(crate) struct MarkBlockCompletedRequest {
+pub(crate) struct BlockCompleteConfirmationRequest {
     /// Height of the block that was completed.
     pub block_height: u64,
     /// Responder indicating that the change has been recorded.
     pub responder: Responder<()>,
 }
 
-impl Display for MarkBlockCompletedRequest {
+impl Display for BlockCompleteConfirmationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "block completed: height {}", self.block_height)
     }
 }
 
-/// State store request.
+/// Application state CRUD management request.
 #[derive(DataSize, Debug, Serialize)]
 #[repr(u8)]
-pub(crate) enum StateStoreRequest {
+pub(crate) enum AppStateRequest {
     /// Stores a piece of state to storage.
     Save {
         /// Key to store under.
@@ -718,10 +718,10 @@ pub(crate) enum StateStoreRequest {
     },
 }
 
-impl Display for StateStoreRequest {
+impl Display for AppStateRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StateStoreRequest::Save { key, data, .. } => {
+            AppStateRequest::Save { key, data, .. } => {
                 write!(
                     f,
                     "save data under {} ({} bytes)",
@@ -729,7 +729,7 @@ impl Display for StateStoreRequest {
                     data.len()
                 )
             }
-            StateStoreRequest::Load { key, .. } => {
+            AppStateRequest::Load { key, .. } => {
                 write!(f, "load data from key {}", base16::encode_lower(key))
             }
         }
