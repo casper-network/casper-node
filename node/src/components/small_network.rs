@@ -306,6 +306,10 @@ where
             public_addr.set_port(local_addr.port());
         }
 
+        Arc::get_mut(&mut self.context)
+            .expect("should be no other pointers")
+            .initialize(public_addr, effect_builder.into_inner());
+
         let protocol_version = self.context.chain_info().protocol_version;
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
@@ -1186,14 +1190,14 @@ where
                 );
 
                 effects
-            } // (
-              //     ComponentStatus::Initialized,
-              //     Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
-              // ) => {
-              //     self.context.is_syncing().store(false, Ordering::SeqCst);
-              //     self.close_incoming_connections();
-              //     Effects::new()
-              // }
+            } /* (
+               *     ComponentStatus::Initialized,
+               *     Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
+               * ) => {
+               *     self.context.is_syncing().store(false, Ordering::SeqCst);
+               *     self.close_incoming_connections();
+               *     Effects::new()
+               * } */
         }
     }
 }

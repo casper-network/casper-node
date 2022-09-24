@@ -35,7 +35,10 @@ use casper_types::{
 use crate::utils::RESOURCES_PATH;
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
-    effect::{announcements::UpgradeWatcherAnnouncement, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::UpgradeWatcherAnnouncement, requests::UpgradeWatcherRequest, EffectBuilder,
+        EffectExt, Effects,
+    },
     types::{
         chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
         ActivationPoint, BlockHeader, Chainspec,
@@ -50,6 +53,8 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) enum Event {
     /// Start checking for installed upgrades.
     Initialize,
+    #[from]
+    Request(UpgradeWatcherRequest),
     /// Check config dir to see if an upgrade activation point is available, and if so announce it.
     CheckForNextUpgrade,
     /// If the result of checking for an upgrade is successful, it is passed here.
@@ -61,6 +66,9 @@ impl Display for Event {
         match self {
             Event::Initialize => {
                 write!(formatter, "start checking for installed upgrades")
+            }
+            Event::Request(_) => {
+                write!(formatter, "upgrade watcher request")
             }
             Event::CheckForNextUpgrade => {
                 write!(formatter, "check for next upgrade")
@@ -301,6 +309,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Initialize => self.start_checking_for_upgrades(effect_builder),
+            Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }

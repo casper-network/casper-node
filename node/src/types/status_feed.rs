@@ -81,7 +81,8 @@ impl ChainspecInfo {
 pub enum NodeState {
     // /// The node is currently in joining mode.
     // Joining(Progress),
-    // /// The node is currently in participating mode, but also syncing to genesis in the background.
+    // /// The node is currently in participating mode, but also syncing to genesis in the
+    // background.
     // ParticipatingAndSyncingToGenesis {
     //     /// The progress of the chain sync-to-genesis task.
     //     sync_progress: Progress,

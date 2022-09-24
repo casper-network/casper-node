@@ -563,9 +563,11 @@ impl reactor::Reactor for MainReactor {
             MainEvent::ChainspecRawBytesRequest(
                 ChainspecRawBytesRequest::GetChainspecRawBytes(responder),
             ) => responder.respond(self.chainspec_raw_bytes.clone()).ignore(),
-            MainEvent::UpgradeWatcherRequest(req) => {
-                self.dispatch_event(effect_builder, rng, req.into())
-            }
+            MainEvent::UpgradeWatcherRequest(req) => reactor::wrap_effects(
+                MainEvent::UpgradeWatcher,
+                self.upgrade_watcher
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             MainEvent::StorageRequest(req) => reactor::wrap_effects(
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),

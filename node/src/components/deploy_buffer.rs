@@ -12,13 +12,15 @@ use tracing::{debug, error, warn};
 
 use casper_types::{bytesrepr::ToBytes, Timestamp};
 
-use crate::effect::announcements::DeployBufferAnnouncement;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
         Component, ComponentStatus, InitializedComponent,
     },
-    effect::{requests::DeployBufferRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::DeployBufferAnnouncement, requests::DeployBufferRequest, EffectBuilder,
+        EffectExt, Effects,
+    },
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,

@@ -33,7 +33,6 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
-use crate::types::appendable_block::AppendableBlock;
 use crate::{
     components::{
         block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
@@ -52,8 +51,8 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys, BlockHash,
+        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
         DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
         FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed, SyncLeap,

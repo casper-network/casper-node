@@ -132,7 +132,6 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
-use crate::types::appendable_block::AppendableBlock;
 use crate::{
     components::{
         block_synchronizer::TrieAccumulatorError,
@@ -150,10 +149,10 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockAdded, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAdded, BlockAndDeploys,
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
         TrieOrChunk, TrieOrChunkId,
     },
