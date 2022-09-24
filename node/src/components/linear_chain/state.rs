@@ -1,23 +1,77 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use datasize::DataSize;
 use itertools::Itertools;
 use num::rational::Ratio;
+use serde::Serialize;
 use tracing::{debug, warn};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, Timestamp, U512};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
 use crate::{
-    components::{
-        chain_synchronizer::KeyBlockInfo,
-        linear_chain::{self},
+    components::linear_chain,
+    types::{
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash,
+        FinalitySignature,
     },
-    types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
+
+/// Key block info used for verifying finality signatures.
+///
+/// Can come from either:
+///   - A switch block
+///   - The global state under a genesis block
+///
+/// If the data was scraped from genesis, then `era_id` is 0.
+/// Otherwise if it came from a switch block it is that switch block's `era_id + 1`.
+#[derive(DataSize, Clone, Serialize, Debug)]
+struct KeyBlockInfo {
+    /// The block hash of the key block
+    key_block_hash: BlockHash,
+    /// The validator weights for checking finality signatures.
+    validator_weights: BTreeMap<PublicKey, U512>,
+    /// The time the era started.
+    era_start: Timestamp,
+    /// The height of the switch block that started this era.
+    height: u64,
+    /// The era in which the validators are operating
+    era_id: EraId,
+}
+
+impl KeyBlockInfo {
+    fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
+        block_header
+            .next_era_validator_weights()
+            .and_then(|next_era_validator_weights| {
+                Some(KeyBlockInfo {
+                    key_block_hash: block_header.hash(),
+                    validator_weights: next_era_validator_weights.clone(),
+                    era_start: block_header.timestamp(),
+                    height: block_header.height(),
+                    era_id: block_header.era_id().checked_add(1)?,
+                })
+            })
+    }
+
+    /// Returns the era in which the validators are operating
+    fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    /// Returns the hash of the key block, i.e. the last block before `era_id`.
+    fn block_hash(&self) -> &BlockHash {
+        &self.key_block_hash
+    }
+
+    /// Returns the validator weights for this era.
+    fn validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.validator_weights
+    }
+}
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain {

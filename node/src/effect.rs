@@ -132,6 +132,7 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
+use crate::types::appendable_block::AppendableBlock;
 use crate::{
     components::{
         block_synchronizer::TrieAccumulatorError,
@@ -147,7 +148,6 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::announcements::{BlocksAccumulatorAnnouncement, ChainSynchronizerAnnouncement},
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAdded, BlockAndDeploys, BlockHash, BlockHeader,
@@ -160,18 +160,17 @@ use crate::{
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockProposerAnnouncement, BlocklistAnnouncement, ConsensusAnnouncement,
+    BlocklistAnnouncement, BlocksAccumulatorAnnouncement, ConsensusAnnouncement,
     ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UpgradeWatcherAnnouncement,
+    DeployBufferAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat,
+    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+    BeginGossipRequest, BlockPayloadRequest, BlockValidationRequest, ChainspecRawBytesRequest,
+    ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    NodeStateRequest, StateStoreRequest, StorageRequest, TrieAccumulatorRequest,
-    UpgradeWatcherRequest,
+    StateStoreRequest, StorageRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -802,11 +801,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces which deploys have expired.
     pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
     where
-        REv: From<BlockProposerAnnouncement>,
+        REv: From<DeployBufferAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlockProposerAnnouncement::DeploysExpired(hashes),
+                DeployBufferAnnouncement::DeploysExpired(hashes),
                 QueueKind::Regular,
             )
             .await;
@@ -1668,56 +1667,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    pub(crate) async fn request_block_payload(
-        self,
-        context: BlockContext<ClContext>,
-        next_finalized: u64,
-        accusations: Vec<PublicKey>,
-        random_bit: bool,
-    ) -> Arc<BlockPayload>
+    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
     where
-        REv: From<BlockProposerRequest>,
+        REv: From<DeployBufferRequest>,
     {
         self.make_request(
-            |responder| {
-                BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                    context,
-                    next_finalized,
-                    accusations,
-                    random_bit,
-                    responder,
-                })
+            |responder| DeployBufferRequest::GetAppendableBlock {
+                timestamp,
+                responder,
             },
             QueueKind::Regular,
         )
         .await
     }
-
-    // /// Executes a finalized block.
-    // pub(crate) async fn execute_finalized_block(
-    //     self,
-    //     protocol_version: ProtocolVersion,
-    //     execution_pre_state: ExecutionPreState,
-    //     finalized_block: FinalizedBlock,
-    //     deploys: Vec<Deploy>,
-    //     transfers: Vec<Deploy>,
-    // ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
-    // where
-    //     REv: From<ContractRuntimeRequest>,
-    // {
-    //     self.make_request(
-    //         |responder| ContractRuntimeRequest::ExecuteBlock {
-    //             protocol_version,
-    //             execution_pre_state,
-    //             finalized_block,
-    //             deploys,
-    //             transfers,
-    //             responder,
-    //         },
-    //         QueueKind::Regular,
-    //     )
-    //     .await
-    // }
 
     /// Enqueues a finalized proto-block execution.
     ///
@@ -1826,19 +1788,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce that the sync process has finished.
-    pub(crate) async fn announce_finished_chain_syncing(self)
-    where
-        REv: From<ChainSynchronizerAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ChainSynchronizerAnnouncement::SyncFinished,
-                QueueKind::Network,
-            )
-            .await
-    }
-
     /// The linear chain has stored a newly-created block.
     pub(crate) async fn announce_block_added(
         self,
@@ -1918,13 +1867,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(UpgradeWatcherRequest, QueueKind::Regular)
             .await
-    }
-
-    pub(crate) async fn get_node_state(self) -> NodeState
-    where
-        REv: From<NodeStateRequest> + Send,
-    {
-        self.make_request(NodeStateRequest, QueueKind::Api).await
     }
 
     /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.

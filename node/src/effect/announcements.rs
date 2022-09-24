@@ -208,17 +208,16 @@ impl Display for DeployAcceptorAnnouncement {
     }
 }
 
-/// A block proposer announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlockProposerAnnouncement {
+pub(crate) enum DeployBufferAnnouncement {
     /// Hashes of the deploys that expired.
     DeploysExpired(Vec<DeployHash>),
 }
 
-impl Display for BlockProposerAnnouncement {
+impl Display for DeployBufferAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+            DeployBufferAnnouncement::DeploysExpired(hashes) => {
                 write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }
@@ -394,26 +393,6 @@ impl Display for ContractRuntimeAnnouncement {
                     "upcoming era validators after current {}.",
                     era_that_is_ending,
                 )
-            }
-        }
-    }
-}
-
-/// A chain synchronizer announcement.
-#[derive(Debug, Serialize)]
-pub(crate) enum ChainSynchronizerAnnouncement {
-    /// The node has finished the synchronization it was doing (fast-sync or sync-to-genesis,
-    /// depending on config) and may now accept requests that are unsafe for nodes that are
-    /// synchronizing. Once this message is received, the only way for the peer to signal it's in
-    /// the syncing process is to reconnect.
-    SyncFinished,
-}
-
-impl Display for ChainSynchronizerAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ChainSynchronizerAnnouncement::SyncFinished => {
-                write!(f, "synchronization finished")
             }
         }
     }

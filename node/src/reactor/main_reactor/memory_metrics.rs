@@ -19,7 +19,7 @@ pub(super) struct MemoryMetrics {
     mem_event_stream_server: IntGauge,
     mem_consensus: IntGauge,
     mem_deploy_gossiper: IntGauge,
-    mem_block_proposer: IntGauge,
+    mem_deploy_buffer: IntGauge,
     mem_block_validator: IntGauge,
     mem_linear_chain: IntGauge,
 
@@ -58,8 +58,8 @@ impl MemoryMetrics {
             "mem_deploy_gossiper",
             "deploy gossiper memory usage in bytes",
         )?;
-        let mem_block_proposer =
-            IntGauge::new("mem_block_proposer", "block proposer memory usage in bytes")?;
+        let mem_deploy_buffer =
+            IntGauge::new("mem_deploy_buffer", "deploy buffer memory usage in bytes")?;
         let mem_block_validator = IntGauge::new(
             "mem_block_validator",
             "block validator memory usage in bytes",
@@ -88,7 +88,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_all_fetchers.clone()))?;
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
-        registry.register(Box::new(mem_block_proposer.clone()))?;
+        registry.register(Box::new(mem_deploy_buffer.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
         registry.register(Box::new(mem_linear_chain.clone()))?;
         registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
@@ -106,7 +106,7 @@ impl MemoryMetrics {
             mem_consensus,
             mem_all_fetchers,
             mem_deploy_gossiper,
-            mem_block_proposer,
+            mem_deploy_buffer,
             mem_block_validator,
             mem_linear_chain,
             mem_estimator_runtime_s,
@@ -129,7 +129,7 @@ impl MemoryMetrics {
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let fetchers = reactor.fetchers.estimate_heap_size() as i64;
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
-        let block_proposer = reactor.block_proposer.estimate_heap_size() as i64;
+        let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
 
@@ -144,7 +144,7 @@ impl MemoryMetrics {
             + consensus
             + fetchers
             + deploy_gossiper
-            + block_proposer
+            + deploy_buffer
             + block_validator
             + linear_chain;
 
@@ -160,7 +160,7 @@ impl MemoryMetrics {
         self.mem_consensus.set(consensus);
         self.mem_all_fetchers.set(fetchers);
         self.mem_deploy_gossiper.set(deploy_gossiper);
-        self.mem_block_proposer.set(block_proposer);
+        self.mem_deploy_buffer.set(deploy_buffer);
         self.mem_block_validator.set(block_validator);
         self.mem_linear_chain.set(linear_chain);
 
@@ -180,7 +180,7 @@ impl MemoryMetrics {
                %consensus,
                %fetchers,
                %deploy_gossiper,
-               %block_proposer,
+               %deploy_buffer,
                %block_validator,
                %linear_chain,
                "Collected new set of memory metrics.");
@@ -201,7 +201,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_consensus);
         unregister_metric!(self.registry, self.mem_all_fetchers);
         unregister_metric!(self.registry, self.mem_deploy_gossiper);
-        unregister_metric!(self.registry, self.mem_block_proposer);
+        unregister_metric!(self.registry, self.mem_deploy_buffer);
         unregister_metric!(self.registry, self.mem_block_validator);
         unregister_metric!(self.registry, self.mem_linear_chain);
         unregister_metric!(self.registry, self.mem_estimator_runtime_s);

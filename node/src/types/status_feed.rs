@@ -17,7 +17,6 @@ use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
-        chain_synchronizer::Progress,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
         upgrade_watcher::NextUpgrade,
     },
@@ -80,13 +79,13 @@ impl ChainspecInfo {
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeState {
-    /// The node is currently in joining mode.
-    Joining(Progress),
-    /// The node is currently in participating mode, but also syncing to genesis in the background.
-    ParticipatingAndSyncingToGenesis {
-        /// The progress of the chain sync-to-genesis task.
-        sync_progress: Progress,
-    },
+    // /// The node is currently in joining mode.
+    // Joining(Progress),
+    // /// The node is currently in participating mode, but also syncing to genesis in the background.
+    // ParticipatingAndSyncingToGenesis {
+    //     /// The progress of the chain sync-to-genesis task.
+    //     sync_progress: Progress,
+    // },
     /// The node is currently in the participating state.
     Participating,
 }

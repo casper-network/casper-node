@@ -46,12 +46,11 @@ use crate::{
         announcements::RpcServerAnnouncement,
         requests::{
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
-            NetworkInfoRequest, NodeStateRequest, RpcRequest, StorageRequest,
-            UpgradeWatcherRequest,
+            NetworkInfoRequest, RpcRequest, StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{BlockHeader, ChainspecInfo, Deploy, StatusFeed},
+    types::{BlockHeader, ChainspecInfo, Deploy, NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -71,7 +70,6 @@ pub(crate) trait ReactorEventT:
     + From<MetricsRequest>
     + From<NetworkInfoRequest>
     + From<StorageRequest>
-    + From<NodeStateRequest>
     + Send
 {
 }
@@ -87,7 +85,6 @@ impl<REv> ReactorEventT for REv where
         + From<MetricsRequest>
         + From<NetworkInfoRequest>
         + From<StorageRequest>
-        + From<NodeStateRequest>
         + Send
         + 'static
 {
@@ -391,12 +388,11 @@ where
                 let node_uptime = self.node_startup_instant.elapsed();
                 let network_name = self.network_name.clone();
                 async move {
-                    let (last_added_block, peers, next_upgrade, consensus_status, node_state) = join!(
+                    let (last_added_block, peers, next_upgrade, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
                         effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
-                        effect_builder.get_node_state()
                     );
                     let status_feed = StatusFeed::new(
                         last_added_block,
@@ -404,7 +400,7 @@ where
                         ChainspecInfo::new(network_name, next_upgrade),
                         consensus_status,
                         node_uptime,
-                        node_state,
+                        NodeState::Participating,
                     );
                     responder.respond(status_feed).await;
                 }

@@ -372,6 +372,8 @@ pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> D
     )
 }
 
+// TODO - remove `allow` once used in tests again.
+#[allow(dead_code)]
 /// Creates a random deploy that is considered not expired.
 pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
     create_test_deploy(

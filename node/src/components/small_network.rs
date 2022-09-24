@@ -94,9 +94,7 @@ use self::{
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
@@ -1188,15 +1186,14 @@ where
                 );
 
                 effects
-            }
-            (
-                ComponentStatus::Initialized,
-                Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
-            ) => {
-                self.context.is_syncing().store(false, Ordering::SeqCst);
-                self.close_incoming_connections();
-                Effects::new()
-            }
+            } // (
+              //     ComponentStatus::Initialized,
+              //     Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
+              // ) => {
+              //     self.context.is_syncing().store(false, Ordering::SeqCst);
+              //     self.close_incoming_connections();
+              //     Effects::new()
+              // }
         }
     }
 }

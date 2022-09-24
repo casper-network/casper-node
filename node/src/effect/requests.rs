@@ -30,9 +30,10 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, TimeDiff, Transfer, URef,
+    PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
+use crate::types::appendable_block::AppendableBlock;
 use crate::{
     components::{
         block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
@@ -754,30 +755,24 @@ pub(crate) struct BlockPayloadRequest {
     pub(crate) responder: Responder<Arc<BlockPayload>>,
 }
 
-/// A `BlockProposer` request.
-#[derive(DataSize, Debug)]
-#[must_use]
-pub(crate) enum BlockProposerRequest {
-    /// Request a list of deploys to propose in a new block.
-    RequestBlockPayload(BlockPayloadRequest),
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) enum DeployBufferRequest {
+    GetAppendableBlock {
+        timestamp: Timestamp,
+        responder: Responder<AppendableBlock>,
+    },
 }
 
-impl Display for BlockProposerRequest {
+impl Display for DeployBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                context,
-                next_finalized,
-                responder: _,
-                accusations: _,
-                random_bit: _,
-            }) => write!(
-                formatter,
-                "list for inclusion: instant {} height {} next_finalized {}",
-                context.timestamp(),
-                context.height(),
-                next_finalized
-            ),
+            DeployBufferRequest::GetAppendableBlock { timestamp, .. } => {
+                write!(
+                    formatter,
+                    "request for appendable block at instant {}",
+                    timestamp
+                )
+            }
         }
     }
 }
@@ -1088,24 +1083,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// The responder to call with the result.
         responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
     },
-    /// Execute a provided protoblock
-    ExecuteBlock {
-        /// The protocol version of the block to execute.
-        protocol_version: ProtocolVersion,
-        /// The state of the storage and blockchain to use to make the new block.
-        execution_pre_state: ExecutionPreState,
-        /// The finalized block to execute; must have the same height as the child height specified
-        /// by the `execution_pre_state`.
-        finalized_block: FinalizedBlock,
-        /// The deploys for the block to execute; must correspond to the deploy hashes of the
-        /// `finalized_block` in that order.
-        deploys: Vec<Deploy>,
-        /// The transfers for the block to execute; must correspond to the transfer hashes of the
-        /// `finalized_block` in that order.
-        transfers: Vec<Deploy>,
-        /// Responder to call with the result.
-        responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
-    },
     /// Execute deploys without commiting results
     SpeculativeDeployExecution {
         /// Hash of a block on top of which to execute the deploy.
@@ -1173,11 +1150,6 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)
-            }
-            ContractRuntimeRequest::ExecuteBlock {
-                finalized_block, ..
-            } => {
-                write!(formatter, "Execute finalized block: {}", finalized_block)
             }
             ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
                 write!(formatter, "Find missing descendant trie keys: {}", trie_key)
@@ -1313,16 +1285,6 @@ pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "get next upgrade")
-    }
-}
-
-/// ChainSynchronizer component request.
-#[derive(Debug, Serialize)]
-pub(crate) struct NodeStateRequest(pub(crate) Responder<NodeState>);
-
-impl Display for NodeStateRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "node state request")
     }
 }
 

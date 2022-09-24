@@ -31,14 +31,13 @@ use tracing::{error, info};
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
-        block_proposer::{self, BlockProposer},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
         blocks_accumulator::{BlocksAccumulator, StartingWith, SyncInstruction},
-        chain_synchronizer::{self, ChainSynchronizer},
         consensus::{self, EraReport, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
+        deploy_buffer::{self, DeployBuffer},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, Gossiper},
@@ -58,10 +57,9 @@ use crate::{
     contract_runtime::ExecutionPreState,
     effect::{
         announcements::{
-            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
-            ConsensusAnnouncement, ContractRuntimeAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
-            UpgradeWatcherAnnouncement,
+            BlocklistAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{BlockAddedResponseIncoming, NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -122,12 +120,11 @@ pub(crate) struct MainReactor {
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
 
     sync_leaper: SyncLeaper,
-    block_proposer: BlockProposer, // TODO: handle providing highest block, etc.
-    consensus: EraSupervisor,      /* TODO: Update constructor (provide less state) and extend
-                                    * handler for the "block added" ann. */
+    deploy_buffer: DeployBuffer,
+    consensus: EraSupervisor, /* TODO: Update constructor (provide less state) and extend
+                               * handler for the "block added" ann. */
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent, // TODO: Maybe redundant.
-    chain_synchronizer: ChainSynchronizer<MainEvent>, // TODO: To be removed.
     blocks_accumulator: BlocksAccumulator,
     block_synchronizer: BlockSynchronizer,
 
@@ -260,9 +257,7 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         let sync_leaper = SyncLeaper::new(chainspec.highway_config.finality_threshold_fraction);
-
-        let block_proposer =
-            BlockProposer::new(registry.clone(), &chainspec, config.block_proposer)?;
+        let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
 
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
@@ -286,15 +281,6 @@ impl reactor::Reactor for MainReactor {
             chainspec.highway_config.finality_threshold_fraction,
             next_upgrade_activation_point,
         )?;
-
-        let (chain_synchronizer, _chain_synchronizer_effects) =
-            ChainSynchronizer::<MainEvent>::new_for_sync_to_genesis(
-                chainspec.clone(),
-                config.node.clone(),
-                config.network.clone(),
-                chain_synchronizer::Metrics::new(registry).unwrap(),
-                effect_builder,
-            )?;
 
         let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
@@ -324,11 +310,10 @@ impl reactor::Reactor for MainReactor {
             block_added_gossiper,
             finality_signature_gossiper,
             sync_leaper,
-            block_proposer,
+            deploy_buffer,
             consensus,
             block_validator,
             linear_chain,
-            chain_synchronizer,
             blocks_accumulator,
             block_synchronizer,
             diagnostics_port,
@@ -396,9 +381,9 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::SyncLeaper,
                 self.sync_leaper.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlockProposer(event) => reactor::wrap_effects(
-                MainEvent::BlockProposer,
-                self.block_proposer.handle_event(effect_builder, rng, event),
+            MainEvent::DeployBuffer(event) => reactor::wrap_effects(
+                MainEvent::DeployBuffer,
+                self.deploy_buffer.handle_event(effect_builder, rng, event),
             ),
             MainEvent::RpcServer(event) => reactor::wrap_effects(
                 MainEvent::RpcServer,
@@ -427,8 +412,8 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlockProposerRequest(req) => {
-                self.dispatch_event(effect_builder, rng, MainEvent::BlockProposer(req.into()))
+            MainEvent::DeployBufferRequest(req) => {
+                self.dispatch_event(effect_builder, rng, MainEvent::DeployBuffer(req.into()))
             }
             MainEvent::BlockValidatorRequest(req) => self.dispatch_event(
                 effect_builder,
@@ -459,7 +444,7 @@ impl reactor::Reactor for MainReactor {
                 match consensus_announcement {
                     ConsensusAnnouncement::Finalized(block) => {
                         let reactor_event =
-                            MainEvent::BlockProposer(block_proposer::Event::FinalizedBlock(block));
+                            MainEvent::DeployBuffer(deploy_buffer::Event::BlockFinalized(block));
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
@@ -497,7 +482,7 @@ impl reactor::Reactor for MainReactor {
                     }
                 }
             }
-            MainEvent::BlockProposerAnnouncement(BlockProposerAnnouncement::DeploysExpired(
+            MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
                 hashes,
             )) => {
                 let reactor_event = MainEvent::EventStreamServer(
@@ -558,21 +543,10 @@ impl reactor::Reactor for MainReactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::ChainSynchronizer(event) => reactor::wrap_effects(
-                MainEvent::ChainSynchronizer,
-                self.chain_synchronizer
-                    .handle_event(effect_builder, rng, event),
-            ),
             MainEvent::DiagnosticsPort(event) => reactor::wrap_effects(
                 MainEvent::DiagnosticsPort,
                 self.diagnostics_port
                     .handle_event(effect_builder, rng, event),
-            ),
-            // Requests:
-            MainEvent::ChainSynchronizerRequest(request) => reactor::wrap_effects(
-                MainEvent::ChainSynchronizer,
-                self.chain_synchronizer
-                    .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::NetworkRequest(req) => {
                 let event = MainEvent::SmallNetwork(small_network::Event::from(req));
@@ -630,11 +604,7 @@ impl reactor::Reactor for MainReactor {
                 let mut effects = self.dispatch_event(
                     effect_builder,
                     rng,
-                    MainEvent::BlockProposer(block_proposer::Event::BufferDeploy {
-                        hash: deploy.deploy_or_transfer_hash(),
-                        approvals: deploy.approvals().clone(),
-                        footprint: Box::new(deploy_footprint),
-                    }),
+                    MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
                 );
 
                 effects.extend(self.dispatch_event(
@@ -753,7 +723,7 @@ impl reactor::Reactor for MainReactor {
                 _gossiped_deploy_id,
             )) => {
                 // let reactor_event =
-                //     MainEvent::BlockProposer(block_proposer::Event::
+                //     MainEvent::DeployBuffer(deploy_buffer::Event::
                 // BufferDeploy(gossiped_deploy_id));
                 // self.dispatch_event(effect_builder, rng, reactor_event)
                 Effects::new()
@@ -823,15 +793,6 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            MainEvent::ChainSynchronizerAnnouncement(
-                ChainSynchronizerAnnouncement::SyncFinished,
-            ) => self.dispatch_event(
-                effect_builder,
-                rng,
-                MainEvent::SmallNetwork(small_network::Event::ChainSynchronizerAnnouncement(
-                    ChainSynchronizerAnnouncement::SyncFinished,
-                )),
-            ),
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {

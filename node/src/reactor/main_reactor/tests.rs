@@ -12,7 +12,7 @@ use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
     },
     effect::{
         requests::{
-            BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,
+            BlockPayloadRequest, ContractRuntimeRequest, DeployBufferRequest, NetworkRequest,
         },
         EffectExt,
     },
@@ -158,7 +158,8 @@ impl TestChain {
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 
-        cfg.block_proposer.deploy_delay = "5sec".parse().unwrap();
+        cfg.deploy_buffer
+            .set_deploy_delay(TimeDiff::from_seconds(5));
 
         cfg
     }
@@ -692,25 +693,17 @@ async fn empty_block_validation_regression() {
         .reactor_mut()
         .inner_mut()
         .set_filter(move |event| match event {
-            MainEvent::BlockProposerRequest(BlockProposerRequest::RequestBlockPayload(
-                BlockPayloadRequest {
-                    context,
-                    next_finalized,
-                    mut accusations,
-                    random_bit,
-                    responder,
-                },
-            )) => {
+            MainEvent::DeployBufferRequest(DeployBufferRequest::GetAppendableBlock {
+                timestamp,
+                responder,
+            }) => {
                 info!("Accusing everyone else!");
-                accusations = everyone_else.clone();
-                Either::Right(MainEvent::BlockProposerRequest(
-                    BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                        context,
-                        next_finalized,
-                        accusations,
-                        random_bit,
+                todo!(); // accusations = everyone_else.clone();
+                Either::Right(MainEvent::DeployBufferRequest(
+                    DeployBufferRequest::GetAppendableBlock {
+                        timestamp: Timestamp::now(),
                         responder,
-                    }),
+                    },
                 ))
             }
             event => Either::Right(event),

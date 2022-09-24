@@ -9,22 +9,21 @@ use serde::Serialize;
 
 use crate::{
     components::{
-        block_proposer,
         block_synchronizer::{
             self, BlockSyncRequest, GlobalStateSynchronizerEvent, TrieAccumulatorEvent,
         },
-        block_validator, blocks_accumulator, chain_synchronizer, consensus, contract_runtime,
-        deploy_acceptor, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
+        block_validator, blocks_accumulator, consensus, contract_runtime, deploy_acceptor,
+        deploy_buffer, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
         rest_server, rpc_server,
         small_network::{self, GossipedAddress},
         storage, sync_leaper, upgrade_watcher,
     },
     effect::{
         announcements::{
-            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
-            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            BlocklistAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -33,11 +32,11 @@ use crate::{
             TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
-            BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
-            SyncGlobalStateRequest, SyncLeapRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            BeginGossipRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MarkBlockCompletedRequest,
+            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
+            StateStoreRequest, StorageRequest, SyncGlobalStateRequest, SyncLeapRequest,
+            TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -69,13 +68,11 @@ pub(crate) enum MainEvent {
 
     // Coordination events == component to component(s) or component to reactor events
     #[from]
-    ChainSynchronizer(chain_synchronizer::Event),
-    #[from]
     SmallNetwork(small_network::Event<Message>),
     #[from]
     Storage(storage::Event),
     #[from]
-    BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
+    DeployBuffer(#[serde(skip_serializing)] deploy_buffer::Event),
     #[from]
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
     #[from]
@@ -137,8 +134,6 @@ pub(crate) enum MainEvent {
 
     // Requests
     #[from]
-    ChainSynchronizerRequest(#[serde(skip_serializing)] NodeStateRequest),
-    #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
@@ -176,7 +171,7 @@ pub(crate) enum MainEvent {
     BlockAddedFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAdded>),
 
     #[from]
-    BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
+    DeployBufferRequest(DeployBufferRequest),
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
     #[from]
@@ -222,8 +217,6 @@ pub(crate) enum MainEvent {
     #[from]
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
-    ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
-    #[from]
     BlocklistAnnouncement(BlocklistAnnouncement),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
@@ -252,7 +245,7 @@ pub(crate) enum MainEvent {
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
-    BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
+    DeployBufferAnnouncement(#[serde(skip_serializing)] DeployBufferAnnouncement),
 }
 
 impl ReactorEvent for MainEvent {
@@ -277,10 +270,9 @@ impl ReactorEvent for MainEvent {
         match self {
             MainEvent::Shutdown(_) => "Shutdown",
             MainEvent::CheckStatus => "CheckStatus",
-            MainEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             MainEvent::SmallNetwork(_) => "SmallNetwork",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
-            MainEvent::BlockProposer(_) => "BlockProposer",
+            MainEvent::DeployBuffer(_) => "DeployBuffer",
             MainEvent::Storage(_) => "Storage",
             MainEvent::RpcServer(_) => "RpcServer",
             MainEvent::RestServer(_) => "RestServer",
@@ -296,7 +288,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockValidator(_) => "BlockValidator",
             MainEvent::LinearChain(_) => "LinearChain",
             MainEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
-            MainEvent::ChainSynchronizerRequest(_) => "ChainSynchronizerRequest",
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             MainEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
@@ -327,7 +318,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::BlockAddedFetcherRequest(_) => "BlockAddedFetcherRequest",
-            MainEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            MainEvent::DeployBufferRequest(_) => "DeployBufferRequest",
             MainEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             MainEvent::MetricsRequest(_) => "MetricsRequest",
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
@@ -346,7 +337,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             MainEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
-            MainEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
+            MainEvent::DeployBufferAnnouncement(_) => "DeployBufferAnnouncement",
             MainEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
@@ -362,7 +353,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockAddedResponseIncoming(_) => "BlockAddedResponseIncoming",
             MainEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             MainEvent::ContractRuntime(_) => "ContractRuntime",
-            MainEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
             MainEvent::BlockAddedGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
@@ -457,13 +447,10 @@ impl Display for MainEvent {
         match self {
             MainEvent::Shutdown(msg) => write!(f, "shutdown: {}", msg),
             MainEvent::CheckStatus => write!(f, "check status"),
-            MainEvent::ChainSynchronizer(event) => {
-                write!(f, "chain synchronizer: {}", event)
-            }
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
             MainEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
-            MainEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
+            MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             MainEvent::RestServer(event) => write!(f, "rest server: {}", event),
             MainEvent::EventStreamServer(event) => {
@@ -525,9 +512,6 @@ impl Display for MainEvent {
                 write!(f, "block synchronizer: {}", event)
             }
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
-            MainEvent::ChainSynchronizerRequest(req) => {
-                write!(f, "chain synchronizer request: {}", req)
-            }
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             MainEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -585,8 +569,8 @@ impl Display for MainEvent {
             MainEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
-            MainEvent::BlockProposerRequest(req) => {
-                write!(f, "block proposer request: {}", req)
+            MainEvent::DeployBufferRequest(req) => {
+                write!(f, "deploy buffer request: {}", req)
             }
             MainEvent::BlockValidatorRequest(req) => {
                 write!(f, "block validator request: {}", req)
@@ -626,17 +610,14 @@ impl Display for MainEvent {
             MainEvent::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
             }
-            MainEvent::BlockProposerAnnouncement(ann) => {
-                write!(f, "block proposer announcement: {}", ann)
+            MainEvent::DeployBufferAnnouncement(ann) => {
+                write!(f, "deploy buffer announcement: {}", ann)
             }
             MainEvent::UpgradeWatcherAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
             MainEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
-            }
-            MainEvent::ChainSynchronizerAnnouncement(ann) => {
-                write!(f, "chain synchronizer announcement: {}", ann)
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
