@@ -221,11 +221,10 @@ impl MainReactor {
                                 .core_config
                                 .sync_leap_simultaneous_peer_requests,
                         );
-                        // need to crank or put something on the event-q
+                        // need to crank synchronizer or put something on the event-q
                         todo!();
                     }
                     SyncInstruction::BlockExec { block } => {
-                        // need to crank or put something on the event-q
                         self.block_synchronizer.register_block_by_hash(
                             block.id(),
                             false,
@@ -233,6 +232,8 @@ impl MainReactor {
                                 .core_config
                                 .sync_leap_simultaneous_peer_requests,
                         );
+                        // need to crank synchronizer or put something on the event-q
+                        todo!();
                     }
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
