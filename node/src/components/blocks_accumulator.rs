@@ -18,13 +18,13 @@ use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
     types::{
-        Block, BlockAdded, BlockHash, FetcherItem, FinalitySignature, NodeId, SignatureWeight,
-        ValidatorMatrix,
+        Block, BlockAdded, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, NodeId,
+        SignatureWeight, ValidatorMatrix,
     },
     NodeRng,
 };
 
-use block_acceptor::BlockAcceptor;
+use block_acceptor::BlockGossipAcceptor;
 use error::Error;
 pub(crate) use event::Event;
 
@@ -40,7 +40,7 @@ pub(crate) use event::Event;
 /// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
-    block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
+    block_gossip_acceptors: BTreeMap<BlockHash, BlockGossipAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
     validator_matrix: ValidatorMatrix,
 }
@@ -51,6 +51,9 @@ pub(crate) enum SyncInstruction {
     BlockSync {
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
+    },
+    BlockExec {
+        block: Box<Block>,
     },
 }
 
@@ -66,12 +69,21 @@ impl StartingWith {
             StartingWith::Hash(hash) => hash,
         }
     }
+
+    pub(crate) fn have_block(&self) -> bool {
+        match self {
+            // StartingWith::Block means we have have the block locally and
+            // it should have global state
+            StartingWith::Block(_) => true,
+            StartingWith::Hash(_) => false,
+        }
+    }
 }
 
 impl BlocksAccumulator {
     pub(crate) fn new(validator_matrix: ValidatorMatrix) -> Self {
         Self {
-            block_acceptors: Default::default(),
+            block_gossip_acceptors: Default::default(),
             block_children: Default::default(),
             validator_matrix,
         }
@@ -89,45 +101,57 @@ impl BlocksAccumulator {
 
         const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
 
+        let should_fetch_execution_state = starting_with.have_block() == false;
         let block_hash = *starting_with.block_hash();
         if let Some((highest_block_hash, highest_block_height, highest_era_id)) =
             self.highest_known_block()
         {
-            let block_height = match starting_with {
-                StartingWith::Block(block) => block.header().height(),
-                StartingWith::Hash(trusted_hash) => match self.block_acceptors.get(&trusted_hash) {
-                    None => {
-                        // the accumulator is unaware of the starting-with block
-                        return SyncInstruction::Leap;
-                    }
-                    Some(block_acceptor) => match block_acceptor.block_height() {
+            let (era_id, block_height) = match starting_with {
+                StartingWith::Block(block) => (block.header().era_id(), block.header().height()),
+                StartingWith::Hash(trusted_hash) => {
+                    match self.block_gossip_acceptors.get(&trusted_hash) {
                         None => {
+                            // the accumulator is unaware of the starting-with block
                             return SyncInstruction::Leap;
                         }
-                        Some(block_height) => block_height,
-                    },
-                },
+                        Some(gossiped_block) => {
+                            match gossiped_block.block_era_and_height() {
+                                None => {
+                                    // we have received at least one finality signature for this block
+                                    // via gossiping but have not seen the block body itself
+                                    return SyncInstruction::Leap;
+                                }
+                                // we can derive the height for the trusted hash
+                                // because we've seen the block it refers to via gossiping
+                                Some(block_era_and_height) => block_era_and_height,
+                            }
+                        }
+                    }
+                }
             };
 
+            // the starting-with block may be close to perceived tip
             let height_diff = highest_block_height.saturating_sub(block_height);
+            if height_diff == 0 {
+                // TODO: maybe add some time slippage awareness re: the last time
+                // we heard anything via gossiping, timestamp on the highest block
+                // we currently know about, etc
+                return SyncInstruction::CaughtUp;
+            }
             if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
-                    if let Some(block_acceptor) = self.block_acceptors.get_mut(child_hash) {
-                        match self.validator_matrix.validator_weights(highest_era_id) {
-                            None => return SyncInstruction::Leap,
-                            Some(_) => {
-                                // TODO: we need to make sure we wait to get enuff finality
-                                // signatures
-                                if block_acceptor.can_execute() {
-                                    return SyncInstruction::CaughtUp;
-                                }
+                    if let Some(block_acceptor) = self.block_gossip_acceptors.get_mut(child_hash) {
+                        if block_acceptor
+                            .can_execute(self.validator_matrix.validator_weights(highest_era_id))
+                        {
+                            if let Some(block) = block_acceptor.block() {
+                                return SyncInstruction::BlockExec {
+                                    block: Box::new(block),
+                                };
                             }
-                        };
+                        }
                     }
 
-                    // not within range of tip, but we have a likely block to attempt
-                    // state acquisition for
-                    let should_fetch_execution_state: bool = true; // figure this bit out
                     return SyncInstruction::BlockSync {
                         block_hash: *child_hash,
                         should_fetch_execution_state,
@@ -156,7 +180,7 @@ impl BlocksAccumulator {
             self.block_children.insert(*parent_hash, block_hash);
         }
         let era_id = block_added.block.header().era_id();
-        let can_execute = match self.block_acceptors.entry(block_hash) {
+        let can_execute = match self.block_gossip_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
                 if let Err(err) = block_added.validate(&()) {
                     warn!(%err, "received invalid block");
@@ -164,10 +188,7 @@ impl BlocksAccumulator {
                         .announce_disconnect_from_peer(sender)
                         .ignore();
                 }
-                match BlockAcceptor::new_from_block_added(
-                    block_added,
-                    self.validator_matrix.validator_weights(era_id),
-                ) {
+                match BlockGossipAcceptor::new_from_block_added(block_added) {
                     Ok(block_acceptor) => entry.insert(block_acceptor),
                     Err(_error) => {
                         return effect_builder
@@ -178,16 +199,19 @@ impl BlocksAccumulator {
                 false
             }
             Entry::Occupied(entry) => {
-                let accumulated_block = entry.into_mut();
-                if let Err(_error) = accumulated_block.register_block(block_added) {
+                let era_validator_weights = self.validator_matrix.validator_weights(era_id);
+                let acceptor = entry.into_mut();
+                if let Err(_error) =
+                    acceptor.register_block(block_added, era_validator_weights.clone())
+                {
                     return Effects::new();
                 }
-                accumulated_block.can_execute()
+                acceptor.can_execute(era_validator_weights)
             }
         };
 
         if can_execute {
-            if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
+            if let Some(accumulated_block) = self.block_gossip_acceptors.remove(&block_hash) {
                 self.announce(effect_builder, &accumulated_block)
             } else {
                 error!(%block_hash, "should have block acceptor for block");
@@ -224,10 +248,10 @@ impl BlocksAccumulator {
         }
 
         let block_hash = finality_signature.block_hash;
-        let bogus_validators = self.validator_matrix.bogus_validators(
-            finality_signature.era_id,
-            std::iter::once(&finality_signature.public_key),
-        );
+        let era_id = finality_signature.era_id;
+        let bogus_validators = self
+            .validator_matrix
+            .bogus_validators(era_id, std::iter::once(&finality_signature.public_key));
         match bogus_validators {
             Some(bogus_validators) if !bogus_validators.is_empty() => {
                 warn!(%sender, %finality_signature, "bogus validator");
@@ -238,12 +262,13 @@ impl BlocksAccumulator {
             Some(_) | None => (),
         }
 
-        let can_execute = match self.block_acceptors.entry(block_hash) {
+        let era_validator_weights = self.validator_matrix.validator_weights(era_id);
+
+        let can_execute = match self.block_gossip_acceptors.entry(block_hash) {
             Entry::Vacant(entry) => {
-                let era_id = finality_signature.era_id;
-                match BlockAcceptor::new_from_finality_signature(
+                match BlockGossipAcceptor::new_from_finality_signature(
                     finality_signature,
-                    self.validator_matrix.validator_weights(era_id),
+                    era_validator_weights,
                 ) {
                     Ok(block_acceptor) => entry.insert(block_acceptor),
                     Err(_error) => {
@@ -257,19 +282,19 @@ impl BlocksAccumulator {
             Entry::Occupied(entry) => {
                 let accumulated_block = entry.into_mut();
                 if accumulated_block
-                    .register_signature(finality_signature)
+                    .register_signature(finality_signature, era_validator_weights)
                     .is_err()
                 {
                     return effect_builder
                         .announce_disconnect_from_peer(sender)
                         .ignore();
                 };
-                accumulated_block.can_execute()
+                accumulated_block.can_execute(self.validator_matrix.validator_weights(era_id))
             }
         };
 
         if can_execute {
-            if let Some(accumulated_block) = self.block_acceptors.remove(&block_hash) {
+            if let Some(accumulated_block) = self.block_gossip_acceptors.remove(&block_hash) {
                 self.announce(effect_builder, &accumulated_block)
             } else {
                 error!(%block_hash, "should have block acceptor for block");
@@ -290,22 +315,31 @@ impl BlocksAccumulator {
         // TODO: Limit the number of items per peer.
     }
 
-    fn handle_updated_validator_matrix<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        era_id: EraId,
-    ) -> Effects<Event> {
-        for block_acceptor in self.block_acceptors.values_mut() {
-            block_acceptor.remove_bogus_validators(&self.validator_matrix);
-            // TODO: Disconnect from the peers who gave us the bogus validators.
-        }
-
-        // TODO - announce any blocks which can now be executed?
-
-        // TODO - handle announcing new validator sets
-
-        Effects::new()
-    }
+    // fn handle_updated_validator_matrix<REv>(
+    //     &mut self,
+    //     effect_builder: EffectBuilder<REv>,
+    //     era_id: EraId,
+    // ) -> Effects<Event> {
+    //     for block_acceptor in self
+    //         .block_gossip_acceptors
+    //         .values_mut()
+    //     {
+    //         let era_id = block_acceptor.era_id();
+    //         match &self.validator_matrix.validator_weights(era_id) {
+    //             None => {}
+    //             Some(era_validator_weights) => {
+    //                 block_acceptor.remove_bogus_validators(era_validator_weights)
+    //             }
+    //         }
+    //         // TODO: Disconnect from the peers who gave us the bogus validators.
+    //     }
+    //
+    //     // TODO - announce any blocks which can now be executed?
+    //
+    //     // TODO - handle announcing new validator sets
+    //
+    //     Effects::new()
+    // }
 
     // fn block_height(&self, block_hash: &BlockHash) -> Option<u64> {
     //     for (height, node_id_to_block) in self.pending_blocks {
@@ -322,7 +356,7 @@ impl BlocksAccumulator {
     fn announce<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        accumulated_block: &BlockAcceptor,
+        accumulated_block: &BlockGossipAcceptor,
     ) -> Effects<Event>
     where
         REv: Send,
@@ -333,7 +367,7 @@ impl BlocksAccumulator {
     fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {
         let mut ret: Option<(BlockHash, u64, EraId)> = None;
         for (next_key, next_value) in self
-            .block_acceptors
+            .block_gossip_acceptors
             .iter()
             .filter(|(next_key, next_value)| next_value.has_block_added())
         {
@@ -354,28 +388,28 @@ impl BlocksAccumulator {
         ret
     }
 
-    fn highest_executable_block(&mut self) -> Option<(BlockHash, u64)> {
-        let mut ret: Option<(BlockHash, u64)> = None;
-        for (next_key, next_value) in self.block_acceptors.iter_mut() {
-            if !next_value.can_execute() {
-                continue;
-            }
-            ret = match next_value.block_height() {
-                Some(next_height) => match ret {
-                    Some((_, curr_height)) => {
-                        if next_height > curr_height {
-                            Some((*next_key, next_height))
-                        } else {
-                            ret
-                        }
-                    }
-                    None => Some((*next_key, next_height)),
-                },
-                None => ret,
-            }
-        }
-        ret
-    }
+    // fn highest_executable_block(&mut self) -> Option<(BlockHash, u64)> {
+    //     let mut ret: Option<(BlockHash, u64)> = None;
+    //     for (next_key, next_value) in self.block_gossip_acceptors.iter_mut() {
+    //         if !next_value.can_execute() {
+    //             continue;
+    //         }
+    //         ret = match next_value.block_height() {
+    //             Some(next_height) => match ret {
+    //                 Some((_, curr_height)) => {
+    //                     if next_height > curr_height {
+    //                         Some((*next_key, next_height))
+    //                     } else {
+    //                         ret
+    //                     }
+    //                 }
+    //                 None => Some((*next_key, next_height)),
+    //             },
+    //             None => ret,
+    //         }
+    //     }
+    //     ret
+    // }
 }
 
 impl<REv> Component<REv> for BlocksAccumulator
@@ -399,7 +433,8 @@ where
                 sender,
             } => self.handle_finality_signature(effect_builder, *finality_signature, sender),
             Event::UpdatedValidatorMatrix { era_id } => {
-                self.handle_updated_validator_matrix(effect_builder, era_id)
+                //self.handle_updated_validator_matrix(effect_builder, era_id)
+                Effects::new()
             }
         }
     }

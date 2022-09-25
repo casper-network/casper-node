@@ -1,18 +1,21 @@
+use datasize::DataSize;
+use log::debug;
 use std::{sync::Arc, time::Duration};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     components::{
         blocks_accumulator::{StartingWith, SyncInstruction},
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
-        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
-        upgrade_watcher,
+        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network,
+        storage::FatalStorageError,
+        sync_leaper, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{
         utils::{enqueue_shutdown, initialize_component},
-        MainEvent, MainReactor, ReactorState,
+        MainEvent, MainReactor,
     },
     types::{BlockHash, BlockHeader, BlockPayload, FinalizedBlock},
     NodeRng,
@@ -23,12 +26,24 @@ use casper_execution_engine::core::{
     engine_state::{GenesisSuccess, UpgradeSuccess},
 };
 
-use crate::types::{ActivationPoint, ChainspecRawBytes};
+use crate::types::{ActivationPoint, ChainspecRawBytes, Item};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
 // put in the config
 pub(crate) const WAIT_SEC: u64 = 5;
+
+#[derive(DataSize, Debug)]
+pub(crate) enum ReactorState {
+    // get all components and reactor state set up on start
+    Initialize,
+    // orient to the network and attempt to catch up to tip
+    CatchUp,
+    // stay caught up with tip
+    KeepUp,
+    // node is currently caught up and is an active validator
+    Validate,
+}
 
 enum CatchUpInstruction {
     Do(Effects<MainEvent>),
@@ -48,7 +63,6 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Effects<MainEvent> {
-        let effects = Effects::new();
         match self.state {
             ReactorState::Initialize => {
                 if let Some(effects) = initialize_component(
@@ -180,80 +194,79 @@ impl MainReactor {
                 }
             },
             ReactorState::KeepUp => {
-                // TODO: define KeepUpInstruction::??? enum similar
-                // to CatchupInstruction::??? for the below steps
                 // TODO: if UpgradeWatcher announcement raised, keep track of era id's against
-                // the       new activation point
-                // detected upgrade to make this a stronger check
-                // if in validator set and era supervisor is green, validate
-                // else get added blocks for block accumulator and execute them
-                // if falling behind, switch over to catchup
-                // if sync to genesis == true, if cycles available get next historical block
-                // try real hard to stay in this mode
-                // in case of fkup, shutdown
+                // the new activation points detected upgrade to make this a stronger check
 
-                /* OODA
-                   ~observe -> AM I KEEPING UP?
-                        how can I tell?
-                        ?self.era_supervisor.kick_it_into_gear(current_era_id)
-                            ~orient
-                            YES: we are helping to produce new tip, era_supervisor is the boss
-                               so ask it if its subjective opinion is we good or we behind
-                               ~decide
-                               self.era_supervisor.do_stuff()? or push an event?
-                            YES_BUT_IDLE: unify w/ catchup idle timeout...shut down or go
-                                back around the loop
-                            YES_BUT_INSUFFICIENT_STATE: need Andreas / Bart to tell us what our
-                                options are to resolve this (if any), else fall thru to follow
-                                the chain
-                            NO: ReactorState::CatchUp // NOTE: "jazz hands"
-                        ?self.block_accumulator.attempt_execute(block_hash)
-                            ~orient
-                               the block_accumulator acts as a oracle for the progress of the
-                               network via received block_added gossip talking about blocks
-                               higher than local subjective tip
-                               can tell us if it thinks we good or we behind
-                            Y: self.block_synchronizer.sync(that_block)
-                               ~decide
-                               if that_block.get_all == false
-                                  ~act
-                                  block_synchronizer puts effect on loop to enqueue the block
-                            N: ReactorState::CatchUp
-                */
+                // TODO: if sync to genesis == true, determine if cycles
+                // are available and if so, queue up block sync to get next
+                // missing historical block
 
                 let current_block_hash = BlockHash::default();
                 match self
                     .blocks_accumulator
                     .sync_instruction(StartingWith::Hash(current_block_hash))
                 {
-                    SyncInstruction::Leap | SyncInstruction::BlockSync { .. } => {
+                    SyncInstruction::Leap => {
+                        // we've fallen behind, go back to catch up mode
                         self.state = ReactorState::CatchUp;
-                        return effect_builder
-                            .immediately()
-                            .event(|_| MainEvent::ReactorCrank);
-                    }
-                    SyncInstruction::CaughtUp => {
-                        // DO STUFF, THEN
-                        return effect_builder
-                            .set_timeout(Duration::from_secs(WAIT_SEC))
-                            .event(|_| MainEvent::ReactorCrank);
                     }
                     SyncInstruction::BlockSync {
                         block_hash,
                         should_fetch_execution_state,
                     } => {
-                        self.block_synchronizer.sync(
+                        self.block_synchronizer.register_block_by_hash(
                             block_hash,
                             should_fetch_execution_state,
                             self.chainspec
                                 .core_config
                                 .sync_leap_simultaneous_peer_requests,
                         );
+                        // need to crank or put something on the event-q
+                        todo!();
+                    }
+                    SyncInstruction::BlockExec { block } => {
+                        // need to crank or put something on the event-q
+                        self.block_synchronizer.register_block_by_hash(
+                            block.id(),
+                            false,
+                            self.chainspec
+                                .core_config
+                                .sync_leap_simultaneous_peer_requests,
+                        );
+                    }
+                    SyncInstruction::CaughtUp => {
+                        // if node is in validator set and era supervisor has what it needs
+                        // to run, switch to validate mode
+                        if self.consensus.is_active_validator() {
+                            // push era_supervisor event onto queue
+                            self.state = ReactorState::Validate;
+                        }
                     }
                 }
             }
+            ReactorState::Validate => {
+                if self.consensus.is_active_validator() == false {
+                    // either consensus doesn't have enough protocol data
+                    // or this node has been evicted or has naturally
+                    // fallen out of the validator set in a new era.
+                    // regardless, go back to keep up mode;
+                    // the keep up logic will handle putting them back
+                    // to catch up if necessary, or back to validate
+                    // if they become able to validate again
+                    self.state = ReactorState::KeepUp;
+                }
+                // TODO: it is unclear to me if era_supervisor should be cranked here
+                // (either imperatively or via putting something on the event-q)
+                // or if event-q would naturally handle it based upon consensus
+                // messages...must consult with Andreas / Bart
+
+                // TODO: invert era_supervisor idleness timeout and manage it
+                // from here by asking era_supervisor.is_idle() or sth similar
+            }
         }
-        effects
+        effect_builder
+            .immediately()
+            .event(|_| MainEvent::ReactorCrank)
     }
 
     fn catch_up_instructions(
@@ -360,7 +373,7 @@ impl MainReactor {
                 block_hash,
                 should_fetch_execution_state,
             } => {
-                self.block_synchronizer.sync(
+                self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     should_fetch_execution_state,
                     self.chainspec
@@ -369,6 +382,24 @@ impl MainReactor {
                 );
                 return CatchUpInstruction::CheckSoon(
                     "block_synchronizer is initialized".to_string(),
+                );
+            }
+            SyncInstruction::BlockExec { block } => {
+                let block_hash = block.id();
+                debug!(
+                    "BlockExec should be unreachable in CatchUp mode: {}",
+                    block_hash
+                );
+                self.block_synchronizer.register_block_by_hash(
+                    block_hash,
+                    false,
+                    self.chainspec
+                        .core_config
+                        .sync_leap_simultaneous_peer_requests,
+                );
+                return CatchUpInstruction::CheckSoon(
+                    "block_synchronizer is initialized for potentially executable block"
+                        .to_string(),
                 );
             }
             SyncInstruction::CaughtUp => {

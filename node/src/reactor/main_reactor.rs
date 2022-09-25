@@ -71,7 +71,7 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{fetchers::Fetchers, utils::initialize_component},
+        main_reactor::{control::ReactorState, fetchers::Fetchers, utils::initialize_component},
         EventQueueHandle, ReactorExit,
     },
     types::{
@@ -86,18 +86,6 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
-
-#[derive(DataSize, Debug)]
-enum ReactorState {
-    // get all components and reactor state set up on start
-    Initialize,
-    // orient to the network and attempt to catch up to tip
-    CatchUp,
-    // stay caught up with tip
-    KeepUp,
-    // node is currently caught up and is an active validator
-    //Validate, // TODO: wire this up
-}
 
 /// Main node reactor.
 #[derive(DataSize, Debug)]

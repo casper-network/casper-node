@@ -100,7 +100,7 @@ impl BlockSynchronizer {
         }
     }
 
-    pub(crate) fn sync(
+    pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,
         should_fetch_execution_state: bool,

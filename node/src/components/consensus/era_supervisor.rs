@@ -183,6 +183,11 @@ impl EraSupervisor {
         Ok(era_supervisor)
     }
 
+    pub(crate) fn is_active_validator(&self) -> bool {
+        // TODO: wire this up
+        false
+    }
+
     /// Returns the most recent era.
     pub(crate) fn current_era(&self) -> Option<EraId> {
         self.open_eras.keys().last().copied()

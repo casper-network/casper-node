@@ -10,17 +10,16 @@ use super::Error;
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
-        BlockAdded, BlockHash, BlockSignatures, EraValidatorWeights, FetcherItem,
+        Block, BlockAdded, BlockHash, BlockSignatures, EraValidatorWeights, FetcherItem,
         FinalitySignature, SignatureWeight, ValidatorMatrix,
     },
     utils::Latch,
 };
 
 #[derive(DataSize, Debug)]
-pub(super) struct BlockAcceptor {
+pub(super) struct BlockGossipAcceptor {
     block_hash: BlockHash,
     era_id: EraId,
-    era_validator_weights: Option<EraValidatorWeights>,
     block_added: Option<BlockAdded>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     /// Will remain false until the `block_added` is `Some` and there are strictly sufficient
@@ -28,33 +27,38 @@ pub(super) struct BlockAcceptor {
     can_execute: Latch<bool>,
 }
 
-impl BlockAcceptor {
+impl BlockGossipAcceptor {
+    pub(super) fn block(&self) -> Option<Block> {
+        self.block_added
+            .as_ref()
+            .map(|block_added| block_added.block.clone())
+    }
+
     pub(super) fn new_from_block_added(
         block_added: BlockAdded,
-        era_validator_weights: Option<EraValidatorWeights>,
+        //era_validator_weights: Option<EraValidatorWeights>,
     ) -> Result<Self, Error> {
         if let Err(error) = block_added.validate(&()) {
             warn!(%error, "received invalid block-added");
             return Err(Error::InvalidBlockAdded(error));
         }
-        let block_era = block_added.block.header().era_id();
-        if let Some(weights) = era_validator_weights.as_ref() {
-            if weights.era_id() != block_era {
-                error!(
-                    %block_era,
-                    validator_weights_era = %weights.era_id(),
-                    "validator weights of different era than block provided"
-                );
-                return Err(Error::WrongEraWeights {
-                    block_era,
-                    validator_weights_era: weights.era_id(),
-                });
-            }
-        }
+        let era_id = block_added.block.header().era_id();
+        // if let Some(weights) = era_validator_weights.as_ref() {
+        //     if weights.era_id() != block_era {
+        //         error!(
+        //             %block_era,
+        //             validator_weights_era = %weights.era_id(),
+        //             "validator weights of different era than block provided"
+        //         );
+        //         return Err(Error::WrongEraWeights {
+        //             block_era,
+        //             validator_weights_era: weights.era_id(),
+        //         });
+        //     }
+        // }
         Ok(Self {
             block_hash: *block_added.block.hash(),
-            era_id: block_added.block.header().era_id(),
-            era_validator_weights,
+            era_id,
             block_added: Some(block_added),
             signatures: BTreeMap::default(),
             can_execute: Latch::new(false),
@@ -90,33 +94,32 @@ impl BlockAcceptor {
         Ok(Self {
             block_hash,
             era_id,
-            era_validator_weights,
             block_added: None,
             signatures,
             can_execute: Latch::new(false),
         })
     }
 
-    pub(super) fn remove_bogus_validators(
-        &mut self,
-        validator_matrix: &ValidatorMatrix,
-    ) -> Option<Vec<PublicKey>> {
-        let bogus_validators =
-            validator_matrix.bogus_validators(self.era_id(), self.signatures.keys())?;
-
-        bogus_validators.iter().for_each(|bogus_validator| {
-            debug!(%bogus_validator, "bogus validator");
-            self.signatures.remove(bogus_validator);
-        });
-
-        Some(bogus_validators)
-    }
+    // pub(super) fn remove_bogus_validators(
+    //     &mut self,
+    //     era_validator_weights: &EraValidatorWeights,
+    // ) -> Option<Vec<PublicKey>> {
+    //     let bogus_validators = era_validator_weights.bogus_validators(self.signatures.keys())?;
+    //
+    //     bogus_validators.iter().for_each(|bogus_validator| {
+    //         debug!(%bogus_validator, "bogus validator");
+    //         self.signatures.remove(bogus_validator);
+    //     });
+    //
+    //     Some(bogus_validators)
+    // }
 
     /// Returns true if adding the signature was successful and if by doing so, the block now
     /// becomes executable (i.e. `self.can_execute()` now returns true).
     pub(super) fn register_signature(
         &mut self,
         finality_signature: FinalitySignature,
+        era_validator_weights: Option<EraValidatorWeights>,
     ) -> Result<bool, Error> {
         // TODO: verify sig
         // TODO: What to do when we receive multiple valid finality_signature from single
@@ -140,16 +143,20 @@ impl BlockAcceptor {
 
         // TODO - should do cumulative counting in block_acceptor to avoid calling expensive
         //        `has_sufficient_weight` many times.
-        let could_execute = self.can_execute();
+        let could_execute = self.can_execute(era_validator_weights.clone());
         self.signatures
             .insert(finality_signature.public_key.clone(), finality_signature);
-        let can_execute = self.can_execute();
+        let can_execute = self.can_execute(era_validator_weights);
         Ok(can_execute && !could_execute)
     }
 
     /// Returns true if adding the block was successful and if by doing so, the block now
     /// becomes executable (i.e. `self.can_execute()` now returns true).
-    pub(super) fn register_block(&mut self, block_added: BlockAdded) -> Result<bool, Error> {
+    pub(super) fn register_block(
+        &mut self,
+        block_added: BlockAdded,
+        era_validator_weights: Option<EraValidatorWeights>,
+    ) -> Result<bool, Error> {
         if self.block_added.is_some() {
             debug!(block_hash = %block_added.block.hash(), "received duplicate block-added");
             return Ok(false);
@@ -165,32 +172,9 @@ impl BlockAcceptor {
             finality_signature.era_id == block_added.block.header().era_id()
         });
 
-        let could_execute = self.can_execute();
+        let could_execute = self.can_execute(era_validator_weights.clone());
         self.block_added = Some(block_added);
-        let can_execute = self.can_execute();
-        Ok(can_execute && !could_execute)
-    }
-
-    /// Returns true if adding the signature was successful and if by doing so, the block now
-    /// becomes executable (i.e. `self.can_execute()` now returns true).
-    pub(super) fn register_era_validator_weights(
-        &mut self,
-        era_validator_weights: EraValidatorWeights,
-    ) -> Result<bool, Error> {
-        if era_validator_weights.era_id() != self.era_id {
-            error!(
-                block_era = %self.era_id,
-                validator_weights_era = %era_validator_weights.era_id(),
-                "received validator weights of wrong era"
-            );
-            return Err(Error::WrongEraWeights {
-                block_era: self.era_id,
-                validator_weights_era: era_validator_weights.era_id(),
-            });
-        }
-        let could_execute = self.can_execute();
-        self.era_validator_weights = Some(era_validator_weights);
-        let can_execute = self.can_execute();
+        let can_execute = self.can_execute(era_validator_weights);
         Ok(can_execute && !could_execute)
     }
 
@@ -198,7 +182,10 @@ impl BlockAcceptor {
         self.block_added.is_some()
     }
 
-    pub(super) fn can_execute(&mut self) -> bool {
+    pub(super) fn can_execute(
+        &mut self,
+        era_validator_weights: Option<EraValidatorWeights>,
+    ) -> bool {
         if *self.can_execute {
             return true;
         }
@@ -207,16 +194,27 @@ impl BlockAcceptor {
             return false;
         }
 
-        if let Some(era_validator_weights) = self.era_validator_weights.as_ref() {
-            if SignatureWeight::Sufficient
-                == era_validator_weights.has_sufficient_weight(self.signatures.keys())
-            {
-                let _updated = self.can_execute.set(true);
-                debug_assert!(_updated, "should only ever set once");
+        match era_validator_weights {
+            None => {
+                return false;
+            }
+            Some(era_validator_weights) => {
+                if SignatureWeight::Sufficient
+                    == era_validator_weights.has_sufficient_weight(self.signatures.keys())
+                {
+                    let _updated = self.can_execute.set(true);
+                    debug_assert!(_updated, "should only ever set once");
+                }
             }
         }
 
         *self.can_execute
+    }
+
+    pub(super) fn block_era_and_height(&self) -> Option<(EraId, u64)> {
+        self.block_added
+            .as_ref()
+            .map(|block_added| (self.era_id, block_added.block.header().height()))
     }
 
     pub(super) fn block_height(&self) -> Option<u64> {
@@ -225,7 +223,7 @@ impl BlockAcceptor {
             .map(|block_added| block_added.block.header().height())
     }
 
-    pub(super) fn era_id(&self) -> EraId {
+    pub(crate) fn era_id(&self) -> EraId {
         self.era_id
     }
 }
