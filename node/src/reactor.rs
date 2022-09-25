@@ -58,6 +58,7 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use crate::types::{BlockAdded, TrieOrChunk};
 use crate::{
     components::{
         deploy_acceptor, fetcher, fetcher::FetchResponse,
@@ -986,20 +987,40 @@ fn handle_get_response<R>(
 where
     R: Reactor,
     <R as Reactor>::Event: From<deploy_acceptor::Event>
-        + From<fetcher::Event<BlockDeployApprovals>>
         + From<fetcher::Event<FinalitySignature>>
-        + From<fetcher::Event<Block>>
-        + From<fetcher::Event<BlockWithMetadata>>
         + From<fetcher::Event<BlockHeader>>
-        + From<fetcher::Event<BlockHeaderWithMetadata>>
-        + From<fetcher::Event<BlockAndDeploys>>
-        + From<fetcher::Event<BlockHeadersBatch>>
-        + From<fetcher::Event<BlockSignatures>>
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
+        + From<fetcher::Event<TrieOrChunk>>
+        + From<fetcher::Event<BlockAdded>>
         + From<PeerBehaviorAnnouncement>,
 {
     match message {
+        NetResponse::SyncLeap(ref serialized_item) => handle_fetch_response::<R, SyncLeap>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+        ),
+        NetResponse::BlockHeaderByHash(ref serialized_item) => {
+            handle_fetch_response::<R, BlockHeader>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
+        }
+        NetResponse::FinalitySignature(ref serialized_item) => {
+            handle_fetch_response::<R, FinalitySignature>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
+        }
         NetResponse::Deploy(ref serialized_item) => {
             // Incoming Deploys should be routed to the `DeployAcceptor` rather than directly to the
             // `DeployFetcher`.
@@ -1042,18 +1063,6 @@ where
                 };
             <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
         }
-        NetResponse::FinalizedApprovals(ref serialized_item) => {
-            handle_fetch_response::<R, BlockDeployApprovals>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
-        }
-        NetResponse::Block(ref serialized_item) => {
-            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
-        }
         NetResponse::GossipedAddress(_) => {
             // The item trait is used for both fetchers and gossiped things, but this kind of
             // item is never fetched, only gossiped.
@@ -1065,75 +1074,72 @@ where
                 .announce_disconnect_from_peer(sender)
                 .ignore()
         }
-        NetResponse::FinalitySignature(ref serialized_item) => {
-            handle_fetch_response::<R, FinalitySignature>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
+        // TODO: seems like there should be NetResponse variants for TrieOrChunk and BlockAdded
+
+        // TODO: should be able to get rid of the variants below this line:
+        NetResponse::Block(ref serialized_item) => {
+            // handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
+            Effects::new()
+        }
+        NetResponse::FinalizedApprovals(ref serialized_item) => {
+            // handle_fetch_response::<R, BlockDeployApprovals>(
+            //     reactor,
+            //     effect_builder,
+            //     rng,
+            //     sender,
+            //     serialized_item,
+            // )
+            Effects::new()
         }
         NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
-            handle_fetch_response::<R, BlockWithMetadata>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
-        }
-        NetResponse::BlockHeaderByHash(ref serialized_item) => {
-            handle_fetch_response::<R, BlockHeader>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
+            // handle_fetch_response::<R, BlockWithMetadata>(
+            //     reactor,
+            //     effect_builder,
+            //     rng,
+            //     sender,
+            //     serialized_item,
+            // )
+            Effects::new()
         }
         NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
-            handle_fetch_response::<R, BlockHeaderWithMetadata>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
+            // handle_fetch_response::<R, BlockHeaderWithMetadata>(
+            //     reactor,
+            //     effect_builder,
+            //     rng,
+            //     sender,
+            //     serialized_item,
+            // )
+            Effects::new()
         }
         NetResponse::BlockAndDeploys(ref serialized_item) => {
-            handle_fetch_response::<R, BlockAndDeploys>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
+            // handle_fetch_response::<R, BlockAndDeploys>(
+            //     reactor,
+            //     effect_builder,
+            //     rng,
+            //     sender,
+            //     serialized_item,
+            // )
+            Effects::new()
         }
         NetResponse::BlockHeadersBatch(ref serialized_item) => {
-            handle_fetch_response::<R, BlockHeadersBatch>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
+            // handle_fetch_response::<R, BlockHeadersBatch>(
+            //     reactor,
+            //     effect_builder,
+            //     rng,
+            //     sender,
+            //     serialized_item,
+            // )
+            Effects::new()
         }
         NetResponse::FinalitySignatures(ref serialized_item) => {
-            handle_fetch_response::<R, BlockSignatures>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
+            // handle_fetch_response::<R, BlockSignatures>(
+            //     reactor,
+            //     effect_builder,
+            //     rng,
+            //     sender,
+            //     serialized_item,
+            // )
+            Effects::new()
         }
-        NetResponse::SyncLeap(ref serialized_item) => handle_fetch_response::<R, SyncLeap>(
-            reactor,
-            effect_builder,
-            rng,
-            sender,
-            serialized_item,
-        ),
     }
 }
