@@ -201,11 +201,13 @@ impl MainReactor {
                 // are available and if so, queue up block sync to get next
                 // missing historical block
 
-                let current_block_hash = BlockHash::default();
-                match self
-                    .blocks_accumulator
-                    .sync_instruction(StartingWith::Hash(current_block_hash))
-                {
+                // TODO: double check getting this from block_sync actually makes sense
+                let starting_with = match self.block_synchronizer.highest_executable_block_hash() {
+                    Some(block_hash) => StartingWith::Hash(block_hash),
+                    None => StartingWith::Nothing,
+                };
+
+                match self.blocks_accumulator.sync_instruction(starting_with) {
                     SyncInstruction::Leap => {
                         // we've fallen behind, go back to catch up mode
                         self.state = ReactorState::CatchUp;
@@ -353,7 +355,7 @@ impl MainReactor {
 
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip
-        let trusted_hash = *starting_with.block_hash();
+        let trusted_hash = starting_with.block_hash();
         match self.blocks_accumulator.sync_instruction(starting_with) {
             SyncInstruction::Leap => {
                 let peers_to_ask = self.small_network.peers_random_vec(

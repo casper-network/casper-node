@@ -100,6 +100,15 @@ impl BlockSynchronizer {
         }
     }
 
+    pub(crate) fn highest_executable_block_hash(&self) -> Option<BlockHash> {
+        self.builders
+            .iter()
+            .filter(|(k, v)| v.is_complete())
+            .filter(|(k, v)| v.block_height().is_some())
+            .max_by(|x, y| x.1.block_height().cmp(&y.1.block_height()))
+            .map(|(k, _)| *k)
+    }
+
     pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,

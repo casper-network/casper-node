@@ -18,8 +18,8 @@ use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
     types::{
-        Block, BlockAdded, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, NodeId,
-        SignatureWeight, ValidatorMatrix,
+        Block, BlockAdded, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, Item,
+        NodeId, SignatureWeight, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -60,13 +60,16 @@ pub(crate) enum SyncInstruction {
 pub(crate) enum StartingWith {
     Block(Box<Block>),
     Hash(BlockHash),
+    // simplifies call sites; results in a Leap instruction
+    Nothing,
 }
 
 impl StartingWith {
-    pub(crate) fn block_hash(&self) -> &BlockHash {
+    pub(crate) fn block_hash(&self) -> BlockHash {
         match self {
-            StartingWith::Block(block) => block.as_ref().hash(),
-            StartingWith::Hash(hash) => hash,
+            StartingWith::Block(block) => block.id(),
+            StartingWith::Hash(hash) => *hash,
+            StartingWith::Nothing => BlockHash::default(),
         }
     }
 
@@ -76,6 +79,7 @@ impl StartingWith {
             // it should have global state
             StartingWith::Block(_) => true,
             StartingWith::Hash(_) => false,
+            StartingWith::Nothing => false,
         }
     }
 }
@@ -102,11 +106,14 @@ impl BlocksAccumulator {
         const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
 
         let should_fetch_execution_state = starting_with.have_block() == false;
-        let block_hash = *starting_with.block_hash();
+        let block_hash = starting_with.block_hash();
         if let Some((highest_block_hash, highest_block_height, highest_era_id)) =
             self.highest_known_block()
         {
             let (era_id, block_height) = match starting_with {
+                StartingWith::Nothing => {
+                    return SyncInstruction::Leap;
+                }
                 StartingWith::Block(block) => (block.header().era_id(), block.header().height()),
                 StartingWith::Hash(trusted_hash) => {
                     match self.block_gossip_acceptors.get(&trusted_hash) {

@@ -166,6 +166,10 @@ impl BlockBuilder {
         self.block_hash
     }
 
+    pub(crate) fn block_height(&self) -> Option<u64> {
+        self.acquisition_state.block_height()
+    }
+
     pub(crate) fn builder_state(&self) -> &BlockAcquisitionState {
         &self.acquisition_state
     }
@@ -185,7 +189,7 @@ impl BlockBuilder {
     pub(crate) fn is_complete(&self) -> bool {
         matches!(
             self.acquisition_state,
-            BlockAcquisitionState::HaveStrictFinalitySignatures(_)
+            BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
         )
     }
 
