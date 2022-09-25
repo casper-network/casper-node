@@ -211,7 +211,7 @@ impl TrieAccumulator {
                 .merge(old_partial_chunks);
         }
         effect_builder
-            .fetch(id, peer, ())
+            .fetch::<TrieOrChunk>(id, peer, ())
             .event(move |fetch_result| Event::TrieOrChunkFetched { id, fetch_result })
     }
 }
