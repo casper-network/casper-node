@@ -13,8 +13,6 @@ use super::round_success_meter::config::Config as RSMConfig;
 pub struct Config {
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,
-    /// If the initial era's protocol state has not progressed for this long, restart.
-    pub standstill_timeout: Option<TimeDiff>,
     /// Request the latest protocol state from a random peer periodically, with this interval.
     pub request_state_interval: Option<TimeDiff>,
     /// Log inactive or faulty validators periodically, with this interval.
@@ -39,7 +37,6 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             pending_vertex_timeout: "10sec".parse().unwrap(),
-            standstill_timeout: None,
             request_state_interval: Some("10sec".parse().unwrap()),
             log_participation_interval: Some("10sec".parse().unwrap()),
             log_synchronizer_interval: Some("5sec".parse().unwrap()),

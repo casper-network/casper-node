@@ -8,10 +8,9 @@
 // TODO:
 // - next_block_height / next_executed_height?
 // - merge `initialize()` with `create_new_era()`?
-// - drop all eras when reverting to CatchUp mode?
+// - drop all eras when reverting to CatchUp mode? (Or don't!? Highway won't remember state.)
 // - check for 1 deploy TTL worth of complete blocks for the replay protection (should it live in
 //   the storage/linear chain/era_supervisor/other?)
-// - standstill timeout - should it stay in era supervisor? if so, fix/update
 // - do we need to distinguish between blocks being executed vs gossiped
 
 pub(super) mod debug;
@@ -136,8 +135,6 @@ pub struct EraSupervisor {
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
-    /// The era that was current when this node finished syncing the first time.
-    era_where_we_joined: Option<EraId>,
 }
 
 impl Debug for EraSupervisor {
@@ -177,7 +174,6 @@ impl EraSupervisor {
             unit_files_folder,
             next_upgrade_activation_point,
             next_executed_height: next_height,
-            era_where_we_joined: None,
         };
 
         Ok(era_supervisor)
@@ -240,8 +236,6 @@ impl EraSupervisor {
         for i in (from..=switch_blocks.len()).rev() {
             effects.extend(self.create_new_era_effects(effect_builder, rng, &switch_blocks[..i]));
         }
-
-        self.era_where_we_joined = Some(current_era);
 
         Ok(effects)
     }
@@ -1083,17 +1077,6 @@ impl EraSupervisor {
                 .set_timeout(Duration::from_millis(FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS))
                 .then(move |_| fatal!(effect_builder, "too many faulty validators"))
                 .ignore(),
-            ProtocolOutcome::StandstillAlert => {
-                if era_id == current_era && Some(era_id) == self.era_where_we_joined {
-                    warn!(era = %era_id.value(), "current era is stalled; shutting down");
-                    fatal!(effect_builder, "current era is stalled; please retry").ignore()
-                } else {
-                    if era_id == current_era {
-                        warn!(era = %era_id.value(), "current era is stalled");
-                    }
-                    Effects::new()
-                }
-            }
         }
     }
 

@@ -83,9 +83,6 @@ where
     synchronizer: Synchronizer<C>,
     pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
-    /// The panorama snapshot. This is updated periodically, and if it does not change for too
-    /// long, an alert is raised.
-    last_panorama: Panorama<C>,
     config: config::Config,
 }
 
@@ -192,7 +189,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
         let highway = Highway::new(instance_id, validators, params);
-        let last_panorama = highway.state().panorama().clone();
         let hw_proto = Box::new(HighwayProtocol {
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
@@ -201,7 +197,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             synchronizer: Synchronizer::new(validators_count, instance_id),
             pvv_cache: Default::default(),
             evidence_only: false,
-            last_panorama,
             config: config.highway.clone(),
         });
 
@@ -227,12 +222,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
                 now + interval,
                 TIMER_ID_SYNCHRONIZER_LOG,
-            ));
-        }
-        if let Some(timeout) = config.standstill_timeout {
-            outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + timeout,
-                TIMER_ID_STANDSTILL_ALERT,
             ));
         }
         outcomes
@@ -494,38 +483,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             ));
         }
         outcomes
-    }
-
-    /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
-    fn handle_standstill_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<C> {
-        if self.evidence_only || self.finalized_switch_block() {
-            // Era has ended and no further progress is expected, or shutdown on standstill is
-            // turned off.
-            return vec![];
-        }
-        let timeout = match self.config.standstill_timeout {
-            None => return vec![],
-            Some(timeout) => timeout,
-        };
-        if self.last_panorama == *self.highway.state().panorama() {
-            info!(
-                instance_id = ?self.highway.instance_id(),
-                "no progress in the last {}, raising standstill alert",
-                timeout,
-            );
-            return vec![ProtocolOutcome::StandstillAlert]; // No progress within the timeout.
-        }
-        debug!(
-            instance_id = ?self.highway.instance_id(),
-            "progress detected; scheduling next standstill check in {}",
-            timeout,
-        );
-        // Record the current panorama and schedule the next standstill check.
-        self.last_panorama = self.highway.state().panorama().clone();
-        vec![ProtocolOutcome::ScheduleTimer(
-            now + timeout,
-            TIMER_ID_STANDSTILL_ALERT,
-        )]
     }
 
     /// Prints a log message if the vertex is a proposal unit. Otherwise returns `false`.
@@ -927,7 +884,6 @@ where
                 }
             }
             TIMER_ID_REQUEST_STATE => self.handle_request_state_timer(now),
-            TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
             TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
                 match self.config.log_synchronizer_interval {

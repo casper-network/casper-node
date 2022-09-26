@@ -63,9 +63,6 @@ secret_key_path = 'secret_key.pem'
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 
-# If the current era's protocol state has not progressed for this long, shut down.
-standstill_timeout = '10min'
-
 # Request the latest protocol state from a random peer periodically, with this interval.
 request_state_interval = '20sec'
 

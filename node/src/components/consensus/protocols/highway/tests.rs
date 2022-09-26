@@ -70,7 +70,6 @@ where
         secret_key_path: Default::default(),
         highway: HighwayConfig {
             pending_vertex_timeout: "1min".parse().unwrap(),
-            standstill_timeout: Some(STANDSTILL_TIMEOUT.parse().unwrap()),
             log_participation_interval: Some("10sec".parse().unwrap()),
             max_execution_delay: 3,
             ..HighwayConfig::default()
@@ -90,11 +89,10 @@ where
         0,
         start_timestamp,
     );
-    // We expect five messages:
+    // We expect four messages:
     // * log participation timer,
     // * log synchronizer queue length timer,
     // * purge synchronizer queue timer,
-    // * standstill alert timer,
     // * latest state request timer
     // If there are more, the tests might need to handle them.
     assert_eq!(4, outcomes.len());
@@ -189,7 +187,6 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
 #[test]
 fn send_a_valid_wire_unit() {
     let mut rng = TestRng::new();
-    let standstill_timeout: TimeDiff = STANDSTILL_TIMEOUT.parse().unwrap();
     let creator: ValidatorIndex = ValidatorIndex(0);
     let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
@@ -225,26 +222,6 @@ fn send_a_valid_wire_unit() {
             outcome => panic!("Unexpected outcome: {:?}", outcome),
         }
     }
-
-    // Our protocol state has changed since initialization, so there is no alert.
-    now += standstill_timeout;
-    let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT);
-    match &*outcomes {
-        [ProtocolOutcome::ScheduleTimer(timestamp, timer_id)] => {
-            assert_eq!(*timestamp, now + standstill_timeout);
-            assert_eq!(*timer_id, TIMER_ID_STANDSTILL_ALERT);
-        }
-        _ => panic!("Unexpected outcomes: {:?}", outcomes),
-    }
-
-    // If after another timeout, the state has not changed, an alert is raised.
-    now += standstill_timeout;
-    let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT);
-    assert!(
-        matches!(&*outcomes, [ProtocolOutcome::StandstillAlert]),
-        "Unexpected outcomes: {:?}",
-        outcomes
-    );
 }
 
 #[test]
