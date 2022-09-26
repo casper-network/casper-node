@@ -101,14 +101,10 @@ pub(crate) enum NetRequest {
     /// Request for a gossiped public listening address.
     // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     GossipedAddress(Vec<u8>),
-    /// Request for a block by its height in the linear chain.
-    BlockAndMetadataByHeight(Vec<u8>),
     /// Request for a block and its deploys by hash.
     BlockAndDeploys(Vec<u8>),
     /// Request for a block header by its hash.
     BlockHeaderByHash(Vec<u8>),
-    /// Request for a block header and its finality signatures by its height in the linear chain.
-    BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
     /// Request for a batch of block headers.
     BlockHeadersBatch(Vec<u8>),
     /// Request for finality signatures for a block.
@@ -127,13 +123,7 @@ impl Display for NetRequest {
                 f.write_str("request for gossiped finality signature")
             }
             NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
-            NetRequest::BlockAndMetadataByHeight(_) => {
-                f.write_str("request for block and metadata by height")
-            }
             NetRequest::BlockHeaderByHash(_) => f.write_str("request for block header by hash"),
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                f.write_str("request for block header and finality signatures by height")
-            }
             NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
             NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
             NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
@@ -144,10 +134,6 @@ impl Display for NetRequest {
 
 impl NetRequest {
     /// Returns a unique identifier of the requested object.
-    ///
-    /// The identifier is based on the domain-specific ID and the tag of the item, thus
-    /// `BlockAndMetadataByHeight` and `BlockHeaderAndFinalitySignaturesByHeight` have different IDs
-    /// even if the same height was requested.
     pub(crate) fn unique_id(&self) -> Vec<u8> {
         let id = match self {
             NetRequest::Deploy(ref id) => id,
@@ -155,9 +141,7 @@ impl NetRequest {
             NetRequest::Block(ref id) => id,
             NetRequest::FinalitySignature(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
-            NetRequest::BlockAndMetadataByHeight(ref id) => id,
             NetRequest::BlockHeaderByHash(ref id) => id,
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
             NetRequest::BlockAndDeploys(ref id) => id,
             NetRequest::BlockHeadersBatch(ref id) => id,
             NetRequest::FinalitySignatures(ref id) => id,
@@ -178,11 +162,7 @@ impl NetRequest {
             NetRequest::Block(_) => Tag::Block,
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
             NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
-            NetRequest::BlockAndMetadataByHeight(_) => Tag::BlockAndMetadataByHeight,
             NetRequest::BlockHeaderByHash(_) => Tag::BlockHeaderByHash,
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                Tag::BlockHeaderAndFinalitySignaturesByHeight
-            }
             NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
             NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
@@ -200,9 +180,7 @@ pub(crate) enum NetResponse {
     FinalizedApprovals(Arc<[u8]>),
     Block(Arc<[u8]>),
     GossipedAddress(Arc<[u8]>),
-    BlockAndMetadataByHeight(Arc<[u8]>),
     BlockHeaderByHash(Arc<[u8]>),
-    BlockHeaderAndFinalitySignaturesByHeight(Arc<[u8]>),
     BlockAndDeploys(Arc<[u8]>),
     BlockHeadersBatch(Arc<[u8]>),
     FinalitySignature(Arc<[u8]>),
@@ -229,13 +207,7 @@ impl Display for NetResponse {
             NetResponse::Block(_) => f.write_str("response, block"),
             NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),
             NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
-            NetResponse::BlockAndMetadataByHeight(_) => {
-                f.write_str("response, block and metadata by height")
-            }
             NetResponse::BlockHeaderByHash(_) => f.write_str("response, block header by hash"),
-            NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                f.write_str("response, block header and finality signatures by height")
-            }
             NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
             NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
             NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
@@ -292,8 +264,8 @@ mod tests {
     fn unique_id_is_unique_across_variants() {
         let inner_id = b"example".to_vec();
 
-        let a = NetRequest::BlockAndMetadataByHeight(inner_id.clone());
-        let b = NetRequest::BlockHeaderAndFinalitySignaturesByHeight(inner_id);
+        let a = NetRequest::Deploy(inner_id.clone());
+        let b = NetRequest::Block(inner_id);
 
         assert_ne!(a.unique_id(), b.unique_id());
     }

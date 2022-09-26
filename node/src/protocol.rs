@@ -80,9 +80,7 @@ impl Payload for Message {
                     Tag::Deploy => MessageKind::DeployTransfer,
                     Tag::BlockDeployApprovals => MessageKind::FinalizedApprovalsTransfer,
                     Tag::Block => MessageKind::BlockTransfer,
-                    Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
-                    Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
@@ -129,9 +127,7 @@ impl Payload for Message {
                 Tag::Block => weights.block_requests,
                 Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
-                Tag::BlockAndMetadataByHeight => weights.block_requests,
                 Tag::BlockHeaderByHash => weights.block_requests,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_requests,
@@ -145,9 +141,7 @@ impl Payload for Message {
                 Tag::Block => weights.block_responses,
                 Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
-                Tag::BlockAndMetadataByHeight => weights.block_responses,
                 Tag::BlockHeaderByHash => weights.block_responses,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
                 Tag::BlockHeaderBatch => weights.block_responses,
@@ -353,19 +347,9 @@ where
                     message: NetRequest::GossipedAddress(serialized_id),
                 }
                 .into(),
-                Tag::BlockAndMetadataByHeight => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockAndMetadataByHeight(serialized_id),
-                }
-                .into(),
                 Tag::BlockHeaderByHash => NetRequestIncoming {
                     sender,
                     message: NetRequest::BlockHeaderByHash(serialized_id),
-                }
-                .into(),
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockHeaderAndFinalitySignaturesByHeight(serialized_id),
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieRequestIncoming {
@@ -433,19 +417,9 @@ where
                     message: NetResponse::GossipedAddress(serialized_item),
                 }
                 .into(),
-                Tag::BlockAndMetadataByHeight => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::BlockAndMetadataByHeight(serialized_item),
-                }
-                .into(),
                 Tag::BlockHeaderByHash => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockHeaderByHash(serialized_item),
-                }
-                .into(),
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::BlockHeaderAndFinalitySignaturesByHeight(serialized_item),
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieResponseIncoming {

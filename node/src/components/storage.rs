@@ -638,63 +638,12 @@ impl Storage {
                 )?)
             }
             NetRequest::GossipedAddress(_) => Err(GetRequestError::GossipedAddressNotGettable),
-            NetRequest::BlockAndMetadataByHeight(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockWithMetadata>(serialized_id)?;
-                let opt_item = self
-                    .read_block_and_metadata_by_height(item_id)
-                    .map_err(FatalStorageError::from)?;
-                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
             NetRequest::BlockHeaderByHash(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockHeader>(serialized_id)?;
                 let opt_item = self
                     .read_block_header_by_hash(&item_id)
                     .map_err(FatalStorageError::from)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockHeaderWithMetadata>(serialized_id)?;
-                let opt_item = self
-                    .read_block_header_and_metadata_by_height(item_id)
-                    .map_err(FatalStorageError::from)?;
-
-                let fetch_response = match opt_item {
-                    Some(item) => {
-                        let highest_header = {
-                            let mut txn =
-                                self.env.begin_ro_txn().map_err(FatalStorageError::from)?;
-                            self.get_highest_block_header(&mut txn)?.ok_or_else(|| {
-                                error!("should have highest header as at least one header stored");
-                                GetRequestError::FailedToGetHighestBlockHeader
-                            })?
-                        };
-                        if item
-                            .block_header
-                            .era_id()
-                            .saturating_add(self.recent_era_count)
-                            > highest_header.era_id()
-                        {
-                            FetchResponse::Fetched(item)
-                        } else {
-                            FetchResponse::NotProvided(item_id)
-                        }
-                    }
-                    None => FetchResponse::NotFound(item_id),
-                };
 
                 Ok(self.update_pool_and_send(
                     effect_builder,

@@ -479,10 +479,8 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::Block(_)
                 | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
-                | NetResponse::BlockAndMetadataByHeight(_)
                 | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
-                | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)
                 | NetResponse::BlockHeadersBatch(_)
                 | NetResponse::FinalitySignatures(_)
                 | NetResponse::SyncLeap(_)) => {

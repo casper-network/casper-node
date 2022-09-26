@@ -41,12 +41,8 @@ pub enum Tag {
     Block,
     /// A gossiped public listening address.
     GossipedAddress,
-    /// A block requested by its height in the linear chain.
-    BlockAndMetadataByHeight,
     /// A block header requested by its hash.
     BlockHeaderByHash,
-    /// A block header and its finality signatures requested by its height in the linear chain.
-    BlockHeaderAndFinalitySignaturesByHeight,
     /// A trie or chunk from the global Merkle tree in the execution engine.
     TrieOrChunk,
     /// A full block and its deploys.

@@ -203,7 +203,7 @@ impl FetcherItem for SyncLeap {
                 Err(err) => return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(err)),
             }
             signed_header
-                .validate(&())
+                .validate()
                 .map_err(SyncLeapValidationError::BlockWithMetadata)?;
 
             signed_header

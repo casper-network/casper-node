@@ -70,9 +70,9 @@ use crate::{
     },
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecRawBytes, Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, NodeId,
-        SyncLeap, TrieOrChunk,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, Chainspec, ChainspecRawBytes,
+        Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, NodeId, SyncLeap,
+        TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -1084,26 +1084,6 @@ where
         }
         NetResponse::FinalizedApprovals(ref serialized_item) => {
             // handle_fetch_response::<R, BlockDeployApprovals>(
-            //     reactor,
-            //     effect_builder,
-            //     rng,
-            //     sender,
-            //     serialized_item,
-            // )
-            Effects::new()
-        }
-        NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
-            // handle_fetch_response::<R, BlockWithMetadata>(
-            //     reactor,
-            //     effect_builder,
-            //     rng,
-            //     sender,
-            //     serialized_item,
-            // )
-            Effects::new()
-        }
-        NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
-            // handle_fetch_response::<R, BlockHeaderWithMetadata>(
             //     reactor,
             //     effect_builder,
             //     rng,

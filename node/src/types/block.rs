@@ -997,21 +997,8 @@ impl Display for BlockHeaderWithMetadata {
     }
 }
 
-impl Item for BlockHeaderWithMetadata {
-    type Id = u64;
-
-    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
-
-    fn id(&self) -> Self::Id {
-        self.block_header.height()
-    }
-}
-
-impl FetcherItem for BlockHeaderWithMetadata {
-    type ValidationError = BlockHeaderWithMetadataValidationError;
-    type ValidationMetadata = ();
-
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+impl BlockHeaderWithMetadata {
+    pub(crate) fn validate(&self) -> Result<(), BlockHeaderWithMetadataValidationError> {
         validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
     }
 }
@@ -1775,27 +1762,6 @@ fn validate_block_header_and_signature_hash(
         );
     }
     Ok(())
-}
-
-impl Item for BlockWithMetadata {
-    type Id = u64;
-
-    const TAG: Tag = Tag::BlockAndMetadataByHeight;
-
-    fn id(&self) -> Self::Id {
-        self.block.height()
-    }
-}
-
-impl FetcherItem for BlockWithMetadata {
-    type ValidationError = BlockWithMetadataValidationError;
-    type ValidationMetadata = ();
-
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
-        self.block.verify()?;
-        validate_block_header_and_signature_hash(self.block.header(), &self.block_signatures)?;
-        Ok(())
-    }
 }
 
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
