@@ -16,8 +16,9 @@ where
     /// An ACK was received for an item that had not been sent yet.
     #[error("received ACK {actual}, but only sent {items_sent} items")]
     UnexpectedAck { actual: u64, items_sent: u64 },
-    /// Received an ACK for an item that an ACK was already received for.
-    #[error("duplicate ACK {ack_received} receveid, already received {highest}")]
+    /// Received an ACK for an item that an ACK must have already been received
+    /// as it is outside the window.
+    #[error("duplicate ACK {ack_received} received, already received {highest}")]
     DuplicateAck { ack_received: u64, highest: u64 },
     /// The ACK stream associated with a backpressured channel was close.d
     #[error("ACK stream closed")]

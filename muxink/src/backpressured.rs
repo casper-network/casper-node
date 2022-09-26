@@ -18,6 +18,7 @@
 //! multiplexed setup, guaranteed to not be impeding the flow of other channels.
 
 use std::{
+    cmp::max,
     marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
@@ -97,7 +98,7 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
             });
         }
 
-        if ack_received <= self.received_ack {
+        if ack_received + self.window_size < self.last_request {
             return Err(Error::DuplicateAck {
                 ack_received,
                 highest: self.received_ack,
@@ -131,9 +132,7 @@ where
             match self_mut.ack_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(ack_received)) => {
                     try_ready!(self_mut.validate_ack(ack_received));
-                    // validate_ack!(self_mut, ack_received);
-
-                    self_mut.received_ack = ack_received;
+                    self_mut.received_ack = max(self_mut.received_ack, ack_received);
                 }
                 Poll::Ready(None) => {
                     // The ACK stream has been closed. Close our sink, now that we know, but try to
@@ -773,15 +772,29 @@ mod tests {
 
     #[test]
     fn backpressured_sink_redundant_ack_kills_stream() {
+        // Window size is 3, so if the sink can send at most
+        // `window_size + 1` requests, it must also follow that any ACKs fall
+        // in the [`last_request` - `window_size` - 1, `last_request`]
+        // interval. In other words, if we sent request no. `last_request`,
+        // we must have had ACKs up until at least
+        // `last_request` - `window_size`, so an ACK out of range is a
+        // duplicate.
         let Fixtures { ack_sender, mut bp } = Fixtures::new();
 
         bp.send('A').now_or_never().unwrap().unwrap();
         bp.send('B').now_or_never().unwrap().unwrap();
+        // Out of order ACKs work.
         ack_sender.send(2).unwrap();
+        ack_sender.send(1).unwrap();
+        // Send 3 more items to make it 5 in total.
+        bp.send('C').now_or_never().unwrap().unwrap();
+        bp.send('D').now_or_never().unwrap().unwrap();
+        bp.send('E').now_or_never().unwrap().unwrap();
+        // Send a duplicate ACK of 1, which is outside the allowed range.
         ack_sender.send(1).unwrap();
 
         assert!(matches!(
-            bp.send('C').now_or_never(),
+            bp.send('F').now_or_never(),
             Some(Err(Error::DuplicateAck {
                 ack_received: 1,
                 highest: 2
