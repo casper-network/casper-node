@@ -392,14 +392,12 @@ impl MainReactor {
             }
             SyncInstruction::BlockExec { block, .. } => {
                 let block_hash = block.id();
-                error!(
+                let msg = format!(
                     "BlockExec should be unreachable in CatchUp mode: {}",
                     block_hash
                 );
-                return CatchUpInstruction::Shutdown(
-                    "block_synchronizer is initialized for potentially executable block"
-                        .to_string(),
-                );
+                error!("{}", msg);
+                return CatchUpInstruction::Shutdown(msg);
             }
             SyncInstruction::CaughtUp => {
                 match self.linear_chain.highest_block() {
