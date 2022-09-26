@@ -6,7 +6,6 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 // TODO:
-// - next_block_height / next_executed_height?
 // - drop all eras when reverting to CatchUp mode? (Or don't!? Highway won't remember state.)
 // - check for 1 deploy TTL worth of complete blocks for the replay protection (should it live in
 //   the storage/linear chain/era_supervisor/other?)
@@ -308,6 +307,7 @@ impl EraSupervisor {
     #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
     fn executed_block(&mut self, block_header: &BlockHeader) {
         self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
+        self.next_block_height = self.next_block_height.max(self.next_executed_height);
         self.update_consensus_pause();
     }
 
