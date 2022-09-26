@@ -135,6 +135,7 @@ pub struct EraSupervisor {
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
+    last_progress: Timestamp,
 }
 
 impl Debug for EraSupervisor {
@@ -174,6 +175,7 @@ impl EraSupervisor {
             unit_files_folder,
             next_upgrade_activation_point,
             next_executed_height: next_height,
+            last_progress: Timestamp::now(),
         };
 
         Ok(era_supervisor)
@@ -691,6 +693,7 @@ impl EraSupervisor {
         let our_secret_key = self.secret_signing_key.clone();
         let era_id = block_header.era_id();
         self.executed_block(&block_header);
+        self.last_progress = Timestamp::now();
         let mut effects = if self.is_validator_in(&our_public_key, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::create(
@@ -804,6 +807,10 @@ impl EraSupervisor {
             );
         }
         effects
+    }
+
+    pub(crate) fn last_progress(&self) -> Timestamp {
+        self.last_progress
     }
 
     fn handle_consensus_outcomes<REv: ReactorEventT, T>(

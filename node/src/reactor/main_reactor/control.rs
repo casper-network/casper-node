@@ -266,10 +266,15 @@ impl MainReactor {
                 // or if event-q would naturally handle it based upon consensus
                 // messages...must consult with Andreas / Bart
 
-                // TODO: invert era_supervisor idleness timeout and manage it
-                // from here by asking era_supervisor.is_idle() or sth similar
+                if self.consensus.last_progress().elapsed() <= self.idle_tolerances {
+                    // TODO: Reset counter?
+                    // TODO: ELSE: Increment counter, leap?
+                    // With Highway we must make sure that the whole network doesn't restart
+                    // at the same time, though, since it doesn't restore protocol state.
+                }
             }
         }
+        // TODO: Really immediately?
         effect_builder
             .immediately()
             .event(|_| MainEvent::ReactorCrank)
