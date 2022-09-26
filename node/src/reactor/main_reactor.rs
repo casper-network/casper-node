@@ -118,7 +118,8 @@ pub(crate) struct MainReactor {
     deploy_buffer: DeployBuffer,
 
     //   gossiping components
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>, // TODO - has its own timing belt - should it?
+    address_gossiper: Gossiper<GossipedAddress, MainEvent>, /* TODO - has its own timing belt -
+                                                             * should it? */
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
     block_added_gossiper: Gossiper<BlockAdded, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,

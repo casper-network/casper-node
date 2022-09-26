@@ -58,7 +58,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-use crate::types::{BlockAdded, TrieOrChunk};
 use crate::{
     components::{
         deploy_acceptor, fetcher, fetcher::FetchResponse,
@@ -70,9 +69,10 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAndDeploys, BlockDeployApprovals, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
-        Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, NodeId, SyncLeap,
+        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecRawBytes, Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, NodeId,
+        SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -1078,7 +1078,8 @@ where
 
         // TODO: should be able to get rid of the variants below this line:
         NetResponse::Block(ref serialized_item) => {
-            // handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
+            // handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender,
+            // serialized_item)
             Effects::new()
         }
         NetResponse::FinalizedApprovals(ref serialized_item) => {

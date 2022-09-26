@@ -1,4 +1,3 @@
-use crate::types::FinalitySignature;
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
     effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
@@ -7,7 +6,7 @@ use crate::{
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
-        Deploy, SyncLeap, TrieOrChunk,
+        Deploy, FinalitySignature, SyncLeap, TrieOrChunk,
     },
     FetcherConfig, NodeRng,
 };
