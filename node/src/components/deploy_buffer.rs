@@ -39,9 +39,23 @@ pub(crate) struct DeployBuffer {
     status: ComponentStatus,
     cfg: Config,
     deploy_config: DeployConfig,
+    // keeps track of all deploys the buffer is currently aware of
+    // hold and dead are used to filter it on demand as necessary
+    // items are removed via a self-perpetuating expire event
     buffer: HashMap<DeployHash, Deploy>,
+    // when a maybe-block is in flight, we pause inclusion
+    // of the deploys within it in other proposed blocks
+    // if the maybe-block becomes an actual block the
+    // deploy hashes will get put to self.dead
+    // otherwise, the hold will be released and the deploys
+    // will become eligible to propose again.
     hold: BTreeMap<Timestamp, HashSet<DeployHash>>,
+    // deploy_hashes that should not be proposed, ever
     dead: HashSet<DeployHash>,
+    // block_height and block_time of blocks added to the local chain
+    // needed to ensure we have seen sufficient blocks
+    // to allow consensus to proceed safely without risking
+    // duplicating deploys
     chain_index: BTreeMap<u64, Timestamp>,
 }
 
@@ -139,8 +153,8 @@ impl DeployBuffer {
         }
     }
 
-    fn register_block_added(&mut self, block: &Block) {
-        self.register_block(
+    fn register_block(&mut self, block: &Block) {
+        self.interment(
             block.height(),
             block.timestamp(),
             block
@@ -152,7 +166,7 @@ impl DeployBuffer {
     }
 
     fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
-        self.register_block(
+        self.interment(
             finalized_block.height(),
             finalized_block.timestamp(),
             finalized_block
@@ -163,7 +177,7 @@ impl DeployBuffer {
         );
     }
 
-    fn register_block(
+    fn interment(
         &mut self,
         block_height: u64,
         block_time: Timestamp,
@@ -299,7 +313,7 @@ where
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Block(block)) => {
-                self.register_block_added(&*block);
+                self.register_block(&*block);
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::BlockProposed(proposed)) => {
