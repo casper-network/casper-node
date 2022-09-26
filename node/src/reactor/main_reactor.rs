@@ -367,12 +367,19 @@ impl reactor::Reactor for MainReactor {
 
             // ROUTE ALL INTENT TO SHUTDOWN TO THIS EVENT
             // (DON'T USE FATAL ELSEWHERE WITHIN REACTOR OR COMPONENTS)
-            MainEvent::Shutdown(msg) => fatal!(
-                effect_builder,
-                "reactor should shut down due to error: {}",
-                msg,
-            )
-            .ignore(),
+            MainEvent::Shutdown(msg) => {
+                if self.consensus.is_active_validator() {
+                    info!(%msg, "consensus is active, not shutting down");
+                    Effects::new()
+                } else {
+                    fatal!(
+                        effect_builder,
+                        "reactor should shut down due to error: {}",
+                        msg,
+                    )
+                    .ignore()
+                }
+            }
 
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
