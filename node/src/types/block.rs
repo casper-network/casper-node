@@ -15,6 +15,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::Into;
 use hex_fmt::HexList;
+use itertools::Itertools;
 use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
@@ -1359,6 +1360,15 @@ impl BlockSignatures {
         self.proofs.get(public_key).map(|signature| {
             FinalitySignature::new(self.block_hash, self.era_id, *signature, public_key.clone())
         })
+    }
+
+    pub(crate) fn public_keys(&self) -> Option<Vec<PublicKey>> {
+        if self.proofs.is_empty() {
+            None
+        } else {
+            let public_keys = self.proofs.keys().cloned().collect_vec();
+            Some(public_keys)
+        }
     }
 }
 

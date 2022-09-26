@@ -5,8 +5,8 @@ use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 
 use crate::{
     components::{
-        chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
-        diagnostics_port, small_network, storage, upgrade_watcher,
+        contract_runtime, contract_runtime::BlockExecutionError, diagnostics_port, small_network,
+        storage, upgrade_watcher,
     },
     utils::{ListeningError, LoadError},
 };
@@ -53,10 +53,6 @@ pub(crate) enum Error {
     /// [`bytesrepr`] error.
     #[error("bytesrepr error: {0}")]
     BytesRepr(bytesrepr::Error),
-
-    /// `Chain synchronizer` component error.
-    #[error("chain synchronizer error: {0}")]
-    ChainSynchronizer(#[from] chain_synchronizer::Error),
 
     /// `DiagnosticsPort` component error.
     #[error("diagnostics port: {0}")]

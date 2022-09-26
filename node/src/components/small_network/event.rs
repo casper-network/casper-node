@@ -14,9 +14,7 @@ use tracing::Span;
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
-        },
+        announcements::{ContractRuntimeAnnouncement, PeerBehaviorAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -98,15 +96,11 @@ pub(crate) enum Event<P> {
 
     /// Blocklist announcement.
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement),
+    BlocklistAnnouncement(PeerBehaviorAnnouncement),
 
     /// Contract runtime announcement.
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
-
-    /// Chain synchronizer announcement.
-    #[from]
-    ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement),
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -156,9 +150,6 @@ impl<P: Display> Display for Event<P> {
             }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
-            }
-            Event::ChainSynchronizerAnnouncement(ann) => {
-                write!(f, "handling chain synchronizer announcement: {}", ann)
             }
         }
     }

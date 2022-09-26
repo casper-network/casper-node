@@ -56,7 +56,7 @@ use super::{
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, Config, FromIncoming},
     effect::{
-        announcements::BlocklistAnnouncement, requests::NetworkRequest, AutoClosingResponder,
+        announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
         EffectBuilder,
     },
     reactor::{EventQueueHandle, QueueKind},
@@ -275,8 +275,17 @@ impl<REv> NetworkContext<REv> {
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands,
-            is_syncing: AtomicBool::new(true),
+            is_syncing: AtomicBool::new(false),
         }
+    }
+
+    pub(super) fn initialize(
+        &mut self,
+        our_public_addr: SocketAddr,
+        event_queue: EventQueueHandle<REv>,
+    ) {
+        self.public_addr = Some(our_public_addr);
+        self.event_queue = Some(event_queue);
     }
 
     pub(super) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
@@ -709,7 +718,7 @@ where
     REv: From<Event<P>>
         + FromIncoming<P>
         + From<NetworkRequest<P>>
-        + From<BlocklistAnnouncement>
+        + From<PeerBehaviorAnnouncement>
         + Send,
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));

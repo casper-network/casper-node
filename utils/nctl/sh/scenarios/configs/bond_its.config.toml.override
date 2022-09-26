@@ -1,2 +1,2 @@
-[block_proposer]
+[deploy_buffer]
 deploy_delay = '5sec'

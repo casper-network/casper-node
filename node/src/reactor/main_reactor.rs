@@ -1,13 +1,15 @@
 //! Main reactor for nodes.
 
 mod config;
+mod control;
 mod error;
 mod event;
 mod fetchers;
 mod memory_metrics;
+mod utils;
+
 #[cfg(test)]
 mod tests;
-mod utils;
 
 use std::{
     collections::BTreeMap,
@@ -15,29 +17,28 @@ use std::{
     time::{Duration, Instant},
 };
 
+use datasize::DataSize;
+use itertools::Itertools;
+use memory_metrics::MemoryMetrics;
+use prometheus::Registry;
+use tracing::{error, info};
+
 use casper_execution_engine::core::{
     engine_state,
     engine_state::{ChainspecRegistry, GenesisSuccess, UpgradeConfig, UpgradeSuccess},
 };
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp};
-use datasize::DataSize;
-use itertools::Itertools;
-use prometheus::Registry;
-use tracing::{error, info};
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
-        block_proposer::{self, BlockProposer},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        blocks_accumulator::{BlocksAccumulator, LeapInstruction, StartingWith},
-        chain_synchronizer::{self, ChainSynchronizer},
+        blocks_accumulator::{BlocksAccumulator, StartingWith, SyncInstruction},
         consensus::{self, EraReport, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
+        deploy_buffer::{self, DeployBuffer},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, Gossiper},
@@ -57,10 +58,9 @@ use crate::{
     contract_runtime::ExecutionPreState,
     effect::{
         announcements::{
-            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
             ConsensusAnnouncement, ContractRuntimeAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, RpcServerAnnouncement,
-            UpgradeWatcherAnnouncement,
+            DeployBufferAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{BlockAddedResponseIncoming, NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -71,10 +71,7 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{
-            fetchers::Fetchers,
-            utils::{initialize_component, maybe_pre_genesis, maybe_upgrade},
-        },
+        main_reactor::{control::ReactorState, fetchers::Fetchers, utils::initialize_component},
         EventQueueHandle, ReactorExit,
     },
     types::{
@@ -85,449 +82,71 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
-use memory_metrics::MemoryMetrics;
-
-#[derive(DataSize, Debug)]
-enum ReactorState {
-    Initialize,
-    CatchUp,
-    KeepUp,
-}
 
 /// Main node reactor.
 #[derive(DataSize, Debug)]
 pub(crate) struct MainReactor {
-    trusted_hash: Option<BlockHash>,
+    // components
+    //   i/o bound components
     storage: Storage,
     contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
     upgrade_watcher: UpgradeWatcher,
-
+    rpc_server: RpcServer,
+    rest_server: RestServer,
+    event_stream_server: EventStreamServer,
+    diagnostics_port: DiagnosticsPort,
     small_network: SmallNetwork<MainEvent, Message>, /* TODO: handle setting the
                                                       * `is_syncing_peer` - needs
                                                       * internal init state */
-    // TODO - has its own timing belt - should it?
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>,
+    //  non-io based components
+    consensus: EraSupervisor, /* TODO: Update constructor (provide less state) and extend
+                               * handler for the "block added" ann. */
 
-    rpc_server: RpcServer, /* TODO: make sure the handling in "Initialize & CatchUp" phase is
-                            * correct (explicit error messages, etc.) - needs an init event? */
-    rest_server: RestServer,
-    event_stream_server: EventStreamServer,
+    // block handling
+    linear_chain: LinearChainComponent, // TODO: Maybe redundant.
+    block_validator: BlockValidator,    // TODO: Maybe redundant.
+    blocks_accumulator: BlocksAccumulator,
+    block_synchronizer: BlockSynchronizer,
+
+    // deploy handling
     deploy_acceptor: DeployAcceptor, /* TODO: should use
                                       * `get_highest_COMPLETE_block_header_from_storage()` */
+    deploy_buffer: DeployBuffer,
 
-    fetchers: Fetchers,
-
+    //   gossiping components
+    address_gossiper: Gossiper<GossipedAddress, MainEvent>, /* TODO - has its own timing belt -
+                                                             * should it? */
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
     block_added_gossiper: Gossiper<BlockAdded, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
 
+    // record retrieval
     sync_leaper: SyncLeaper,
-    block_proposer: BlockProposer, // TODO: handle providing highest block, etc.
-    consensus: EraSupervisor,      /* TODO: Update constructor (provide less state) and extend
-                                    * handler for the "block added" ann. */
-    block_validator: BlockValidator,
-    linear_chain: LinearChainComponent, // TODO: Maybe redundant.
-    chain_synchronizer: ChainSynchronizer<MainEvent>, // TODO: To be removed.
-    blocks_accumulator: BlocksAccumulator,
-    block_synchronizer: BlockSynchronizer,
+    fetchers: Fetchers, // <-- this contains all fetchers to reduce top-level clutter
 
     // Non-components.
-    diagnostics_port: DiagnosticsPort,
+    //   metrics
     metrics: Metrics,
     #[data_size(skip)] // Never allocates heap data.
     memory_metrics: MemoryMetrics,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
-    state: ReactorState,
+
+    //   ambient settings / data / load-bearing config
+    validator_matrix: ValidatorMatrix, // TODO: fill from: sync_leap, block execution, block_added
+    trusted_hash: Option<BlockHash>,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 
+    //   control logic
+    state: ReactorState,
     max_attempts: usize,
     attempts: usize,
     idle_tolerances: TimeDiff,
-
-    // TODO: fill from: sync_leap, block execution, block_added in blocks accumulator
-    validator_matrix: ValidatorMatrix,
-}
-
-enum CatchUpInstruction {
-    Do(Effects<MainEvent>),
-    CheckSoon(String),
-    CheckLater(String, u64),
-    Shutdown(String),
-    CaughtUp,
-    // TODO: These two could potentially be handled directly here
-    // Genesis,
-    // Upgrade,
-}
-
-impl MainReactor {
-    fn catch_up_instructions(
-        &mut self,
-        rng: &mut NodeRng,
-        effect_builder: EffectBuilder<MainEvent>,
-    ) -> CatchUpInstruction {
-        let mut effects = Effects::new();
-        // check idleness & enforce re-attempts if necessary
-        if let Some(timestamp) = self.block_synchronizer.last_progress() {
-            if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
-                self.attempts = 0; // if any progress has been made, reset attempts
-                return CatchUpInstruction::CheckLater(
-                    "block_synchronizer is making progress".to_string(),
-                    Self::WAIT_SEC * 2,
-                );
-            }
-            self.attempts += 1;
-            if self.attempts > self.max_attempts {
-                return CatchUpInstruction::Shutdown(
-                    "catch up process exceeds idle tolerances".to_string(),
-                );
-            }
-        }
-
-        // determine which block / block_hash we should attempt to leap from
-        let starting_with = match self.trusted_hash {
-            None => {
-                match self.linear_chain.highest_block() {
-                    // no trusted hash provided use local tip if available
-                    Some(block) => {
-                        // -+ : leap w/ local tip
-                        StartingWith::Block(Box::new(block.clone()))
-                    }
-                    None => {
-                        // TODO - consider avoiding multiple commit_genesis calls.
-
-                        // if we are pre-genesis, attempt to apply genesis; if we are not shutdown
-                        match maybe_pre_genesis(
-                            effect_builder,
-                            self.chainspec.clone(),
-                            self.chainspec_raw_bytes.clone(),
-                        ) {
-                            Ok(effects) => {
-                                return CatchUpInstruction::Do(effects);
-                            }
-                            Err(msg) => {
-                                // we are post genesis, have no local blocks, and no trusted hash
-                                // so we can't possibly catch up to the network and should shut down
-                                return CatchUpInstruction::Shutdown(msg);
-                            }
-                        }
-                    }
-                }
-            }
-            Some(trusted_hash) => {
-                match self.storage.read_block(&trusted_hash) {
-                    Ok(Some(trusted_block)) => {
-                        match self.linear_chain.highest_block() {
-                            Some(block) => {
-                                // ++ : leap w/ the higher of local tip or trusted hash
-                                if trusted_block.height() > block.height() {
-                                    StartingWith::Hash(trusted_hash)
-                                } else {
-                                    StartingWith::Block(Box::new(block.clone()))
-                                }
-                            }
-                            None => {
-                                // should be unreachable if we've gotten this far
-                                StartingWith::Hash(trusted_hash)
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        // +- : leap w/ config hash
-                        StartingWith::Hash(trusted_hash)
-                    }
-                    Err(_) => {
-                        return CatchUpInstruction::Shutdown(
-                            "fatal block store error when attempting to read block under trusted hash".to_string(),
-                        );
-                    }
-                }
-            }
-        };
-
-        // the block accumulator should be receiving blocks via gossiping
-        // and usually has some awareness of the chain ahead of our tip
-        let trusted_hash = *starting_with.block_hash();
-        match self.blocks_accumulator.should_leap(starting_with) {
-            LeapInstruction::Leap => {
-                let peers_to_ask = self.small_network.peers_random_vec(
-                    rng,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
-                );
-                effects.extend(effect_builder.immediately().event(move |_| {
-                    MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                        trusted_hash,
-                        peers_to_ask,
-                    })
-                }));
-                return CatchUpInstruction::Do(effects);
-            }
-            LeapInstruction::BlockSync {
-                block_hash,
-                should_fetch_execution_state,
-            } => {
-                self.block_synchronizer.sync(
-                    block_hash,
-                    should_fetch_execution_state,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
-                );
-                return CatchUpInstruction::CheckSoon(
-                    "block_synchronizer is initialized".to_string(),
-                );
-            }
-            LeapInstruction::CaughtUp => {
-                match self.linear_chain.highest_block() {
-                    Some(block) => {
-                        let maybe_upgrade = maybe_upgrade(
-                            effect_builder,
-                            block,
-                            self.chainspec.clone(),
-                            self.chainspec_raw_bytes.clone(),
-                        );
-                        if let Ok(Some(effects)) = maybe_upgrade {
-                            return CatchUpInstruction::Do(effects);
-                        }
-                        if let Err(msg) = maybe_upgrade {
-                            return CatchUpInstruction::Shutdown(msg);
-                        }
-                    }
-                    None => {
-                        // should be unreachable
-                        return CatchUpInstruction::Shutdown(
-                            "can't be caught up with no block in the block store".to_string(),
-                        );
-                    }
-                }
-            }
-        }
-
-        // there are no catch up or shutdown instructions, so we must be caught up
-        CatchUpInstruction::CaughtUp
-    }
-
-    // put in the config
-    const WAIT_SEC: u64 = 5;
-
-    fn check_status(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> Effects<MainEvent> {
-        let effects = Effects::new();
-        match self.state {
-            ReactorState::Initialize => {
-                if let Some(effects) = initialize_component(
-                    effect_builder,
-                    &mut self.diagnostics_port,
-                    "diagnostics",
-                    MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
-                ) {
-                    return effects;
-                }
-                if let Some(effects) = initialize_component(
-                    effect_builder,
-                    &mut self.upgrade_watcher,
-                    "upgrade_watcher",
-                    MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
-                ) {
-                    return effects;
-                }
-                if let Some(effects) = initialize_component(
-                    effect_builder,
-                    &mut self.small_network,
-                    "small_network",
-                    MainEvent::SmallNetwork(small_network::Event::Initialize),
-                ) {
-                    return effects;
-                }
-                if let Some(effects) = initialize_component(
-                    effect_builder,
-                    &mut self.event_stream_server,
-                    "event_stream_server",
-                    MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
-                ) {
-                    return effects;
-                }
-                if let Some(effects) = initialize_component(
-                    effect_builder,
-                    &mut self.rest_server,
-                    "rest_server",
-                    MainEvent::RestServer(rest_server::Event::Initialize),
-                ) {
-                    return effects;
-                }
-                if let Some(effects) = initialize_component(
-                    effect_builder,
-                    &mut self.rpc_server,
-                    "rpc_server",
-                    MainEvent::RpcServer(rpc_server::Event::Initialize),
-                ) {
-                    return effects;
-                }
-                self.state = ReactorState::CatchUp;
-                return effect_builder
-                    .immediately()
-                    .event(|_| MainEvent::CheckStatus);
-            }
-            ReactorState::CatchUp => match self.catch_up_instructions(rng, effect_builder) {
-                CatchUpInstruction::Do(effects) => {
-                    let mut ret = Effects::new();
-                    ret.extend(effects);
-                    ret.extend(
-                        effect_builder
-                            .set_timeout(Duration::from_secs(Self::WAIT_SEC))
-                            .event(|_| MainEvent::CheckStatus),
-                    );
-                    return ret;
-                }
-                CatchUpInstruction::CheckLater(_, wait) => {
-                    return effect_builder
-                        .set_timeout(Duration::from_secs(wait))
-                        .event(|_| MainEvent::CheckStatus);
-                }
-                CatchUpInstruction::CheckSoon(_) => {
-                    // TODO - do we mean immediately?
-                    return effect_builder
-                        .set_timeout(Duration::from_secs(Self::WAIT_SEC))
-                        .event(|_| MainEvent::CheckStatus);
-                }
-                CatchUpInstruction::Shutdown(msg) => {
-                    return effect_builder
-                        .immediately()
-                        .event(move |_| MainEvent::Shutdown(msg))
-                }
-                CatchUpInstruction::CaughtUp => {
-                    self.state = ReactorState::KeepUp;
-                    return effect_builder
-                        .immediately()
-                        .event(|_| MainEvent::CheckStatus);
-                }
-            },
-            ReactorState::KeepUp => {
-                // TODO: define KeepUpInstruction::??? enum similar
-                // to CatchupInstruction::??? for the below steps
-                // TODO: if UpgradeWatcher announcement raised, keep track of era id's against the
-                //       new activation point
-                // detected upgrade to make this a stronger check
-                // if in validator set and era supervisor is green, validate
-                // else get added blocks for block accumulator and execute them
-                // if falling behind, switch over to catchup
-                // if sync to genesis == true, if cycles available get next historical block
-                // try real hard to stay in this mode
-                // in case of fkup, shutdown
-            }
-        }
-        effects
-
-        // TODO: Stall detection should possibly be done in the control logic.
-    }
-
-    fn handle_commit_genesis_result(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        result: Result<GenesisSuccess, engine_state::Error>,
-    ) -> Effects<MainEvent> {
-        match result {
-            Ok(GenesisSuccess {
-                post_state_hash, ..
-            }) => {
-                info!(
-                    %post_state_hash,
-                    network_name = %self.chainspec.network_config.name,
-                    "successfully ran genesis"
-                );
-
-                let genesis_timestamp = match self
-                    .chainspec
-                    .protocol_config
-                    .activation_point
-                    .genesis_timestamp()
-                {
-                    None => {
-                        return enqueue_shutdown("must have genesis timestamp");
-                    }
-                    Some(timestamp) => timestamp,
-                };
-
-                let next_block_height = 0;
-                let initial_pre_state = ExecutionPreState::new(
-                    next_block_height,
-                    post_state_hash,
-                    BlockHash::default(),
-                    Digest::default(),
-                );
-                self.contract_runtime.set_initial_state(initial_pre_state);
-
-                let finalized_block = FinalizedBlock::new(
-                    BlockPayload::default(),
-                    Some(EraReport::default()),
-                    genesis_timestamp,
-                    EraId::default(),
-                    next_block_height,
-                    PublicKey::System,
-                );
-
-                effect_builder
-                    .enqueue_block_for_execution(finalized_block, vec![], vec![])
-                    .ignore()
-            }
-            Err(error) => enqueue_shutdown(error),
-        }
-    }
-
-    fn handle_upgrade_result(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        previous_block_header: Box<BlockHeader>,
-        result: Result<UpgradeSuccess, engine_state::Error>,
-    ) -> Effects<MainEvent> {
-        match result {
-            Ok(UpgradeSuccess {
-                post_state_hash, ..
-            }) => {
-                info!(
-                    network_name = %self.chainspec.network_config.name,
-                    %post_state_hash,
-                    "upgrade committed"
-                );
-
-                let next_block_height = previous_block_header.height() + 1;
-                let initial_pre_state = ExecutionPreState::new(
-                    next_block_height,
-                    post_state_hash,
-                    previous_block_header.hash(),
-                    previous_block_header.accumulated_seed(),
-                );
-                self.contract_runtime.set_initial_state(initial_pre_state);
-
-                let finalized_block = FinalizedBlock::new(
-                    BlockPayload::default(),
-                    Some(EraReport::default()),
-                    previous_block_header.timestamp(),
-                    previous_block_header.next_block_era_id(),
-                    next_block_height,
-                    PublicKey::System,
-                );
-
-                effect_builder
-                    .enqueue_block_for_execution(finalized_block, vec![], vec![])
-                    .ignore()
-            }
-            Err(error) => enqueue_shutdown(error),
-        }
-    }
-}
-
-fn enqueue_shutdown<T: ToString + Send + 'static>(message: T) -> Effects<MainEvent> {
-    async {}.event(move |_| MainEvent::Shutdown(message.to_string()))
 }
 
 impl reactor::Reactor for MainReactor {
@@ -640,9 +259,7 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         let sync_leaper = SyncLeaper::new(chainspec.highway_config.finality_threshold_fraction);
-
-        let block_proposer =
-            BlockProposer::new(registry.clone(), &chainspec, config.block_proposer)?;
+        let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
 
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
@@ -666,15 +283,6 @@ impl reactor::Reactor for MainReactor {
             chainspec.highway_config.finality_threshold_fraction,
             next_upgrade_activation_point,
         )?;
-
-        let (chain_synchronizer, _chain_synchronizer_effects) =
-            ChainSynchronizer::<MainEvent>::new_for_sync_to_genesis(
-                chainspec.clone(),
-                config.node.clone(),
-                config.network.clone(),
-                chain_synchronizer::Metrics::new(registry).unwrap(),
-                effect_builder,
-            )?;
 
         let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
@@ -704,11 +312,10 @@ impl reactor::Reactor for MainReactor {
             block_added_gossiper,
             finality_signature_gossiper,
             sync_leaper,
-            block_proposer,
+            deploy_buffer,
             consensus,
             block_validator,
             linear_chain,
-            chain_synchronizer,
             blocks_accumulator,
             block_synchronizer,
             diagnostics_port,
@@ -725,8 +332,20 @@ impl reactor::Reactor for MainReactor {
 
         let effects = effect_builder
             .immediately()
-            .event(|()| MainEvent::CheckStatus);
+            .event(|()| MainEvent::ReactorCrank);
         Ok((reactor, effects))
+    }
+
+    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
+        self.memory_metrics.estimate(self);
+        self.event_queue_metrics
+            .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.linear_chain
+            .stop_for_upgrade()
+            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
 
     fn dispatch_event(
@@ -736,100 +355,56 @@ impl reactor::Reactor for MainReactor {
         event: MainEvent,
     ) -> Effects<MainEvent> {
         match event {
+            // TODO: this may be redundant / unnecessary now
+            MainEvent::ControlAnnouncement(ctrl_ann) => {
+                error!("unhandled control announcement: {}", ctrl_ann);
+                Effects::new()
+            }
+
+            // PRIMARY REACTOR STATE CONTROL LOGIC
+            MainEvent::ReactorCrank => self.crank(effect_builder, rng),
+
+            // ROUTE ALL INTENT TO SHUTDOWN TO THIS EVENT
+            // (DON'T USE FATAL ELSEWHERE WITHIN REACTOR OR COMPONENTS)
             MainEvent::Shutdown(msg) => fatal!(
                 effect_builder,
                 "reactor should shut down due to error: {}",
                 msg,
             )
             .ignore(),
-            MainEvent::CheckStatus => self.check_status(effect_builder, rng),
-            MainEvent::GenesisResult(result) => {
-                self.handle_commit_genesis_result(effect_builder, result)
+
+            // LOCAL I/O BOUND COMPONENTS
+            MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
+                MainEvent::UpgradeWatcher,
+                self.upgrade_watcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::UpgradeWatcherRequest(req) => reactor::wrap_effects(
+                MainEvent::UpgradeWatcher,
+                self.upgrade_watcher
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            MainEvent::UpgradeWatcherAnnouncement(
+                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
+            ) => {
+                let reactor_event = MainEvent::UpgradeWatcher(
+                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade.clone()),
+                );
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                let reactor_event = MainEvent::Consensus(
+                    consensus::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event = MainEvent::LinearChain(
+                    linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
-            MainEvent::UpgradeResult {
-                previous_block_header,
-                result,
-            } => self.handle_upgrade_result(effect_builder, previous_block_header, result),
-            // delegate all fetcher activity to self.fetchers.dispatch_fetcher_event(..)
-            MainEvent::DeployFetcher(..)
-            | MainEvent::DeployFetcherRequest(..)
-            | MainEvent::BlockFetcher(..)
-            | MainEvent::BlockFetcherRequest(..)
-            | MainEvent::BlockHeaderFetcher(..)
-            | MainEvent::BlockHeaderFetcherRequest(..)
-            | MainEvent::TrieOrChunkFetcher(..)
-            | MainEvent::TrieOrChunkFetcherRequest(..)
-            | MainEvent::BlockByHeightFetcher(..)
-            | MainEvent::BlockByHeightFetcherRequest(..)
-            | MainEvent::BlockHeaderByHeightFetcher(..)
-            | MainEvent::BlockHeaderByHeightFetcherRequest(..)
-            | MainEvent::BlockAndDeploysFetcher(..)
-            | MainEvent::BlockAndDeploysFetcherRequest(..)
-            | MainEvent::BlockDeployApprovalsFetcher(..)
-            | MainEvent::BlockDeployApprovalsFetcherRequest(..)
-            | MainEvent::BlockHeadersBatchFetcher(..)
-            | MainEvent::BlockHeadersBatchFetcherRequest(..)
-            | MainEvent::FinalitySignaturesFetcher(..)
-            | MainEvent::FinalitySignaturesFetcherRequest(..)
-            | MainEvent::SyncLeapFetcher(..)
-            | MainEvent::SyncLeapFetcherRequest(..)
-            | MainEvent::BlockAddedFetcher(..)
-            | MainEvent::BlockAddedFetcherRequest(..)
-            | MainEvent::FinalitySignatureFetcher(..)
-            | MainEvent::FinalitySignatureFetcherRequest(..) => self
-                .fetchers
-                .dispatch_fetcher_event(effect_builder, rng, event),
-            MainEvent::SyncLeaper(event) => reactor::wrap_effects(
-                MainEvent::SyncLeaper,
-                self.sync_leaper.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::BlockProposer(event) => reactor::wrap_effects(
-                MainEvent::BlockProposer,
-                self.block_proposer.handle_event(effect_builder, rng, event),
-            ),
             MainEvent::RpcServer(event) => reactor::wrap_effects(
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::Consensus(event) => reactor::wrap_effects(
-                MainEvent::Consensus,
-                self.consensus.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::BlockValidator(event) => reactor::wrap_effects(
-                MainEvent::BlockValidator,
-                self.block_validator
-                    .handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::LinearChain(event) => reactor::wrap_effects(
-                MainEvent::LinearChain,
-                self.linear_chain.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::BlocksAccumulator(event) => reactor::wrap_effects(
-                MainEvent::BlocksAccumulator,
-                self.blocks_accumulator
-                    .handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::BlockSynchronizer(event) => reactor::wrap_effects(
-                MainEvent::BlockSynchronizer,
-                self.block_synchronizer
-                    .handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::BlockProposerRequest(req) => {
-                self.dispatch_event(effect_builder, rng, MainEvent::BlockProposer(req.into()))
-            }
-            MainEvent::BlockValidatorRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                MainEvent::BlockValidator(block_validator::Event::from(req)),
-            ),
-            MainEvent::StateStoreRequest(req) => reactor::wrap_effects(
-                MainEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, req.into()),
-            ),
-            MainEvent::BlockSynchronizerRequest(req) => reactor::wrap_effects(
-                MainEvent::BlockSynchronizer,
-                self.block_synchronizer
-                    .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
@@ -842,11 +417,155 @@ impl reactor::Reactor for MainReactor {
                 };
                 self.dispatch_event(effect_builder, rng, MainEvent::DeployAcceptor(event))
             }
+            MainEvent::RestServer(event) => reactor::wrap_effects(
+                MainEvent::RestServer,
+                self.rest_server.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::MetricsRequest(req) => reactor::wrap_effects(
+                MainEvent::MetricsRequest,
+                self.metrics.handle_event(effect_builder, rng, req),
+            ),
+            MainEvent::ChainspecRawBytesRequest(
+                ChainspecRawBytesRequest::GetChainspecRawBytes(responder),
+            ) => responder.respond(self.chainspec_raw_bytes.clone()).ignore(),
+            MainEvent::EventStreamServer(event) => reactor::wrap_effects(
+                MainEvent::EventStreamServer,
+                self.event_stream_server
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::DiagnosticsPort(event) => reactor::wrap_effects(
+                MainEvent::DiagnosticsPort,
+                self.diagnostics_port
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
+                MainEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, req.into()),
+                // req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
+                //     .ignore()
+            ),
+
+            // NETWORK CONNECTION AND ORIENTATION
+            MainEvent::Network(event) => reactor::wrap_effects(
+                MainEvent::Network,
+                self.small_network.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::NetworkRequest(req) => {
+                let event = MainEvent::Network(small_network::Event::from(req));
+                self.dispatch_event(effect_builder, rng, event)
+            }
+            MainEvent::NetworkInfoRequest(req) => {
+                let event = MainEvent::Network(small_network::Event::from(req));
+                self.dispatch_event(effect_builder, rng, event)
+            }
+            MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
+                let mut effects = Effects::new();
+                match &ann {
+                    PeerBehaviorAnnouncement::OffenseCommitted(node_id) => {
+                        let event = MainEvent::BlockSynchronizer(
+                            block_synchronizer::Event::DisconnectFromPeer(**node_id),
+                        );
+                        effects.extend(self.dispatch_event(effect_builder, rng, event));
+                    }
+                }
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    MainEvent::Network(ann.into()),
+                ));
+                effects
+            }
+            MainEvent::NetworkPeerRequestingData(incoming) => reactor::wrap_effects(
+                MainEvent::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::NetworkPeerProvidingData(NetResponseIncoming { sender, message }) => {
+                reactor::handle_get_response(self, effect_builder, rng, sender, message)
+            }
+            MainEvent::AddressGossiper(event) => reactor::wrap_effects(
+                MainEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::AddressGossiperCrank(req) => reactor::wrap_effects(
+                MainEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
+                let reactor_event =
+                    MainEvent::Network(small_network::Event::PeerAddressReceived(gossiped_address));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We don't care about completion of gossiping an address.
+                Effects::new()
+            }
+            MainEvent::SyncLeaper(event) => reactor::wrap_effects(
+                MainEvent::SyncLeaper,
+                self.sync_leaper.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::LinearChain(event) => reactor::wrap_effects(
+                MainEvent::LinearChain,
+                self.linear_chain.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
+                block,
+                approvals_checksum,
+                execution_results_checksum,
+            }) => {
+                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
+                    header: Box::new(block.header().clone()),
+                    header_hash: *block.hash(),
+                    approvals_checksum,
+                    execution_results_checksum,
+                });
+                let reactor_block_gossiper_event =
+                    MainEvent::BlockAddedGossiper(gossiper::Event::ItemReceived {
+                        item_id: *block.hash(),
+                        source: Source::Ourself,
+                    });
+                let reactor_event_es =
+                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    reactor_block_gossiper_event,
+                ));
+
+                effects
+            }
+            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(
+                fs,
+            )) => {
+                let reactor_event =
+                    MainEvent::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            MainEvent::Consensus(event) => reactor::wrap_effects(
+                MainEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::ConsensusMessageIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::Consensus,
+                self.consensus
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             MainEvent::ConsensusAnnouncement(consensus_announcement) => {
                 match consensus_announcement {
                     ConsensusAnnouncement::Finalized(block) => {
                         let reactor_event =
-                            MainEvent::BlockProposer(block_proposer::Event::FinalizedBlock(block));
+                            MainEvent::DeployBuffer(deploy_buffer::Event::BlockFinalized(block));
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
@@ -884,125 +603,109 @@ impl reactor::Reactor for MainReactor {
                     }
                 }
             }
-            MainEvent::BlockProposerAnnouncement(BlockProposerAnnouncement::DeploysExpired(
-                hashes,
-            )) => {
-                let reactor_event = MainEvent::EventStreamServer(
-                    event_stream_server::Event::DeploysExpired(hashes),
-                );
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
 
-            MainEvent::Storage(event) => reactor::wrap_effects(
-                MainEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::SmallNetwork(event) => reactor::wrap_effects(
-                MainEvent::SmallNetwork,
-                self.small_network.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::RestServer(event) => reactor::wrap_effects(
-                MainEvent::RestServer,
-                self.rest_server.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::EventStreamServer(event) => reactor::wrap_effects(
-                MainEvent::EventStreamServer,
-                self.event_stream_server
+            // BLOCKS
+            MainEvent::BlockValidator(event) => reactor::wrap_effects(
+                MainEvent::BlockValidator,
+                self.block_validator
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
-                MainEvent::UpgradeWatcher,
-                self.upgrade_watcher
+            MainEvent::BlockValidatorRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                MainEvent::BlockValidator(block_validator::Event::from(req)),
+            ),
+            MainEvent::BlocksAccumulator(event) => reactor::wrap_effects(
+                MainEvent::BlocksAccumulator,
+                self.blocks_accumulator
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
-                MainEvent::DeployAcceptor,
-                self.deploy_acceptor
+            MainEvent::BlockSynchronizer(event) => reactor::wrap_effects(
+                MainEvent::BlockSynchronizer,
+                self.block_synchronizer
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployGossiper(event) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
-                    .handle_event(effect_builder, rng, event),
+            MainEvent::BlockSynchronizerRequest(req) => reactor::wrap_effects(
+                MainEvent::BlockSynchronizer,
+                self.block_synchronizer
+                    .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::BlockAddedRequestIncoming(_req) => {
+                // if this gets routed to storage, we can remove this BlockAddedRequestIncoming
+                // variant and just use the NetRequestIncoming
+                //    OR
+                // route to blocks-accumulator? to construct and send the network response
+                todo!()
+            }
+            MainEvent::BlockAddedResponseIncoming(BlockAddedResponseIncoming {
+                sender,
+                message,
+            }) => {
+                // route to blocks-accumulator and announce once validated to route to gossiper
+                // AND
+                // route to fetcher
+                reactor::handle_fetch_response::<Self, BlockAdded>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    &message.0,
+                )
+            }
             MainEvent::BlockAddedGossiper(event) => reactor::wrap_effects(
                 MainEvent::BlockAddedGossiper,
                 self.block_added_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            MainEvent::BlockAddedGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::BlockAddedGossiper,
+                self.block_added_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::BlockAddedGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_block_added_id,
+            )) => {
+                error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
+                Effects::new()
+            }
+            MainEvent::BlockAddedGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_block_added_id,
+            )) => Effects::new(),
+
             MainEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
                 MainEvent::FinalitySignatureGossiper,
                 self.finality_signature_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::AddressGossiper(event) => reactor::wrap_effects(
-                MainEvent::AddressGossiper,
-                self.address_gossiper
-                    .handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
-                MainEvent::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
-            MainEvent::ChainSynchronizer(event) => reactor::wrap_effects(
-                MainEvent::ChainSynchronizer,
-                self.chain_synchronizer
-                    .handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::DiagnosticsPort(event) => reactor::wrap_effects(
-                MainEvent::DiagnosticsPort,
-                self.diagnostics_port
-                    .handle_event(effect_builder, rng, event),
-            ),
-            // Requests:
-            MainEvent::ChainSynchronizerRequest(request) => reactor::wrap_effects(
-                MainEvent::ChainSynchronizer,
-                self.chain_synchronizer
-                    .handle_event(effect_builder, rng, request.into()),
-            ),
-            MainEvent::NetworkRequest(req) => {
-                let event = MainEvent::SmallNetwork(small_network::Event::from(req));
-                self.dispatch_event(effect_builder, rng, event)
+            MainEvent::FinalitySignatureIncoming(incoming) => {
+                todo!(); // route it to both the LinearChain and BlocksAccumulator
+                reactor::wrap_effects(
+                    MainEvent::LinearChain,
+                    self.linear_chain
+                        .handle_event(effect_builder, rng, incoming.into()),
+                )
             }
-            MainEvent::NetworkInfoRequest(req) => {
-                let event = MainEvent::SmallNetwork(small_network::Event::from(req));
-                self.dispatch_event(effect_builder, rng, event)
-            }
-            MainEvent::MetricsRequest(req) => reactor::wrap_effects(
-                MainEvent::MetricsRequest,
-                self.metrics.handle_event(effect_builder, rng, req),
+            MainEvent::FinalitySignatureGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::ChainspecRawBytesRequest(
-                ChainspecRawBytesRequest::GetChainspecRawBytes(responder),
-            ) => responder.respond(self.chainspec_raw_bytes.clone()).ignore(),
-            MainEvent::UpgradeWatcherRequest(req) => {
-                self.dispatch_event(effect_builder, rng, req.into())
-            }
-            MainEvent::StorageRequest(req) => reactor::wrap_effects(
-                MainEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, req.into()),
-            ),
-            MainEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
-                MainEvent::Storage,
-                self.storage.handle_event(effect_builder, rng, req.into()),
-            ),
-            MainEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
-                MainEvent::AddressGossiper,
-                self.address_gossiper
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
-            MainEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
-                MainEvent::Consensus,
-                self.consensus.handle_event(effect_builder, rng, req.into()),
-                // req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
-                //     .ignore()
-            ),
-            // Announcements:
-            MainEvent::ControlAnnouncement(ctrl_ann) => {
-                error!("unhandled control announcement: {}", ctrl_ann);
+            MainEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
+            ) => {
+                error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
                 Effects::new()
             }
+            MainEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
+            ) => Effects::new(),
+
+            // DEPLOYS
+            MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
+                MainEvent::DeployAcceptor,
+                self.deploy_acceptor
+                    .handle_event(effect_builder, rng, event),
+            ),
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
@@ -1017,11 +720,7 @@ impl reactor::Reactor for MainReactor {
                 let mut effects = self.dispatch_event(
                     effect_builder,
                     rng,
-                    MainEvent::BlockProposer(block_proposer::Event::BufferDeploy {
-                        hash: deploy.deploy_or_transfer_hash(),
-                        approvals: deploy.approvals().clone(),
-                        footprint: Box::new(deploy_footprint),
-                    }),
+                    MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
                 );
 
                 effects.extend(self.dispatch_event(
@@ -1055,6 +754,59 @@ impl reactor::Reactor for MainReactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
+            MainEvent::DeployGossiper(event) => reactor::wrap_effects(
+                MainEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
+            }
+            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_deploy_id,
+            )) => {
+                // TODO: notify DeployBuffer the deploy can be proposed
+                // let reactor_event =
+                //     MainEvent::DeployBuffer(deploy_buffer::Event::
+                // BufferDeploy(gossiped_deploy_id));
+                // self.dispatch_event(effect_builder, rng, reactor_event)
+                Effects::new()
+            }
+            MainEvent::DeployBuffer(event) => reactor::wrap_effects(
+                MainEvent::DeployBuffer,
+                self.deploy_buffer.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::DeployBufferRequest(req) => {
+                self.dispatch_event(effect_builder, rng, MainEvent::DeployBuffer(req.into()))
+            }
+            MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
+                hashes,
+            )) => {
+                let reactor_event = MainEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+
+            // CONTRACT RUNTIME & GLOBAL STATE
+            MainEvent::ContractRuntime(event) => reactor::wrap_effects(
+                MainEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                MainEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             MainEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::LinearChainBlock {
                     block,
@@ -1121,7 +873,7 @@ impl reactor::Reactor for MainReactor {
                 self.dispatch_event(
                     effect_builder,
                     rng,
-                    MainEvent::SmallNetwork(
+                    MainEvent::Network(
                         ContractRuntimeAnnouncement::UpcomingEraValidators {
                             era_that_is_ending,
                             upcoming_era_validators,
@@ -1130,163 +882,7 @@ impl reactor::Reactor for MainReactor {
                     ),
                 )
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_deploy_id,
-            )) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
-                Effects::new()
-            }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_deploy_id,
-            )) => {
-                // let reactor_event =
-                //     MainEvent::BlockProposer(block_proposer::Event::
-                // BufferDeploy(gossiped_deploy_id));
-                // self.dispatch_event(effect_builder, rng, reactor_event)
-                Effects::new()
-            }
-            MainEvent::BlockAddedGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_block_added_id,
-            )) => {
-                error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
-                Effects::new()
-            }
-            MainEvent::BlockAddedGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_block_added_id,
-            )) => Effects::new(),
-            MainEvent::FinalitySignatureGossiperAnnouncement(
-                GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
-            ) => {
-                error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
-                Effects::new()
-            }
-            MainEvent::FinalitySignatureGossiperAnnouncement(
-                GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
-            ) => Effects::new(),
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_address,
-            )) => {
-                let reactor_event = MainEvent::SmallNetwork(
-                    small_network::Event::PeerAddressReceived(gossiped_address),
-                );
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
-                // We don't care about completion of gossiping an address.
-                Effects::new()
-            }
-            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block,
-                approvals_checksum,
-                execution_results_checksum,
-            }) => {
-                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(block.header().clone()),
-                    header_hash: *block.hash(),
-                    approvals_checksum,
-                    execution_results_checksum,
-                });
-                let reactor_block_gossiper_event =
-                    MainEvent::BlockAddedGossiper(gossiper::Event::ItemReceived {
-                        item_id: *block.hash(),
-                        source: Source::Ourself,
-                    });
-                let reactor_event_es =
-                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(block));
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    reactor_block_gossiper_event,
-                ));
 
-                effects
-            }
-            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(
-                fs,
-            )) => {
-                let reactor_event =
-                    MainEvent::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            MainEvent::ChainSynchronizerAnnouncement(
-                ChainSynchronizerAnnouncement::SyncFinished,
-            ) => self.dispatch_event(
-                effect_builder,
-                rng,
-                MainEvent::SmallNetwork(small_network::Event::ChainSynchronizerAnnouncement(
-                    ChainSynchronizerAnnouncement::SyncFinished,
-                )),
-            ),
-            MainEvent::UpgradeWatcherAnnouncement(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => {
-                let reactor_event = MainEvent::UpgradeWatcher(
-                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade.clone()),
-                );
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-
-                let reactor_event = MainEvent::Consensus(
-                    consensus::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                let reactor_event = MainEvent::LinearChain(
-                    linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                effects
-            }
-            MainEvent::BlocklistAnnouncement(ann) => {
-                let mut effects = Effects::new();
-                match &ann {
-                    BlocklistAnnouncement::OffenseCommitted(node_id) => {
-                        let event = MainEvent::BlockSynchronizer(
-                            block_synchronizer::Event::DisconnectFromPeer(**node_id),
-                        );
-                        effects.extend(self.dispatch_event(effect_builder, rng, event));
-                    }
-                }
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::SmallNetwork(ann.into()),
-                ));
-                effects
-            }
-            MainEvent::ConsensusMessageIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::Consensus,
-                self.consensus
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::BlockAddedGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::BlockAddedGossiper,
-                self.block_added_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::FinalitySignatureGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::FinalitySignatureGossiper,
-                self.finality_signature_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::AddressGossiper,
-                self.address_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::NetRequestIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::Storage,
-                self.storage
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
-                reactor::handle_get_response(self, effect_builder, rng, sender, message)
-            }
             MainEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
                 MainEvent::ContractRuntime,
                 self.contract_runtime
@@ -1306,58 +902,45 @@ impl reactor::Reactor for MainReactor {
                     &message.0,
                 )
             }
-            MainEvent::BlockAddedRequestIncoming(_req) => {
-                // if this gets routed to storage, we can remove this BlockAddedRequestIncoming
-                // variant and just use the NetRequestIncoming
-                //    OR
-                // route to blocks-accumulator? to construct and send the network response
-                todo!()
-            }
-            MainEvent::BlockAddedResponseIncoming(BlockAddedResponseIncoming {
-                sender,
-                message,
-            }) => {
-                // route to blocks-accumulator and announce once validated to route to gossiper
-                // AND
-                // route to fetcher
-                reactor::handle_fetch_response::<Self, BlockAdded>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    &message.0,
-                )
-            }
 
-            MainEvent::FinalitySignatureIncoming(incoming) => {
-                todo!(); // route it to both the LinearChain and BlocksAccumulator
-                reactor::wrap_effects(
-                    MainEvent::LinearChain,
-                    self.linear_chain
-                        .handle_event(effect_builder, rng, incoming.into()),
-                )
-            }
-            MainEvent::ContractRuntime(event) => reactor::wrap_effects(
-                MainEvent::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+            // STORAGE
+            MainEvent::Storage(event) => reactor::wrap_effects(
+                MainEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
             ),
+            MainEvent::StorageRequest(req) => reactor::wrap_effects(
+                MainEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            MainEvent::AppStateRequest(req) => reactor::wrap_effects(
+                MainEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            MainEvent::BlockCompleteConfirmationRequest(req) => reactor::wrap_effects(
+                MainEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+
+            // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
+            MainEvent::DeployFetcher(..)
+            | MainEvent::DeployFetcherRequest(..)
+            | MainEvent::BlockHeaderFetcher(..)
+            | MainEvent::BlockHeaderFetcherRequest(..)
+            | MainEvent::TrieOrChunkFetcher(..)
+            | MainEvent::TrieOrChunkFetcherRequest(..)
+            | MainEvent::SyncLeapFetcher(..)
+            | MainEvent::SyncLeapFetcherRequest(..)
+            | MainEvent::BlockAddedFetcher(..)
+            | MainEvent::BlockAddedFetcherRequest(..)
+            | MainEvent::FinalitySignatureFetcher(..)
+            | MainEvent::FinalitySignatureFetcherRequest(..) => self
+                .fetchers
+                .dispatch_fetcher_event(effect_builder, rng, event),
         }
-    }
-
-    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(self);
-        self.event_queue_metrics
-            .record_event_queue_counts(&event_queue_handle)
-    }
-
-    fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.linear_chain
-            .stop_for_upgrade()
-            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
 }
 
+// TEST ENABLEMENT -- used by integration tests elsewhere
 #[cfg(test)]
 impl MainReactor {
     pub(crate) fn consensus(&self) -> &EraSupervisor {
@@ -1372,6 +955,9 @@ impl MainReactor {
         &self.contract_runtime
     }
 }
+
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 
 #[cfg(test)]
 impl NetworkedReactor for MainReactor {

@@ -41,12 +41,12 @@ use crate::{
     effect::{
         requests::{
             ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            NodeStateRequest, RestRequest, StorageRequest, UpgradeWatcherRequest,
+            RestRequest, StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::{ChainspecInfo, StatusFeed},
+    types::{ChainspecInfo, NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -63,7 +63,6 @@ pub(crate) trait ReactorEventT:
     + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
-    + From<NodeStateRequest>
     + Send
 {
 }
@@ -77,7 +76,6 @@ impl<REv> ReactorEventT for REv where
         + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
-        + From<NodeStateRequest>
         + Send
         + 'static
 {
@@ -141,7 +139,10 @@ where
     ) -> Effects<Self::Event> {
         match (self.status.clone(), event) {
             (ComponentStatus::Fatal(msg), _) => {
-                error!(msg, "should not handle this event when this component has fatal error");
+                error!(
+                    msg,
+                    "should not handle this event when this component has fatal error"
+                );
                 Effects::new()
             }
             (ComponentStatus::Uninitialized, Event::Initialize) => {
@@ -157,22 +158,18 @@ where
                 // noop
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::RestRequest(RestRequest::Status { responder })) => {
+            (
+                ComponentStatus::Initialized,
+                Event::RestRequest(RestRequest::Status { responder }),
+            ) => {
                 let node_uptime = self.node_startup_instant.elapsed();
                 let network_name = self.network_name.clone();
                 async move {
-                    let (
-                        last_added_block,
-                        peers,
-                        next_upgrade,
-                        consensus_status,
-                        node_state,
-                    ) = join!(
+                    let (last_added_block, peers, next_upgrade, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
                         effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
-                        effect_builder.get_node_state()
                     );
 
                     let status_feed = StatusFeed::new(
@@ -181,26 +178,35 @@ where
                         ChainspecInfo::new(network_name, next_upgrade),
                         consensus_status,
                         node_uptime,
-                        node_state,
+                        NodeState::Participating,
                     );
                     responder.respond(status_feed).await;
                 }
             }
             .ignore(),
-            (ComponentStatus::Initialized, Event::RestRequest(RestRequest::Metrics { responder })) => effect_builder
+            (
+                ComponentStatus::Initialized,
+                Event::RestRequest(RestRequest::Metrics { responder }),
+            ) => effect_builder
                 .get_metrics()
                 .event(move |text| Event::GetMetricsResult {
                     text,
                     main_responder: responder,
                 }),
-            (ComponentStatus::Initialized, Event::RestRequest(RestRequest::RpcSchema { responder })) => {
+            (
+                ComponentStatus::Initialized,
+                Event::RestRequest(RestRequest::RpcSchema { responder }),
+            ) => {
                 let schema = OPEN_RPC_SCHEMA.clone();
                 responder.respond(schema).ignore()
             }
-            (ComponentStatus::Initialized, Event::GetMetricsResult {
-                text,
-                main_responder,
-            }) => main_responder.respond(text).ignore(),
+            (
+                ComponentStatus::Initialized,
+                Event::GetMetricsResult {
+                    text,
+                    main_responder,
+                },
+            ) => main_responder.respond(text).ignore(),
         }
     }
 }

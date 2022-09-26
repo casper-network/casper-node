@@ -9,22 +9,21 @@ use serde::Serialize;
 
 use crate::{
     components::{
-        block_proposer,
         block_synchronizer::{
             self, BlockSyncRequest, GlobalStateSynchronizerEvent, TrieAccumulatorEvent,
         },
-        block_validator, blocks_accumulator, chain_synchronizer, consensus, contract_runtime,
-        deploy_acceptor, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
+        block_validator, blocks_accumulator, consensus, contract_runtime, deploy_acceptor,
+        deploy_buffer, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
         rest_server, rpc_server,
         small_network::{self, GossipedAddress},
         storage, sync_leaper, upgrade_watcher,
     },
     effect::{
         announcements::{
-            BlockProposerAnnouncement, BlocklistAnnouncement, ChainSynchronizerAnnouncement,
             ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -33,10 +32,10 @@ use crate::{
             TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
-            BeginGossipRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            NodeStateRequest, RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
+            AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
+            BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+            NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest, StorageRequest,
             SyncGlobalStateRequest, SyncLeapRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
@@ -55,198 +54,146 @@ use crate::{
 // Note: The large enum size must be reigned in eventually. This is a stopgap for now.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum MainEvent {
-    // Control logic == Reactor self events
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+
+    // Check the status of the reactor, should only be raised by the reactor itself
+    ReactorCrank,
     // Shutdown the reactor, should only be raised by the reactor itself
     Shutdown(String),
-    // Check the status of the reactor, should only be raised by the reactor itself
-    CheckStatus,
-    #[from]
-    ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
-    #[from]
-    GenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
-    #[from]
-    UpgradeResult {
-        previous_block_header: Box<BlockHeader>,
-        #[serde(skip_serializing)]
-        result: Result<UpgradeSuccess, engine_state::Error>,
-    },
 
-    // SyncLeaper
-    #[from]
-    SyncLeaper(sync_leaper::Event),
-
-    // Coordination events == component to component(s) or component to reactor events
-    #[from]
-    ChainSynchronizer(chain_synchronizer::Event),
-    #[from]
-    SmallNetwork(small_network::Event<Message>),
-    #[from]
-    Storage(storage::Event),
-    #[from]
-    BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
-    #[from]
-    RpcServer(#[serde(skip_serializing)] rpc_server::Event),
-    #[from]
-    RestServer(#[serde(skip_serializing)] rest_server::Event),
-    #[from]
-    EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
     UpgradeWatcher(#[serde(skip_serializing)] upgrade_watcher::Event),
     #[from]
-    Consensus(#[serde(skip_serializing)] consensus::Event),
+    UpgradeWatcherRequest(#[serde(skip_serializing)] UpgradeWatcherRequest),
     #[from]
-    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
+    UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
-    DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
+    RpcServer(#[serde(skip_serializing)] rpc_server::Event),
     #[from]
-    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
+    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
-    BlockAddedGossiper(#[serde(skip_serializing)] gossiper::Event<BlockAdded>),
+    RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
-    FinalitySignatureGossiper(#[serde(skip_serializing)] gossiper::Event<FinalitySignature>),
+    MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
     #[from]
-    AddressGossiper(gossiper::Event<GossipedAddress>),
+    ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event),
-    #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
+    EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
     DiagnosticsPort(diagnostics_port::Event),
     #[from]
-    ContractRuntime(contract_runtime::Event),
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
     #[from]
-    BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
-    #[from]
-    BlockHeaderFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeader>),
-    #[from]
-    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
-    #[from]
-    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
-    #[from]
-    BlockHeaderByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeaderWithMetadata>),
-    #[from]
-    BlockAndDeploysFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAndDeploys>),
-    #[from]
-    BlockDeployApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<BlockDeployApprovals>),
-    #[from]
-    FinalitySignatureFetcher(#[serde(skip_serializing)] fetcher::Event<FinalitySignature>),
-    #[from]
-    BlockHeadersBatchFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeadersBatch>),
-    #[from]
-    FinalitySignaturesFetcher(#[serde(skip_serializing)] fetcher::Event<BlockSignatures>),
-    #[from]
-    SyncLeapFetcher(#[serde(skip_serializing)] fetcher::Event<SyncLeap>),
-    #[from]
-    BlockAddedFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAdded>),
-    #[from]
-    BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
-    #[from]
-    BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
-
-    // Requests
-    #[from]
-    ChainSynchronizerRequest(#[serde(skip_serializing)] NodeStateRequest),
-    #[from]
-    ContractRuntimeRequest(ContractRuntimeRequest),
+    Network(small_network::Event<Message>),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
     #[from]
     NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
     #[from]
-    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
+    NetworkPeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
     #[from]
-    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
+    NetworkPeerRequestingData(NetRequestIncoming),
     #[from]
-    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
+    NetworkPeerProvidingData(NetResponseIncoming),
     #[from]
-    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
+    AddressGossiper(gossiper::Event<GossipedAddress>),
     #[from]
-    BlockHeaderByHeightFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<BlockHeaderWithMetadata>,
-    ),
+    AddressGossiperCrank(BeginGossipRequest<GossipedAddress>),
     #[from]
-    BlockAndDeploysFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAndDeploys>),
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
-    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
+    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
     #[from]
-    BlockDeployApprovalsFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<BlockDeployApprovals>,
-    ),
+    SyncLeaper(sync_leaper::Event),
     #[from]
-    FinalitySignatureFetcherRequest(#[serde(skip_serializing)] FetcherRequest<FinalitySignature>),
-    #[from]
-    BlockHeadersBatchFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeadersBatch>),
-    #[from]
-    FinalitySignaturesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockSignatures>),
+    SyncLeapFetcher(#[serde(skip_serializing)] fetcher::Event<SyncLeap>),
     #[from]
     SyncLeapFetcherRequest(#[serde(skip_serializing)] FetcherRequest<SyncLeap>),
     #[from]
-    BlockAddedFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAdded>),
-
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
     #[from]
-    BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
+    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
+    Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
-    MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
-    #[from]
-    UpgradeWatcherRequest(#[serde(skip_serializing)] UpgradeWatcherRequest),
-    #[from]
-    StorageRequest(#[serde(skip_serializing)] StorageRequest),
-    #[from]
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
-    #[from]
-    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
-    #[from]
-    StateStoreRequest(StateStoreRequest),
-    #[from]
-    DumpConsensusStateRequest(DumpConsensusStateRequest),
-    #[from]
-    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
-
-    // Announcements
-    #[from]
-    ControlAnnouncement(ControlAnnouncement),
-    #[from]
-    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
-    #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
     ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     #[from]
-    ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
+    BlockHeaderFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeader>),
     #[from]
-    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
+    #[from]
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event),
+    #[from]
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
+    #[from]
+    BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
+    #[from]
+    BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
+    #[from]
+    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
+    #[from]
+    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
+    #[from]
+    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
+    #[from]
+    BlockAddedGossiper(#[serde(skip_serializing)] gossiper::Event<BlockAdded>),
+    #[from]
+    BlockAddedGossiperIncoming(GossiperIncoming<BlockAdded>),
     #[from]
     BlockAddedGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<BlockAdded>),
+    #[from]
+    BlockAddedFetcher(#[serde(skip_serializing)] fetcher::Event<BlockAdded>),
+    #[from]
+    BlockAddedFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockAdded>),
+    #[from]
+    BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
+    #[from]
+    FinalitySignatureGossiper(#[serde(skip_serializing)] gossiper::Event<FinalitySignature>),
+    #[from]
+    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
     FinalitySignatureGossiperAnnouncement(
         #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
     ),
     #[from]
-    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
+    FinalitySignatureFetcher(#[serde(skip_serializing)] fetcher::Event<FinalitySignature>),
     #[from]
-    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+    FinalitySignatureFetcherRequest(#[serde(skip_serializing)] FetcherRequest<FinalitySignature>),
     #[from]
-    UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
-    ChainSynchronizerAnnouncement(#[serde(skip_serializing)] ChainSynchronizerAnnouncement),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement),
-    #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming),
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
-    BlockAddedGossiperIncoming(GossiperIncoming<BlockAdded>),
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
+    DeployBuffer(#[serde(skip_serializing)] deploy_buffer::Event),
     #[from]
-    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+    DeployBufferAnnouncement(#[serde(skip_serializing)] DeployBufferAnnouncement),
     #[from]
-    NetRequestIncoming(NetRequestIncoming),
+    DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
     #[from]
-    NetResponseIncoming(NetResponseIncoming),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
+    #[from]
+    DeployBufferRequest(DeployBufferRequest),
+    #[from]
+    ContractRuntime(contract_runtime::Event),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+    #[from]
+    ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
+    #[from]
+    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
+    #[from]
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
@@ -254,13 +201,11 @@ pub(crate) enum MainEvent {
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
-    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
+    Storage(storage::Event),
     #[from]
-    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
+    StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
-    FinalitySignatureIncoming(FinalitySignatureIncoming),
-    #[from]
-    BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
+    AppStateRequest(AppStateRequest),
 }
 
 impl ReactorEvent for MainEvent {
@@ -284,13 +229,10 @@ impl ReactorEvent for MainEvent {
     fn description(&self) -> &'static str {
         match self {
             MainEvent::Shutdown(_) => "Shutdown",
-            MainEvent::CheckStatus => "CheckStatus",
-            MainEvent::ChainSynchronizer(_) => "ChainSynchronizer",
-            MainEvent::SmallNetwork(_) => "SmallNetwork",
-            MainEvent::GenesisResult(_) => "GenesisResult",
-            MainEvent::UpgradeResult { .. } => "UpgradeResult",
+            MainEvent::ReactorCrank => "CheckStatus",
+            MainEvent::Network(_) => "SmallNetwork",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
-            MainEvent::BlockProposer(_) => "BlockProposer",
+            MainEvent::DeployBuffer(_) => "DeployBuffer",
             MainEvent::Storage(_) => "Storage",
             MainEvent::RpcServer(_) => "RpcServer",
             MainEvent::RestServer(_) => "RestServer",
@@ -306,45 +248,28 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockValidator(_) => "BlockValidator",
             MainEvent::LinearChain(_) => "LinearChain",
             MainEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
-            MainEvent::ChainSynchronizerRequest(_) => "ChainSynchronizerRequest",
-            MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             MainEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
-            MainEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
-            MainEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
-            MainEvent::BlockAndDeploysFetcher(_) => "BlockAndDeploysFetcher",
-            MainEvent::BlockDeployApprovalsFetcher(_) => "BlockDeployApprovalsFetcher",
             MainEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
-            MainEvent::BlockHeadersBatchFetcher(_) => "BlockHeadersBatchFetcher",
-            MainEvent::FinalitySignaturesFetcher(_) => "FinalitySignaturesFetcher",
             MainEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
             MainEvent::BlockAddedFetcher(_) => "BlockAddedFetcher",
             MainEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             MainEvent::NetworkRequest(_) => "NetworkRequest",
             MainEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
-            MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             MainEvent::BlockHeaderFetcherRequest(_) => "BlockHeaderFetcherRequest",
             MainEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
-            MainEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
-            MainEvent::BlockHeaderByHeightFetcherRequest(_) => "BlockHeaderByHeightFetcherRequest",
-            MainEvent::BlockAndDeploysFetcherRequest(_) => "BlockAndDeploysFetcherRequest",
             MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
-            MainEvent::BlockDeployApprovalsFetcherRequest(_) => {
-                "BlockDeployApprovalsFetcherRequest"
-            }
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
-            MainEvent::BlockHeadersBatchFetcherRequest(_) => "BlockHeadersBatchFetcherRequest",
-            MainEvent::FinalitySignaturesFetcherRequest(_) => "FinalitySignaturesFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::BlockAddedFetcherRequest(_) => "BlockAddedFetcherRequest",
-            MainEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            MainEvent::DeployBufferRequest(_) => "DeployBufferRequest",
             MainEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             MainEvent::MetricsRequest(_) => "MetricsRequest",
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             MainEvent::StorageRequest(_) => "StorageRequest",
-            MainEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
-            MainEvent::StateStoreRequest(_) => "StateStoreRequest",
+            MainEvent::BlockCompleteConfirmationRequest(_) => "MarkBlockCompletedRequest",
+            MainEvent::AppStateRequest(_) => "StateStoreRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
@@ -355,16 +280,16 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             MainEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
-            MainEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
-            MainEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
-            MainEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            MainEvent::NetworkPeerBehaviorAnnouncement(_) => "BlocklistAnnouncement",
+            MainEvent::DeployBufferAnnouncement(_) => "DeployBufferAnnouncement",
+            MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             MainEvent::BlockAddedGossiperIncoming(_) => "BlockGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
-            MainEvent::NetRequestIncoming(_) => "NetRequestIncoming",
-            MainEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
+            MainEvent::NetworkPeerProvidingData(_) => "NetResponseIncoming",
             MainEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             MainEvent::TrieDemand(_) => "TrieDemand",
             MainEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
@@ -372,7 +297,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockAddedResponseIncoming(_) => "BlockAddedResponseIncoming",
             MainEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             MainEvent::ContractRuntime(_) => "ContractRuntime",
-            MainEvent::ChainSynchronizerAnnouncement(_) => "ChainSynchronizerAnnouncement",
             MainEvent::BlockAddedGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
@@ -466,16 +390,11 @@ impl Display for MainEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             MainEvent::Shutdown(msg) => write!(f, "shutdown: {}", msg),
-            MainEvent::CheckStatus => write!(f, "check status"),
-            MainEvent::ChainSynchronizer(event) => {
-                write!(f, "chain synchronizer: {}", event)
-            }
+            MainEvent::ReactorCrank => write!(f, "check status"),
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
-            MainEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
-            MainEvent::GenesisResult(result) => write!(f, "genesis result: {:?}", result),
-            MainEvent::UpgradeResult { result, .. } => write!(f, "upgrade result: {:?}", result),
+            MainEvent::Network(event) => write!(f, "small network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
-            MainEvent::BlockProposer(event) => write!(f, "block proposer: {}", event),
+            MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             MainEvent::RestServer(event) => write!(f, "rest server: {}", event),
             MainEvent::EventStreamServer(event) => {
@@ -496,33 +415,14 @@ impl Display for MainEvent {
             }
             MainEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             MainEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
-            MainEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             MainEvent::BlockHeaderFetcher(event) => {
                 write!(f, "block header fetcher: {}", event)
             }
             MainEvent::TrieOrChunkFetcher(event) => {
                 write!(f, "trie or chunk fetcher: {}", event)
             }
-            MainEvent::BlockByHeightFetcher(event) => {
-                write!(f, "block by height fetcher: {}", event)
-            }
-            MainEvent::BlockHeaderByHeightFetcher(event) => {
-                write!(f, "block header by height fetcher: {}", event)
-            }
-            MainEvent::BlockAndDeploysFetcher(event) => {
-                write!(f, "block and deploys fetcher: {}", event)
-            }
-            MainEvent::BlockDeployApprovalsFetcher(event) => {
-                write!(f, "finalized approvals fetcher: {}", event)
-            }
             MainEvent::FinalitySignatureFetcher(event) => {
                 write!(f, "finality signature fetcher: {}", event)
-            }
-            MainEvent::BlockHeadersBatchFetcher(event) => {
-                write!(f, "block headers batch fetcher: {}", event)
-            }
-            MainEvent::FinalitySignaturesFetcher(event) => {
-                write!(f, "finality signatures fetcher: {}", event)
             }
             MainEvent::SyncLeapFetcher(event) => {
                 write!(f, "sync leap fetcher: {}", event)
@@ -537,9 +437,6 @@ impl Display for MainEvent {
                 write!(f, "block synchronizer: {}", event)
             }
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
-            MainEvent::ChainSynchronizerRequest(req) => {
-                write!(f, "chain synchronizer request: {}", req)
-            }
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             MainEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -551,42 +448,21 @@ impl Display for MainEvent {
                 write!(f, "upgrade watcher request: {}", req)
             }
             MainEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
-            MainEvent::MarkBlockCompletedRequest(req) => {
+            MainEvent::BlockCompleteConfirmationRequest(req) => {
                 write!(f, "mark block completed request: {}", req)
             }
-            MainEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
-            MainEvent::BlockFetcherRequest(request) => {
-                write!(f, "block fetcher request: {}", request)
-            }
+            MainEvent::AppStateRequest(req) => write!(f, "state store request: {}", req),
             MainEvent::BlockHeaderFetcherRequest(request) => {
                 write!(f, "block header fetcher request: {}", request)
             }
             MainEvent::TrieOrChunkFetcherRequest(request) => {
                 write!(f, "trie or chunk fetcher request: {}", request)
             }
-            MainEvent::BlockByHeightFetcherRequest(request) => {
-                write!(f, "block by height fetcher request: {}", request)
-            }
-            MainEvent::BlockHeaderByHeightFetcherRequest(request) => {
-                write!(f, "block header by height fetcher request: {}", request)
-            }
-            MainEvent::BlockAndDeploysFetcherRequest(request) => {
-                write!(f, "block and deploys fetcher request: {}", request)
-            }
             MainEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
             }
-            MainEvent::BlockDeployApprovalsFetcherRequest(request) => {
-                write!(f, "finalized approvals fetcher request: {}", request)
-            }
             MainEvent::FinalitySignatureFetcherRequest(request) => {
                 write!(f, "finality signature fetcher request: {}", request)
-            }
-            MainEvent::BlockHeadersBatchFetcherRequest(request) => {
-                write!(f, "block headers batch fetcher request: {}", request)
-            }
-            MainEvent::FinalitySignaturesFetcherRequest(request) => {
-                write!(f, "finality signatures fetcher request: {}", request)
             }
             MainEvent::SyncLeapFetcherRequest(request) => {
                 write!(f, "sync leap fetcher request: {}", request)
@@ -594,11 +470,11 @@ impl Display for MainEvent {
             MainEvent::BlockAddedFetcherRequest(request) => {
                 write!(f, "block added fetcher request: {}", request)
             }
-            MainEvent::BeginAddressGossipRequest(request) => {
+            MainEvent::AddressGossiperCrank(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
-            MainEvent::BlockProposerRequest(req) => {
-                write!(f, "block proposer request: {}", req)
+            MainEvent::DeployBufferRequest(req) => {
+                write!(f, "deploy buffer request: {}", req)
             }
             MainEvent::BlockValidatorRequest(req) => {
                 write!(f, "block validator request: {}", req)
@@ -638,25 +514,22 @@ impl Display for MainEvent {
             MainEvent::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
             }
-            MainEvent::BlockProposerAnnouncement(ann) => {
-                write!(f, "block proposer announcement: {}", ann)
+            MainEvent::DeployBufferAnnouncement(ann) => {
+                write!(f, "deploy buffer announcement: {}", ann)
             }
             MainEvent::UpgradeWatcherAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
-            MainEvent::BlocklistAnnouncement(ann) => {
+            MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
-            }
-            MainEvent::ChainSynchronizerAnnouncement(ann) => {
-                write!(f, "chain synchronizer announcement: {}", ann)
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::BlockAddedGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::NetRequestIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::NetResponseIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
+            MainEvent::NetworkPeerProvidingData(inner) => Display::fmt(inner, f),
             MainEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             MainEvent::TrieDemand(inner) => Display::fmt(inner, f),
             MainEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),

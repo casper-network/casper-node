@@ -26,7 +26,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ControlAnnouncement, GossiperAnnouncement},
+        announcements::{ControlAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement},
         incoming::GossiperIncoming,
         requests::{
             BeginGossipRequest, ChainspecRawBytesRequest, ContractRuntimeRequest, NetworkRequest,
@@ -63,7 +63,7 @@ enum Event {
     /// An incoming network message with an address gossiper protocol message.
     AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement),
+    BlocklistAnnouncement(PeerBehaviorAnnouncement),
 }
 
 impl ReactorEvent for Event {

@@ -4,6 +4,7 @@ mod event;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     mem,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -16,7 +17,10 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         Component, ComponentStatus, InitializedComponent,
     },
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::DeployBufferAnnouncement, requests::DeployBufferRequest, EffectBuilder,
+        EffectExt, Effects,
+    },
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
@@ -25,11 +29,10 @@ use crate::{
     NodeRng,
 };
 pub(crate) use config::Config;
-use event::DeployBufferRequest;
 pub(crate) use event::Event;
 
 #[derive(DataSize, Debug)]
-struct DeployBuffer {
+pub(crate) struct DeployBuffer {
     status: ComponentStatus,
     cfg: Config,
     deploy_config: DeployConfig,
@@ -51,20 +54,34 @@ impl DeployBuffer {
         }
     }
 
-    fn expire(&mut self) {
+    fn expire<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
+    where
+        REv: From<Event> + From<DeployBufferAnnouncement> + Send,
+    {
         let earliest_acceptable_timestamp = Timestamp::now() - self.deploy_config.max_ttl;
         let (buffer, freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
             .into_iter()
-            .partition(|(_, v)| v.header().timestamp() >= earliest_acceptable_timestamp);
+            .partition(|(_, deploy)| deploy.header().timestamp() >= earliest_acceptable_timestamp);
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
-        self.hold
-            .iter_mut()
-            .for_each(|(_, v)| v.retain(|v| !freed.contains_key(v)));
+        self.hold.iter_mut().for_each(|(_, held_deploys)| {
+            held_deploys.retain(|deploy_hash| !freed.contains_key(deploy_hash))
+        });
         self.hold.retain(|_, v| !v.is_empty());
 
-        self.dead.retain(|v| !freed.contains_key(v));
+        self.dead
+            .retain(|deploy_hash| !freed.contains_key(deploy_hash));
         self.buffer = buffer;
+
+        let mut effects = effect_builder
+            .announce_expired_deploys(freed.keys().cloned().collect())
+            .ignore();
+        effects.extend(
+            effect_builder
+                .set_timeout(self.cfg.expiry_check_interval().into())
+                .event(move |_| Event::Expire),
+        );
+        effects
     }
 
     fn register_deploy(&mut self, deploy: Deploy) {
@@ -177,7 +194,7 @@ impl DeployBuffer {
 
 impl<REv> InitializedComponent<REv> for DeployBuffer
 where
-    REv: From<Event> + Send + 'static,
+    REv: From<Event> + From<DeployBufferAnnouncement> + Send + 'static,
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
@@ -186,7 +203,7 @@ where
 
 impl<REv> Component<REv> for DeployBuffer
 where
-    REv: From<Event> + Send + 'static,
+    REv: From<Event> + From<DeployBufferAnnouncement> + Send + 'static,
 {
     type Event = Event;
 
@@ -208,7 +225,7 @@ where
                 self.status = ComponentStatus::Initialized;
                 // start self-expiry management on initialization
                 effect_builder
-                    .set_timeout(self.cfg.expiry())
+                    .set_timeout(self.cfg.expiry_check_interval().into())
                     .event(move |_| Event::Expire)
             }
             (ComponentStatus::Uninitialized, _) => {
@@ -221,7 +238,10 @@ where
             }
             (
                 ComponentStatus::Initialized,
-                Event::Request(DeployBufferRequest::GetAppendableBlock(timestamp, responder)),
+                Event::Request(DeployBufferRequest::GetAppendableBlock {
+                    timestamp,
+                    responder,
+                }),
             ) => responder.respond(self.appendable_block(timestamp)).ignore(),
             (ComponentStatus::Initialized, Event::BlockFinalized(finalized_block)) => {
                 self.block_finalized(&*finalized_block);
@@ -235,12 +255,7 @@ where
                 self.register_deploy(*deploy);
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::Expire) => {
-                self.expire();
-                effect_builder
-                    .set_timeout(self.cfg.expiry())
-                    .event(move |_| Event::Expire)
-            }
+            (ComponentStatus::Initialized, Event::Expire) => self.expire(effect_builder),
         }
     }
 }

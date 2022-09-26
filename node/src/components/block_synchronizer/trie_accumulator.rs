@@ -23,7 +23,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        announcements::{ControlAnnouncement, PeerBehaviorAnnouncement},
         requests::{FetcherRequest, TrieAccumulatorRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -128,7 +128,7 @@ impl TrieAccumulator {
         trie_or_chunk: TrieOrChunk,
     ) -> Effects<Event>
     where
-        REv: From<FetcherRequest<TrieOrChunk>> + From<BlocklistAnnouncement> + Send,
+        REv: From<FetcherRequest<TrieOrChunk>> + From<PeerBehaviorAnnouncement> + Send,
     {
         let TrieOrChunkId(_index, hash) = trie_or_chunk.id();
         match trie_or_chunk {
@@ -152,7 +152,7 @@ impl TrieAccumulator {
         chunk: ChunkWithProof,
     ) -> Effects<Event>
     where
-        REv: From<FetcherRequest<TrieOrChunk>> + From<BlocklistAnnouncement> + Send,
+        REv: From<FetcherRequest<TrieOrChunk>> + From<PeerBehaviorAnnouncement> + Send,
     {
         let digest = chunk.proof().root_hash();
         let index = chunk.proof().index();
@@ -211,14 +211,14 @@ impl TrieAccumulator {
                 .merge(old_partial_chunks);
         }
         effect_builder
-            .fetch(id, peer, ())
+            .fetch::<TrieOrChunk>(id, peer, ())
             .event(move |fetch_result| Event::TrieOrChunkFetched { id, fetch_result })
     }
 }
 
 impl<REv> Component<REv> for TrieAccumulator
 where
-    REv: From<FetcherRequest<TrieOrChunk>> + From<BlocklistAnnouncement> + Send,
+    REv: From<FetcherRequest<TrieOrChunk>> + From<PeerBehaviorAnnouncement> + Send,
 {
     type Event = Event;
 

@@ -43,7 +43,7 @@ use crate::components::fetcher::Error;
 
 use crate::{
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, TrieAccumulatorRequest},
     },
     types::{
@@ -100,7 +100,16 @@ impl BlockSynchronizer {
         }
     }
 
-    pub(crate) fn sync(
+    pub(crate) fn highest_executable_block_hash(&self) -> Option<BlockHash> {
+        self.builders
+            .iter()
+            .filter(|(k, v)| v.is_complete())
+            .filter(|(k, v)| v.block_height().is_some())
+            .max_by(|x, y| x.1.block_height().cmp(&y.1.block_height()))
+            .map(|(k, _)| *k)
+    }
+
+    pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
@@ -238,7 +247,6 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
-                    // TODO - fetch all signatures
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         validators.iter().flat_map(move |public_key| {
                             let id = FinalitySignatureId {
@@ -459,7 +467,7 @@ where
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
-        + From<BlocklistAnnouncement>
+        + From<PeerBehaviorAnnouncement>
         + From<StorageRequest>
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>

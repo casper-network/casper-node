@@ -43,7 +43,7 @@ use crate::{
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
-        requests::{ContractRuntimeRequest, MarkBlockCompletedRequest, NetworkRequest},
+        requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -219,7 +219,7 @@ where
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
         + From<NetworkRequest<Message>>
-        + From<MarkBlockCompletedRequest>
+        + From<BlockCompleteConfirmationRequest>
         + Send,
 {
     type Event = Event;
@@ -311,7 +311,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
-            + From<MarkBlockCompletedRequest>
+            + From<BlockCompleteConfirmationRequest>
             + Send,
     {
         match request {
@@ -481,41 +481,6 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::ExecuteBlock {
-                protocol_version,
-                execution_pre_state,
-                finalized_block,
-                deploys,
-                transfers,
-                responder,
-            } => {
-                trace!(
-                    ?protocol_version,
-                    ?execution_pre_state,
-                    ?finalized_block,
-                    ?deploys,
-                    "execute block request"
-                );
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = run_intensive_task(move || {
-                        execute_finalized_block(
-                            engine_state.as_ref(),
-                            Some(metrics),
-                            protocol_version,
-                            execution_pre_state,
-                            finalized_block,
-                            deploys,
-                            transfers,
-                        )
-                    })
-                    .await;
-                    trace!(?result, "execute block response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
@@ -672,7 +637,7 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis request.
-    fn commit_genesis(
+    pub(crate) fn commit_genesis(
         &self,
         chainspec: &Chainspec,
         chainspec_raw_bytes: &ChainspecRawBytes,
@@ -706,7 +671,7 @@ impl ContractRuntime {
         result
     }
 
-    fn commit_upgrade(
+    pub(crate) fn commit_upgrade(
         &self,
         upgrade_config: UpgradeConfig,
     ) -> Result<UpgradeSuccess, engine_state::Error> {
@@ -785,7 +750,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
-            + From<MarkBlockCompletedRequest>
+            + From<BlockCompleteConfirmationRequest>
             + Send,
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();

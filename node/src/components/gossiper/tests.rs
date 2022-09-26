@@ -50,7 +50,7 @@ use crate::{
             FinalitySignatureIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
             TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, MarkBlockCompletedRequest},
+        requests::{BlockCompleteConfirmationRequest, ConsensusRequest, ContractRuntimeRequest},
         Responder,
     },
     fatal,
@@ -88,7 +88,7 @@ enum Event {
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]

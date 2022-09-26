@@ -147,31 +147,29 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::announcements::{BlocksAccumulatorAnnouncement, ChainSynchronizerAnnouncement},
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        AvailableBlockRange, Block, BlockAdded, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAdded, BlockAndDeploys,
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
         TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockProposerAnnouncement, BlocklistAnnouncement, ConsensusAnnouncement,
-    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UpgradeWatcherAnnouncement,
+    BlocksAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+    GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
+    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    NodeStateRequest, StateStoreRequest, StorageRequest, TrieAccumulatorRequest,
-    UpgradeWatcherRequest,
+    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockPayloadRequest,
+    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
+    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    StorageRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -802,11 +800,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces which deploys have expired.
     pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
     where
-        REv: From<BlockProposerAnnouncement>,
+        REv: From<DeployBufferAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlockProposerAnnouncement::DeploysExpired(hashes),
+                DeployBufferAnnouncement::DeploysExpired(hashes),
                 QueueKind::Regular,
             )
             .await;
@@ -882,10 +880,10 @@ impl<REv> EffectBuilder<REv> {
     /// global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64)
     where
-        REv: From<MarkBlockCompletedRequest>,
+        REv: From<BlockCompleteConfirmationRequest>,
     {
         self.make_request(
-            |responder| MarkBlockCompletedRequest {
+            |responder| BlockCompleteConfirmationRequest {
                 block_height,
                 responder,
             },
@@ -1668,56 +1666,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    pub(crate) async fn request_block_payload(
-        self,
-        context: BlockContext<ClContext>,
-        next_finalized: u64,
-        accusations: Vec<PublicKey>,
-        random_bit: bool,
-    ) -> Arc<BlockPayload>
+    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
     where
-        REv: From<BlockProposerRequest>,
+        REv: From<DeployBufferRequest>,
     {
         self.make_request(
-            |responder| {
-                BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                    context,
-                    next_finalized,
-                    accusations,
-                    random_bit,
-                    responder,
-                })
+            |responder| DeployBufferRequest::GetAppendableBlock {
+                timestamp,
+                responder,
             },
             QueueKind::Regular,
         )
         .await
     }
-
-    // /// Executes a finalized block.
-    // pub(crate) async fn execute_finalized_block(
-    //     self,
-    //     protocol_version: ProtocolVersion,
-    //     execution_pre_state: ExecutionPreState,
-    //     finalized_block: FinalizedBlock,
-    //     deploys: Vec<Deploy>,
-    //     transfers: Vec<Deploy>,
-    // ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
-    // where
-    //     REv: From<ContractRuntimeRequest>,
-    // {
-    //     self.make_request(
-    //         |responder| ContractRuntimeRequest::ExecuteBlock {
-    //             protocol_version,
-    //             execution_pre_state,
-    //             finalized_block,
-    //             deploys,
-    //             transfers,
-    //             responder,
-    //         },
-    //         QueueKind::Regular,
-    //     )
-    //     .await
-    // }
 
     /// Enqueues a finalized proto-block execution.
     ///
@@ -1816,25 +1777,12 @@ impl<REv> EffectBuilder<REv> {
     /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
     pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
     where
-        REv: From<BlocklistAnnouncement>,
+        REv: From<PeerBehaviorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
+                PeerBehaviorAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce that the sync process has finished.
-    pub(crate) async fn announce_finished_chain_syncing(self)
-    where
-        REv: From<ChainSynchronizerAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ChainSynchronizerAnnouncement::SyncFinished,
-                QueueKind::Network,
             )
             .await
     }
@@ -1920,13 +1868,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn get_node_state(self) -> NodeState
-    where
-        REv: From<NodeStateRequest> + Send,
-    {
-        self.make_request(NodeStateRequest, QueueKind::Api).await
-    }
-
     /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
     ///
     /// These blocks contain all deploy and transfer hashes that are known to be finalized but
@@ -1949,13 +1890,13 @@ impl<REv> EffectBuilder<REv> {
     /// If an error occurs during state loading or no data is found, returns `None`.
     pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
     where
-        REv: From<StateStoreRequest>,
+        REv: From<AppStateRequest>,
         for<'de> T: Deserialize<'de>,
     {
         // Due to object safety issues, we cannot ship the actual values around, but only the
         // serialized bytes. Hence we retrieve raw bytes from storage and then deserialize here.
         self.make_request(
-            move |responder| StateStoreRequest::Load { key, responder },
+            move |responder| AppStateRequest::Load { key, responder },
             QueueKind::Regular,
         )
         .await
@@ -1976,13 +1917,13 @@ impl<REv> EffectBuilder<REv> {
     /// be successfully stored should check the return value and act accordingly.
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
-        REv: From<StateStoreRequest>,
+        REv: From<AppStateRequest>,
         T: Serialize,
     {
         match bincode::serialize(&value) {
             Ok(data) => {
                 self.make_request(
-                    move |responder| StateStoreRequest::Save {
+                    move |responder| AppStateRequest::Save {
                         key,
                         data,
                         responder,

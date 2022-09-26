@@ -183,6 +183,11 @@ impl EraSupervisor {
         Ok(era_supervisor)
     }
 
+    pub(crate) fn is_active_validator(&self) -> bool {
+        // TODO: wire this up
+        false
+    }
+
     /// Returns the most recent era.
     pub(crate) fn current_era(&self) -> Option<EraId> {
         self.open_eras.keys().last().copied()
@@ -914,13 +919,12 @@ impl EraSupervisor {
                     .filter(|pub_key| !self.era(era_id).faulty.contains(pub_key))
                     .cloned()
                     .collect();
+                let random_bit = rng.gen();
                 effect_builder
-                    .request_block_payload(
-                        block_context.clone(),
-                        self.next_block_height,
-                        accusations,
-                        rng.gen(),
-                    )
+                    .request_appendable_block(block_context.timestamp())
+                    .map(move |appendable_block| {
+                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                    })
                     .event(move |block_payload| {
                         Event::NewBlockPayload(NewBlockPayload {
                             era_id,

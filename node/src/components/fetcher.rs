@@ -21,7 +21,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -97,7 +97,7 @@ where
     REv: From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<NetworkRequest<Message>>
-        + From<BlocklistAnnouncement>
+        + From<PeerBehaviorAnnouncement>
         + Send,
 {
     type Event = Event<T>;
@@ -169,7 +169,8 @@ async fn has_enough_block_signatures<REv>(
     fault_tolerance_fraction: Ratio<u64>,
 ) -> bool
 where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<BlocklistAnnouncement> + Send,
+    REv:
+        From<StorageRequest> + From<ContractRuntimeRequest> + From<PeerBehaviorAnnouncement> + Send,
 {
     let validator_weights =
         match linear_chain::era_validator_weights_for_block(block_header, effect_builder).await {

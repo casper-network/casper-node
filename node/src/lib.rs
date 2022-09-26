@@ -53,7 +53,6 @@ use rand::SeedableRng;
 use signal_hook::{consts::TERM_SIGNALS, flag};
 
 pub(crate) use components::{
-    block_proposer::Config as BlockProposerConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
