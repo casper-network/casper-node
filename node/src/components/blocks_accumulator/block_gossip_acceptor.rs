@@ -26,7 +26,6 @@ pub(super) struct BlockGossipAcceptor {
     block_added: Option<BlockAdded>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     era_validator_weights: Option<EraValidatorWeights>,
-    last_progress: Timestamp,
 }
 
 impl BlockGossipAcceptor {
@@ -36,7 +35,6 @@ impl BlockGossipAcceptor {
             era_validator_weights: None,
             block_added: None,
             signatures: BTreeMap::new(),
-            last_progress: Timestamp::now(),
         }
     }
 
@@ -49,13 +47,10 @@ impl BlockGossipAcceptor {
             era_validator_weights: Some(era_validator_weights),
             block_added: None,
             signatures: BTreeMap::new(),
-            last_progress: Timestamp::now(),
         }
     }
 
     pub(super) fn refresh(mut self, era_validator_weights: EraValidatorWeights) -> Self {
-        // this doesn't count as progress
-        let last_progress = self.last_progress;
         let block_hash = self.block_hash;
 
         let block_added = match self.block_added {
@@ -89,7 +84,6 @@ impl BlockGossipAcceptor {
             block_hash,
             era_validator_weights: Some(era_validator_weights),
             block_added,
-            last_progress,
             signatures,
         }
     }
@@ -118,7 +112,6 @@ impl BlockGossipAcceptor {
         }
         self.era_validator_weights = Some(era_validator_weights);
         self.remove_bogus_validators();
-        self.touch();
         Ok(())
     }
 
@@ -152,7 +145,6 @@ impl BlockGossipAcceptor {
             self.block_added = Some(block_added);
             self.remove_bogus_validators();
         }
-        self.touch();
         Ok(())
     }
 
@@ -198,7 +190,6 @@ impl BlockGossipAcceptor {
         self.signatures
             .insert(finality_signature.public_key.clone(), finality_signature);
         self.remove_bogus_validators();
-        self.touch();
         Ok(())
     }
 
@@ -287,10 +278,6 @@ impl BlockGossipAcceptor {
         self.block_hash
     }
 
-    pub(super) fn last_progress(&self) -> Timestamp {
-        self.last_progress
-    }
-
     pub(super) fn has_era_validator_weights(&self) -> bool {
         self.era_validator_weights.is_some()
     }
@@ -320,9 +307,5 @@ impl BlockGossipAcceptor {
                 self.signatures.remove(bogus_validator);
             });
         }
-    }
-
-    fn touch(&mut self) {
-        self.last_progress = Timestamp::now();
     }
 }

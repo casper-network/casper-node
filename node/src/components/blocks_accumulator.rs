@@ -39,6 +39,7 @@ pub(crate) struct BlocksAccumulator {
     block_gossip_acceptors: BTreeMap<BlockHash, BlockGossipAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
     validator_matrix: ValidatorMatrix,
+    last_progress: Timestamp,
 }
 
 pub(crate) enum SyncInstruction {
@@ -88,6 +89,7 @@ impl BlocksAccumulator {
             block_gossip_acceptors: Default::default(),
             block_children: Default::default(),
             validator_matrix,
+            last_progress: Timestamp::now(),
         }
     }
 
@@ -97,6 +99,7 @@ impl BlocksAccumulator {
             block_gossip_acceptors: Default::default(),
             block_children: Default::default(),
             validator_matrix,
+            ..self
         }
     }
 
@@ -158,14 +161,15 @@ impl BlocksAccumulator {
                 // either the network is hung / skipping a lot of blocks
                 // or this node is partitioned. In such a case, attempt a leap
                 // to see where other nodes think the tip is
-                let since_when = TimeDiff::from_seconds(BLOCKS_ACCUMULATOR_DEAD_AIR_INTERVAL_SECS);
-                if self.recent_progress(since_when) {
+                let max_age = TimeDiff::from_seconds(BLOCKS_ACCUMULATOR_DEAD_AIR_INTERVAL_SECS);
+                if self.last_progress.elapsed() > max_age {
                     return SyncInstruction::CaughtUp;
                 }
                 return SyncInstruction::Leap;
             }
             if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
+                    self.last_progress = Timestamp::now();
                     if let Some(block_acceptor) = self.block_gossip_acceptors.get_mut(child_hash) {
                         if let Some((block, signatures)) =
                             block_acceptor.executable_block_and_signatures()
@@ -307,20 +311,6 @@ impl BlocksAccumulator {
     pub(crate) fn register_new_local_tip(&mut self, block_header: &BlockHeader) {
         self.block_gossip_acceptors.remove(&block_header.hash());
         self.filter.push(block_header.hash())
-    }
-
-    pub(crate) fn recent_progress(&self, since_when: TimeDiff) -> bool {
-        match self.last_progress() {
-            Some(last_progress) => last_progress > Timestamp::now().saturating_sub(since_when),
-            None => false,
-        }
-    }
-
-    pub(crate) fn last_progress(&self) -> Option<Timestamp> {
-        self.block_gossip_acceptors
-            .iter()
-            .max_by(|(xk, xv), (yk, yv)| xv.last_progress().cmp(&yv.last_progress()))
-            .map(|(_, bga)| bga.last_progress())
     }
 
     fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {
