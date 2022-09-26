@@ -13,7 +13,7 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -114,6 +114,7 @@ impl BlocksAccumulator {
         // |------------- future chain ------------------------> ?
 
         const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
+        const BLOCKS_ACCUMULATOR_DEAD_AIR_INTERVAL_SECS: u32 = 180; // TODO: make chain / cfg
 
         let should_fetch_execution_state = starting_with.have_block() == false;
         let block_hash = starting_with.block_hash();
@@ -151,10 +152,16 @@ impl BlocksAccumulator {
             // the starting-with block may be close to perceived tip
             let height_diff = highest_block_height.saturating_sub(block_height);
             if height_diff == 0 {
-                // TODO: maybe add some time slippage awareness re: the last time
-                // we heard anything via gossiping, timestamp on the highest block
-                // we currently know about, etc
-                return SyncInstruction::CaughtUp;
+                // NOTE: what we're trying to protect against here is if we
+                // haven't seen any new info about new blocks but we should have;
+                // either the network is hung / skipping a lot of blocks
+                // or this node is partitioned. In such a case, attempt a leap
+                // to see where other nodes think the tip is
+                let since_when = TimeDiff::from_seconds(BLOCKS_ACCUMULATOR_DEAD_AIR_INTERVAL_SECS);
+                if self.recent_progress(since_when) {
+                    return SyncInstruction::CaughtUp;
+                }
+                return SyncInstruction::Leap;
             }
             if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
@@ -296,6 +303,13 @@ impl BlocksAccumulator {
     pub(crate) fn register_new_local_tip(&mut self, block_header: &BlockHeader) {
         self.block_gossip_acceptors.remove(&block_header.hash());
         self.filter.push(block_header.hash())
+    }
+
+    pub(crate) fn recent_progress(&self, since_when: TimeDiff) -> bool {
+        match self.last_progress() {
+            Some(last_progress) => last_progress > Timestamp::now().saturating_sub(since_when),
+            None => false,
+        }
     }
 
     pub(crate) fn last_progress(&self) -> Option<Timestamp> {
