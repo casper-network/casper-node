@@ -52,10 +52,19 @@ pub(super) enum InvalidGossipError {
     },
 }
 
+impl InvalidGossipError {
+    pub(super) fn peer(&self) -> NodeId {
+        match self {
+            InvalidGossipError::BlockAdded { peer, .. }
+            | InvalidGossipError::FinalitySignature { peer, .. } => *peer,
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub(super) enum Error {
     #[error(transparent)]
-    InvalidGossip(InvalidGossipError),
+    InvalidGossip(Box<InvalidGossipError>),
     #[error("mismatched eras detected")]
     EraMismatch(EraMismatchError),
     #[error("attempt to register weights for an era that already has registered weights")]

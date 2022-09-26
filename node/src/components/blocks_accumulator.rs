@@ -13,7 +13,7 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::Component,
@@ -220,7 +220,7 @@ impl BlocksAccumulator {
             match err {
                 Error::InvalidGossip(err) => {
                     return effect_builder
-                        .announce_disconnect_from_peer(sender)
+                        .announce_disconnect_from_peer(err.peer())
                         .ignore();
                 }
                 Error::EraMismatch(err) => {
@@ -260,7 +260,7 @@ impl BlocksAccumulator {
             match err {
                 Error::InvalidGossip(err) => {
                     return effect_builder
-                        .announce_disconnect_from_peer(sender)
+                        .announce_disconnect_from_peer(err.peer())
                         .ignore();
                 }
                 Error::EraMismatch(err) => {
@@ -280,7 +280,7 @@ impl BlocksAccumulator {
 
     pub(crate) fn register_updated_validator_matrix(&mut self, validator_matrix: ValidatorMatrix) {
         self.validator_matrix = validator_matrix;
-        let block_hashes = self.block_gossip_acceptors.keys().map(|k| *k).collect_vec();
+        let block_hashes = self.block_gossip_acceptors.keys().copied().collect_vec();
         for block_hash in block_hashes {
             if let Some(mut acceptor) = self.block_gossip_acceptors.remove(&block_hash) {
                 if let Some(era_id) = acceptor.era_id() {
@@ -298,10 +298,17 @@ impl BlocksAccumulator {
         self.filter.push(block_header.hash())
     }
 
+    pub(crate) fn last_progress(&self) -> Option<Timestamp> {
+        self.block_gossip_acceptors
+            .iter()
+            .max_by(|(xk, xv), (yk, yv)| xv.last_progress().cmp(&yv.last_progress()))
+            .map(|(_, bga)| bga.last_progress())
+    }
+
     fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {
         let mut ret: Option<(BlockHash, u64, EraId)> = None;
         for (k, v) in &self.block_gossip_acceptors {
-            if self.filter.contains(&k) {
+            if self.filter.contains(k) {
                 // should be unreachable
                 continue;
             }
@@ -330,16 +337,15 @@ impl BlocksAccumulator {
         block_hash: BlockHash,
         era_id: EraId,
     ) -> Option<&mut BlockGossipAcceptor> {
-        if self.block_gossip_acceptors.contains_key(&block_hash) {
+        if let Entry::Occupied(mut entry) = self.block_gossip_acceptors.entry(block_hash) {
             if self.filter.contains(&block_hash) {
                 return None;
             }
             if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
                 let acceptor = BlockGossipAcceptor::new_with_validator_weights(block_hash, evw);
-                self.block_gossip_acceptors.insert(block_hash, acceptor);
+                entry.insert(acceptor);
             } else {
-                self.block_gossip_acceptors
-                    .insert(block_hash, BlockGossipAcceptor::new(block_hash));
+                entry.insert(BlockGossipAcceptor::new(block_hash));
             }
         }
 

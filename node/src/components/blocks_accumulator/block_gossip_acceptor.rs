@@ -130,13 +130,13 @@ impl BlockGossipAcceptor {
         if let Some(block_added) = &self.block_added {}
         if let Err(error) = block_added.validate(&()) {
             warn!(%error, "received invalid block-added");
-            return Err(AcceptorError::InvalidGossip(
+            return Err(AcceptorError::InvalidGossip(Box::new(
                 InvalidGossipError::BlockAdded {
                     block_hash: block_added.block.header().id(),
                     peer,
                     validation_error: error,
                 },
-            ));
+            )));
         }
         if let Some(era_id) = self.era_validator_weights_era_id() {
             let block_era_id = block_added.block.header().era_id();
@@ -163,13 +163,13 @@ impl BlockGossipAcceptor {
     ) -> Result<(), AcceptorError> {
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
-            return Err(AcceptorError::InvalidGossip(
+            return Err(AcceptorError::InvalidGossip(Box::new(
                 InvalidGossipError::FinalitySignature {
                     block_hash: finality_signature.block_hash,
                     peer,
                     validation_error: error,
                 },
-            ));
+            )));
         }
         if let Some(era_id) = &self.era_id() {
             let sig_era_id = finality_signature.era_id;
@@ -268,8 +268,16 @@ impl BlockGossipAcceptor {
         None
     }
 
+    pub(super) fn block_hash(&self) -> BlockHash {
+        self.block_hash
+    }
+
+    pub(super) fn last_progress(&self) -> Timestamp {
+        self.last_progress
+    }
+
     pub(super) fn has_era_validator_weights(&self) -> bool {
-        return self.era_validator_weights.is_some();
+        self.era_validator_weights.is_some()
     }
 
     fn remove_bogus_validators(&mut self) {
