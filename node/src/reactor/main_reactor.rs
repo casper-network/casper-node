@@ -188,6 +188,7 @@ impl reactor::Reactor for MainReactor {
             hard_reset_to_start_of_era,
             protocol_version,
             &chainspec.network_config.name,
+            chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
         )?;
 

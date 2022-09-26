@@ -425,6 +425,7 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
+            chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
         )
         .unwrap();

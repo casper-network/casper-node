@@ -1872,12 +1872,31 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// These blocks contain all deploy and transfer hashes that are known to be finalized but
     /// may not have expired yet.
-    pub(crate) async fn get_finalized_blocks(self, ttl: TimeDiff) -> Vec<Block>
+    pub(crate) async fn get_finalized_blocks(self) -> Vec<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            move |responder| StorageRequest::GetFinalizedBlocks { ttl, responder },
+            move |responder| StorageRequest::GetFinalizedBlocks { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Checks whether storage has enough data for proposing blocks, ie. all the deploys going back
+    /// max TTL from the timestamp of the given header.
+    pub(crate) async fn has_data_needed_for_proposing_blocks(
+        self,
+        block_header: BlockHeader,
+    ) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            move |responder| StorageRequest::HasDataNeededForProposingBlocks {
+                block_header: Box::new(block_header),
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

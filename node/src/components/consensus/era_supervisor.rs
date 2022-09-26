@@ -7,8 +7,6 @@
 
 // TODO:
 // - drop all eras when reverting to CatchUp mode? (Or don't!? Highway won't remember state.)
-// - check for 1 deploy TTL worth of complete blocks for the replay protection (should it live in
-//   the storage/linear chain/era_supervisor/other?)
 // - do we need to distinguish between blocks being executed vs gossiped
 
 pub(super) mod debug;
@@ -751,12 +749,16 @@ impl EraSupervisor {
 
                 // TODO: maybe don't request the switch blocks that are only needed for eras that
                 // already exist? (shouldn't be much of a problem, though)
-                let effect = get_switch_blocks(effect_builder, earliest_era, latest_era).map_some(
-                    move |switch_blocks| Event::CreateRequiredEras {
-                        current_era: new_era_id,
-                        switch_blocks,
-                    },
-                );
+                let effect = get_switch_blocks_if_enough_data_for_validating(
+                    effect_builder,
+                    block_header,
+                    earliest_era,
+                    latest_era,
+                )
+                .map_some(move |switch_blocks| Event::CreateRequiredEras {
+                    current_era: new_era_id,
+                    switch_blocks,
+                });
                 effects.extend(effect);
             }
         }
@@ -1161,14 +1163,22 @@ impl EraSupervisor {
 
 /// Returns all switch blocks from eras between `from` (inclusive) and `to` (exclusive).
 // TODO: Refactor so that we don't need an async function for that?
-async fn get_switch_blocks<REv>(
+async fn get_switch_blocks_if_enough_data_for_validating<REv>(
     effect_builder: EffectBuilder<REv>,
+    switch_block_header: BlockHeader,
     from: EraId,
     to: EraId,
 ) -> Option<Vec<BlockHeader>>
 where
     REv: From<StorageRequest>,
 {
+    // Check if storage has all the deploys necessary for replay attack protection.
+    if !effect_builder
+        .has_data_needed_for_proposing_blocks(switch_block_header)
+        .await
+    {
+        return None;
+    }
     let mut switch_blocks = Vec::new();
     for switch_block_era_id in (from.value()..to.value()).map(EraId::from) {
         match effect_builder

@@ -76,7 +76,6 @@ impl Sequence {
     }
 
     /// Returns `true` if a sequence contains the value.
-    #[cfg(test)]
     pub(super) fn contains(&self, value: u64) -> bool {
         value >= self.low && value <= self.high
     }

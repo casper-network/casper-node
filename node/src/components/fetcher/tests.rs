@@ -275,6 +275,7 @@ impl ReactorTrait for Reactor {
             chainspec.hard_reset_to_start_of_era(),
             chainspec.protocol_config.version,
             &chainspec.network_config.name,
+            chainspec.deploy_config.max_ttl,
             chainspec.core_config.unbonding_delay,
         )
         .unwrap();

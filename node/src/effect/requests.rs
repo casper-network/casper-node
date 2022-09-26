@@ -406,9 +406,6 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
     GetFinalizedBlocks {
-        /// Maximum TTL of block we're interested in.
-        /// I.e. we don't want deploys from blocks that are older than this.
-        ttl: TimeDiff,
         /// Responder to call with the results.
         responder: Responder<Vec<Block>>,
     },
@@ -539,6 +536,14 @@ pub(crate) enum StorageRequest {
         /// Responder, responded to once the approvals are written.
         responder: Responder<()>,
     },
+    /// Check if storage has data needed for proposing blocks (ie. all the deploys reaching max-TTL
+    /// into the past).
+    HasDataNeededForProposingBlocks {
+        /// The last switch block before the current era.
+        block_header: Box<BlockHeader>,
+        /// Responder to call with the response.
+        responder: Responder<bool>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -646,8 +651,8 @@ impl Display for StorageRequest {
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
-            StorageRequest::GetFinalizedBlocks { ttl, .. } => {
-                write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
+            StorageRequest::GetFinalizedBlocks { .. } => {
+                write!(formatter, "get finalized blocks")
             }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)
@@ -665,6 +670,13 @@ impl Display for StorageRequest {
                 block_headers_id, ..
             } => {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
+            }
+            StorageRequest::HasDataNeededForProposingBlocks { block_header, .. } => {
+                write!(
+                    formatter,
+                    "has data needed for proposing blocks: {}",
+                    block_header
+                )
             }
         }
     }

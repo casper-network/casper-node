@@ -29,7 +29,7 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{testing::TestRng, ProtocolVersion};
+use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff};
 
 use super::*;
 use crate::{
@@ -68,6 +68,7 @@ use crate::{
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
 const RECENT_ERA_COUNT: u64 = 5;
+const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -280,6 +281,7 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
+            MAX_TTL,
             RECENT_ERA_COUNT,
         )
         .unwrap();

@@ -14,7 +14,7 @@ use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, Signature, URef, U512,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, Signature, TimeDiff, URef, U512,
 };
 
 use super::{
@@ -35,6 +35,7 @@ use crate::{
 };
 
 const RECENT_ERA_COUNT: u64 = 7;
+const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
@@ -156,6 +157,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
+        MAX_TTL,
         RECENT_ERA_COUNT,
     )
     .expect("could not create storage component fixture")
@@ -179,6 +181,7 @@ fn storage_fixture_with_hard_reset(
         Some(reset_era_id),
         ProtocolVersion::from_parts(1, 1, 0),
         "test",
+        MAX_TTL,
         RECENT_ERA_COUNT,
     )
     .expect("could not create storage component fixture")
@@ -1157,6 +1160,7 @@ fn should_create_subdir_named_after_network() {
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
+        MAX_TTL,
         RECENT_ERA_COUNT,
     )
     .unwrap();

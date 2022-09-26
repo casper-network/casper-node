@@ -199,6 +199,8 @@ pub struct Storage {
     recent_era_count: u64,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
+    /// The maximum TTL of a deploy.
+    max_ttl: TimeDiff,
 }
 
 /// A storage component event.
@@ -292,6 +294,7 @@ impl Storage {
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
+        max_ttl: TimeDiff,
         recent_era_count: u64,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
@@ -437,6 +440,7 @@ impl Storage {
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
             fault_tolerance_fraction,
+            max_ttl,
         };
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
@@ -1096,8 +1100,8 @@ impl Storage {
                     .respond(self.get_block_signature(&mut txn, &block_hash, &public_key)?)
                     .ignore()
             }
-            StorageRequest::GetFinalizedBlocks { ttl, responder } => {
-                responder.respond(self.get_finalized_blocks(ttl)?).ignore()
+            StorageRequest::GetFinalizedBlocks { responder } => {
+                responder.respond(self.get_finalized_blocks()?).ignore()
             }
             StorageRequest::GetBlockHeaderByHeight {
                 block_height,
@@ -1161,6 +1165,12 @@ impl Storage {
                 responder,
             } => responder
                 .respond(self.read_block_headers_batch(&block_headers_id)?)
+                .ignore(),
+            StorageRequest::HasDataNeededForProposingBlocks {
+                block_header,
+                responder,
+            } => responder
+                .respond(self.has_data_needed_for_proposing_blocks(&block_header)?)
                 .ignore(),
         })
     }
@@ -1315,6 +1325,21 @@ impl Storage {
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         self.get_switch_block_header_by_era_id(&mut txn, switch_block_era_id)
+    }
+
+    /// Retrieves a single block header by height by looking it up in the index and returning it.
+    pub fn read_block_header_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        self.block_height_index
+            .get(&height)
+            .and_then(|block_hash| {
+                self.get_single_block_header(&mut txn, block_hash)
+                    .transpose()
+            })
+            .transpose()
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1578,10 +1603,10 @@ impl Storage {
     }
 
     /// Returns the vector of blocks that could still have deploys whose TTL hasn't expired yet.
-    fn get_finalized_blocks(&self, ttl: TimeDiff) -> Result<Vec<Block>, FatalStorageError> {
+    fn get_finalized_blocks(&self) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         // We're interested in deploys whose TTL hasn't expired yet.
-        let ttl_not_expired = |block: &Block| block.timestamp().elapsed() < ttl;
+        let ttl_not_expired = |block: &Block| block.timestamp().elapsed() < self.max_ttl;
         self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
@@ -2186,6 +2211,38 @@ impl Storage {
             None => AvailableBlockRange::RANGE_0_0,
         }
     }
+
+    fn has_data_needed_for_proposing_blocks(
+        &self,
+        switch_block_header: &BlockHeader,
+    ) -> Result<bool, FatalStorageError> {
+        let highest_sequence = match self.completed_blocks.highest_sequence() {
+            Some(seq) => seq,
+            None => {
+                return Ok(false);
+            }
+        };
+        if !highest_sequence.contains(switch_block_header.height()) {
+            return Ok(false);
+        }
+        // If we have everything back to genesis, we have enough, even if the genesis timestamp is
+        // too recent.
+        if highest_sequence.contains(0) {
+            return Ok(true);
+        }
+        let lowest_header = match self.read_block_header_by_height(highest_sequence.low())? {
+            Some(header) => header,
+            None => {
+                error!("we don't have a header listed in a complete blocks sequence");
+                return Ok(false);
+            }
+        };
+
+        Ok(switch_block_header
+            .timestamp()
+            .saturating_diff(lowest_header.timestamp())
+            > self.max_ttl)
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -2500,21 +2557,6 @@ impl Storage {
             .expect("LMDB panicked trying to get switch block");
         txn.commit().expect("Could not commit transaction");
         Ok(switch_block)
-    }
-
-    /// Retrieves a single block header by height by looking it up in the index and returning it.
-    pub fn read_block_header_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        self.block_height_index
-            .get(&height)
-            .and_then(|block_hash| {
-                self.get_single_block_header(&mut txn, block_hash)
-                    .transpose()
-            })
-            .transpose()
     }
 
     /// Retrieves the highest block header from the storage, if one exists.
