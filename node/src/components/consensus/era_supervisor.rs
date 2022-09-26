@@ -529,25 +529,28 @@ impl EraSupervisor {
         // Clear the obsolete data from the era before the previous one. We only retain the
         // information necessary to validate evidence that units in the two most recent eras may
         // refer to for cross-era fault tracking.
-        if let Some(evidence_only_era_id) = self
-            .current_era()
-            .and_then(|current_era| current_era.checked_sub(PAST_OPEN_ERAS))
-        {
-            if let Some(era) = self.open_eras.get_mut(&evidence_only_era_id) {
-                trace!(era = evidence_only_era_id.value(), "clearing unbonded era");
-                era.consensus.set_evidence_only();
-            }
-
-            // Remove the era that has become obsolete now: We keep only three in memory.
-            if let Some(obsolete_era_id) = evidence_only_era_id.checked_sub(1) {
-                if let Some(era) = self.open_eras.remove(&obsolete_era_id) {
-                    trace!(era = obsolete_era_id.value(), "removing obsolete era");
-                    match fs::remove_file(self.unit_file(era.consensus.instance_id())) {
-                        Ok(_) => {}
-                        Err(err) => match err.kind() {
-                            io::ErrorKind::NotFound => {}
-                            err => warn!(?err, "could not delete unit hash file"),
-                        },
+        if let Some(current_era) = self.current_era() {
+            let mut removed_instance_ids = vec![];
+            let earliest_open_era = current_era.saturating_sub(PAST_OPEN_ERAS);
+            let earliest_active_era = current_era.saturating_sub(PAST_EVIDENCE_ERAS);
+            self.open_eras.retain(|era_id, era| {
+                if earliest_open_era > *era_id {
+                    trace!(era = era_id.value(), "removing obsolete era");
+                    removed_instance_ids.push(*era.consensus.instance_id());
+                    false
+                } else if earliest_active_era > *era_id {
+                    trace!(era = era_id.value(), "setting old era to evidence only");
+                    era.consensus.set_evidence_only();
+                    true
+                } else {
+                    true
+                }
+            });
+            for instance_id in removed_instance_ids {
+                if let Err(err) = fs::remove_file(self.unit_file(&instance_id)) {
+                    match err.kind() {
+                        io::ErrorKind::NotFound => {}
+                        err => warn!(?err, "could not delete unit hash file"),
                     }
                 }
             }
