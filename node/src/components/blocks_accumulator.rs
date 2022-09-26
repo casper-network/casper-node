@@ -50,6 +50,7 @@ pub(crate) enum SyncInstruction {
     },
     BlockExec {
         block: Box<Block>,
+        signatures: Vec<FinalitySignature>,
     },
 }
 
@@ -166,9 +167,12 @@ impl BlocksAccumulator {
             if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
                     if let Some(block_acceptor) = self.block_gossip_acceptors.get_mut(child_hash) {
-                        if let Some(block) = block_acceptor.executable_block() {
+                        if let Some((block, signatures)) =
+                            block_acceptor.executable_block_and_signatures()
+                        {
                             return SyncInstruction::BlockExec {
                                 block: Box::new(block),
+                                signatures,
                             };
                         }
                     }

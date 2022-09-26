@@ -268,6 +268,21 @@ impl BlockGossipAcceptor {
         None
     }
 
+    pub(super) fn executable_block_and_signatures(
+        &self,
+    ) -> Option<(Block, Vec<FinalitySignature>)> {
+        if self.can_execute() == false {
+            return None;
+        }
+        if let Some(block_added) = &self.block_added {
+            return Some((
+                block_added.block.clone(),
+                self.signatures.values().cloned().collect_vec(),
+            ));
+        }
+        None
+    }
+
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }

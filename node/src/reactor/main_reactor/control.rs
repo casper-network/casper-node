@@ -1,5 +1,5 @@
 use datasize::DataSize;
-use log::debug;
+use log::{debug, error};
 use std::{sync::Arc, time::Duration};
 use tracing::{info, warn};
 
@@ -229,14 +229,14 @@ impl MainReactor {
                         // need to crank synchronizer or put something on the event-q
                         todo!();
                     }
-                    SyncInstruction::BlockExec { block } => {
-                        self.block_synchronizer.register_block_by_hash(
-                            block.id(),
-                            false,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests,
-                        );
+                    SyncInstruction::BlockExec { .. } => {
+                        // self.block_synchronizer.register_block_by_hash(
+                        //     block.id(),
+                        //     false,
+                        //     self.chainspec
+                        //         .core_config
+                        //         .sync_leap_simultaneous_peer_requests,
+                        // );
                         // need to crank synchronizer or put something on the event-q
                         todo!();
                     }
@@ -390,20 +390,13 @@ impl MainReactor {
                     "block_synchronizer is initialized".to_string(),
                 );
             }
-            SyncInstruction::BlockExec { block } => {
+            SyncInstruction::BlockExec { block, .. } => {
                 let block_hash = block.id();
-                debug!(
+                error!(
                     "BlockExec should be unreachable in CatchUp mode: {}",
                     block_hash
                 );
-                self.block_synchronizer.register_block_by_hash(
-                    block_hash,
-                    false,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
-                );
-                return CatchUpInstruction::CheckSoon(
+                return CatchUpInstruction::Shutdown(
                     "block_synchronizer is initialized for potentially executable block"
                         .to_string(),
                 );
