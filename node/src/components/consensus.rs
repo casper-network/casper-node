@@ -126,7 +126,9 @@ pub(crate) enum Event {
         delay: Duration,
     },
     /// Event raised when a new era should be created because a new switch block is available.
-    CreateNewEra {
+    CreateRequiredEras {
+        /// The ID of the current era
+        current_era: EraId,
         /// The most recent switch block headers
         switch_blocks: Vec<BlockHeader>,
     },
@@ -228,10 +230,13 @@ impl Display for Event {
                 "Deactivate old {} unless additional faults are observed; faults so far: {}",
                 era_id, faulty_num
             ),
-            Event::CreateNewEra { switch_blocks } => write!(
+            Event::CreateRequiredEras {
+                current_era,
+                switch_blocks,
+            } => write!(
                 f,
-                "New era should be created; switch blocks: {:?}",
-                switch_blocks
+                "New eras should be created; current era: {:?}, switch blocks: {:?}",
+                current_era, switch_blocks
             ),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
@@ -312,6 +317,7 @@ where
                 *header,
                 approvals_checksum,
                 execution_results_checksum,
+                rng,
             ),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
@@ -321,9 +327,10 @@ where
                 faulty_num,
                 delay,
             } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
-            Event::CreateNewEra { switch_blocks } => {
-                self.create_new_era_effects(effect_builder, rng, &switch_blocks)
-            }
+            Event::CreateRequiredEras {
+                current_era,
+                switch_blocks,
+            } => self.create_required_eras(effect_builder, rng, current_era, &switch_blocks),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 self.got_upgrade_activation_point(activation_point)
             }

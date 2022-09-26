@@ -7,7 +7,6 @@
 
 // TODO:
 // - next_block_height / next_executed_height?
-// - merge `initialize()` with `create_new_era()`?
 // - drop all eras when reverting to CatchUp mode? (Or don't!? Highway won't remember state.)
 // - check for 1 deploy TTL worth of complete blocks for the replay protection (should it live in
 //   the storage/linear chain/era_supervisor/other?)
@@ -75,7 +74,7 @@ const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
 /// To be able to detect that evidence, we also keep that number of active past eras in memory.
-const PAST_EVIDENCE_ERAS: u64 = 1;
+pub(super) const PAST_EVIDENCE_ERAS: u64 = 1;
 /// The total number of past eras that are kept in memory in addition to the current one.
 /// The more recent half of these is active: it contains units and can still accept further units.
 /// The older half is in evidence-only state, and only used to validate cited evidence.
@@ -191,55 +190,54 @@ impl EraSupervisor {
         self.open_eras.keys().last().copied()
     }
 
-    fn initialize<REv: ReactorEventT>(
-        &mut self,
-        storage: &Storage,
-        current_era: EraId,
-        rng: &mut NodeRng,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Result<Effects<Event>, Error> {
-        // Collect the information needed to initialize all open eras.
-        //
-        // We need to initialize current_era, current_era - 1 and (evidence-only) current_era - 2.
+    /// Returns the earliest (inclusive) and latest (exclusive) era IDs of switch blocks required
+    /// to initialize the required eras up to `current_era`.
+    fn get_switch_block_era_range(&self, current_era: EraId) -> (EraId, EraId) {
+        // We need to initialize current_era and (evidence-only) current_era - 1.
         // To initialize an era, all switch blocks between its booking block and its key block are
         // required. The booking block for era N is in N - auction_delay - 1, and the key block in
         // N - 1. So we need all switch blocks between:
-        // (including) current_era - 2 - auction_delay - 1 and (excluding) current_era.
+        // (including) current_era - 1 - auction_delay - 1 and (excluding) current_era.
         // However, we never use any block from before the last activation point.
         //
         // Example: If auction_delay is 1, to initialize era N we need the switch blocks from era N
-        // and N - 1. If current_era is 10, we will initialize eras 10, 9 and 8. So we need the
-        // switch blocks from eras 9, 8, 7 and 6.
-        let earliest_open_era = self.chainspec.earliest_open_era(current_era);
+        // and N - 1. If current_era is 10, we will initialize eras 10 and 9. So we need the switch
+        // blocks from eras 9, 8, and 7.
+        let earliest_open_era = self.chainspec.earliest_relevant_era(current_era);
         let earliest_era = self
             .chainspec
             .earliest_switch_block_needed(earliest_open_era);
-        let mut switch_blocks = Vec::new();
-        for era_id in (earliest_era.value()..current_era.value()).map(EraId::from) {
-            let switch_block = storage
-                .read_switch_block_header_by_era_id(era_id)?
-                .ok_or_else(|| anyhow::Error::msg(format!("No such switch block in {}", era_id)))?;
-            switch_blocks.push(switch_block);
-        }
 
+        debug_assert!(earliest_era <= current_era);
+
+        (earliest_era, current_era)
+    }
+
+    pub(super) fn create_required_eras<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        current_era: EraId,
+        switch_blocks: &[BlockHeader],
+    ) -> Effects<Event> {
         // The create_new_era method initializes the era that the slice's last block is the key
-        // block for. We want to initialize the three latest eras, so we have to pass in the whole
-        // slice for the current era, and omit one or two elements for the other two. We never
-        // initialize the activation era or an earlier era, however.
+        // block for. We want to initialize the two latest eras, so we have to pass in the whole
+        // slice for the current era, and omit one element for the other one. We never initialize
+        // the activation era or an earlier era, however.
         //
         // In the example above, we would call create_new_era with the switch blocks from eras
-        // 8 and 9 (to initialize 10) then 7 and 8 (for era 9), and finally 6 and 7 (for era 8).
+        // 8 and 9 (to initialize 10) and then 7 and 8 (for era 9).
         // (We don't truncate the slice at the start since unneeded blocks are ignored.)
         let mut effects = Effects::new();
         let from = switch_blocks
             .len()
-            .saturating_sub(PAST_OPEN_ERAS as usize)
+            .saturating_sub(PAST_EVIDENCE_ERAS as usize)
             .max(1);
         for i in (from..=switch_blocks.len()).rev() {
             effects.extend(self.create_new_era_effects(effect_builder, rng, &switch_blocks[..i]));
         }
 
-        Ok(effects)
+        effects
     }
 
     /// Returns a list of status changes of active validators.
@@ -356,6 +354,12 @@ impl EraSupervisor {
             .last()
             .ok_or(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks)?;
         let era_id = key_block.era_id().successor();
+
+        if self.open_eras.contains_key(&era_id) {
+            debug!(era = era_id.value(), "era already exists");
+            return Ok((era_id, vec![]));
+        }
+
         let era_end = key_block.era_end().ok_or_else(|| {
             CreateNewEraError::LastBlockHeaderNotASwitchBlock {
                 era_id,
@@ -384,12 +388,8 @@ impl EraSupervisor {
         let report = era_end.era_report();
         let validators = era_end.next_era_validator_weights();
 
-        if self.open_eras.contains_key(&era_id) {
-            warn!(era = era_id.value(), "era already exists");
-            return Ok((era_id, vec![]));
-        }
         if let Some(current_era) = self.current_era() {
-            if current_era > era_id.saturating_add(PAST_OPEN_ERAS) {
+            if current_era > era_id.saturating_add(PAST_EVIDENCE_ERAS) {
                 warn!(era = era_id.value(), "trying to create obsolete era");
                 return Ok((era_id, vec![]));
             }
@@ -488,6 +488,11 @@ impl EraSupervisor {
                 current_era = ?self.current_era(),
                 "not voting; initializing past era"
             );
+            // We're creating an era that's not the current era - which means we're currently
+            // initializing consensus and we want to set all the older eras to be evidence only.
+            if let Some(era) = self.open_eras.get_mut(&era_id) {
+                era.consensus.set_evidence_only();
+            }
         } else {
             self.metrics.current_era.set(era_id.value() as i64);
             self.next_block_height = self.next_block_height.max(start_height);
@@ -688,6 +693,7 @@ impl EraSupervisor {
         block_header: BlockHeader,
         approvals_checksum: Digest,
         execution_results_checksum: Digest,
+        rng: &mut NodeRng,
     ) -> Effects<Event> {
         let our_public_key = self.public_signing_key.clone();
         let our_secret_key = self.secret_signing_key.clone();
@@ -718,7 +724,7 @@ impl EraSupervisor {
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
         }
-        if block_header.is_switch_block() {
+        if let Some(validator_weights) = block_header.next_era_validator_weights() {
             if let Some(era) = self.open_eras.get_mut(&era_id) {
                 // This was the era's last block. Schedule deactivating this era.
                 let delay = Timestamp::now()
@@ -731,14 +737,23 @@ impl EraSupervisor {
                     delay,
                 };
                 effects.extend(effect_builder.set_timeout(delay).event(deactivate_era));
-            } else {
-                error!(era = era_id.value(), %block_header, "executed block in uninitialized era");
             }
-            // If it's not the last block before an upgrade, initialize the next era.
-            if !self.should_upgrade_after(&era_id) {
+            // If it's not the last block before an upgrade, and if we're a validator in the next
+            // era, initialize it.
+            if !self.should_upgrade_after(&era_id)
+                && validator_weights.contains_key(&self.public_signing_key)
+            {
                 let new_era_id = era_id.successor();
-                let effect = get_switch_blocks(self.chainspec.clone(), effect_builder, new_era_id)
-                    .map_some(move |switch_blocks| Event::CreateNewEra { switch_blocks });
+                let (earliest_era, latest_era) = self.get_switch_block_era_range(new_era_id);
+
+                // TODO: maybe don't request the switch blocks that are only needed for eras that
+                // already exist? (shouldn't be much of a problem, though)
+                let effect = get_switch_blocks(effect_builder, earliest_era, latest_era).map_some(
+                    move |switch_blocks| Event::CreateRequiredEras {
+                        current_era: new_era_id,
+                        switch_blocks,
+                    },
+                );
                 effects.extend(effect);
             }
         }
@@ -1141,21 +1156,18 @@ impl EraSupervisor {
     }
 }
 
-/// Returns all switch blocks needed to initialize `era_id`.
-///
-/// Those are the booking block, i.e. the switch block in `era_id - auction_delay - 1`,
-/// the key block, i.e. the switch block in `era_id - 1`, and all switch blocks in between.
+/// Returns all switch blocks from eras between `from` (inclusive) and `to` (exclusive).
+// TODO: Refactor so that we don't need an async function for that?
 async fn get_switch_blocks<REv>(
-    chainspec: Arc<Chainspec>,
     effect_builder: EffectBuilder<REv>,
-    era_id: EraId,
+    from: EraId,
+    to: EraId,
 ) -> Option<Vec<BlockHeader>>
 where
     REv: From<StorageRequest>,
 {
     let mut switch_blocks = Vec::new();
-    let from = chainspec.earliest_switch_block_needed(era_id);
-    for switch_block_era_id in (from.value()..era_id.value()).map(EraId::from) {
+    for switch_block_era_id in (from.value()..to.value()).map(EraId::from) {
         match effect_builder
             .get_switch_block_header_at_era_id_from_storage(switch_block_era_id)
             .await
@@ -1163,7 +1175,8 @@ where
             Some(switch_block) => switch_blocks.push(switch_block),
             None => {
                 info!(
-                    ?era_id,
+                    ?from,
+                    ?to,
                     ?switch_block_era_id,
                     "switch block header era must exist to initialize era"
                 );
