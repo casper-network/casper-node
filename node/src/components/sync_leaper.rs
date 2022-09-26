@@ -1,5 +1,3 @@
-#![allow(unused)] // TODO: To be removed
-
 //! The Sync Leaper
 mod error;
 mod event;

@@ -135,63 +135,6 @@ pub(crate) fn check_sufficient_block_signatures(
     )
 }
 
-// TODO - remove the `allow` below.
-#[allow(unused)]
-pub(crate) fn get_minimal_set_of_block_signatures(
-    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
-    fault_tolerance_fraction: Ratio<u64>,
-    mut block_signatures: BlockSignatures,
-) -> Option<BlockSignatures> {
-    // Calculate the values for comparison.
-    let total_weight: U512 = trusted_validator_weights
-        .iter()
-        .map(|(_, weight)| *weight)
-        .sum();
-
-    let lower_bound = quorum_fraction(fault_tolerance_fraction);
-
-    let mut sig_weights: Vec<_> = block_signatures
-        .proofs
-        .keys()
-        .filter_map(|pub_key| {
-            trusted_validator_weights
-                .get(pub_key)
-                .map(|weight| (pub_key.clone(), *weight))
-        })
-        .collect();
-    // Sort descending by weight.
-    sig_weights.sort_unstable_by(|a, b| b.1.cmp(&a.1));
-
-    let mut accumulated_weight = U512::zero();
-    let keys_to_retain: HashSet<_> = sig_weights
-        .into_iter()
-        .take_while(|(_, weight)| {
-            let to_take = accumulated_weight * U512::from(*lower_bound.denom())
-                <= total_weight * U512::from(*lower_bound.numer());
-            if to_take {
-                accumulated_weight += *weight;
-            }
-            to_take
-        })
-        .map(|(pub_key, _)| pub_key)
-        .collect();
-
-    // Check if we managed to collect sufficient weight (there might not have been enough
-    // signatures in the first place).
-    if accumulated_weight * U512::from(*lower_bound.denom())
-        > total_weight * U512::from(*lower_bound.numer())
-    {
-        block_signatures
-            .proofs
-            .retain(|pub_key, _| keys_to_retain.contains(pub_key));
-
-        Some(block_signatures)
-    } else {
-        // Return `None` if the signatures weren't enough.
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use rand::Rng;
@@ -237,38 +180,6 @@ mod tests {
         sigs
     }
 
-    fn test_number_of_validators(
-        rng: &mut TestRng,
-        n_validators: usize,
-        ftt: Ratio<u64>,
-        threshold: usize,
-    ) {
-        let (keys, weights) = generate_validators(n_validators);
-
-        // If the initial set has too few signatures, the result should be `None`.
-        let sigs = create_signatures(rng, &keys, threshold.saturating_sub(1));
-        assert!(check_sufficient_block_signatures(&weights, ftt, Some(&sigs)).is_err());
-        let minimal_set = get_minimal_set_of_block_signatures(&weights, ftt, sigs);
-        assert!(minimal_set.is_none());
-
-        // If there were enough signatures, we should get the set with the amount equal to the
-        // threshold.
-        let sigs = create_signatures(rng, &keys, threshold);
-        let minimal_set = get_minimal_set_of_block_signatures(&weights, ftt, sigs);
-        assert!(minimal_set.is_some());
-        let minimal_set = minimal_set.unwrap();
-        assert_eq!(minimal_set.proofs.len(), threshold);
-        assert!(check_sufficient_block_signatures(&weights, ftt, Some(&minimal_set)).is_ok());
-
-        // Same if we were over the threshold initially.
-        let sigs = create_signatures(rng, &keys, threshold.saturating_add(1));
-        let minimal_set = get_minimal_set_of_block_signatures(&weights, ftt, sigs);
-        assert!(minimal_set.is_some());
-        let minimal_set = minimal_set.unwrap();
-        assert_eq!(minimal_set.proofs.len(), threshold);
-        assert!(check_sufficient_block_signatures(&weights, ftt, Some(&minimal_set)).is_ok());
-    }
-
     #[test]
     fn validates_block_signatures() {
         let mut rng = TestRng::new();
@@ -288,17 +199,6 @@ mod tests {
                 bogus_validators
             }) if bogus_validators[0] == pub_key && *block_signatures == signatures
         ));
-    }
-
-    #[test]
-    fn should_generate_minimal_set_correctly() {
-        let mut rng = TestRng::new();
-
-        let ftt = Ratio::new(1, 3);
-
-        test_number_of_validators(&mut rng, 8, ftt, 6);
-        test_number_of_validators(&mut rng, 9, ftt, 7);
-        test_number_of_validators(&mut rng, 10, ftt, 7);
     }
 
     #[test]
