@@ -1327,6 +1327,11 @@ impl Storage {
         self.get_switch_block_header_by_era_id(&mut txn, switch_block_era_id)
     }
 
+    /// Retrieves the highest block header from the storage, if one exists.
+    pub fn read_highest_block_height(&self) -> Option<u64> {
+        self.block_height_index.keys().last().copied()
+    }
+
     /// Retrieves a single block header by height by looking it up in the index and returning it.
     pub fn read_block_header_by_height(
         &self,

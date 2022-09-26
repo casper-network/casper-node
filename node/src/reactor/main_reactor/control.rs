@@ -243,9 +243,14 @@ impl MainReactor {
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
                         // to run, switch to validate mode
-                        if self.consensus.is_active_validator() {
-                            // push era_supervisor event onto queue
-                            self.state = ReactorState::Validate;
+                        // TODO: is storage the right place to get this from
+                        if let Some(from_height) = self.storage.read_highest_block_height() {
+                            if self.deploy_buffer.have_full_ttl_of_deploys(from_height)
+                                && self.consensus.is_active_validator()
+                            {
+                                // TODO: push era_supervisor event onto queue
+                                self.state = ReactorState::Validate;
+                            }
                         }
                     }
                 }

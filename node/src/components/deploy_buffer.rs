@@ -1,6 +1,7 @@
 mod config;
 mod event;
 
+use std::collections::BTreeSet;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     mem,
@@ -9,9 +10,11 @@ use std::{
 
 use datasize::DataSize;
 use tracing::{debug, error, warn};
+use warp::header;
 
 use casper_types::{bytesrepr::ToBytes, Timestamp};
 
+use crate::types::{Block, BlockHeader};
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
@@ -39,6 +42,7 @@ pub(crate) struct DeployBuffer {
     buffer: HashMap<DeployHash, Deploy>,
     hold: BTreeMap<Timestamp, HashSet<DeployHash>>,
     dead: HashSet<DeployHash>,
+    chain_index: BTreeMap<u64, Timestamp>,
 }
 
 impl DeployBuffer {
@@ -51,7 +55,30 @@ impl DeployBuffer {
             buffer: HashMap::new(),
             hold: BTreeMap::new(),
             dead: HashSet::new(),
+            chain_index: BTreeMap::new(),
         }
+    }
+
+    // do you have full TTL worth of deploy awareness
+    pub(crate) fn have_full_ttl_of_deploys(&self, from_height: u64) -> bool {
+        let ttl = self.deploy_config.max_ttl;
+        let mut curr = match self.chain_index.get(&from_height) {
+            None => {
+                return false;
+            }
+            Some(timestamp) => (from_height, timestamp),
+        };
+
+        for (height, timestamp) in self.chain_index.range(..from_height).rev() {
+            if height.saturating_sub(1) != curr.0 {
+                return false;
+            }
+            if timestamp.elapsed() > ttl || *height == 0 {
+                return true;
+            }
+            curr = (*height, timestamp);
+        }
+        false
     }
 
     fn expire<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
@@ -101,7 +128,7 @@ impl DeployBuffer {
         self.buffer.insert(*deploy_hash, deploy);
     }
 
-    fn block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
+    fn register_block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
         if let Some(hold_set) = self.hold.get_mut(&proposed_block.context().timestamp()) {
             hold_set.extend(
                 proposed_block
@@ -112,19 +139,43 @@ impl DeployBuffer {
         }
     }
 
-    fn block_finalized(&mut self, finalized_block: &FinalizedBlock) {
-        // all deploys in the finalized block must not be included in future proposals
-        self.dead.extend(
+    fn register_block_added(&mut self, block: &Block) {
+        self.register_block(
+            block.height(),
+            block.timestamp(),
+            block
+                .deploy_hashes()
+                .iter()
+                .chain(block.transfer_hashes())
+                .copied(),
+        );
+    }
+
+    fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
+        self.register_block(
+            finalized_block.height(),
+            finalized_block.timestamp(),
             finalized_block
                 .deploy_hashes()
                 .iter()
                 .chain(finalized_block.transfer_hashes())
                 .copied(),
         );
+    }
+
+    fn register_block(
+        &mut self,
+        block_height: u64,
+        block_time: Timestamp,
+        combined_deploy_hashes: impl Iterator<Item = DeployHash>,
+    ) {
+        self.chain_index.insert(block_height, block_time);
+        // all deploys in the finalized block must not be included in future proposals
+        self.dead.extend(combined_deploy_hashes);
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
-            .partition(|(timestamp, _)| *timestamp > finalized_block.timestamp());
+            .partition(|(timestamp, _)| *timestamp > block_time);
         self.hold = hold;
     }
 
@@ -244,11 +295,15 @@ where
                 }),
             ) => responder.respond(self.appendable_block(timestamp)).ignore(),
             (ComponentStatus::Initialized, Event::BlockFinalized(finalized_block)) => {
-                self.block_finalized(&*finalized_block);
+                self.register_block_finalized(&*finalized_block);
+                Effects::new()
+            }
+            (ComponentStatus::Initialized, Event::Block(block)) => {
+                self.register_block_added(&*block);
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::BlockProposed(proposed)) => {
-                self.block_proposed(*proposed);
+                self.register_block_proposed(*proposed);
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::ReceiveDeploy(deploy)) => {
