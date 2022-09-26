@@ -21,7 +21,7 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
-use casper_types::ProtocolVersion;
+use casper_types::{ProtocolVersion, TimeDiff};
 
 use crate::DEFAULT_MAX_READERS;
 
@@ -140,6 +140,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         None,
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
+        TimeDiff::from_seconds(60 * 60 * 24),
         RECENT_ERA_COUNT,
     )?)
 }
