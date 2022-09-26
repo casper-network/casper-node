@@ -309,8 +309,16 @@ impl BlocksAccumulator {
     }
 
     pub(crate) fn register_new_local_tip(&mut self, block_header: &BlockHeader) {
-        self.block_gossip_acceptors.remove(&block_header.hash());
-        self.filter.push(block_header.hash())
+        for block_hash in self
+            .block_gossip_acceptors
+            .iter()
+            .filter(|(k, v)| v.block_height().unwrap_or_default() <= block_header.height())
+            .map(|(k, v)| *k)
+            .collect_vec()
+        {
+            self.block_gossip_acceptors.remove(&block_hash);
+            self.filter.push(block_hash);
+        }
     }
 
     fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {

@@ -229,16 +229,14 @@ impl MainReactor {
                         // need to crank synchronizer or put something on the event-q
                         todo!();
                     }
-                    SyncInstruction::BlockExec { .. } => {
-                        // self.block_synchronizer.register_block_by_hash(
-                        //     block.id(),
-                        //     false,
-                        //     self.chainspec
-                        //         .core_config
-                        //         .sync_leap_simultaneous_peer_requests,
-                        // );
-                        // need to crank synchronizer or put something on the event-q
-                        todo!();
+                    SyncInstruction::BlockExec { block, .. } => {
+                        self.block_synchronizer.register_block_by_hash(
+                            block.id(),
+                            false,
+                            self.chainspec
+                                .core_config
+                                .sync_leap_simultaneous_peer_requests,
+                        );
                     }
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
@@ -396,6 +394,8 @@ impl MainReactor {
                         .core_config
                         .sync_leap_simultaneous_peer_requests,
                 );
+                // TODO: PUT EFFECT ON event-q to make sync do stuff
+
                 return CatchUpInstruction::CheckSoon(
                     "block_synchronizer is initialized".to_string(),
                 );
