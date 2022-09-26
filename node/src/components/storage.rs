@@ -85,8 +85,9 @@ use crate::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockDeployApprovals, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, Item, NodeId, SyncLeap,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
+        FetcherItem, FinalitySignature, FinalizedApprovals, Item, NodeId, SignatureWeight,
+        SyncLeap,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1980,6 +1981,64 @@ impl Storage {
         let maybe_signatures: Option<BlockSignatures> =
             txn.get_value(self.block_metadata_db, block_hash)?;
         Ok(maybe_signatures.and_then(|signatures| signatures.get_finality_signature(public_key)))
+    }
+
+    /// Walks an era backwards from its switch block; returns true if every block in the era
+    /// has sufficient finality signatures, else false
+    pub(crate) fn era_has_sufficient_finality_signatures(
+        &self,
+        era_validator_weights: &EraValidatorWeights,
+    ) -> bool {
+        let era_id = era_validator_weights.era_id();
+        if let Some(block_hash) = self.switch_block_era_id_index.get(&era_id) {
+            let mut key = *block_hash;
+            if let Ok(mut txn) = self.env.begin_ro_txn() {
+                loop {
+                    if let Ok(Some(block)) = self.get_single_block(&mut txn, &key) {
+                        if block.header().era_id() != era_id {
+                            return true;
+                        }
+                        if self
+                            .block_has_sufficient_finality_signatures(&key, era_validator_weights)
+                            == false
+                        {
+                            return false;
+                        }
+                        if let Some(parent_hash) = block.parent() {
+                            key = *parent_hash;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Determines if a given block has sufficient finality signatures for its era.
+    pub(crate) fn block_has_sufficient_finality_signatures(
+        &self,
+        block_hash: &BlockHash,
+        era_validator_weights: &EraValidatorWeights,
+    ) -> bool {
+        let era_id = era_validator_weights.era_id();
+        if let Ok(mut txn) = self.env.begin_ro_txn() {
+            if let Ok(Some(block_signatures)) = self.get_block_signatures(&mut txn, block_hash) {
+                if block_signatures.era_id != era_id {
+                    return false;
+                }
+                if let Some(validator_keys) = block_signatures.public_keys() {
+                    match era_validator_weights.has_sufficient_weight(validator_keys.iter()) {
+                        SignatureWeight::Sufficient => {
+                            return true;
+                        }
+                        SignatureWeight::Insufficient | SignatureWeight::Weak => {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Retrieves block signatures for a block with a given block hash.

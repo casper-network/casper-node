@@ -26,7 +26,10 @@ use casper_execution_engine::core::{
     engine_state::{GenesisSuccess, UpgradeSuccess},
 };
 
-use crate::types::{ActivationPoint, ChainspecRawBytes, Item};
+use crate::{
+    components::linear_chain::era_validator_weights_for_block,
+    types::{ActivationPoint, ChainspecRawBytes, EraValidatorWeights, Item},
+};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
@@ -408,10 +411,23 @@ impl MainReactor {
             SyncInstruction::CaughtUp => {
                 match self.linear_chain.highest_block() {
                     Some(block) => {
-                        if block.header().era_id() == block.header().next_block_era_id() {
-                            return CatchUpInstruction::CommitUpgrade(Box::new(
-                                block.header().clone(),
-                            ));
+                        let era_id = block.header().era_id();
+                        if era_id == block.header().next_block_era_id() {
+                            match self.validator_matrix.validator_weights(era_id) {
+                                Some(evw) => {
+                                    if self.storage.era_has_sufficient_finality_signatures(&evw) {
+                                        return CatchUpInstruction::CommitUpgrade(Box::new(
+                                            block.header().clone(),
+                                        ));
+                                    }
+                                }
+                                None => {
+                                    // should be unreachable
+                                    return CatchUpInstruction::Shutdown(
+                                        "should not be possible to be caught up with no era validators".to_string(),
+                                    );
+                                }
+                            }
                         }
                     }
                     None => {
