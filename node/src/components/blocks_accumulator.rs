@@ -49,10 +49,6 @@ pub(crate) enum SyncInstruction {
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
     },
-    BlockExec {
-        block: Box<Block>,
-        signatures: Vec<FinalitySignature>,
-    },
 }
 
 pub(crate) enum StartingWith {
@@ -170,16 +166,6 @@ impl BlocksAccumulator {
             if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
                     self.last_progress = Timestamp::now();
-                    if let Some(block_acceptor) = self.block_gossip_acceptors.get_mut(child_hash) {
-                        if let Some((block, signatures)) =
-                            block_acceptor.executable_block_and_signatures()
-                        {
-                            return SyncInstruction::BlockExec {
-                                block: Box::new(block),
-                                signatures,
-                            };
-                        }
-                    }
 
                     return SyncInstruction::BlockSync {
                         block_hash: *child_hash,

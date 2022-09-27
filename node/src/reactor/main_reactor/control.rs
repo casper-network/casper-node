@@ -229,15 +229,6 @@ impl MainReactor {
                         // need to crank synchronizer or put something on the event-q
                         todo!();
                     }
-                    SyncInstruction::BlockExec { block, .. } => {
-                        self.block_synchronizer.register_block_by_hash(
-                            block.id(),
-                            false,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests,
-                        );
-                    }
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
                         // to run, switch to validate mode
@@ -387,6 +378,15 @@ impl MainReactor {
                 block_hash,
                 should_fetch_execution_state,
             } => {
+                if should_fetch_execution_state == false {
+                    let msg = format!(
+                        "BlockSync should require execution state while in CatchUp mode: {}",
+                        block_hash
+                    );
+                    error!("{}", msg);
+                    return CatchUpInstruction::Shutdown(msg);
+                }
+
                 self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     should_fetch_execution_state,
@@ -399,15 +399,6 @@ impl MainReactor {
                 return CatchUpInstruction::CheckSoon(
                     "block_synchronizer is initialized".to_string(),
                 );
-            }
-            SyncInstruction::BlockExec { block, .. } => {
-                let block_hash = block.id();
-                let msg = format!(
-                    "BlockExec should be unreachable in CatchUp mode: {}",
-                    block_hash
-                );
-                error!("{}", msg);
-                return CatchUpInstruction::Shutdown(msg);
             }
             SyncInstruction::CaughtUp => {
                 match self.linear_chain.highest_block() {
