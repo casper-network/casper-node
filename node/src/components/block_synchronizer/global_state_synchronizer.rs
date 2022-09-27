@@ -105,7 +105,7 @@ pub(super) struct GlobalStateSynchronizer {
     trie_accumulator: TrieAccumulator,
     request_states: BTreeMap<BlockHash, RequestState>,
     in_flight: HashSet<Digest>,
-    last_progress_timestamp: Option<Timestamp>,
+    last_progress: Timestamp,
 }
 
 impl GlobalStateSynchronizer {
@@ -115,16 +115,16 @@ impl GlobalStateSynchronizer {
             trie_accumulator: TrieAccumulator::new(),
             request_states: Default::default(),
             in_flight: Default::default(),
-            last_progress_timestamp: None,
+            last_progress: Timestamp::now(),
         }
     }
 
     fn touch(&mut self) {
-        self.last_progress_timestamp = Some(Timestamp::now());
+        self.last_progress = Timestamp::now();
     }
 
-    pub(super) fn last_progress_timestamp(&self) -> Option<Timestamp> {
-        self.last_progress_timestamp
+    pub(super) fn last_progress(&self) -> Timestamp {
+        self.last_progress
     }
 
     fn handle_request<REv>(

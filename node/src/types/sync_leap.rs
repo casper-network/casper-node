@@ -48,26 +48,28 @@ impl SyncLeap {
             .unwrap_or_else(|| self.trusted_block_header.era_id())
     }
 
-    pub(crate) fn switch_blocks(&self) -> Vec<&BlockHeader> {
+    pub(crate) fn switch_blocks(&self) -> impl Iterator<Item = &BlockHeader> {
         self.trusted_ancestor_headers
             .iter()
             .chain(vec![&self.trusted_block_header])
             .chain(self.signed_block_headers.iter().map(|v| &v.block_header))
             .filter(|bh| bh.is_switch_block())
-            .collect()
     }
 
-    pub(crate) fn apply_validator_weights(&self, validator_matrix: &mut ValidatorMatrix) {
+    // Returns `true` if any new validator weight was registered.
+    pub(crate) fn apply_validator_weights(&self, validator_matrix: &mut ValidatorMatrix) -> bool {
         let fault_tolerance_fraction = validator_matrix.fault_tolerance_threshold();
-        for switch in self.switch_blocks() {
+        self.switch_blocks().fold(false, |acc, switch| {
             if let Some(validator_weights) = switch.next_era_validator_weights() {
                 validator_matrix.register_era_validator_weights(EraValidatorWeights::new(
                     switch.next_block_era_id(),
                     validator_weights.clone(),
                     fault_tolerance_fraction,
-                ));
+                )) || acc
+            } else {
+                acc
             }
-        }
+        })
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {

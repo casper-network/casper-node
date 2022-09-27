@@ -190,27 +190,28 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_signatures(
+    pub(super) fn with_signature(
         &mut self,
-        signatures: Vec<FinalitySignature>,
+        signature: FinalitySignature,
         validator_weights: EraValidatorWeights,
         should_fetch_execution_state: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         let new_state = match self {
-            BlockAcquisitionState::HaveBlockHeader(header, acquired) => {
-                signatures
-                    .into_iter()
-                    .map(|fs| acquired.apply_signature(fs));
+            BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures) => {
+                if !acquired_signatures.apply_signature(signature) {
+                    return Ok(false);
+                };
 
-                match validator_weights.has_sufficient_weight(acquired.have_signatures()) {
+                match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
+                {
                     SignatureWeight::Insufficient => {
                         // Should not change state.
-                        return Ok(());
+                        return Ok(true);
                     }
                     SignatureWeight::Weak | SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveSufficientFinalitySignatures(
                             header.clone(),
-                            acquired.clone(),
+                            acquired_signatures.clone(),
                         )
                     }
                 }
@@ -218,15 +219,15 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveDeploys(header, acquired_signatures, deploys)
                 if !should_fetch_execution_state =>
             {
-                signatures
-                    .into_iter()
-                    .map(|fs| acquired_signatures.apply_signature(fs));
+                if !acquired_signatures.apply_signature(signature) {
+                    return Ok(false);
+                };
 
                 match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient | SignatureWeight::Weak => {
                         // Should not change state.
-                        return Ok(());
+                        return Ok(true);
                     }
                     SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -236,22 +237,23 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            BlockAcquisitionState::HaveExecutionEffects(header, acquired)
+            BlockAcquisitionState::HaveExecutionEffects(header, acquired_signatures)
                 if should_fetch_execution_state =>
             {
-                signatures
-                    .into_iter()
-                    .map(|fs| acquired.apply_signature(fs));
+                if !acquired_signatures.apply_signature(signature) {
+                    return Ok(false);
+                };
 
-                match validator_weights.has_sufficient_weight(acquired.have_signatures()) {
+                match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
+                {
                     SignatureWeight::Insufficient | SignatureWeight::Weak => {
                         // Should not change state.
-                        return Ok(());
+                        return Ok(true);
                     }
                     SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveStrictFinalitySignatures(
                             header.clone(),
-                            acquired.clone(),
+                            acquired_signatures.clone(),
                         )
                     }
                 }
@@ -269,7 +271,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::Fatal => return Err(Error::InvalidAttemptToApplySignatures),
         };
         *self = new_state;
-        Ok(())
+        Ok(true)
     }
 
     pub(super) fn with_deploy(

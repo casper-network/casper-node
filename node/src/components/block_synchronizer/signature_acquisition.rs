@@ -26,13 +26,14 @@ impl SignatureAcquisition {
         SignatureAcquisition { inner }
     }
 
-    pub(super) fn apply_signature(&mut self, finality_signature: FinalitySignature) {
-        if self.inner.contains_key(&finality_signature.public_key) {
-            self.inner.insert(
+    // Returns `true` if new signature was registered.
+    pub(super) fn apply_signature(&mut self, finality_signature: FinalitySignature) -> bool {
+        self.inner
+            .insert(
                 finality_signature.public_key.clone(),
                 SignatureState::Signature(Box::new(finality_signature)),
-            );
-        }
+            )
+            .is_none()
     }
 
     pub(super) fn needing_signatures(&self) -> Vec<PublicKey> {

@@ -85,7 +85,7 @@ pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
     builders: HashMap<BlockHash, BlockBuilder>,
     validator_matrix: ValidatorMatrix,
-    last_progress: Option<Timestamp>,
+    last_progress: Timestamp,
     global_sync: GlobalStateSynchronizer,
 }
 
@@ -95,7 +95,7 @@ impl BlockSynchronizer {
             timeout: config.timeout(),
             builders: Default::default(),
             validator_matrix: Default::default(),
-            last_progress: None,
+            last_progress: Timestamp::now(),
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
         }
     }
@@ -116,6 +116,7 @@ impl BlockSynchronizer {
         max_simultaneous_peers: u32,
     ) {
         if self.builders.get_mut(&block_hash).is_none() {
+            self.last_progress = Timestamp::now();
             self.builders.insert(
                 block_hash,
                 BlockBuilder::new_minimal(
@@ -127,6 +128,8 @@ impl BlockSynchronizer {
         }
     }
 
+    // TODO: Not wired-up
+    // TODO: Maybe misleading name?
     pub(crate) fn leap(
         &mut self,
         block_hash: BlockHash,
@@ -146,7 +149,9 @@ impl BlockSynchronizer {
             }
         }
 
-        sync_leap.apply_validator_weights(&mut self.validator_matrix);
+        if sync_leap.apply_validator_weights(&mut self.validator_matrix) {
+            self.last_progress = Timestamp::now();
+        }
         if let Some(fat_block_header) = sync_leap.highest_block_header() {
             match self.builders.get_mut(&block_hash) {
                 Some(builder) => {
@@ -179,12 +184,14 @@ impl BlockSynchronizer {
     }
 
     // When was progress last made (if any).
-    pub(crate) fn last_progress(&self) -> Option<Timestamp> {
+    pub(crate) fn last_progress(&self) -> Timestamp {
         self.builders
             .values()
             .filter_map(BlockBuilder::last_progress_time)
-            .chain(self.global_sync.last_progress_timestamp().into_iter())
+            .chain(std::iter::once(self.global_sync.last_progress()))
+            .chain(std::iter::once(self.last_progress))
             .max()
+            .unwrap_or(self.last_progress)
     }
 
     fn register_peer(&mut self, block_hash: &BlockHash, peer: NodeId) {

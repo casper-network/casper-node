@@ -12,7 +12,7 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use openssl::pkey::Public;
 use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::components::block_synchronizer::{
     block_acquisition,
@@ -63,7 +63,7 @@ pub(crate) struct BlockBuilder {
 
     // progress tracking
     started: Option<Timestamp>,
-    last_progress_time: Option<Timestamp>,
+    last_progress: Option<Timestamp>,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -90,7 +90,7 @@ impl BlockBuilder {
             peer_list,
             should_fetch_execution_state,
             started: None,
-            last_progress_time: None,
+            last_progress: None,
         }
     }
 
@@ -124,7 +124,7 @@ impl BlockBuilder {
                 peer_list,
                 should_fetch_execution_state,
                 started: None,
-                last_progress_time: None,
+                last_progress: None,
             }
         } else {
             BlockBuilder::new_minimal(
@@ -151,7 +151,7 @@ impl BlockBuilder {
             peer_list: PeerList::new(max_simultaneous_peers),
             should_fetch_execution_state,
             started: None,
-            last_progress_time: None,
+            last_progress: None,
         }
     }
 
@@ -179,7 +179,7 @@ impl BlockBuilder {
     }
 
     pub(crate) fn last_progress_time(&self) -> Option<Timestamp> {
-        self.last_progress_time
+        self.last_progress
     }
 
     pub(crate) fn is_fatal(&self) -> bool {
@@ -229,7 +229,7 @@ impl BlockBuilder {
         if self.started.is_none() {
             self.started = Some(now);
         }
-        self.last_progress_time = Some(now);
+        self.last_progress = Some(now);
     }
 
     pub(crate) fn need_next(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
@@ -299,25 +299,27 @@ impl BlockBuilder {
         finality_signature: FinalitySignature,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        self.apply_finality_signatures(vec![finality_signature], maybe_peer)
-    }
-
-    pub(crate) fn apply_finality_signatures(
-        &mut self,
-        finality_signatures: Vec<FinalitySignature>,
-        maybe_peer: Option<NodeId>,
-    ) -> Result<(), Error> {
         if let Some(validator_weights) = self.validator_weights.to_owned() {
-            if let Err(error) = self.acquisition_state.with_signatures(
-                finality_signatures,
+            match self.acquisition_state.with_signature(
+                finality_signature,
                 validator_weights,
                 self.should_fetch_execution_state,
             ) {
-                self.disqualify_peer(maybe_peer);
-                return Err(Error::BlockAcquisition(error));
+                Err(error) => {
+                    self.disqualify_peer(maybe_peer);
+                    return Err(Error::BlockAcquisition(error));
+                }
+                Ok(true) => {
+                    self.touch();
+                    self.promote_peer(maybe_peer);
+                }
+                Ok(false) => {
+                    warn!(
+                        ?maybe_peer,
+                        "received a finality signature that we already have"
+                    )
+                }
             }
-            self.touch();
-            self.promote_peer(maybe_peer);
             Ok(())
         } else {
             Err(Error::MissingValidatorWeights(self.block_hash))

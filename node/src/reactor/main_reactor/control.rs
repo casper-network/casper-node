@@ -290,20 +290,20 @@ impl MainReactor {
     ) -> CatchUpInstruction {
         let mut effects = Effects::new();
         // check idleness & enforce re-attempts if necessary
-        if let Some(timestamp) = self.block_synchronizer.last_progress() {
-            if Timestamp::now().saturating_diff(timestamp) <= self.idle_tolerances {
-                self.attempts = 0; // if any progress has been made, reset attempts
-                return CatchUpInstruction::CheckLater(
-                    "block_synchronizer is making progress".to_string(),
-                    WAIT_SEC * 2,
-                );
-            }
-            self.attempts += 1;
-            if self.attempts > self.max_attempts {
-                return CatchUpInstruction::Shutdown(
-                    "catch up process exceeds idle tolerances".to_string(),
-                );
-            }
+        if Timestamp::now().saturating_diff(self.block_synchronizer.last_progress())
+            <= self.idle_tolerances
+        {
+            self.attempts = 0; // if any progress has been made, reset attempts
+            return CatchUpInstruction::CheckLater(
+                "block_synchronizer is making progress".to_string(),
+                WAIT_SEC * 2,
+            );
+        }
+        self.attempts += 1;
+        if self.attempts > self.max_attempts {
+            return CatchUpInstruction::Shutdown(
+                "catch up process exceeds idle tolerances".to_string(),
+            );
         }
 
         // determine which block / block_hash we should attempt to leap from

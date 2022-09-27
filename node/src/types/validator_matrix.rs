@@ -37,9 +37,16 @@ impl ValidatorMatrix {
         }
     }
 
-    pub(crate) fn register_era_validator_weights(&mut self, validators: EraValidatorWeights) {
+    pub(crate) fn register_era_validator_weights(
+        &mut self,
+        validators: EraValidatorWeights,
+    ) -> bool {
         let era_id = validators.era_id;
-        self.inner.write().unwrap().insert(era_id, validators);
+        self.inner
+            .write()
+            .unwrap()
+            .insert(era_id, validators)
+            .is_none()
     }
 
     pub(crate) fn register_validator_weights(
