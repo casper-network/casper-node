@@ -485,7 +485,8 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::BlockHeadersBatch(_)
                 | NetResponse::FinalitySignatures(_)
-                | NetResponse::SyncLeap(_)) => {
+                | NetResponse::SyncLeap(_)
+                | NetResponse::BlockEffects(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
                 }
             },

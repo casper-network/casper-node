@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{error, warn};
 
-use casper_hashing::Digest;
+use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
@@ -34,6 +34,9 @@ use casper_types::{
     crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
 };
 
+pub(crate) use block_added::{BlockAdded, BlockAddedValidationError};
+
+use crate::types::{Chunkable, ValueOrChunk};
 use crate::{
     components::consensus,
     effect::GossipTarget,
@@ -49,7 +52,6 @@ use crate::{
     },
     utils::{ds, DisplayIter},
 };
-pub(crate) use block_added::{BlockAdded, BlockAddedValidationError};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -1247,6 +1249,13 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
+    /// Returns deploy hashes of transactions in an order in which they were executed.
+    pub(crate) fn transaction_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+    }
+
     /// Computes the body hash by hashing the serialized bytes.
     pub fn hash(&self) -> Digest {
         let serialized_body = self
@@ -1835,6 +1844,271 @@ impl FetcherItem for BlockAndDeploys {
         }
 
         Ok(())
+    }
+}
+
+/// Represents block effects or chunk of complete value.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub enum BlockEffectsOrChunk {
+    /// Represents legacy block effects.
+    /// Legacy meaning their merkle root can't be verified against what is expected.
+    BlockEffectsLegacy {
+        /// Block to which this value or chunk refers to.
+        block_hash: BlockHash,
+        /// Complete block effects for the block or a chunk of the complete data.
+        value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+    },
+    /// Represents post-1.5.0 block effects.
+    BlockEffects {
+        /// Block to which this value or chunk refers to.
+        block_hash: BlockHash,
+        /// Complete block effects for the block or a chunk of the complete data.
+        value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+    },
+}
+
+impl BlockEffectsOrChunk {
+    /// Verifies equivalence of the effects (or chunks) merkle root hash with the expected value.
+    pub fn validate(&self, expected_merkle_root: &Digest) -> Result<bool, bytesrepr::Error> {
+        match self {
+            // For "legacy" block effects we can't verify their correctness as there's no reference,
+            // expected value to compare against.
+            BlockEffectsOrChunk::BlockEffectsLegacy { .. } => Ok(true),
+            BlockEffectsOrChunk::BlockEffects { value, .. } => match value {
+                ValueOrChunk::Value(block_effects) => {
+                    Ok(&Chunkable::hash(&block_effects)? == expected_merkle_root)
+                }
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                    Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
+                }
+            },
+        }
+    }
+
+    /// Consumes `self` and returns inner `ValueOrChunk` field.
+    /// Throws away information about the context in which the request was made - legacy or not.
+    pub fn flatten(self) -> ValueOrChunk<Vec<casper_types::ExecutionResult>> {
+        match self {
+            BlockEffectsOrChunk::BlockEffectsLegacy { value, .. }
+            | BlockEffectsOrChunk::BlockEffects { value, .. } => value,
+        }
+    }
+}
+
+impl Item for BlockEffectsOrChunk {
+    type Id = BlockEffectsOrChunkId;
+    const TAG: Tag = Tag::BlockEffects;
+
+    fn id(&self) -> Self::Id {
+        match self {
+            BlockEffectsOrChunk::BlockEffectsLegacy { block_hash, value } => match value {
+                ValueOrChunk::Value(_) => BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                    chunk_index: 0,
+                    block_hash: *block_hash,
+                },
+                ValueOrChunk::ChunkWithProof(chunks) => {
+                    BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                        chunk_index: chunks.proof().index(),
+                        block_hash: *block_hash,
+                    }
+                }
+            },
+            // We can't calculate the correcntess of the data against the merkle root of the block
+            // effects as they weren't part of the request's ID.
+            BlockEffectsOrChunk::BlockEffects { block_hash, value } => match value {
+                ValueOrChunk::Value(_) => BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                    chunk_index: 0,
+                    block_hash: *block_hash,
+                },
+                ValueOrChunk::ChunkWithProof(chunks) => {
+                    BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                        chunk_index: chunks.proof().index(),
+                        block_hash: *block_hash,
+                    }
+                }
+            },
+        }
+    }
+}
+
+impl FetcherItem for BlockEffectsOrChunk {
+    type ValidationError = ChunkWithProofVerificationError;
+    type ValidationMetadata = ();
+
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+        match self {
+            BlockEffectsOrChunk::BlockEffectsLegacy {
+                block_hash: _,
+                value,
+            } => match value {
+                ValueOrChunk::Value(_) => Ok(()),
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
+            },
+            BlockEffectsOrChunk::BlockEffects {
+                block_hash: _,
+                value,
+            } => match value {
+                ValueOrChunk::Value(_) => Ok(()),
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
+            },
+        }
+    }
+}
+
+impl Display for BlockEffectsOrChunk {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockEffectsOrChunk::BlockEffectsLegacy {
+                block_hash,
+                value: _,
+            } => {
+                write!(
+                    f,
+                    "block effects (or chunk) for pre-1.5 block with hash={}",
+                    block_hash
+                )
+            }
+            BlockEffectsOrChunk::BlockEffects {
+                block_hash,
+                value: _,
+            } => {
+                write!(
+                    f,
+                    "block effects (or chunk) for post-1.5 block={}",
+                    block_hash
+                )
+            }
+        }
+    }
+}
+
+/// ID of the request for block effects or chunk.
+#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum BlockEffectsOrChunkId {
+    /// Request for pre-1.5 block's effects (or chunk).
+    BlockEffectsOrChunkLegacyId {
+        /// Index of the chunk being requested.
+        chunk_index: u64,
+        /// Hash of the block.
+        block_hash: BlockHash,
+    },
+    /// Request for post-1.5 block's effects (or chunk).
+    BlockEffectsOrChunkId {
+        /// Index of the chunk being requested.
+        chunk_index: u64,
+        /// Hash of the block.
+        block_hash: BlockHash,
+    },
+}
+
+impl BlockEffectsOrChunkId {
+    /// Returns an instance of post-1.5 request for block effects.
+    /// The `chunk_index` is set to 0 as the starting point of the fetch cycle.
+    /// If the effects are stored without chunking the index will be 0 as well.
+    pub fn new(block_hash: BlockHash) -> Self {
+        BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+            chunk_index: 0,
+            block_hash,
+        }
+    }
+
+    /// Constructs a request ID for legacy block effects - pre-1.5.0
+    /// The `chunk_index` is set to 0 as the starting point of the fetch cycle.
+    /// If the effects are stored without chunking the index will be 0 as well.
+    pub fn legacy(block_hash: BlockHash) -> Self {
+        BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+            chunk_index: 0,
+            block_hash,
+        }
+    }
+
+    /// Given a serialized ID, deserializes it for display purposes.
+    fn fmt_serialized(f: &mut Formatter, serialized_id: &[u8]) -> fmt::Result {
+        match bincode::deserialize::<Self>(serialized_id) {
+            Ok(ref effects_or_chunk_id) => fmt::Display::fmt(effects_or_chunk_id, f),
+            Err(_) => f.write_str("<invalid>"),
+        }
+    }
+
+    /// Returns the request for the `next_chunk` retaining the original request's block hash.
+    pub fn next_chunk(&self, next_chunk: u64) -> Self {
+        match self {
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId { block_hash, .. } => {
+                BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                    chunk_index: next_chunk,
+                    block_hash: *block_hash,
+                }
+            }
+            BlockEffectsOrChunkId::BlockEffectsOrChunkId { block_hash, .. } => {
+                BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                    chunk_index: next_chunk,
+                    block_hash: *block_hash,
+                }
+            }
+        }
+    }
+
+    pub(crate) fn block_hash(&self) -> &BlockHash {
+        match self {
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId { block_hash, .. }
+            | BlockEffectsOrChunkId::BlockEffectsOrChunkId { block_hash, .. } => block_hash,
+        }
+    }
+
+    pub(crate) fn chunk_index(&self) -> u64 {
+        match self {
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId { chunk_index, .. }
+            | BlockEffectsOrChunkId::BlockEffectsOrChunkId { chunk_index, .. } => *chunk_index,
+        }
+    }
+
+    /// Constructs a response for the request, retaining the requests' variant and `block_hash`.
+    pub(crate) fn response(
+        &self,
+        value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+    ) -> BlockEffectsOrChunk {
+        match self {
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId { block_hash, .. } => {
+                BlockEffectsOrChunk::BlockEffectsLegacy {
+                    block_hash: *block_hash,
+                    value,
+                }
+            }
+            BlockEffectsOrChunkId::BlockEffectsOrChunkId { block_hash, .. } => {
+                BlockEffectsOrChunk::BlockEffects {
+                    block_hash: *block_hash,
+                    value,
+                }
+            }
+        }
+    }
+}
+
+impl Display for BlockEffectsOrChunkId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockEffectsOrChunkId::BlockEffectsOrChunkLegacyId {
+                chunk_index,
+                block_hash,
+            } => write!(
+                f,
+                "BlockEffectsOrChunkLegacyId({}, {})",
+                chunk_index, block_hash
+            ),
+            BlockEffectsOrChunkId::BlockEffectsOrChunkId {
+                chunk_index,
+                block_hash,
+            } => write!(f, "BlockEffectsOrChunk({}, {})", chunk_index, block_hash),
+        }
+    }
+}
+
+/// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
+pub struct BlockEffectsOrChunkIdDisplay<'a>(pub &'a [u8]);
+
+impl<'a> Display for BlockEffectsOrChunkIdDisplay<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        BlockEffectsOrChunkId::fmt_serialized(f, self.0)
     }
 }
 

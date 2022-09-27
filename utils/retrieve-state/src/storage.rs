@@ -34,7 +34,7 @@ pub fn get_many_deploys_by_hash(
 ) -> Result<Vec<Deploy>, anyhow::Error> {
     let mut deploys = vec![];
     for deploy_hash in hashes {
-        let deploy = match storage.read_deploy_by_hash(*deploy_hash)? {
+        let deploy = match storage.read_deploy_by_hash(deploy_hash)? {
             None => {
                 return Err(anyhow::anyhow!(
                     "Deploy is present in block but hasn't been downloaded."
@@ -191,7 +191,7 @@ mod tests {
             stored_block_by_height.unwrap().unwrap()
         );
 
-        let stored_deploy = storage.read_deploy_by_hash(*example_deploy.id());
+        let stored_deploy = storage.read_deploy_by_hash(example_deploy.id());
         assert!(matches!(stored_deploy, Ok(Some(_deploy))));
     }
 }

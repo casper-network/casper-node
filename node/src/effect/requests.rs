@@ -33,6 +33,8 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
+use crate::types::appendable_block::AppendableBlock;
+use crate::types::{FetcherItem, FinalitySignature, GossiperItem, SyncLeap};
 use crate::{
     components::{
         block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
@@ -51,12 +53,12 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys, BlockHash,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState, StatusFeed, SyncLeap,
-        TrieOrChunk, TrieOrChunkId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockEffectsOrChunk, BlockEffectsOrChunkId,
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo,
+        ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -424,6 +426,13 @@ pub(crate) enum StorageRequest {
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
+    GetBlockEffectsOrChunk {
+        /// Request ID.
+        id: BlockEffectsOrChunkId,
+        /// Responder to call with the execution results.
+        /// None is returned when we don't have the block in the storage.
+        responder: Responder<Option<BlockEffectsOrChunk>>,
+    },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
         /// Hash of deploy to be retrieved.
@@ -440,6 +449,13 @@ pub(crate) enum StorageRequest {
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
+    },
+    /// Retrieves deploy hashes for block.
+    GetDeployHashesForBlock {
+        /// The hash of the block.
+        block_hash: BlockHash,
+        /// The responder.
+        responder: Responder<Option<Vec<DeployHash>>>,
     },
     /// Retrieve block header and its metadata by its hash.
     GetBlockHeaderAndMetadataByHash {
@@ -596,6 +612,10 @@ impl Display for StorageRequest {
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
+            StorageRequest::GetBlockEffectsOrChunk { id, .. } => {
+                write!(formatter, "get execution results for {}", id)
+            }
+
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }
@@ -670,6 +690,9 @@ impl Display for StorageRequest {
                 block_headers_id, ..
             } => {
                 write!(formatter, "get block headers batch: {}", block_headers_id)
+            }
+            StorageRequest::GetDeployHashesForBlock { block_hash, .. } => {
+                write!(formatter, "get deploy hashes for block {}", block_hash)
             }
             StorageRequest::HasDataNeededForProposingBlocks { block_header, .. } => {
                 write!(

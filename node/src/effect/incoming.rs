@@ -111,6 +111,8 @@ pub(crate) enum NetRequest {
     FinalitySignatures(Vec<u8>),
     /// Request for a SyncLeap.
     SyncLeap(Vec<u8>),
+    /// Request for block effects.
+    BlockEffects(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -128,6 +130,7 @@ impl Display for NetRequest {
             NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
             NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
             NetRequest::SyncLeap(_) => f.write_str("request for sync leap"),
+            NetRequest::BlockEffects(_) => f.write_str("request for block effects"),
         }
     }
 }
@@ -146,6 +149,7 @@ impl NetRequest {
             NetRequest::BlockHeadersBatch(ref id) => id,
             NetRequest::FinalitySignatures(ref id) => id,
             NetRequest::SyncLeap(ref id) => id,
+            NetRequest::BlockEffects(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -167,6 +171,7 @@ impl NetRequest {
             NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
+            NetRequest::BlockEffects(_) => Tag::BlockEffects,
         }
     }
 }
@@ -186,6 +191,7 @@ pub(crate) enum NetResponse {
     FinalitySignature(Arc<[u8]>),
     FinalitySignatures(Arc<[u8]>),
     SyncLeap(Arc<[u8]>),
+    BlockEffects(Vec<u8>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -212,6 +218,7 @@ impl Display for NetResponse {
             NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
             NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
             NetResponse::SyncLeap(_) => f.write_str("response for sync leap"),
+            NetResponse::BlockEffects(_) => f.write_str("response for block effects"),
         }
     }
 }

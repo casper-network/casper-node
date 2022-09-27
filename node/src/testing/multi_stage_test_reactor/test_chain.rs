@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use log::info;
 use num::Zero;
@@ -7,12 +7,14 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_types::{
-    system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, Timestamp, U512,
+    system::auction::DelegationRate, EraId, ExecutionResult, Motes, PublicKey, SecretKey,
+    Timestamp, U512,
 };
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
-    reactor::participating,
+    effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
+    reactor::participating::{self, Reactor as ParticipatingReactor},
     testing::{
         self,
         multi_stage_test_reactor::{InitializerReactorConfigWithChainspec, CONFIG_DIR},
@@ -21,11 +23,14 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeId,
+        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        NodeId,
     },
     utils::{External, Loadable, WithDir},
     NodeRng,
 };
+
+use super::MultiStageTestEvent;
 
 #[derive(Clone)]
 struct SecretKeyWithStake {
@@ -41,6 +46,8 @@ impl PartialEq for SecretKeyWithStake {
 }
 
 impl Eq for SecretKeyWithStake {}
+
+const SECRET_KEY_FILE_NAME: &str = "secret_key";
 
 struct TestChain {
     // Keys that validator instances will use, can include duplicates
@@ -161,6 +168,12 @@ impl TestChain {
         test_chain
     }
 
+    fn node_secret_key(&self, idx: u8) -> Option<SecretKey> {
+        let temp_dir = self.storages.get(idx as usize)?;
+        let secret_key_path = temp_dir.path().join(SECRET_KEY_FILE_NAME);
+        Some(SecretKey::from_file(&secret_key_path).expect("load secret key properly"))
+    }
+
     /// Creates an initializer/validator configuration for the `idx`th validator.
     async fn add_node(
         &mut self,
@@ -189,7 +202,7 @@ impl TestChain {
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
         // ...and the secret key for our validator.
         {
-            let secret_key_path = temp_dir.path().join("secret_key");
+            let secret_key_path = temp_dir.path().join(SECRET_KEY_FILE_NAME);
             secret_key
                 .to_file(secret_key_path.clone())
                 .expect("could not write secret key");
@@ -214,6 +227,67 @@ impl TestChain {
             .await
             .expect("could not add node to reactor")
             .0
+    }
+
+    /// Publishes a native transfer to the network.
+    /// Transfer is signed by one of the nodes (random) that are currently being validators.
+    ///
+    /// Returns hash of the submitted transfer.
+    async fn publish_transfer(&mut self, rng: &mut NodeRng) -> DeployHash {
+        let secret_key = self
+            .node_secret_key(0)
+            .expect("be able to read node-0's secret key");
+        let mut deploy = Deploy::random_valid_native_transfer(rng);
+        deploy.sign(&secret_key);
+        let deploy_hash = *deploy.id();
+
+        // Store deploy on a node.
+        let node_with_deploy = self.network.node_ids().next().cloned().unwrap();
+        store_deploy(&deploy, &node_with_deploy, &mut self.network, rng).await;
+        deploy_hash
+    }
+}
+
+const TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Store a deploy on a target node.
+async fn store_deploy(
+    deploy: &Deploy,
+    node_id: &NodeId,
+    network: &mut Network<MultiStageTestReactor>,
+    rng: &mut NodeRng,
+) {
+    network
+        .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone()))
+        .await;
+
+    // cycle to deploy acceptor announcement
+    network
+        .crank_until(
+            node_id,
+            rng,
+            move |event: &MultiStageTestEvent| {
+                matches!(
+                    event,
+                    MultiStageTestEvent::ParticipatingEvent(
+                        <ParticipatingReactor as crate::reactor::Reactor>::Event::DeployAcceptorAnnouncement(
+                            DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
+                        )
+                    )
+                )
+            },
+            TIMEOUT,
+        )
+        .await;
+}
+
+fn announce_deploy_received(
+    deploy: Deploy,
+) -> impl FnOnce(EffectBuilder<MultiStageTestEvent>) -> Effects<MultiStageTestEvent> {
+    |effect_builder: EffectBuilder<MultiStageTestEvent>| {
+        effect_builder
+            .announce_deploy_received(Box::new(deploy), None)
+            .ignore()
     }
 }
 
@@ -258,6 +332,21 @@ fn all_have_genesis_state(nodes: &Nodes<MultiStageTestReactor>) -> bool {
                     .is_empty()
             })
     })
+}
+
+/// Check that all nodes have stored all of the deploys.
+fn all_have_deploys<'a, 'b>(
+    deploys: &'a [DeployHash],
+) -> impl Fn(&'b Nodes<MultiStageTestReactor>) -> bool + 'a {
+    move |nodes| {
+        nodes.values().all(|runner| {
+            let reactor = runner.reactor().inner();
+            let storage = reactor.storage().unwrap();
+            deploys
+                .iter()
+                .all(|hash| storage.read_deploy_by_hash(hash).unwrap().is_some())
+        })
+    }
 }
 
 #[tokio::test]
@@ -564,6 +653,25 @@ async fn test_joiner() {
             Duration::from_secs(600),
         )
         .await;
+
+    // Post some transactions
+    let mut digests: Vec<DeployHash> = vec![];
+    for _ in 1..10 {
+        let digest = chain.publish_transfer(&mut rng).await;
+        digests.push(digest);
+    }
+
+    info!("Waiting for all deploys to be stored on all nodes");
+    chain
+        .network
+        .settle_on(
+            &mut rng,
+            all_have_deploys(&digests),
+            Duration::from_secs(600),
+        )
+        .await;
+
+    let block_effects: HashMap<DeployHash, Vec<ExecutionResult>> = HashMap::new();
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", switch_block_hash);

@@ -87,6 +87,7 @@ impl Payload for Message {
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                     Tag::SyncLeap => MessageKind::BlockTransfer,
                     Tag::BlockAdded => MessageKind::BlockTransfer,
+                    Tag::BlockEffects => MessageKind::BlockTransfer,
 
                     // The following tags should be unreachable.
                     Tag::FinalitySignature => MessageKind::Other,
@@ -134,6 +135,7 @@ impl Payload for Message {
                 Tag::FinalitySignaturesByHash => weights.block_requests,
                 Tag::SyncLeap => weights.block_requests,
                 Tag::BlockAdded => weights.block_requests,
+                Tag::BlockEffects => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -148,6 +150,7 @@ impl Payload for Message {
                 Tag::FinalitySignaturesByHash => weights.block_responses,
                 Tag::SyncLeap => weights.block_responses,
                 Tag::BlockAdded => weights.block_responses,
+                Tag::BlockEffects => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -315,8 +318,6 @@ where
         + From<BlockAddedResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
-    // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) ->
-    // Self {
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
@@ -387,6 +388,11 @@ where
                     message: BlockAddedRequest(serialized_id),
                 }
                 .into(),
+                Tag::BlockEffects => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockEffects(serialized_id),
+                }
+                    .into(),
             },
             Message::GetResponse {
                 tag,
@@ -450,6 +456,11 @@ where
                 Tag::BlockAdded => BlockAddedResponseIncoming {
                     sender,
                     message: BlockAddedResponse(serialized_item.to_vec()),
+                }
+                .into(),
+                Tag::BlockEffects => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockEffects(serialized_item.to_vec()),
                 }
                 .into(),
             },

@@ -27,7 +27,7 @@ use crate::{
         },
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
-    types::{error::BlockCreationError, Block, Deploy, DeployHeader, FinalizedBlock},
+    types::{error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
@@ -70,6 +70,8 @@ pub fn execute_finalized_block(
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
 
+    // WARNING: Do not change the order of `deploys` and `transfers` as it will result in a
+    // different root hash.
     for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
@@ -105,7 +107,11 @@ pub fn execute_finalized_block(
     // were any deploys.
     let block_height = finalized_block.height();
     let execution_results_checksum = compute_execution_results_checksum(
-        &mut execution_results.iter().map(|(_, _, result)| result),
+        execution_results
+            .iter()
+            .map(|(_, _, result)| result)
+            .cloned()
+            .collect(),
     )?;
 
     let mut effects = AdditiveMap::new();
@@ -397,6 +403,18 @@ where
     result
 }
 
+/// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
+///
+/// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
+/// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
+fn compute_execution_results_checksum(
+    execution_results: Vec<ExecutionResult>,
+) -> Result<Digest, BlockCreationError> {
+    (&execution_results)
+        .hash()
+        .map_err(BlockCreationError::BytesRepr)
+}
+
 /// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
 /// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
 fn compute_approvals_checksum(
@@ -412,21 +430,4 @@ fn compute_approvals_checksum(
         approval_hashes.push(Digest::hash(bytes));
     }
     Ok(Digest::hash_merkle_tree(approval_hashes))
-}
-
-/// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
-///
-/// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
-/// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
-fn compute_execution_results_checksum<'a>(
-    results: &mut impl Iterator<Item = &'a ExecutionResult>,
-) -> Result<Digest, BlockCreationError> {
-    let execution_results_bytes = results
-        .cloned()
-        .collect::<Vec<_>>()
-        .to_bytes()
-        .map_err(BlockCreationError::BytesRepr)?;
-    Ok(Digest::hash_into_chunks_if_necessary(
-        &execution_results_bytes,
-    ))
 }

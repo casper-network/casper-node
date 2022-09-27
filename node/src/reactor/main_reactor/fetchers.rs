@@ -4,7 +4,7 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
+        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockEffectsOrChunk, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
         Deploy, FinalitySignature, SyncLeap, TrieOrChunk,
     },
@@ -21,6 +21,7 @@ pub(super) struct Fetchers {
     finality_signature_fetcher: Fetcher<FinalitySignature>,
     deploy_fetcher: Fetcher<Deploy>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
+    block_effects_or_chunk_fetcher: Fetcher<BlockEffectsOrChunk>,
 }
 
 impl Fetchers {
@@ -45,6 +46,11 @@ impl Fetchers {
             )?,
             deploy_fetcher: Fetcher::new("deploy", config, metrics_registry)?,
             trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
+            block_effects_or_chunk_fetcher: Fetcher::new(
+                "block_effects_or_chunk_fetcher",
+                config,
+                metrics_registry,
+            )?,
         })
     }
 
@@ -113,6 +119,19 @@ impl Fetchers {
                 MainEvent::TrieOrChunkFetcher,
                 self.trie_or_chunk_fetcher
                     .handle_event(effect_builder, rng, request.into()),
+            ),
+            MainEvent::BlockEffectsOrChunkFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockEffectsOrChunkFetcher,
+                self.block_effects_or_chunk_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::BlockEffectsOrChunkFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockEffectsOrChunkFetcher,
+                self.block_effects_or_chunk_fetcher.handle_event(
+                    effect_builder,
+                    rng,
+                    request.into(),
+                ),
             ),
 
             // MISC DISPATCHING

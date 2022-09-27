@@ -58,6 +58,9 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use crate::types::{
+    BlockAdded, Chainspec, ChainspecRawBytes, FetcherItem, FinalitySignature, SyncLeap, TrieOrChunk,
+};
 use crate::{
     components::{
         deploy_acceptor, fetcher, fetcher::FetchResponse,
@@ -69,10 +72,9 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, Chainspec, ChainspecRawBytes,
-        Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, NodeId, SyncLeap,
-        TrieOrChunk,
+        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, Item,
+        NodeId,
     },
     unregister_metric,
     utils::{
@@ -989,6 +991,7 @@ where
     <R as Reactor>::Event: From<deploy_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<BlockHeader>>
+        + From<fetcher::Event<BlockEffectsOrChunk>>
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
@@ -1121,6 +1124,15 @@ where
             //     serialized_item,
             // )
             Effects::new()
+        }
+        NetResponse::BlockEffects(ref serialized_item) => {
+            handle_fetch_response::<R, BlockEffectsOrChunk>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
         }
     }
 }
