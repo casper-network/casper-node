@@ -2304,7 +2304,11 @@ impl Storage {
                             // This is an error b/c even though types seem to allow for a
                             // single deploy map to multiple blocks, it shouldn't happen in
                             // practice.
-                            error!(block_hash=?request.block_hash(), ?deploy_hash, "missing execution results for a deploy in particular block");
+                            error!(
+                                block_hash=?request.block_hash(),
+                                ?deploy_hash,
+                                "missing execution results for a deploy in particular block"
+                            );
                             return Ok(None);
                         }
                     }

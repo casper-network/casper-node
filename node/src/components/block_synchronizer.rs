@@ -3,6 +3,7 @@ mod block_builder;
 mod config;
 mod deploy_acquisition;
 mod event;
+mod execution_results_accumulator;
 mod global_state_synchronizer;
 mod need_next;
 mod peer_list;
@@ -56,6 +57,10 @@ pub(crate) use block_builder::BlockBuilder;
 use casper_hashing::Digest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
+use execution_results_accumulator::ExecutionResultsAccumulator;
+pub(crate) use execution_results_accumulator::{
+    Error as ExecutionResultsAccumulatorError, Event as ExecutionResultsAccumulatorEvent,
+};
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
@@ -239,7 +244,6 @@ impl BlockSynchronizer {
         for builder in self.builders.values_mut() {
             let (peers, next) = builder.need_next(rng).build();
             match next {
-                // No further parts of the block are missing. Nothing to do.
                 NeedNext::Nothing => {}
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {

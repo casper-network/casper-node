@@ -1848,7 +1848,7 @@ impl FetcherItem for BlockAndDeploys {
 }
 
 /// Represents block effects or chunk of complete value.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
 pub enum BlockEffectsOrChunk {
     /// Represents legacy block effects.
     /// Legacy meaning their merkle root can't be verified against what is expected.
