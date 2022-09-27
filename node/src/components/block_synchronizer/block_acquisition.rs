@@ -97,6 +97,7 @@ pub(crate) enum BlockAcquisitionState {
     HaveDeploys(Box<BlockHeader>, SignatureAcquisition, DeployAcquisition),
     HaveExecutionEffects(Box<BlockHeader>, SignatureAcquisition),
     HaveStrictFinalitySignatures(Box<BlockHeader>, SignatureAcquisition),
+    //Enqueued(Box<BlockHeader>, SignatureAcquisition),
     Fatal,
 }
 

@@ -229,23 +229,26 @@ impl MainReactor {
                         // need to crank synchronizer or put something on the event-q
                         todo!();
                     }
-                    SyncInstruction::BlockExec { .. } => {
-                        // self.block_synchronizer.register_block_by_hash(
-                        //     block.id(),
-                        //     false,
-                        //     self.chainspec
-                        //         .core_config
-                        //         .sync_leap_simultaneous_peer_requests,
-                        // );
-                        // need to crank synchronizer or put something on the event-q
-                        todo!();
+                    SyncInstruction::BlockExec { block, .. } => {
+                        self.block_synchronizer.register_block_by_hash(
+                            block.id(),
+                            false,
+                            self.chainspec
+                                .core_config
+                                .sync_leap_simultaneous_peer_requests,
+                        );
                     }
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
                         // to run, switch to validate mode
-                        if self.consensus.is_active_validator() {
-                            // push era_supervisor event onto queue
-                            self.state = ReactorState::Validate;
+                        // TODO: is storage the right place to get this from
+                        if let Some(from_height) = self.storage.read_highest_block_height() {
+                            if self.deploy_buffer.have_full_ttl_of_deploys(from_height)
+                                && self.consensus.is_active_validator()
+                            {
+                                // TODO: push era_supervisor event onto queue
+                                self.state = ReactorState::Validate;
+                            }
                         }
                     }
                 }
@@ -391,6 +394,8 @@ impl MainReactor {
                         .core_config
                         .sync_leap_simultaneous_peer_requests,
                 );
+                // TODO: PUT EFFECT ON event-q to make sync do stuff
+
                 return CatchUpInstruction::CheckSoon(
                     "block_synchronizer is initialized".to_string(),
                 );

@@ -177,8 +177,13 @@ impl EraSupervisor {
         Ok(era_supervisor)
     }
 
+    /// Returns whether we are a validator in the current era.
     pub(crate) fn is_active_validator(&self) -> bool {
-        // TODO: wire this up
+        if let Some(era_id) = self.current_era() {
+            return self.open_eras[&era_id]
+                .validators()
+                .contains_key(&self.public_signing_key);
+        }
         false
     }
 

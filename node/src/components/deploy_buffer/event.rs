@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
 
+use crate::types::Block;
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::{requests::DeployBufferRequest, Responder},
@@ -19,6 +20,7 @@ pub(crate) enum Event {
     Request(DeployBufferRequest),
     ReceiveDeploy(Box<Deploy>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
+    Block(Box<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
 }
@@ -44,6 +46,9 @@ impl Display for Event {
                     "finalized block at height {}",
                     finalized_block.height()
                 )
+            }
+            Event::Block(_) => {
+                write!(formatter, "block")
             }
             Event::Expire => {
                 write!(formatter, "expire deploys")
