@@ -1225,7 +1225,7 @@ pub(crate) struct SyncGlobalStateRequest {
     pub(crate) state_root_hash: Digest,
     pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
-    pub(crate) responder: Responder<Result<(), GlobalStateSynchronizerError>>,
+    pub(crate) responder: Responder<Result<Digest, GlobalStateSynchronizerError>>,
 }
 
 impl Display for SyncGlobalStateRequest {

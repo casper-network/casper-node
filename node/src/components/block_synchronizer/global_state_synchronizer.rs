@@ -56,9 +56,10 @@ pub(crate) enum Event {
 
 #[derive(Debug, DataSize)]
 struct RequestState {
+    root_hash: Digest,
     missing_descendants: HashSet<Digest>,
     peers: HashSet<NodeId>,
-    responders: Vec<Responder<Result<(), Error>>>,
+    responders: Vec<Responder<Result<Digest, Error>>>,
 }
 
 impl RequestState {
@@ -66,6 +67,7 @@ impl RequestState {
         let mut missing_descendants_for_current_block = HashSet::new();
         missing_descendants_for_current_block.insert(request.state_root_hash);
         Self {
+            root_hash: request.state_root_hash,
             missing_descendants: missing_descendants_for_current_block,
             peers: request.peers,
             responders: vec![request.responder],
@@ -82,7 +84,7 @@ impl RequestState {
     }
 
     /// Consumes this request state and sends the response on all responders.
-    fn respond(self, response: Result<(), Error>) -> Effects<Event> {
+    fn respond(self, response: Result<Digest, Error>) -> Effects<Event> {
         self.responders
             .into_iter()
             .flat_map(|responder| responder.respond(response.clone()).ignore())
@@ -239,7 +241,10 @@ impl GlobalStateSynchronizer {
 
     fn finish_request(&mut self, block_hash: BlockHash) -> Effects<Event> {
         match self.request_states.remove(&block_hash) {
-            Some(request_state) => request_state.respond(Ok(())),
+            Some(request_state) => {
+                let root_hash = request_state.root_hash;
+                request_state.respond(Ok(root_hash))
+            }
             None => Effects::new(),
         }
     }

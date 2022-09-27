@@ -3,12 +3,14 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use casper_hashing::Digest;
 use derive_more::From;
 use serde::Serialize;
 
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
+use crate::components::block_synchronizer::GlobalStateSynchronizerError;
 use crate::{
     components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
     types::{
@@ -38,6 +40,11 @@ pub(crate) enum Event {
     BlockAddedFetched(FetchResult<BlockAdded>),
     #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
+    GlobalStateSynced {
+        block_hash: BlockHash,
+        #[serde(skip_serializing)]
+        result: Result<Digest, GlobalStateSynchronizerError>,
+    },
     DeployFetched {
         block_hash: BlockHash,
         result: FetchResult<Deploy>,
@@ -80,6 +87,13 @@ impl Display for Event {
             Event::FinalitySignatureFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
+            Event::GlobalStateSynced {
+                block_hash: _,
+                result,
+            } => match result {
+                Ok(root_hash) => write!(f, "synced global state under root {}", root_hash),
+                Err(error) => write!(f, "failed to sync global state: {}", error),
+            },
             Event::DeployFetched {
                 block_hash: _,
                 result,

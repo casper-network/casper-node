@@ -41,6 +41,7 @@ use crate::{
 
 use crate::components::fetcher::Error;
 
+use crate::effect::requests::SyncGlobalStateRequest;
 use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,
@@ -52,6 +53,7 @@ use crate::{
     },
 };
 pub(crate) use block_builder::BlockBuilder;
+use casper_hashing::Digest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 use global_state_synchronizer::GlobalStateSynchronizer;
@@ -229,6 +231,7 @@ impl BlockSynchronizer {
             + From<FetcherRequest<BlockHeader>>
             + From<FetcherRequest<Deploy>>
             + From<FetcherRequest<FinalitySignature>>
+            + From<SyncGlobalStateRequest>
             + Send,
     {
         let mut results = Effects::new();
@@ -267,7 +270,15 @@ impl BlockSynchronizer {
                         })
                     }))
                 }
-                NeedNext::GlobalState(_) => todo!(),
+                NeedNext::GlobalState(block_hash, global_state_root_hash) => results.extend(
+                    effect_builder
+                        .sync_global_state(
+                            block_hash,
+                            global_state_root_hash,
+                            peers.into_iter().collect(),
+                        )
+                        .event(move |result| Event::GlobalStateSynced { block_hash, result }),
+                ),
                 NeedNext::Deploy(block_hash, deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -452,6 +463,31 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    fn global_state_synced(
+        &mut self,
+        block_hash: BlockHash,
+        result: Result<Digest, GlobalStateSynchronizerError>,
+    ) -> Effects<Event> {
+        let root_hash = match result {
+            Ok(hash) => hash,
+            Err(error) => {
+                debug!(%error, "failed to sync global state");
+                return Effects::new();
+            }
+        };
+
+        match self.builders.get_mut(&block_hash) {
+            Some(builder) => {
+                if let Err(error) = builder.apply_global_state(root_hash) {
+                    error!(%block_hash, ?error, "failed to apply global state");
+                }
+            }
+            None => debug!(%block_hash, "not currently synchronising block"),
+        }
+
+        Effects::new()
+    }
+
     fn deploy_fetched(
         &mut self,
         block_hash: BlockHash,
@@ -507,6 +543,7 @@ where
         + From<StorageRequest>
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>
+        + From<SyncGlobalStateRequest>
         + Send,
 {
     type Event = Event;
@@ -534,11 +571,14 @@ where
             Event::BlockHeaderFetched(result) => self.block_header_fetched(result),
             Event::BlockAddedFetched(result) => self.block_added_fetched(result),
             Event::FinalitySignatureFetched(result) => self.finality_signature_fetched(result),
+            Event::GlobalStateSynced { block_hash, result } => {
+                self.global_state_synced(block_hash, result)
+            }
+            Event::DeployFetched { block_hash, result } => self.deploy_fetched(block_hash, result),
             Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployFetched { block_hash, result } => self.deploy_fetched(block_hash, result),
         }
     }
 }

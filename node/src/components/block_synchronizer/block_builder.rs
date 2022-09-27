@@ -326,21 +326,14 @@ impl BlockBuilder {
         }
     }
 
-    // TODO: this needs to be called from somewhere, ya?
-    pub(crate) fn apply_global_state(
-        &mut self,
-        global_state: Digest,
-        maybe_peer: Option<NodeId>,
-    ) -> Result<(), Error> {
+    pub(crate) fn apply_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
             .with_global_state(global_state, self.should_fetch_execution_state)
         {
-            self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
         }
         self.touch();
-        self.promote_peer(maybe_peer);
         Ok(())
     }
 

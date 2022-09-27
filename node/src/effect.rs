@@ -132,6 +132,7 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
+use crate::components::block_synchronizer::GlobalStateSynchronizerError;
 use crate::{
     components::{
         block_synchronizer::TrieAccumulatorError,
@@ -169,7 +170,7 @@ use requests::{
     AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockPayloadRequest,
     BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
     DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    StorageRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1361,6 +1362,28 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetAvailableBlockRange { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Synchronize global state under the given root hash.
+    pub(crate) async fn sync_global_state(
+        self,
+        block_hash: BlockHash,
+        state_root_hash: Digest,
+        peers: HashSet<NodeId>,
+    ) -> Result<Digest, GlobalStateSynchronizerError>
+    where
+        REv: From<SyncGlobalStateRequest>,
+    {
+        self.make_request(
+            |responder| SyncGlobalStateRequest {
+                block_hash,
+                state_root_hash,
+                peers,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

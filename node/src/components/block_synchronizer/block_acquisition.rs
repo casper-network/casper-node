@@ -509,9 +509,14 @@ impl BlockAcquisitionState {
         };
 
         match mode {
-            Mode::GetGlobalState(block_header, root_hash) => Ok(
-                BlockAcquisitionAction::global_state(peer_list, rng, root_hash),
-            ),
+            Mode::GetGlobalState(block_header, root_hash) => {
+                Ok(BlockAcquisitionAction::global_state(
+                    peer_list,
+                    rng,
+                    (*block_header).hash(),
+                    root_hash,
+                ))
+            }
             Mode::GetDeploy(block_header, deploy_hash) => Ok(BlockAcquisitionAction::deploy(
                 (*block_header).hash(),
                 peer_list,
@@ -597,11 +602,16 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn global_state(peer_list: &PeerList, rng: &mut NodeRng, root_hash: Digest) -> Self {
+    pub(super) fn global_state(
+        peer_list: &PeerList,
+        rng: &mut NodeRng,
+        block_hash: BlockHash,
+        root_hash: Digest,
+    ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::GlobalState(root_hash),
+            need_next: NeedNext::GlobalState(block_hash, root_hash),
         }
     }
 
