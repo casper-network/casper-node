@@ -336,12 +336,11 @@ impl BlockSynchronizer {
             None => {
                 builder.demote_peer(maybe_peer_id);
             }
-            Some(block_header) => match builder.apply_header(*block_header, maybe_peer_id) {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(%err, "failed to apply block header");
+            Some(block_header) => {
+                if let Err(error) = builder.apply_header(*block_header, maybe_peer_id) {
+                    error!(%error, "failed to apply block header");
                 }
-            },
+            }
         };
 
         Effects::new()
@@ -381,12 +380,11 @@ impl BlockSynchronizer {
             None => {
                 builder.demote_peer(maybe_peer_id);
             }
-            Some(block) => match builder.apply_block(&block, maybe_peer_id) {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(%err, "failed to apply block");
+            Some(block) => {
+                if let Err(error) = builder.apply_block(&block, maybe_peer_id) {
+                    error!(%error, "failed to apply block");
                 }
-            },
+            }
         };
 
         Effects::new()
@@ -452,7 +450,13 @@ impl BlockSynchronizer {
         };
 
         match self.builders.get_mut(&finality_signature.block_hash) {
-            Some(builder) => builder.apply_finality_signature(*finality_signature, maybe_peer),
+            Some(builder) => {
+                if let Err(error) =
+                    builder.apply_finality_signature(*finality_signature, maybe_peer)
+                {
+                    error!(%error, "failed to apply finality signature");
+                }
+            }
             None => {
                 debug!(
                     block_hash=%finality_signature.block_hash,
@@ -479,7 +483,7 @@ impl BlockSynchronizer {
         match self.builders.get_mut(&block_hash) {
             Some(builder) => {
                 if let Err(error) = builder.apply_global_state(root_hash) {
-                    error!(%block_hash, ?error, "failed to apply global state");
+                    error!(%block_hash, %error, "failed to apply global state");
                 }
             }
             None => debug!(%block_hash, "not currently synchronising block"),
@@ -504,13 +508,12 @@ impl BlockSynchronizer {
         };
 
         match self.builders.get_mut(&block_hash) {
-            Some(builder) => builder.apply_deploy(*deploy.id(), maybe_peer),
-            None => {
-                debug!(
-                    %block_hash,
-                    "not currently synchronising block");
-                return Effects::new();
+            Some(builder) => {
+                if let Err(error) = builder.apply_deploy(*deploy.id(), maybe_peer) {
+                    error!(%block_hash, %error, "failed to apply deploy");
+                }
             }
+            None => debug!(%block_hash, "not currently synchronizing block"),
         };
         Effects::new()
     }
