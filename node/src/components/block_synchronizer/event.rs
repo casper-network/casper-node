@@ -38,12 +38,9 @@ pub(crate) enum Event {
     BlockAddedFetched(FetchResult<BlockAdded>),
     #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
-    #[from]
-    DeployFetched(FetchResult<Deploy>),
-    TrieOrChunkFetched {
+    DeployFetched {
         block_hash: BlockHash,
-        id: TrieOrChunkId,
-        fetch_result: FetchResult<TrieOrChunk>,
+        result: FetchResult<Deploy>,
     },
 
     #[from]
@@ -83,23 +80,12 @@ impl Display for Event {
             Event::FinalitySignatureFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
-            Event::DeployFetched(Ok(fetched_item)) => {
-                write!(f, "{}", fetched_item)
-            }
-            Event::DeployFetched(Err(fetcher_error)) => {
-                write!(f, "{}", fetcher_error)
-            }
-            Event::TrieOrChunkFetched {
-                block_hash,
-                id,
-                fetch_result,
-            } => match fetch_result {
-                Ok(fetched_item) => {
-                    write!(f, "fetching {} for {}, {}", id, block_hash, fetched_item)
-                }
-                Err(fetcher_error) => {
-                    write!(f, "fetching {} for {}, {}", id, block_hash, fetcher_error)
-                }
+            Event::DeployFetched {
+                block_hash: _,
+                result,
+            } => match result {
+                Ok(fetched_item) => write!(f, "{}", fetched_item),
+                Err(fetcher_error) => write!(f, "{}", fetcher_error),
             },
             Event::GlobalStateSynchronizer(event) => {
                 write!(f, "{:?}", event)

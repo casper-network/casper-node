@@ -268,11 +268,11 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::GlobalState(_) => todo!(),
-                NeedNext::Deploy(deploy_hash) => {
+                NeedNext::Deploy(block_hash, deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<Deploy>(deploy_hash, node_id, ())
-                            .event(Event::DeployFetched)
+                            .event(move |result| Event::DeployFetched { block_hash, result })
                     }))
                 }
                 NeedNext::ExecutionResults(block_hash) => todo!(),
@@ -443,7 +443,36 @@ impl BlockSynchronizer {
         match self.builders.get_mut(&finality_signature.block_hash) {
             Some(builder) => builder.apply_finality_signature(*finality_signature, maybe_peer),
             None => {
-                debug!("unexpected block");
+                debug!(
+                    block_hash=%finality_signature.block_hash,
+                    "not currently synchronising block");
+                return Effects::new();
+            }
+        };
+        Effects::new()
+    }
+
+    fn deploy_fetched(
+        &mut self,
+        block_hash: BlockHash,
+        result: Result<FetchedData<Deploy>, Error<Deploy>>,
+    ) -> Effects<Event> {
+        let (deploy, maybe_peer) = match result {
+            Ok(FetchedData::FromPeer { item, peer }) => (item, Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (item, None),
+            Err(err) => {
+                debug!(%err, "failed to fetch deploy");
+                // TODO: Remove peer?
+                return Effects::new();
+            }
+        };
+
+        match self.builders.get_mut(&block_hash) {
+            Some(builder) => builder.apply_deploy(*deploy.id(), maybe_peer),
+            None => {
+                debug!(
+                    %block_hash,
+                    "not currently synchronising block");
                 return Effects::new();
             }
         };
@@ -509,7 +538,7 @@ where
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),
             ),
-            _ => todo!(),
+            Event::DeployFetched { block_hash, result } => self.deploy_fetched(block_hash, result),
         }
     }
 }
