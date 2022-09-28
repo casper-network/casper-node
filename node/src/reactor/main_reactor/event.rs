@@ -502,9 +502,6 @@ impl Display for MainEvent {
                 write!(f, "block validator request: {}", req)
             }
             MainEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
-            // MainEvent::BlockSynchronizerRequest(req) => {
-            //     write!(f, "block synchronizer request: {}", req)
-            // }
             MainEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)

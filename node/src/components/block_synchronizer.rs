@@ -77,24 +77,6 @@ pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
-// #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-// pub(crate) struct BlockSyncRequest {
-//     block_hash: BlockHash,
-//     era_id: EraId,
-//     should_fetch_execution_state: bool,
-//     max_simultaneous_peers: u32,
-// }
-//
-// impl Display for BlockSyncRequest {
-//     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-//         write!(
-//             formatter,
-//             "complete block ID {} with should fetch execution state: {}",
-//             self.block_hash, self.should_fetch_execution_state
-//         )
-//     }
-// }
-
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
@@ -612,6 +594,7 @@ where
             return Effects::new();
         }
 
+        // MISSING EVENT: ANNOUNCEMENT OF BAD PEERS
         match event {
             Event::Request(BlockSynchronizerRequest::NeedNext) => {
                 self.need_next(effect_builder, rng)
@@ -643,7 +626,6 @@ where
                 self.hook_need_next(effect_builder, effects)
             }
             Event::AccumulatedPeers(None) => self.hook_need_next(effect_builder, Effects::new()),
-
             // this is an explicit ask via need_next for validators if they are
             // missing for a given era
             Event::MaybeEraValidators(era_id, Some(era_validators)) => {
@@ -654,7 +636,7 @@ where
                 self.hook_need_next(effect_builder, Effects::new())
             }
 
-            // NOT TRIGGERED -- should get this from step announcement
+            // CURRENTLY NOT TRIGGERED -- should get this from step announcement
             Event::EraValidators {
                 era_validator_weights: validators,
             } => {
@@ -663,7 +645,7 @@ where
                 Effects::new()
             }
 
-            // NOT TRIGGERED
+            // CURRENTLY NOT TRIGGERED (I think...)
             Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),
