@@ -3,7 +3,7 @@ mod block_builder;
 mod config;
 mod deploy_acquisition;
 mod event;
-mod execution_results_accumulator;
+mod execution_results_acquisition;
 mod global_state_synchronizer;
 mod need_next;
 mod peer_list;
@@ -46,8 +46,7 @@ pub(crate) use block_builder::BlockBuilder;
 use casper_hashing::Digest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-pub(crate) use execution_results_accumulator::Error as ExecutionResultsAccumulatorError;
-use execution_results_accumulator::ExecutionResultsAccumulator;
+use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash};
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,

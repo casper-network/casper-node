@@ -33,7 +33,7 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
-use crate::components::block_synchronizer::{ExecutionResultsAccumulatorError, NeedNext};
+use crate::components::block_synchronizer::NeedNext;
 use crate::types::appendable_block::AppendableBlock;
 use crate::types::{FetcherItem, FinalitySignature, GossiperItem, SyncLeap};
 use crate::{
@@ -1240,26 +1240,6 @@ pub(crate) struct TrieAccumulatorRequest {
 impl Display for TrieAccumulatorRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request trie by hash {}", self.hash)
-    }
-}
-
-/// ExecutionResultsAccumulator related requests.
-#[derive(Debug, Serialize, DataSize)]
-#[must_use]
-pub(crate) struct ExecutionResultsAccumulatorRequest {
-    pub(crate) block_hash: BlockHash,
-    pub(crate) results_root_hash: Option<Digest>,
-    pub(crate) peers: Vec<NodeId>,
-    pub(crate) responder: Responder<Result<Vec<ExecutionResult>, ExecutionResultsAccumulatorError>>,
-}
-
-impl Display for ExecutionResultsAccumulatorRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "request execution results for block {}",
-            self.block_hash
-        )
     }
 }
 

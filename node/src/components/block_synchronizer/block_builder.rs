@@ -12,10 +12,11 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, Timestamp};
 
+use crate::components::block_synchronizer::execution_results_acquisition::ExecutionResultsRootHash;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::DeployAcquisition,
-        execution_results_accumulator::ExecutionResultsAccumulator, need_next::NeedNext,
+        execution_results_acquisition::ExecutionResultsAcquisition, need_next::NeedNext,
         peer_list::PeerList, signature_acquisition::SignatureAcquisition,
     },
     types::{
@@ -314,10 +315,12 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
-        if let Err(error) = self
-            .acquisition_state
-            .with_global_state(global_state, self.should_fetch_execution_state)
-        {
+        let execution_results_root_hash: ExecutionResultsRootHash = todo!();
+        if let Err(error) = self.acquisition_state.with_global_state(
+            global_state,
+            execution_results_root_hash,
+            self.should_fetch_execution_state,
+        ) {
             return Err(Error::BlockAcquisition(error));
         }
         self.touch();
@@ -350,7 +353,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(err) = self
             .acquisition_state
-            .with_execution_results(deploy_hash, self.should_fetch_execution_state)
+            .with_execution_results(self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(err));

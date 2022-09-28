@@ -45,15 +45,4 @@ impl DeployAcquisition {
             DeployState::HaveDeployBody | DeployState::HaveDeployBodyWithEffects => None,
         })
     }
-
-    pub(crate) fn needs_execution_result(&self) -> Option<DeployHash> {
-        if self.need_execution_result == false {
-            return None;
-        }
-
-        self.inner.iter().find_map(|(k, v)| match v {
-            DeployState::HaveDeployBody => Some(*k),
-            DeployState::Vacant | DeployState::HaveDeployBodyWithEffects => None,
-        })
-    }
 }
