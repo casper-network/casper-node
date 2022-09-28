@@ -2134,7 +2134,7 @@ impl<REv> EffectBuilder<REv> {
     /// block after a restart.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<StorageRequest> + From<ChainspecRawBytesRequest>,
+        REv: From<StorageRequest>,
     {
         // TODO (#3233): If there was an upgrade changing the validator set at `era_id`, the switch
         // block at this era will be the immediate switch block created after the upgrade. We should
@@ -2158,7 +2158,7 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecRawBytesRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
         // try just reading the era validators first
         let maybe_era_validators = self.get_era_validators(era_id).await;

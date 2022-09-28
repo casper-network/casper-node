@@ -258,7 +258,6 @@ impl BlockSynchronizer {
             + From<FetcherRequest<FinalitySignature>>
             + From<SyncGlobalStateRequest>
             + From<BlocksAccumulatorRequest>
-            + From<ChainspecRawBytesRequest>
             + From<StorageRequest>
             + Send,
     {
@@ -284,7 +283,6 @@ impl BlockSynchronizer {
             + From<FetcherRequest<FinalitySignature>>
             + From<SyncGlobalStateRequest>
             + From<BlocksAccumulatorRequest>
-            + From<ChainspecRawBytesRequest>
             + From<StorageRequest>
             + Send,
     {
@@ -579,7 +577,6 @@ where
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>
         + From<SyncGlobalStateRequest>
-        + From<ChainspecRawBytesRequest>
         + Send,
 {
     type Event = Event;
@@ -591,6 +588,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         if self.disabled {
+            warn!(%event, "block synchronizer not currently enabled - ignoring event");
             return Effects::new();
         }
 
