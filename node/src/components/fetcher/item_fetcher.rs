@@ -76,12 +76,16 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
         let peer_timeout = self.peer_timeout();
         // Capture responder for later signalling.
         let responders = self.responders();
-        responders
+        let entry = responders
             .entry(id.clone())
             .or_default()
             .entry(peer)
-            .or_default()
-            .push(responder);
+            .or_default();
+        entry.push(responder);
+        if entry.len() != 1 {
+            // Avoid sending a new get request if we already have one in flight.
+            return Effects::new();
+        }
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
                 self.metrics().fetch_total.inc();
