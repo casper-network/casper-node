@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use casper_execution_engine::core::engine_state::execution_result::ExecutionResults;
 use casper_hashing::Digest;
 use derive_more::From;
 use serde::Serialize;
@@ -10,9 +11,10 @@ use serde::Serialize;
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
-use crate::components::block_synchronizer::GlobalStateSynchronizerError;
+use crate::components::block_synchronizer::{BlockSynchronizer, GlobalStateSynchronizerError};
+use crate::effect::requests::BlockSynchronizerRequest;
 use crate::{
-    components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
+    components::fetcher::FetchResult,
     types::{
         BlockAdded, BlockHash, BlockHeader, Deploy, EraValidatorWeights, FinalitySignature, NodeId,
         TrieOrChunk, TrieOrChunkId,
@@ -21,16 +23,14 @@ use crate::{
 
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
-    /// The initiating event to fetch an item by its id.
     #[from]
-    Upsert(BlockSyncRequest),
-
+    Request(BlockSynchronizerRequest),
     /// Received announcement about era validators.
     EraValidators {
         era_validator_weights: EraValidatorWeights,
     },
 
-    Next,
+    MaybeEraValidators(EraId, Option<BTreeMap<PublicKey, U512>>),
 
     DisconnectFromPeer(NodeId),
 
@@ -49,22 +49,32 @@ pub(crate) enum Event {
         block_hash: BlockHash,
         result: FetchResult<Deploy>,
     },
-
+    AccumulatedPeers(Option<(BlockHash, Vec<NodeId>)>),
     #[from]
     GlobalStateSynchronizer(GlobalStateSynchronizerEvent),
+    // ExecutionResultsFetched {
+    //     block_hash: BlockHash,
+    //     result: FetchResult<ExecutionResults>,
+    // },
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Upsert(request) => {
-                write!(f, "upsert: {}", request)
+            Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
+                write!(
+                    f,
+                    "block synchronizer need next request"
+                )
+            }
+            Event::Request(_) => {
+                write!(f, "block synchronizer request from effect builder")
             }
             Event::EraValidators { .. } => {
                 write!(f, "new era validators")
             }
-            Event::Next => {
-                write!(f, "next")
+            Event::MaybeEraValidators(era_id, _) => {
+                write!(f, "maybe new new era validators for era_id: {}", era_id)
             }
             Event::DisconnectFromPeer(peer) => {
                 write!(f, "disconnected from peer {}", peer)
@@ -104,6 +114,16 @@ impl Display for Event {
             Event::GlobalStateSynchronizer(event) => {
                 write!(f, "{:?}", event)
             }
+            Event::AccumulatedPeers(_) => {
+                write!(f, "accumulated peers")
+            }
+            // Event::ExecutionResultsFetched {
+            //     block_hash: _,
+            //     result,
+            // } => match result {
+            //     Ok(fetched_item) => write!(f, "{}", fetched_item),
+            //     Err(fetcher_error) => write!(f, "{}", fetcher_error),
+            // },
         }
     }
 }

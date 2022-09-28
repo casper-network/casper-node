@@ -3,6 +3,15 @@ use log::{debug, error};
 use std::{sync::Arc, time::Duration};
 use tracing::{info, warn};
 
+use casper_hashing::Digest;
+use casper_types::{EraId, PublicKey, Timestamp};
+
+use crate::components::sync_leaper::LeapStatus;
+use crate::effect::requests::BlockSynchronizerRequest;
+use crate::{
+    components::linear_chain::era_validator_weights_for_block,
+    types::{ActivationPoint, ChainspecRawBytes, EraValidatorWeights, Item},
+};
 use crate::{
     components::{
         blocks_accumulator::{StartingWith, SyncInstruction},
@@ -25,13 +34,6 @@ use casper_execution_engine::core::{
     engine_state,
     engine_state::{GenesisSuccess, UpgradeSuccess},
 };
-
-use crate::{
-    components::linear_chain::era_validator_weights_for_block,
-    types::{ActivationPoint, ChainspecRawBytes, EraValidatorWeights, Item},
-};
-use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, Timestamp};
 
 // put in the config
 pub(crate) const WAIT_SEC: u64 = 5;
@@ -226,17 +228,16 @@ impl MainReactor {
                                 .core_config
                                 .sync_leap_simultaneous_peer_requests,
                         );
-                        // need to crank synchronizer or put something on the event-q
-                        todo!();
-                    }
-                    SyncInstruction::BlockExec { block, .. } => {
-                        self.block_synchronizer.register_block_by_hash(
-                            block.id(),
-                            false,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests,
+                        let mut effects = Effects::new();
+                        effects.extend(effect_builder.immediately().event(|_| {
+                            MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                        }));
+                        effects.extend(
+                            effect_builder
+                                .set_timeout(Duration::from_secs(WAIT_SEC))
+                                .event(|_| MainEvent::ReactorCrank),
                         );
+                        return effects;
                     }
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
@@ -248,8 +249,15 @@ impl MainReactor {
                             {
                                 // TODO: push era_supervisor event onto queue
                                 self.state = ReactorState::Validate;
+                                self.block_synchronizer.turn_off();
                             }
                         }
+                        // Fraser...maybe this would be more practical?
+                        /*
+                            self.contract_runtime.enqueue_executable_blocks(
+                                self.block_synchronizer.get_executable_blocks()
+                            );
+                        */
                     }
                 }
             }
@@ -263,6 +271,7 @@ impl MainReactor {
                     // to catch up if necessary, or back to validate
                     // if they become able to validate again
                     self.state = ReactorState::KeepUp;
+                    self.block_synchronizer.turn_on();
                 }
                 // TODO: it is unclear to me if era_supervisor should be cranked here
                 // (either imperatively or via putting something on the event-q)
@@ -294,10 +303,11 @@ impl MainReactor {
             <= self.idle_tolerances
         {
             self.attempts = 0; // if any progress has been made, reset attempts
-            return CatchUpInstruction::CheckLater(
-                "block_synchronizer is making progress".to_string(),
-                WAIT_SEC * 2,
-            );
+            let mut effects = Effects::new();
+            effects.extend(effect_builder.immediately().event(|_| {
+                MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+            }));
+            return CatchUpInstruction::Do(effects);
         }
         self.attempts += 1;
         if self.attempts > self.max_attempts {
@@ -368,25 +378,63 @@ impl MainReactor {
         // and usually has some awareness of the chain ahead of our tip
         let trusted_hash = starting_with.block_hash();
         match self.blocks_accumulator.sync_instruction(starting_with) {
-            SyncInstruction::Leap => {
-                let peers_to_ask = self.small_network.peers_random_vec(
-                    rng,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
-                );
-                effects.extend(effect_builder.immediately().event(move |_| {
-                    MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                        trusted_hash,
-                        peers_to_ask,
-                    })
-                }));
-                return CatchUpInstruction::Do(effects);
-            }
+            SyncInstruction::Leap => match self.sync_leaper.leap_status() {
+                LeapStatus::Inactive | LeapStatus::Failed { .. } => {
+                    let peers_to_ask = self.small_network.peers_random_vec(
+                        rng,
+                        self.chainspec
+                            .core_config
+                            .sync_leap_simultaneous_peer_requests,
+                    );
+                    effects.extend(effect_builder.immediately().event(move |_| {
+                        MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                            trusted_hash,
+                            peers_to_ask,
+                        })
+                    }));
+                    return CatchUpInstruction::Do(effects);
+                }
+                LeapStatus::Awaiting { .. } => {
+                    return CatchUpInstruction::CheckSoon(
+                        "sync leaper is awaiting response".to_string(),
+                    );
+                }
+                LeapStatus::Received {
+                    block_hash,
+                    best_available,
+                    from_peers,
+                    ..
+                } => {
+                    self.block_synchronizer.register_sync_leap(
+                        block_hash,
+                        *best_available,
+                        from_peers,
+                        true,
+                        self.chainspec
+                            .core_config
+                            .sync_leap_simultaneous_peer_requests,
+                    );
+
+                    let mut effects = Effects::new();
+                    effects.extend(effect_builder.immediately().event(|_| {
+                        MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                    }));
+                    return CatchUpInstruction::Do(effects);
+                }
+            },
             SyncInstruction::BlockSync {
                 block_hash,
                 should_fetch_execution_state,
             } => {
+                if should_fetch_execution_state == false {
+                    let msg = format!(
+                        "BlockSync should require execution state while in CatchUp mode: {}",
+                        block_hash
+                    );
+                    error!("{}", msg);
+                    return CatchUpInstruction::Shutdown(msg);
+                }
+
                 self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     should_fetch_execution_state,
@@ -394,22 +442,15 @@ impl MainReactor {
                         .core_config
                         .sync_leap_simultaneous_peer_requests,
                 );
-                // TODO: PUT EFFECT ON event-q to make sync do stuff
-
-                return CatchUpInstruction::CheckSoon(
-                    "block_synchronizer is initialized".to_string(),
-                );
-            }
-            SyncInstruction::BlockExec { block, .. } => {
-                let block_hash = block.id();
-                let msg = format!(
-                    "BlockExec should be unreachable in CatchUp mode: {}",
-                    block_hash
-                );
-                error!("{}", msg);
-                return CatchUpInstruction::Shutdown(msg);
+                // once started NeedNext should perpetuate until nothing is needed
+                let mut effects = Effects::new();
+                effects.extend(effect_builder.immediately().event(|_| {
+                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                }));
+                return CatchUpInstruction::Do(effects);
             }
             SyncInstruction::CaughtUp => {
+                // TODO: should we be using linear chain for this?
                 match self.linear_chain.highest_block() {
                     Some(block) => {
                         let era_id = block.header().era_id();

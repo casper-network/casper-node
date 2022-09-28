@@ -7,11 +7,10 @@ use casper_execution_engine::core::{
 use derive_more::From;
 use serde::Serialize;
 
+use crate::effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest};
 use crate::{
     components::{
-        block_synchronizer::{
-            self, BlockSyncRequest, GlobalStateSynchronizerEvent, TrieAccumulatorEvent,
-        },
+        block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, blocks_accumulator, consensus, contract_runtime, deploy_acceptor,
         deploy_buffer, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
         rest_server, rpc_server,
@@ -131,9 +130,11 @@ pub(crate) enum MainEvent {
     #[from]
     BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
     #[from]
+    BlocksAccumulatorRequest(#[serde(skip_serializing)] BlocksAccumulatorRequest),
+    #[from]
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
     #[from]
-    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
+    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSynchronizerRequest),
     #[from]
     BlockAddedRequestIncoming(BlockAddedRequestIncoming),
     #[from]
@@ -310,6 +311,7 @@ impl ReactorEvent for MainEvent {
                 "FinalitySignatureGossiperAnnouncement"
             }
             MainEvent::BlocksAccumulator(_) => "BlocksAccumulator",
+            MainEvent::BlocksAccumulatorRequest(_) => "BlocksAccumulatorRequest",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
             MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
         }
@@ -444,8 +446,14 @@ impl Display for MainEvent {
             MainEvent::BlocksAccumulator(event) => {
                 write!(f, "blocks accumulator: {}", event)
             }
+            MainEvent::BlocksAccumulatorRequest(req) => {
+                write!(f, "blocks accumulator request: {}", req)
+            }
             MainEvent::BlockSynchronizer(event) => {
                 write!(f, "block synchronizer: {}", event)
+            }
+            MainEvent::BlockSynchronizerRequest(req) => {
+                write!(f, "blocks synchronizer request: {}", req)
             }
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
@@ -494,9 +502,6 @@ impl Display for MainEvent {
                 write!(f, "block validator request: {}", req)
             }
             MainEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
-            MainEvent::BlockSynchronizerRequest(req) => {
-                write!(f, "block synchronizer request: {}", req)
-            }
             MainEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)

@@ -70,31 +70,29 @@ pub(crate) struct BlockBuilder {
 }
 
 impl BlockBuilder {
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn new(
         block_hash: BlockHash,
-        era_id: EraId,
-        validator_weights: EraValidatorWeights,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
-        let public_keys = validator_weights.validator_public_keys().cloned().collect();
-        let peer_list = PeerList::new(max_simultaneous_peers);
         BlockBuilder {
             block_hash,
-            era_id: Some(era_id),
-            validator_weights: Some(validator_weights),
+            era_id: None,
+            validator_weights: None,
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
-                SignatureAcquisition::new(public_keys),
+                SignatureAcquisition::new(vec![]),
             ),
-            peer_list,
+            peer_list: PeerList::new(max_simultaneous_peers),
             should_fetch_execution_state,
             started: None,
             last_progress: None,
         }
     }
 
-    pub(crate) fn new_leap(
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn new_from_sync_leap(
         block_hash: BlockHash,
         sync_leap: SyncLeap,
         validator_weights: EraValidatorWeights,
@@ -127,7 +125,7 @@ impl BlockBuilder {
                 last_progress: None,
             }
         } else {
-            BlockBuilder::new_minimal(
+            BlockBuilder::new(
                 block_hash,
                 should_fetch_execution_state,
                 max_simultaneous_peers,
@@ -135,57 +133,56 @@ impl BlockBuilder {
         }
     }
 
-    pub(crate) fn new_minimal(
-        block_hash: BlockHash,
-        should_fetch_execution_state: bool,
-        max_simultaneous_peers: u32,
-    ) -> Self {
-        BlockBuilder {
-            block_hash,
-            era_id: None,
-            validator_weights: None,
-            acquisition_state: BlockAcquisitionState::Initialized(
-                block_hash,
-                SignatureAcquisition::new(vec![]),
-            ),
-            peer_list: PeerList::new(max_simultaneous_peers),
-            should_fetch_execution_state,
-            started: None,
-            last_progress: None,
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn needs_validators(&self, era_id: EraId) -> bool {
+        match self.validator_weights {
+            None => match self.era_id {
+                None => false, // can't get validators w/o era, so must be false
+                Some(e) => e == era_id,
+            },
+            Some(_) => false,
         }
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn abort(&mut self) -> bool {
         self.acquisition_state = BlockAcquisitionState::Fatal;
-        self.flush();
+        self.flush_peers();
         self.touch();
         self.is_fatal()
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
     }
 
+    // NOT WIRED
     pub(crate) fn builder_state(&self) -> &BlockAcquisitionState {
         &self.acquisition_state
     }
 
+    // NOT WIRED
     pub(crate) fn started(&self) -> Option<Timestamp> {
         self.started
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn last_progress_time(&self) -> Option<Timestamp> {
         self.last_progress
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn is_fatal(&self) -> bool {
         self.acquisition_state == BlockAcquisitionState::Fatal
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn is_complete(&self) -> bool {
         matches!(
             self.acquisition_state,
@@ -193,6 +190,7 @@ impl BlockBuilder {
         )
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn register_peer(&mut self, peer: NodeId) {
         if self.is_complete() || self.is_fatal() {
             return;
@@ -200,41 +198,35 @@ impl BlockBuilder {
         self.peer_list.register_peer(peer);
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn dishonest_peers(&self) -> Vec<NodeId> {
         self.peer_list.dishonest_peers()
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.disqualify_peer(peer);
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn promote_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.promote_peer(peer);
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn demote_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.demote_peer(peer);
     }
 
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn flush_dishonest_peers(&mut self) {
         self.peer_list.flush_dishonest_peers();
     }
 
-    pub(crate) fn flush(&mut self) {
-        self.peer_list.flush();
-    }
-
-    pub(crate) fn touch(&mut self) {
-        let now = Timestamp::now();
-        if self.started.is_none() {
-            self.started = Some(now);
-        }
-        self.last_progress = Some(now);
-    }
-
-    pub(crate) fn need_next(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
         if self.peer_list.need_peers() {
-            return BlockAcquisitionAction::peers();
+            return BlockAcquisitionAction::peers(self.block_hash);
         }
         let era_id = match self.era_id {
             None => {
@@ -263,7 +255,8 @@ impl BlockBuilder {
         }
     }
 
-    pub(crate) fn apply_header(
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn register_block_header(
         &mut self,
         block_header: BlockHeader,
         maybe_peer: Option<NodeId>,
@@ -277,14 +270,15 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(crate) fn apply_block(
+    // NOT WIRED
+    pub(crate) fn register_block_added(
         &mut self,
-        block: &Block,
+        block_added: &BlockAdded,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_body(block, self.should_fetch_execution_state)
+            .with_body(&block_added.block, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -294,7 +288,8 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(crate) fn apply_finality_signature(
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
         maybe_peer: Option<NodeId>,
@@ -326,7 +321,8 @@ impl BlockBuilder {
         }
     }
 
-    pub(crate) fn apply_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
             .with_global_state(global_state, self.should_fetch_execution_state)
@@ -337,7 +333,8 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(crate) fn apply_deploy(
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn register_deploy(
         &mut self,
         deploy_hash: DeployHash,
         maybe_peer: Option<NodeId>,
@@ -354,7 +351,8 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(crate) fn apply_execution_results(
+    // NOT WIRED
+    pub(crate) fn register_execution_results(
         &mut self,
         deploy_hash: DeployHash,
         maybe_peer: Option<NodeId>,
@@ -371,7 +369,8 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(crate) fn apply_era_validators(
+    // NOT WIRED
+    pub(crate) fn register_era_validator_weights(
         &mut self,
         validator_weights: EraValidatorWeights,
     ) -> Result<(), Error> {
@@ -380,11 +379,24 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(crate) fn apply_peers(&mut self, peers: Vec<NodeId>) -> Result<(), Error> {
+    // NOT WIRED
+    pub(crate) fn register_peers(&mut self, peers: Vec<NodeId>) -> Result<(), Error> {
         peers
             .into_iter()
             .for_each(|peer| self.peer_list.register_peer(peer));
         self.touch();
         Ok(())
+    }
+
+    fn flush_peers(&mut self) {
+        self.peer_list.flush();
+    }
+
+    fn touch(&mut self) {
+        let now = Timestamp::now();
+        if self.started.is_none() {
+            self.started = Some(now);
+        }
+        self.last_progress = Some(now);
     }
 }
