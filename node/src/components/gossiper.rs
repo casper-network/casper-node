@@ -100,9 +100,9 @@ pub(crate) fn get_finality_signature_from_storage<
     T: GossiperItem + 'static,
     REv: ReactorEventT<T>,
 >(
-    effect_builder: EffectBuilder<REv>,
-    fs_id: FinalitySignatureId,
-    sender: NodeId,
+    _effect_builder: EffectBuilder<REv>,
+    _fs_id: FinalitySignatureId,
+    _sender: NodeId,
 ) -> Effects<Event<FinalitySignature>> {
     // TODO: Needs proper implementation
     Effects::new()

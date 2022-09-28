@@ -34,7 +34,7 @@ use crate::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
                 Vertex, VertexError,
             },
-            state::{self, IndexObservation, IndexPanorama, Observation, Panorama},
+            state::{self, IndexObservation, IndexPanorama, Observation},
             synchronizer::Synchronizer,
             validators::{ValidatorIndex, Validators},
         },
@@ -59,12 +59,10 @@ const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
 const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 /// The timer for logging inactive validators.
 const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
-/// The timer for an alert no progress was made in a long time.
-const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
-const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
+const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(4);
 /// The timer to request the latest state from a random peer.
-const TIMER_ID_REQUEST_STATE: TimerId = TimerId(6);
+const TIMER_ID_REQUEST_STATE: TimerId = TimerId(5);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 pub(crate) const ACTION_ID_VERTEX: ActionId = ActionId(0);

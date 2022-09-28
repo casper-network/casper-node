@@ -66,7 +66,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
         effect_builder: EffectBuilder<REv>,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        _validation_metadata: T::ValidationMetadata, // TODO
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where

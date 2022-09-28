@@ -543,9 +543,6 @@ where
             cfg.max_body_bytes,
         ));
 
-        let node_startup_instant = self.node_startup_instant;
-        let network_name = self.network_name.clone();
-
         Ok(Effects::new())
     }
 }

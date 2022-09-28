@@ -103,7 +103,6 @@ pub(super) enum Outcome {
     StoreBlock {
         block: Box<Block>,
         approvals_checksum: Digest,
-        execution_results_checksum: Digest,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     // Read finality signatures for the block from storage.
@@ -115,7 +114,6 @@ pub(super) enum Outcome {
     // Create a reactor announcement about new (valid) block.
     AnnounceBlock {
         approvals_checksum: Digest,
-        execution_results_checksum: Digest,
         block: Box<Block>,
     },
     // Check if creator of `new_fs` is known trusted validator.
@@ -299,13 +297,11 @@ impl LinearChain {
         &mut self,
         block: Box<Block>,
         approvals_checksum: Digest,
-        execution_results_checksum: Digest,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Outcomes {
         vec![Outcome::StoreBlock {
             block,
             approvals_checksum,
-            execution_results_checksum,
             execution_results,
         }]
     }
@@ -314,7 +310,6 @@ impl LinearChain {
         &mut self,
         block: Box<Block>,
         approvals_checksum: Digest,
-        execution_results_checksum: Digest,
     ) -> Outcomes {
         let mut outcomes = Vec::new();
         let signatures = self.new_block(&*block);
@@ -346,7 +341,6 @@ impl LinearChain {
         outcomes.push(Outcome::AnnounceBlock {
             block,
             approvals_checksum,
-            execution_results_checksum,
         });
         outcomes
     }
@@ -531,49 +525,34 @@ mod tests {
         let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
         let block = Block::random(&mut rng);
         let approvals_checksum = Digest::hash(vec![rng.gen::<u8>()]);
-        let execution_results_checksum = Digest::hash(vec![rng.gen::<u8>()]);
         let execution_results = HashMap::new();
         let new_block_outcomes = lc.handle_new_block(
             Box::new(block.clone()),
             approvals_checksum,
-            execution_results_checksum,
             execution_results.clone(),
         );
         match &*new_block_outcomes {
             [Outcome::StoreBlock {
                 block: outcome_block,
                 approvals_checksum: outcome_approvals_checksum,
-                execution_results_checksum: outcome_execution_results_checksum,
                 execution_results: outcome_execution_results,
             }] => {
                 assert_eq!(&**outcome_block, &block);
                 assert_eq!(outcome_approvals_checksum, &approvals_checksum);
-                assert_eq!(
-                    outcome_execution_results_checksum,
-                    &execution_results_checksum
-                );
                 assert_eq!(outcome_execution_results, &execution_results);
             }
             others => panic!("unexpected outcome: {:?}", others),
         }
 
-        let block_stored_outcomes = lc.handle_put_block(
-            Box::new(block.clone()),
-            approvals_checksum,
-            execution_results_checksum,
-        );
+        let block_stored_outcomes =
+            lc.handle_put_block(Box::new(block.clone()), approvals_checksum);
         match &*block_stored_outcomes {
             [Outcome::AnnounceBlock {
                 block: announced_block,
                 approvals_checksum: announced_approvals_checksum,
-                execution_results_checksum: announced_execution_results_checksum,
             }] => {
                 assert_eq!(&**announced_block, &block);
                 assert_eq!(*announced_approvals_checksum, approvals_checksum);
-                assert_eq!(
-                    *announced_execution_results_checksum,
-                    execution_results_checksum
-                );
             }
             others => panic!("unexpected outcome: {:?}", others),
         }

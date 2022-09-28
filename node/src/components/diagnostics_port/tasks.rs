@@ -620,12 +620,12 @@ mod tests {
 
         fn new(
             cfg: TestReactorConfig,
-            chainspec: Arc<Chainspec>,
+            _chainspec: Arc<Chainspec>,
             _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
             _network_identity: NetworkIdentity,
-            registry: &Registry,
-            event_queue: EventQueueHandle<Event>,
-            rng: &mut NodeRng,
+            _registry: &Registry,
+            _event_queue: EventQueueHandle<Event>,
+            _rng: &mut NodeRng,
         ) -> Result<(Self, Effects<Event>), Error> {
             let diagnostics_console =
                 DiagnosticsPort::new(WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port));

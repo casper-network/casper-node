@@ -24,13 +24,6 @@ impl<T> FetchedData<T> {
             peer,
         }
     }
-
-    pub(crate) fn peer_id(&self) -> Option<NodeId> {
-        match self {
-            FetchedData::FromStorage { .. } => None,
-            FetchedData::FromPeer { peer, .. } => Some(*peer),
-        }
-    }
 }
 
 impl<T: FetcherItem> Display for FetchedData<T> {

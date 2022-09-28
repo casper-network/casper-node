@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 use num::rational::Ratio;
 
@@ -84,7 +84,6 @@ where
                     bogus_validators,
                 });
             }
-            let weight_minus_minimum = signature_weight - minimum_weight.unwrap_or_else(U512::zero);
 
             let quorum_fraction = (quorum_formula)(fault_tolerance_fraction);
             // Verify: signature_weight / total_weight >= lower_bound

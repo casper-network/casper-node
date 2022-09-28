@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 

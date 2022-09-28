@@ -10,29 +10,17 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
-use std::{
-    collections::{
-        hash_map::{Entry, ValuesMut},
-        BTreeMap, HashMap,
-    },
-    fmt::{self, Display, Formatter},
-    rc::Rc,
-};
 
 use datasize::DataSize;
-use futures::TryFutureExt;
 use num_rational::Ratio;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
-    components::{
-        fetcher::{self, FetchedData},
-        Component,
-    },
+    components::{fetcher::FetchedData, Component},
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
     reactor,
     storage::StorageRequest,
@@ -44,31 +32,21 @@ use crate::{
 
 use crate::components::fetcher::Error;
 
-use crate::components::block_synchronizer::block_acquisition::BlockAcquisitionAction;
-use crate::contract_runtime::EraValidatorsRequest;
 use crate::effect::requests::{
-    BlockSynchronizerRequest, BlocksAccumulatorRequest, ChainspecRawBytesRequest,
-    SyncGlobalStateRequest,
+    BlockSynchronizerRequest, BlocksAccumulatorRequest, SyncGlobalStateRequest,
 };
 use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, TrieAccumulatorRequest},
     },
-    types::{
-        Block, BlockHeaderWithMetadata, EraValidatorWeights, Item, SyncLeap, TrieOrChunk,
-        ValidatorMatrix,
-    },
+    types::{BlockHeaderWithMetadata, Item, SyncLeap, TrieOrChunk, ValidatorMatrix},
 };
 pub(crate) use block_builder::BlockBuilder;
-use casper_execution_engine::core::engine_state::execution_result::ExecutionResults;
 use casper_hashing::Digest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-use execution_results_accumulator::ExecutionResultsAccumulator;
-pub(crate) use execution_results_accumulator::{
-    Error as ExecutionResultsAccumulatorError, Event as ExecutionResultsAccumulatorEvent,
-};
+pub(crate) use execution_results_accumulator::Error as ExecutionResultsAccumulatorError;
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
@@ -113,9 +91,8 @@ impl BlockSynchronizer {
     pub(crate) fn highest_executable_block_hash(&self) -> Option<BlockHash> {
         self.builders
             .iter()
-            .filter(|(k, v)| v.is_complete())
-            .filter(|(k, v)| v.block_height().is_some())
-            .max_by(|x, y| x.1.block_height().cmp(&y.1.block_height()))
+            .filter(|(_, v)| v.is_complete() && v.block_height().is_some())
+            .max_by_key(|(_, v)| v.block_height())
             .map(|(k, _)| *k)
     }
 
@@ -163,10 +140,12 @@ impl BlockSynchronizer {
             let block_hash = builder.block_hash();
             let era_id = fat_block_header.block_header.era_id();
             for (public_key, sig) in fat_block_header.block_signatures.proofs {
-                builder.register_finality_signature(
+                if let Err(err) = builder.register_finality_signature(
                     FinalitySignature::new(block_hash, era_id, sig, public_key),
                     None,
-                );
+                ) {
+                    todo!("handle error: {}", err)
+                }
             }
         }
 
@@ -288,7 +267,7 @@ impl BlockSynchronizer {
     {
         let mut results = Effects::new();
 
-        for (block_hash, builder) in &mut self.builders {
+        for builder in &mut self.builders.values_mut() {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             match action.need_next() {

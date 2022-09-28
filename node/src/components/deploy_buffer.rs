@@ -1,20 +1,17 @@
 mod config;
 mod event;
 
-use std::collections::BTreeSet;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     mem,
-    sync::Arc,
 };
 
 use datasize::DataSize;
 use tracing::{debug, error, warn};
-use warp::header;
 
-use casper_types::{bytesrepr::ToBytes, Timestamp};
+use casper_types::Timestamp;
 
-use crate::types::{Block, BlockHeader};
+use crate::types::Block;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
@@ -27,7 +24,7 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Deploy, DeployFootprint, DeployHash, DeployWithApprovals, FinalizedBlock,
+        Deploy, DeployHash, DeployWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };

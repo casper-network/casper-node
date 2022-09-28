@@ -19,10 +19,10 @@ pub(crate) struct SignatureAcquisition {
 
 impl SignatureAcquisition {
     pub(super) fn new(validators: Vec<PublicKey>) -> Self {
-        let mut inner = BTreeMap::new();
-        validators
+        let inner = validators
             .into_iter()
-            .map(|validator| inner.insert(validator, SignatureState::Vacant));
+            .map(|validator| (validator, SignatureState::Vacant))
+            .collect();
         SignatureAcquisition { inner }
     }
 

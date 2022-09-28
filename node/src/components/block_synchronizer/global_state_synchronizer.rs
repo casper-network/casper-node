@@ -1,22 +1,18 @@
-use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
-    time::Duration,
-};
+use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 
 use datasize::DataSize;
 use derive_more::From;
-use num_rational::Ratio;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, warn};
 
 use casper_execution_engine::{core::engine_state, storage::trie::TrieRaw};
-use casper_hashing::{ChunkWithProofVerificationError, Digest};
+use casper_hashing::Digest;
 use casper_types::Timestamp;
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent};
 use crate::{
-    components::{fetcher::FetchResult, Component},
+    components::Component,
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
@@ -25,7 +21,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor,
-    types::{BlockHash, BlockHashAndHeight, FetcherItem, Item, NodeId, TrieOrChunk},
+    types::{BlockHash, NodeId, TrieOrChunk},
     NodeRng,
 };
 
