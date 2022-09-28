@@ -42,7 +42,11 @@ use crate::{
 
 use crate::components::fetcher::Error;
 
-use crate::effect::requests::{BlocksAccumulatorRequest, SyncGlobalStateRequest};
+use crate::components::block_synchronizer::block_acquisition::BlockAcquisitionAction;
+use crate::contract_runtime::EraValidatorsRequest;
+use crate::effect::requests::{
+    BlocksAccumulatorRequest, ChainspecRawBytesRequest, SyncGlobalStateRequest,
+};
 use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,
@@ -212,6 +216,24 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    // WIRED & EVENTED
+    fn register_needed_era_validators(
+        &mut self,
+        era_id: EraId,
+        validators: BTreeMap<PublicKey, U512>,
+    ) {
+        self.validator_matrix
+            .register_validator_weights(era_id, validators);
+
+        if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
+            for builder in self.builders.values_mut() {
+                if builder.needs_validators(era_id) {
+                    builder.register_era_validator_weights(validator_weights.clone());
+                }
+            }
+        }
+    }
+
     // NOT WIRED OR EVENTED
     fn dishonest_peers(&self) -> Vec<NodeId> {
         let mut ret = vec![];
@@ -260,6 +282,8 @@ impl BlockSynchronizer {
             + From<FetcherRequest<FinalitySignature>>
             + From<SyncGlobalStateRequest>
             + From<BlocksAccumulatorRequest>
+            + From<ChainspecRawBytesRequest>
+            + From<StorageRequest>
             + Send,
     {
         let mut results = Effects::new();
@@ -315,7 +339,11 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::ExecutionResults(block_hash) => todo!(),
-                NeedNext::EraValidators(era_id) => todo!(),
+                NeedNext::EraValidators(era_id) => results.extend(
+                    effect_builder
+                        .get_era_validators(era_id)
+                        .event(move |maybe| Event::MaybeEraValidators(era_id, maybe)),
+                ),
                 NeedNext::Peers(block_hash) => results.extend(
                     effect_builder
                         .get_block_accumulated_peers(block_hash)
@@ -588,6 +616,7 @@ where
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>
         + From<SyncGlobalStateRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     type Event = Event;
@@ -639,6 +668,11 @@ where
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),
             ),
+            Event::MaybeEraValidators(era_id, Some(era_validators)) => {
+                self.register_needed_era_validators(era_id, era_validators);
+                Effects::new()
+            }
+            Event::MaybeEraValidators(_, None) => Effects::new(),
         }
     }
 }

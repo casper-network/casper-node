@@ -27,6 +27,8 @@ pub(crate) enum Event {
         era_validator_weights: EraValidatorWeights,
     },
 
+    MaybeEraValidators(EraId, Option<BTreeMap<PublicKey, U512>>),
+
     Next,
 
     DisconnectFromPeer(NodeId),
@@ -56,6 +58,9 @@ impl Display for Event {
         match self {
             Event::EraValidators { .. } => {
                 write!(f, "new era validators")
+            }
+            Event::MaybeEraValidators(era_id, _) => {
+                write!(f, "maybe new new era validators for era_id: {}", era_id)
             }
             Event::Next => {
                 write!(f, "next")

@@ -134,6 +134,17 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn needs_validators(&self, era_id: EraId) -> bool {
+        match self.validator_weights {
+            None => match self.era_id {
+                None => false, // can't get validators w/o era, so must be false
+                Some(e) => e == era_id,
+            },
+            Some(_) => false,
+        }
+    }
+
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn abort(&mut self) -> bool {
         self.acquisition_state = BlockAcquisitionState::Fatal;
         self.flush_peers();
