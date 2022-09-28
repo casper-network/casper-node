@@ -7,6 +7,7 @@ use casper_execution_engine::core::{
 use derive_more::From;
 use serde::Serialize;
 
+use crate::effect::requests::BlocksAccumulatorRequest;
 use crate::{
     components::{
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
@@ -128,6 +129,8 @@ pub(crate) enum MainEvent {
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
     #[from]
     BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
+    #[from]
+    BlocksAccumulatorRequest(#[serde(skip_serializing)] BlocksAccumulatorRequest),
     #[from]
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
     // #[from]
@@ -308,6 +311,7 @@ impl ReactorEvent for MainEvent {
                 "FinalitySignatureGossiperAnnouncement"
             }
             MainEvent::BlocksAccumulator(_) => "BlocksAccumulator",
+            MainEvent::BlocksAccumulatorRequest(_) => "BlocksAccumulatorRequest",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
             //MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
         }
@@ -441,6 +445,9 @@ impl Display for MainEvent {
             }
             MainEvent::BlocksAccumulator(event) => {
                 write!(f, "blocks accumulator: {}", event)
+            }
+            MainEvent::BlocksAccumulatorRequest(req) => {
+                write!(f, "blocks accumulator request: {}", req)
             }
             MainEvent::BlockSynchronizer(event) => {
                 write!(f, "block synchronizer: {}", event)

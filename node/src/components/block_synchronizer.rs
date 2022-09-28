@@ -42,7 +42,7 @@ use crate::{
 
 use crate::components::fetcher::Error;
 
-use crate::effect::requests::SyncGlobalStateRequest;
+use crate::effect::requests::{BlocksAccumulatorRequest, SyncGlobalStateRequest};
 use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,
@@ -107,6 +107,7 @@ impl BlockSynchronizer {
         }
     }
 
+    // CALLED FROM REACTOR
     pub(crate) fn highest_executable_block_hash(&self) -> Option<BlockHash> {
         self.builders
             .iter()
@@ -116,6 +117,7 @@ impl BlockSynchronizer {
             .map(|(k, _)| *k)
     }
 
+    // CALLED FROM REACTOR
     pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,
@@ -126,7 +128,7 @@ impl BlockSynchronizer {
             self.last_progress = Timestamp::now();
             self.builders.insert(
                 block_hash,
-                BlockBuilder::new_minimal(
+                BlockBuilder::new(
                     block_hash,
                     should_fetch_execution_state,
                     max_simultaneous_peers,
@@ -135,9 +137,19 @@ impl BlockSynchronizer {
         }
     }
 
-    // TODO: Not wired-up
-    // TODO: Maybe misleading name?
-    pub(crate) fn leap(
+    // CALLED FROM REACTOR
+    pub(crate) fn last_progress(&self) -> Timestamp {
+        self.builders
+            .values()
+            .filter_map(BlockBuilder::last_progress_time)
+            .chain(std::iter::once(self.global_sync.last_progress()))
+            .chain(std::iter::once(self.last_progress))
+            .max()
+            .unwrap_or(self.last_progress)
+    }
+
+    // NOT WIRED OR EVENTED
+    fn register_sync_leap(
         &mut self,
         block_hash: BlockHash,
         sync_leap: SyncLeap,
@@ -149,7 +161,7 @@ impl BlockSynchronizer {
             let block_hash = builder.block_hash();
             let era_id = fat_block_header.block_header.era_id();
             for (public_key, sig) in fat_block_header.block_signatures.proofs {
-                builder.apply_finality_signature(
+                builder.register_finality_signature(
                     FinalitySignature::new(block_hash, era_id, sig, public_key),
                     None,
                 );
@@ -168,7 +180,7 @@ impl BlockSynchronizer {
                     let era_id = fat_block_header.block_header.era_id();
                     if let Some(vw) = self.validator_matrix.validator_weights(era_id) {
                         let validator_weights = vw;
-                        let mut builder = BlockBuilder::new_leap(
+                        let mut builder = BlockBuilder::new_from_sync_leap(
                             block_hash,
                             sync_leap,
                             validator_weights,
@@ -190,20 +202,29 @@ impl BlockSynchronizer {
         }
     }
 
-    // When was progress last made (if any).
-    pub(crate) fn last_progress(&self) -> Timestamp {
-        self.builders
-            .values()
-            .filter_map(BlockBuilder::last_progress_time)
-            .chain(std::iter::once(self.global_sync.last_progress()))
-            .chain(std::iter::once(self.last_progress))
-            .max()
-            .unwrap_or(self.last_progress)
+    // WIRED & EVENTED
+    fn register_peers(&mut self, block_hash: BlockHash, peers: Vec<NodeId>) -> Effects<Event> {
+        if let Some(builder) = self.builders.get_mut(&block_hash) {
+            for peer in peers {
+                builder.register_peer(peer);
+            }
+        }
+        Effects::new()
     }
 
-    fn register_peer(&mut self, block_hash: &BlockHash, peer: NodeId) {
-        if let Some(builder) = self.builders.get_mut(block_hash) {
-            builder.register_peer(peer)
+    // NOT WIRED OR EVENTED
+    fn dishonest_peers(&self) -> Vec<NodeId> {
+        let mut ret = vec![];
+        for v in self.builders.values() {
+            ret.extend(v.dishonest_peers());
+        }
+        ret
+    }
+
+    // NOT WIRED OR EVENTED
+    pub(crate) fn flush_dishonest_peers(&mut self) {
+        for v in self.builders.values_mut() {
+            v.flush_dishonest_peers();
         }
     }
 
@@ -226,6 +247,7 @@ impl BlockSynchronizer {
     //     }
     // }
 
+    // NOT WIRED
     fn need_next<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -237,13 +259,15 @@ impl BlockSynchronizer {
             + From<FetcherRequest<Deploy>>
             + From<FetcherRequest<FinalitySignature>>
             + From<SyncGlobalStateRequest>
+            + From<BlocksAccumulatorRequest>
             + Send,
     {
         let mut results = Effects::new();
 
-        for builder in self.builders.values_mut() {
-            let (peers, next) = builder.need_next(rng).build();
-            match next {
+        for (block_hash, builder) in &mut self.builders {
+            let action = builder.block_acquisition_action(rng);
+            let peers = action.peers_to_ask(); // pass this to any fetcher
+            match action.need_next() {
                 NeedNext::Nothing => {}
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
@@ -292,13 +316,17 @@ impl BlockSynchronizer {
                 }
                 NeedNext::ExecutionResults(block_hash) => todo!(),
                 NeedNext::EraValidators(era_id) => todo!(),
-                // We expect to be told about new peers automatically; do nothing.
-                NeedNext::Peers => {}
+                NeedNext::Peers(block_hash) => results.extend(
+                    effect_builder
+                        .get_block_accumulated_peers(block_hash)
+                        .event(Event::AccumulatedPeers),
+                ),
             }
         }
         results
     }
 
+    // NOT WIRED
     fn disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
         for builder in self.builders.values_mut() {
             builder.demote_peer(Some(node_id));
@@ -306,6 +334,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    // NOT WIRED
     fn block_header_fetched(
         &mut self,
         result: Result<FetchedData<BlockHeader>, Error<BlockHeader>>,
@@ -341,7 +370,7 @@ impl BlockSynchronizer {
                 builder.demote_peer(maybe_peer_id);
             }
             Some(block_header) => {
-                if let Err(error) = builder.apply_header(*block_header, maybe_peer_id) {
+                if let Err(error) = builder.register_block_header(*block_header, maybe_peer_id) {
                     error!(%error, "failed to apply block header");
                 }
             }
@@ -350,50 +379,52 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn block_fetched(
-        &mut self,
-        result: Result<FetchedData<Block>, Error<Block>>,
-    ) -> Effects<Event> {
-        let (block_hash, maybe_block, maybe_peer_id): (
-            BlockHash,
-            Option<Box<Block>>,
-            Option<NodeId>,
-        ) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (item.id(), Some(item), Some(peer)),
-            Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
-            Err(err) => {
-                debug!(%err, "failed to fetch block-added");
-                match err {
-                    Error::Absent { id, peer }
-                    | Error::Rejected { id, peer }
-                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
-                }
-            }
-        };
+    // NOT WIRED OR EVENTED
+    // fn block_fetched(
+    //     &mut self,
+    //     result: Result<FetchedData<BlockAdded>, Error<BlockAdded>>,
+    // ) -> Effects<Event> {
+    //     let (block_hash, maybe_block, maybe_peer_id): (
+    //         BlockHash,
+    //         Option<Box<BlockAdded>>,
+    //         Option<NodeId>,
+    //     ) = match result {
+    //         Ok(FetchedData::FromPeer { item, peer }) => (item.id(), Some(item), Some(peer)),
+    //         Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
+    //         Err(err) => {
+    //             debug!(%err, "failed to fetch block-added");
+    //             match err {
+    //                 Error::Absent { id, peer }
+    //                 | Error::Rejected { id, peer }
+    //                 | Error::TimedOut { id, peer } => (id, None, Some(peer)),
+    //                 Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+    //             }
+    //         }
+    //     };
+    //
+    //     let builder = match self.builders.get_mut(&block_hash) {
+    //         Some(builder) => builder,
+    //         None => {
+    //             debug!("unexpected block");
+    //             return Effects::new();
+    //         }
+    //     };
+    //
+    //     match maybe_block {
+    //         None => {
+    //             builder.demote_peer(maybe_peer_id);
+    //         }
+    //         Some(block) => {
+    //             if let Err(error) = builder.register_block_added(&block, maybe_peer_id) {
+    //                 error!(%error, "failed to apply block");
+    //             }
+    //         }
+    //     };
+    //
+    //     Effects::new()
+    // }
 
-        let builder = match self.builders.get_mut(&block_hash) {
-            Some(builder) => builder,
-            None => {
-                debug!("unexpected block");
-                return Effects::new();
-            }
-        };
-
-        match maybe_block {
-            None => {
-                builder.demote_peer(maybe_peer_id);
-            }
-            Some(block) => {
-                if let Err(error) = builder.apply_block(&block, maybe_peer_id) {
-                    error!(%error, "failed to apply block");
-                }
-            }
-        };
-
-        Effects::new()
-    }
-
+    // NOT WIRED
     fn block_added_fetched(
         &mut self,
         result: Result<FetchedData<BlockAdded>, Error<BlockAdded>>,
@@ -428,7 +459,7 @@ impl BlockSynchronizer {
             None => {
                 builder.demote_peer(maybe_peer_id);
             }
-            Some(block_added) => match builder.apply_block(&block_added.block, maybe_peer_id) {
+            Some(block_added) => match builder.register_block_added(&block_added, maybe_peer_id) {
                 Ok(_) => {}
                 Err(err) => {
                     error!(%err, "failed to apply block-added");
@@ -439,6 +470,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    // NOT WIRED
     fn finality_signature_fetched(
         &mut self,
         result: Result<FetchedData<FinalitySignature>, Error<FinalitySignature>>,
@@ -456,7 +488,7 @@ impl BlockSynchronizer {
         match self.builders.get_mut(&finality_signature.block_hash) {
             Some(builder) => {
                 if let Err(error) =
-                    builder.apply_finality_signature(*finality_signature, maybe_peer)
+                    builder.register_finality_signature(*finality_signature, maybe_peer)
                 {
                     error!(%error, "failed to apply finality signature");
                 }
@@ -471,6 +503,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    // NOT WIRED
     fn global_state_synced(
         &mut self,
         block_hash: BlockHash,
@@ -486,7 +519,7 @@ impl BlockSynchronizer {
 
         match self.builders.get_mut(&block_hash) {
             Some(builder) => {
-                if let Err(error) = builder.apply_global_state(root_hash) {
+                if let Err(error) = builder.register_global_state(root_hash) {
                     error!(%block_hash, %error, "failed to apply global state");
                 }
             }
@@ -496,6 +529,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    // NOT WIRED
     fn deploy_fetched(
         &mut self,
         block_hash: BlockHash,
@@ -513,7 +547,7 @@ impl BlockSynchronizer {
 
         match self.builders.get_mut(&block_hash) {
             Some(builder) => {
-                if let Err(error) = builder.apply_deploy(*deploy.id(), maybe_peer) {
+                if let Err(error) = builder.register_deploy(*deploy.id(), maybe_peer) {
                     error!(%block_hash, %error, "failed to apply deploy");
                 }
             }
@@ -522,6 +556,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    // NOT WIRED OR EVENTED
     fn stop(&mut self, block_hash: &BlockHash) {
         match self.builders.get_mut(block_hash) {
             None => {
@@ -533,6 +568,7 @@ impl BlockSynchronizer {
         }
     }
 
+    // NOT WIRED OR EVENTED
     fn flush(&mut self) {
         self.builders
             .retain(|k, v| (v.is_fatal() || v.is_complete()) == false);
@@ -546,6 +582,7 @@ where
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
+        + From<BlocksAccumulatorRequest>
         + From<PeerBehaviorAnnouncement>
         + From<StorageRequest>
         + From<TrieAccumulatorRequest>
@@ -562,6 +599,10 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            // TRIGGERED
+            Event::DisconnectFromPeer(node_id) => self.disconnect_from_peer(node_id),
+
+            // NOT TRIGGERED
             Event::EraValidators {
                 era_validator_weights: validators,
             } => {
@@ -573,15 +614,27 @@ where
             //     self.upsert(request);
             //     Effects::new()
             // }
+            // NOT TRIGGERED
             Event::Next => self.need_next(effect_builder, rng),
-            Event::DisconnectFromPeer(node_id) => self.disconnect_from_peer(node_id),
+
+            // NOT TRIGGERED
             Event::BlockHeaderFetched(result) => self.block_header_fetched(result),
+            // NOT TRIGGERED
             Event::BlockAddedFetched(result) => self.block_added_fetched(result),
+            // NOT TRIGGERED
             Event::FinalitySignatureFetched(result) => self.finality_signature_fetched(result),
+            // NOT TRIGGERED
             Event::GlobalStateSynced { block_hash, result } => {
                 self.global_state_synced(block_hash, result)
             }
+            // NOT TRIGGERED
             Event::DeployFetched { block_hash, result } => self.deploy_fetched(block_hash, result),
+            // NOT TRIGGERED
+            Event::AccumulatedPeers(Some((block_hash, peers))) => {
+                self.register_peers(block_hash, peers)
+            }
+            Event::AccumulatedPeers(None) => Effects::new(),
+            // NOT TRIGGERED
             Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),

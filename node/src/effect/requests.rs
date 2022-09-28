@@ -1355,3 +1355,17 @@ impl Display for SyncLeapRequest {
         write!(f, "sync leap request")
     }
 }
+
+#[derive(Debug, Serialize)]
+pub(crate) enum BlocksAccumulatorRequest {
+    GetPeersForBlock {
+        block_hash: BlockHash,
+        responder: Responder<Option<(BlockHash, Vec<NodeId>)>>,
+    },
+}
+
+impl Display for BlocksAccumulatorRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "blocks accumulator request")
+    }
+}

@@ -4,7 +4,7 @@ use crate::types::{BlockHash, DeployHash};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-#[derive(DataSize, Debug)]
+#[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
     Nothing,
     BlockHeader(BlockHash),
@@ -14,5 +14,5 @@ pub(crate) enum NeedNext {
     Deploy(BlockHash, DeployHash),
     ExecutionResults(BlockHash),
     EraValidators(EraId),
-    Peers,
+    Peers(BlockHash),
 }

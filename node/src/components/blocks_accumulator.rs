@@ -25,22 +25,11 @@ use crate::{
     NodeRng,
 };
 
+use crate::effect::requests::BlocksAccumulatorRequest;
 use crate::types::BlockHeader;
 use block_gossip_acceptor::BlockGossipAcceptor;
 use error::Error;
 pub(crate) use event::Event;
-
-/// A cache of pending blocks and finality signatures that are gossiped to this node.
-///
-/// Announces new blocks and finality signatures once they become valid.
-#[derive(DataSize, Debug)]
-pub(crate) struct BlocksAccumulator {
-    filter: Vec<BlockHash>,
-    block_gossip_acceptors: BTreeMap<BlockHash, BlockGossipAcceptor>,
-    block_children: BTreeMap<BlockHash, BlockHash>,
-    validator_matrix: ValidatorMatrix,
-    last_progress: Timestamp,
-}
 
 pub(crate) enum SyncInstruction {
     Leap,
@@ -76,6 +65,18 @@ impl StartingWith {
             StartingWith::Nothing => false,
         }
     }
+}
+
+/// A cache of pending blocks and finality signatures that are gossiped to this node.
+///
+/// Announces new blocks and finality signatures once they become valid.
+#[derive(DataSize, Debug)]
+pub(crate) struct BlocksAccumulator {
+    filter: Vec<BlockHash>,
+    block_gossip_acceptors: BTreeMap<BlockHash, BlockGossipAcceptor>,
+    block_children: BTreeMap<BlockHash, BlockHash>,
+    validator_matrix: ValidatorMatrix,
+    last_progress: Timestamp,
 }
 
 impl BlocksAccumulator {
@@ -177,6 +178,7 @@ impl BlocksAccumulator {
         SyncInstruction::Leap
     }
 
+    // NOT USED
     pub(crate) fn register_block_by_identifier<REv>(
         &mut self,
         block_hash: BlockHash,
@@ -185,7 +187,7 @@ impl BlocksAccumulator {
         if self.filter.contains(&block_hash) {
             return;
         }
-        let mut acceptor = BlockGossipAcceptor::new(block_hash);
+        let mut acceptor = BlockGossipAcceptor::new(block_hash, vec![]);
         if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
             if let Err(err) = acceptor.register_era_validator_weights(evw) {
                 warn!(%err, "unable to register era_validator_weights");
@@ -209,7 +211,7 @@ impl BlocksAccumulator {
         if let Some(parent_hash) = block_added.block.parent() {
             self.block_children.insert(*parent_hash, block_hash);
         }
-        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id) {
+        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
             Some(block_gossip_acceptor) => block_gossip_acceptor,
             None => {
                 return Effects::new();
@@ -249,7 +251,7 @@ impl BlocksAccumulator {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
 
-        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id) {
+        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
             Some(block_gossip_acceptor) => block_gossip_acceptor,
             None => {
                 return Effects::new();
@@ -338,20 +340,29 @@ impl BlocksAccumulator {
         &mut self,
         block_hash: BlockHash,
         era_id: EraId,
+        peers: Vec<NodeId>,
     ) -> Option<&mut BlockGossipAcceptor> {
         if let Entry::Occupied(mut entry) = self.block_gossip_acceptors.entry(block_hash) {
             if self.filter.contains(&block_hash) {
                 return None;
             }
             if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                let acceptor = BlockGossipAcceptor::new_with_validator_weights(block_hash, evw);
+                let acceptor =
+                    BlockGossipAcceptor::new_with_validator_weights(block_hash, evw, peers);
                 entry.insert(acceptor);
             } else {
-                entry.insert(BlockGossipAcceptor::new(block_hash));
+                entry.insert(BlockGossipAcceptor::new(block_hash, peers));
             }
         }
 
         self.block_gossip_acceptors.get_mut(&block_hash)
+    }
+
+    fn get_peers(&self, block_hash: BlockHash) -> Option<(BlockHash, Vec<NodeId>)> {
+        if let Some(gossiper) = self.block_gossip_acceptors.get(&block_hash) {
+            return Some((block_hash, gossiper.peers()));
+        }
+        None
     }
 }
 
@@ -369,6 +380,10 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::Request(BlocksAccumulatorRequest::GetPeersForBlock {
+                block_hash,
+                responder,
+            }) => responder.respond(self.get_peers(block_hash)).ignore(),
             Event::ReceivedBlock { block, sender } => {
                 self.register_block_added(effect_builder, *block, sender)
             }

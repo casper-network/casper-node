@@ -26,28 +26,40 @@ pub(super) struct BlockGossipAcceptor {
     block_added: Option<BlockAdded>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     era_validator_weights: Option<EraValidatorWeights>,
+    peers: Vec<NodeId>,
 }
 
 impl BlockGossipAcceptor {
-    pub(super) fn new(block_hash: BlockHash) -> Self {
+    pub(super) fn new(block_hash: BlockHash, peers: Vec<NodeId>) -> Self {
         Self {
             block_hash,
             era_validator_weights: None,
             block_added: None,
             signatures: BTreeMap::new(),
+            peers,
         }
     }
 
     pub(super) fn new_with_validator_weights(
         block_hash: BlockHash,
         era_validator_weights: EraValidatorWeights,
+        peers: Vec<NodeId>,
     ) -> Self {
         Self {
             block_hash,
             era_validator_weights: Some(era_validator_weights),
             block_added: None,
             signatures: BTreeMap::new(),
+            peers,
         }
+    }
+
+    pub(super) fn peers(&self) -> Vec<NodeId> {
+        self.peers.to_vec()
+    }
+
+    pub(super) fn register_peer(&mut self, peer: NodeId) {
+        self.peers.push(peer);
     }
 
     pub(super) fn refresh(mut self, era_validator_weights: EraValidatorWeights) -> Self {
@@ -80,11 +92,14 @@ impl BlockGossipAcceptor {
             ret
         };
 
+        let peers = self.peers;
+
         Self {
             block_hash,
             era_validator_weights: Some(era_validator_weights),
             block_added,
             signatures,
+            peers,
         }
     }
 
@@ -120,7 +135,6 @@ impl BlockGossipAcceptor {
         block_added: BlockAdded,
         peer: NodeId,
     ) -> Result<(), AcceptorError> {
-        if let Some(block_added) = &self.block_added {}
         if let Err(error) = block_added.validate(&()) {
             warn!(%error, "received invalid block-added");
             return Err(AcceptorError::InvalidGossip(Box::new(
@@ -131,6 +145,7 @@ impl BlockGossipAcceptor {
                 },
             )));
         }
+
         if let Some(era_id) = self.era_validator_weights_era_id() {
             let block_era_id = block_added.block.header().era_id();
             if block_era_id != era_id {
@@ -141,6 +156,9 @@ impl BlockGossipAcceptor {
                 }));
             }
         }
+
+        self.register_peer(peer);
+
         if self.block_added.is_none() {
             self.block_added = Some(block_added);
             self.remove_bogus_validators();
@@ -187,6 +205,7 @@ impl BlockGossipAcceptor {
                 ));
             }
         }
+        self.register_peer(peer);
         self.signatures
             .insert(finality_signature.public_key.clone(), finality_signature);
         self.remove_bogus_validators();

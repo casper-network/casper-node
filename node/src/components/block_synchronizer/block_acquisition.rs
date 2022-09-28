@@ -563,6 +563,14 @@ impl BlockAcquisitionAction {
         }
     }
 
+    pub(super) fn need_next(&self) -> NeedNext {
+        self.need_next.clone()
+    }
+
+    pub(super) fn peers_to_ask(&self) -> Vec<NodeId> {
+        self.peers_to_ask.to_vec()
+    }
+
     pub(super) fn noop() -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
@@ -570,10 +578,10 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn peers() -> Self {
+    pub(super) fn peers(block_hash: BlockHash) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::Peers,
+            need_next: NeedNext::Peers(block_hash),
         }
     }
 

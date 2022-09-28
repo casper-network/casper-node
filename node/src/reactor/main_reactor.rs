@@ -83,6 +83,7 @@ use crate::{
     NodeRng,
 };
 
+use crate::components::blocks_accumulator;
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -627,6 +628,11 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::BlocksAccumulator,
                 self.blocks_accumulator
                     .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::BlocksAccumulatorRequest(request) => reactor::wrap_effects(
+                MainEvent::BlocksAccumulator,
+                self.blocks_accumulator
+                    .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::BlockSynchronizer(event) => reactor::wrap_effects(
                 MainEvent::BlockSynchronizer,
