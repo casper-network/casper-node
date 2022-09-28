@@ -8,6 +8,7 @@ use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::components::sync_leaper::LeapStatus;
 use crate::effect::requests::BlockSynchronizerRequest;
+use crate::types::ValidatorMatrix;
 use crate::{
     components::linear_chain::era_validator_weights_for_block,
     types::{ActivationPoint, ChainspecRawBytes, EraValidatorWeights, Item},
@@ -208,7 +209,11 @@ impl MainReactor {
 
                 // TODO: double check getting this from block_sync actually makes sense
                 let starting_with = match self.block_synchronizer.highest_executable_block_hash() {
+                    // TODO: We might have the complete block, with state: We should execute.
+                    // If we don't, we might want to go back to CatchUp mode?
                     Some(block_hash) => StartingWith::Hash(block_hash),
+                    // TODO: We might just not have finalized the next block yet. No need to leap
+                    // again!
                     None => StartingWith::Nothing,
                 };
 
@@ -405,6 +410,8 @@ impl MainReactor {
                     from_peers,
                     ..
                 } => {
+                    let validator_weights = best_available.validators_of_highest_block();
+                    let era_id = best_available.highest_era();
                     self.block_synchronizer.register_sync_leap(
                         block_hash,
                         *best_available,
@@ -415,10 +422,15 @@ impl MainReactor {
                             .sync_leap_simultaneous_peer_requests,
                     );
 
-                    let mut effects = Effects::new();
-                    effects.extend(effect_builder.immediately().event(|_| {
+                    let mut validator_matrix = ValidatorMatrix::new(
+                        self.chainspec.highway_config.finality_threshold_fraction,
+                    );
+                    validator_matrix.register_validator_weights(era_id, validator_weights);
+                    self.blocks_accumulator
+                        .register_updated_validator_matrix(validator_matrix);
+                    let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                    }));
+                    });
                     return CatchUpInstruction::Do(effects);
                 }
             },
