@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{BlockAddedValidationError, BlockHash, FinalitySignature, NodeId};
+use crate::types::{BlockAddedValidationError, BlockHash, NodeId};
 
 #[derive(Error, Debug)]
 pub(super) enum EraMismatchError {

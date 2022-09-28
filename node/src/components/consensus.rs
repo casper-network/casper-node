@@ -29,7 +29,6 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -114,8 +113,6 @@ pub(crate) enum Event {
     BlockAdded {
         header: Box<BlockHeader>,
         header_hash: BlockHash,
-        approvals_checksum: Digest,
-        execution_results_checksum: Digest,
     },
     /// The proto-block has been validated.
     ResolveValidity(ResolveValidity),
@@ -127,8 +124,6 @@ pub(crate) enum Event {
     },
     /// Event raised when a new era should be created because a new switch block is available.
     CreateRequiredEras {
-        /// The ID of the current era
-        current_era: EraId,
         /// The most recent switch block headers
         switch_blocks: Vec<BlockHeader>,
     },
@@ -204,7 +199,6 @@ impl Display for Event {
             Event::BlockAdded {
                 header: _,
                 header_hash,
-                ..
             } => write!(
                 f,
                 "A block has been added to the linear chain: {}",
@@ -230,13 +224,10 @@ impl Display for Event {
                 "Deactivate old {} unless additional faults are observed; faults so far: {}",
                 era_id, faulty_num
             ),
-            Event::CreateRequiredEras {
-                current_era,
-                switch_blocks,
-            } => write!(
+            Event::CreateRequiredEras { switch_blocks } => write!(
                 f,
-                "New eras should be created; current era: {:?}, switch blocks: {:?}",
-                current_era, switch_blocks
+                "New eras should be created; switch blocks: {:?}",
+                switch_blocks
             ),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
@@ -310,15 +301,7 @@ where
             Event::BlockAdded {
                 header,
                 header_hash: _,
-                approvals_checksum,
-                execution_results_checksum,
-            } => self.handle_block_added(
-                effect_builder,
-                *header,
-                approvals_checksum,
-                execution_results_checksum,
-                rng,
-            ),
+            } => self.handle_block_added(effect_builder, *header),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
             }
@@ -327,10 +310,9 @@ where
                 faulty_num,
                 delay,
             } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
-            Event::CreateRequiredEras {
-                current_era,
-                switch_blocks,
-            } => self.create_required_eras(effect_builder, rng, current_era, &switch_blocks),
+            Event::CreateRequiredEras { switch_blocks } => {
+                self.create_required_eras(effect_builder, rng, &switch_blocks)
+            }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 self.got_upgrade_activation_point(activation_point)
             }

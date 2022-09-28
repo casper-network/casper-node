@@ -309,7 +309,6 @@ pub(crate) enum LinearChainAnnouncement {
     BlockAdded {
         block: Box<Block>,
         approvals_checksum: Digest,
-        execution_results_checksum: Digest,
     },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),

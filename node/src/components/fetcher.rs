@@ -11,22 +11,18 @@ mod tests;
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
-use num_rational::Ratio;
 use prometheus::Registry;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, trace};
 
 use crate::{
-    components::{
-        linear_chain::{self, BlockSignatureError},
-        Component,
-    },
+    components::Component,
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{BlockHeader, BlockSignatures, FetcherItem, NodeId},
+    types::{FetcherItem, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -155,50 +151,5 @@ where
             }
             Event::PutToStorage { item, peer } => self.signal(item.id(), Ok(*item), peer),
         }
-    }
-}
-
-/// Returns `true` if the cumulative weight of the given signatures is sufficient for the given
-/// block using the specified `fault_tolerance_fraction`.
-///
-/// Note that signatures are _not_ cryptographically verified in this function.
-async fn has_enough_block_signatures<REv>(
-    effect_builder: EffectBuilder<REv>,
-    block_header: &BlockHeader,
-    block_signatures: &BlockSignatures,
-    fault_tolerance_fraction: Ratio<u64>,
-) -> bool
-where
-    REv:
-        From<StorageRequest> + From<ContractRuntimeRequest> + From<PeerBehaviorAnnouncement> + Send,
-{
-    let validator_weights =
-        match linear_chain::era_validator_weights_for_block(block_header, effect_builder).await {
-            Ok((_, validator_weights)) => validator_weights,
-            Err(error) => {
-                warn!(
-                    ?error,
-                    ?block_header,
-                    ?block_signatures,
-                    "failed to get validator weights for given block"
-                );
-                return false;
-            }
-        };
-
-    match linear_chain::check_sufficient_block_signatures(
-        &validator_weights,
-        fault_tolerance_fraction,
-        Some(block_signatures),
-    ) {
-        Err(error @ BlockSignatureError::InsufficientWeightForFinality { .. }) => {
-            info!(?error, "insufficient block signatures from storage");
-            false
-        }
-        Err(error @ BlockSignatureError::BogusValidators { .. }) => {
-            error!(?error, "bogus validators block signature from storage");
-            false
-        }
-        Ok(_) => true,
     }
 }

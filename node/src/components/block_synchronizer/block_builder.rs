@@ -1,17 +1,8 @@
-use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
-    env::var,
-    fmt::{Display, Formatter},
-    hash::Hash,
-    rc::Rc,
-    time::Duration,
-};
+use std::fmt::{Display, Formatter};
 
 use datasize::DataSize;
 use itertools::Itertools;
 use num_rational::Ratio;
-use openssl::pkey::Public;
-use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 use tracing::{error, warn};
 
 use crate::components::block_synchronizer::{
@@ -19,18 +10,16 @@ use crate::components::block_synchronizer::{
     block_acquisition::{BlockAcquisitionAction, BlockAcquisitionState},
 };
 use casper_hashing::Digest;
-use casper_types::{system::auction::EraValidators, EraId, PublicKey, Timestamp, U512};
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::block_synchronizer::{
-        deploy_acquisition::DeployAcquisition, need_next::NeedNext, peer_list::PeerList,
-        signature_acquisition::SignatureAcquisition,
+        peer_list::PeerList, signature_acquisition::SignatureAcquisition,
     },
     types::{
-        Block, BlockAdded, BlockBody, BlockHash, BlockHeader, DeployHash, EraValidatorWeights,
-        FinalitySignature, NodeId, SignatureWeight, SyncLeap, ValidatorMatrix,
+        BlockAdded, BlockHash, BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature,
+        NodeId, SyncLeap,
     },
-    utils::Source::Peer,
     NodeRng,
 };
 
@@ -112,7 +101,7 @@ impl BlockBuilder {
                 signature_acquisition,
             );
             let mut peer_list = PeerList::new(max_simultaneous_peers);
-            peers.iter().map(|p| peer_list.register_peer(*p));
+            peers.iter().for_each(|p| peer_list.register_peer(*p));
 
             BlockBuilder {
                 block_hash,
@@ -373,10 +362,9 @@ impl BlockBuilder {
     pub(crate) fn register_era_validator_weights(
         &mut self,
         validator_weights: EraValidatorWeights,
-    ) -> Result<(), Error> {
+    ) {
         self.validator_weights = Some(validator_weights);
         self.touch();
-        Ok(())
     }
 
     // NOT WIRED

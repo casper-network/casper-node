@@ -2,15 +2,12 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
-use serde::{Deserialize, Serialize};
-
-use casper_types::Timestamp;
 
 use crate::types::Block;
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
-    effect::{requests::DeployBufferRequest, Responder},
-    types::{appendable_block::AppendableBlock, Deploy, DeployHash, FinalizedBlock},
+    effect::requests::DeployBufferRequest,
+    types::{Deploy, FinalizedBlock},
 };
 
 #[derive(Debug, From, DataSize)]

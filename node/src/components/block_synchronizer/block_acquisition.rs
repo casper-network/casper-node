@@ -1,17 +1,12 @@
 use std::{
     collections::BTreeMap,
     fmt::{Display, Formatter},
-    hash::Hash,
-    mem,
-    rc::Rc,
 };
 
 use datasize::DataSize;
-use itertools::Itertools;
-use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
 
 use casper_hashing::Digest;
-use casper_types::{system::auction::EraValidators, EraId, PublicKey, Timestamp, U512};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -22,7 +17,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature, Item,
-        NodeId, SignatureWeight, ValidatorMatrix,
+        NodeId, SignatureWeight,
     },
     NodeRng,
 };

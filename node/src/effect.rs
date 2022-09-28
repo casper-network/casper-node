@@ -1815,12 +1815,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(
-        self,
-        block: Box<Block>,
-        approvals_checksum: Digest,
-        execution_results_checksum: Digest,
-    ) where
+    pub(crate) async fn announce_block_added(self, block: Box<Block>, approvals_checksum: Digest)
+    where
         REv: From<LinearChainAnnouncement>,
     {
         self.event_queue
@@ -1828,7 +1824,6 @@ impl<REv> EffectBuilder<REv> {
                 LinearChainAnnouncement::BlockAdded {
                     block,
                     approvals_checksum,
-                    execution_results_checksum,
                 },
                 QueueKind::Regular,
             )

@@ -1,11 +1,8 @@
-use std::{
-    collections::{btree_map::Entry, BTreeMap},
-    time::Duration,
-};
+use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;
 use itertools::Itertools;
-use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
+use rand::seq::IteratorRandom;
 
 use crate::{types::NodeId, NodeRng};
 use casper_types::{TimeDiff, Timestamp};
@@ -163,7 +160,7 @@ impl PeerList {
         // if below limit get semi-useful
         let missing: usize = peers.len().saturating_sub(up_to);
         if missing > 0 {
-            let mut better_than_nothing = self
+            let better_than_nothing = self
                 .peer_list
                 .iter()
                 .filter(|(_peer, quality)| {

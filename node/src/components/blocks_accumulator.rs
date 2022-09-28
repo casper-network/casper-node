@@ -2,26 +2,18 @@ mod block_gossip_acceptor;
 mod error;
 mod event;
 
-use std::{
-    collections::{btree_map::Entry, BTreeMap},
-    hash::Hash,
-};
+use std::collections::{btree_map::Entry, BTreeMap};
 
-use casper_types::system::auction::ValidatorWeights;
 use datasize::DataSize;
 use itertools::Itertools;
-use num_rational::Ratio;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{
-        Block, BlockAdded, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, Item,
-        NodeId, SignatureWeight, ValidatorMatrix,
-    },
+    types::{Block, BlockAdded, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -90,7 +82,7 @@ impl BlocksAccumulator {
         }
     }
 
-    pub(crate) fn flush(mut self, validator_matrix: ValidatorMatrix) -> Self {
+    pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
         Self {
             filter: Default::default(),
             block_gossip_acceptors: Default::default(),
@@ -119,10 +111,10 @@ impl BlocksAccumulator {
 
         let should_fetch_execution_state = starting_with.have_block() == false;
         let block_hash = starting_with.block_hash();
-        if let Some((highest_block_hash, highest_block_height, highest_era_id)) =
+        if let Some((_highest_block_hash, highest_block_height, _highest_era_id)) =
             self.highest_known_block()
         {
-            let (era_id, block_height) = match starting_with {
+            let (_era_id, block_height) = match starting_with {
                 StartingWith::Nothing => {
                     return SyncInstruction::Leap;
                 }
@@ -226,7 +218,8 @@ impl BlocksAccumulator {
                         .announce_disconnect_from_peer(err.peer())
                         .ignore();
                 }
-                Error::EraMismatch(err) => {
+                Error::EraMismatch(_err) => {
+                    // TODO: Log?
                     // this block acceptor is borked; get rid of it
                     self.block_gossip_acceptors.remove(&block_hash);
                 }
@@ -300,8 +293,8 @@ impl BlocksAccumulator {
         for block_hash in self
             .block_gossip_acceptors
             .iter()
-            .filter(|(k, v)| v.block_height().unwrap_or_default() <= block_header.height())
-            .map(|(k, v)| *k)
+            .filter(|(_, v)| v.block_height().unwrap_or_default() <= block_header.height())
+            .map(|(k, _)| *k)
             .collect_vec()
         {
             self.block_gossip_acceptors.remove(&block_hash);
@@ -324,7 +317,7 @@ impl BlocksAccumulator {
                     continue;
                 }
                 Some((era_id, height)) => {
-                    if let Some((bh, h, e)) = ret {
+                    if let Some((_bh, h, _e)) = ret {
                         if height <= h {
                             continue;
                         }

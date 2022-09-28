@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockDeployApprovals, BlockHash, DeployHash, FinalizedApprovals, NodeId},
+    types::{BlockDeployApprovals, BlockHash, FinalizedApprovals, NodeId},
 };
 
 impl ItemFetcher<BlockDeployApprovals> for Fetcher<BlockDeployApprovals> {
@@ -41,7 +41,7 @@ impl ItemFetcher<BlockDeployApprovals> for Fetcher<BlockDeployApprovals> {
     {
         effect_builder
             .get_block_and_finalized_deploys_from_storage(id)
-            .event(move |mut result| Event::GetFromStorageResult {
+            .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
                 validation_metadata: (),

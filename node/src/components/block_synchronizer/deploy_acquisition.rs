@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use datasize::DataSize;
-use itertools::Itertools;
 
 use crate::types::DeployHash;
 
@@ -21,10 +20,10 @@ pub(crate) struct DeployAcquisition {
 
 impl DeployAcquisition {
     pub(super) fn new(deploy_hashes: Vec<DeployHash>, need_execution_result: bool) -> Self {
-        let mut inner = BTreeMap::new();
-        deploy_hashes
+        let inner = deploy_hashes
             .into_iter()
-            .map(|dh| inner.insert(dh, DeployState::Vacant));
+            .map(|dh| (dh, DeployState::Vacant))
+            .collect();
         DeployAcquisition {
             inner,
             need_execution_result,

@@ -34,19 +34,16 @@ use casper_hashing::Digest;
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp, U512};
 
 use crate::{
-    components::{
-        consensus::{
-            cl_context::{ClContext, Keypair},
-            consensus_protocol::{
-                ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
-                ProtocolOutcome,
-            },
-            metrics::Metrics,
-            validator_change::{ValidatorChange, ValidatorChanges},
-            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
-            ReactorEventT, ResolveValidity, TimerId,
+    components::consensus::{
+        cl_context::{ClContext, Keypair},
+        consensus_protocol::{
+            ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
+            ProtocolOutcome,
         },
-        storage::Storage,
+        metrics::Metrics,
+        validator_change::{ValidatorChange, ValidatorChanges},
+        ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
+        ReactorEventT, ResolveValidity, TimerId,
     },
     effect::{
         announcements::ControlAnnouncement,
@@ -219,7 +216,6 @@ impl EraSupervisor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
-        current_era: EraId,
         switch_blocks: &[BlockHeader],
     ) -> Effects<Event> {
         // The create_new_era method initializes the era that the slice's last block is the key
@@ -697,9 +693,6 @@ impl EraSupervisor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
-        approvals_checksum: Digest,
-        execution_results_checksum: Digest,
-        rng: &mut NodeRng,
     ) -> Effects<Event> {
         let our_public_key = self.public_signing_key.clone();
         let our_secret_key = self.secret_signing_key.clone();
@@ -760,10 +753,7 @@ impl EraSupervisor {
                     earliest_era,
                     latest_era,
                 )
-                .map_some(move |switch_blocks| Event::CreateRequiredEras {
-                    current_era: new_era_id,
-                    switch_blocks,
-                });
+                .map_some(move |switch_blocks| Event::CreateRequiredEras { switch_blocks });
                 effects.extend(effect);
             }
         }

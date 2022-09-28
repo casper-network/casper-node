@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
-    hash::Hash,
 };
 
 use datasize::DataSize;
@@ -10,12 +9,8 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::storage::trie::TrieRaw;
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{
-    bytesrepr::{self, Bytes},
-    Key, StoredValue,
-};
+use casper_types::bytesrepr::{self};
 
 use crate::{
     components::{
@@ -23,11 +18,10 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{ControlAnnouncement, PeerBehaviorAnnouncement},
+        announcements::PeerBehaviorAnnouncement,
         requests::{ExecutionResultsAccumulatorRequest, FetcherRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    fatal,
     types::{BlockEffectsOrChunk, BlockEffectsOrChunkId, BlockHash, Item, NodeId, ValueOrChunk},
     NodeRng,
 };

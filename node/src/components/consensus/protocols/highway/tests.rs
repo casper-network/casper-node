@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use casper_types::{testing::TestRng, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{testing::TestRng, PublicKey, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -14,10 +14,7 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::{
-            config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX,
-            TIMER_ID_STANDSTILL_ALERT,
-        },
+        protocols::highway::{config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX},
         tests::utils::{
             new_test_chainspec, ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY,
         },
@@ -50,7 +47,6 @@ where
 }
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
-const STANDSTILL_TIMEOUT: &str = "1min";
 
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
@@ -192,7 +188,7 @@ fn send_a_valid_wire_unit() {
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
-    let mut now = Timestamp::zero();
+    let now = Timestamp::zero();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,

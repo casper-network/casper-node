@@ -1341,6 +1341,7 @@ impl Storage {
     }
 
     /// Get the switch block header for a specified [`EraID`].
+    #[allow(unused)] // TODO: Remove?
     pub(crate) fn read_switch_block_header_by_era_id(
         &self,
         switch_block_era_id: EraId,

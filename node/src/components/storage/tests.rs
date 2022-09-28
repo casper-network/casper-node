@@ -14,7 +14,7 @@ use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, Signature, TimeDiff, URef, U512,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, URef, U512,
 };
 
 use super::{

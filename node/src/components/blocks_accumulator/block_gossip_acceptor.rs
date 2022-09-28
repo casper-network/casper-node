@@ -2,22 +2,18 @@ use std::collections::BTreeMap;
 
 use datasize::DataSize;
 use itertools::Itertools;
-use log::Level::Error;
-use num_rational::Ratio;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
-use casper_types::{EraId, PublicKey, Timestamp, U512};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
-    components::{
-        blocks_accumulator::error::{EraMismatchError, Error as AcceptorError, InvalidGossipError},
-        linear_chain::{self, BlockSignatureError},
+    components::blocks_accumulator::error::{
+        EraMismatchError, Error as AcceptorError, InvalidGossipError,
     },
     types::{
-        Block, BlockAdded, BlockHash, BlockSignatures, EraValidatorWeights, FetcherItem,
-        FinalitySignature, Item, NodeId, SignatureWeight, ValidatorMatrix,
+        Block, BlockAdded, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, Item,
+        NodeId, SignatureWeight,
     },
-    utils::Latch,
 };
 
 #[derive(DataSize, Debug)]
@@ -62,7 +58,7 @@ impl BlockGossipAcceptor {
         self.peers.push(peer);
     }
 
-    pub(super) fn refresh(mut self, era_validator_weights: EraValidatorWeights) -> Self {
+    pub(super) fn refresh(self, era_validator_weights: EraValidatorWeights) -> Self {
         let block_hash = self.block_hash;
 
         let block_added = match self.block_added {
@@ -314,11 +310,11 @@ impl BlockGossipAcceptor {
             let bogus_validators = self
                 .signatures
                 .iter()
-                .filter(|(k, v)| {
+                .filter(|(_, v)| {
                     v.block_hash != block_added.block.id()
                         || v.era_id != block_added.block.header().era_id()
                 })
-                .map(|(k, v)| k.clone())
+                .map(|(k, _)| k.clone())
                 .collect_vec();
 
             bogus_validators.iter().for_each(|bogus_validator| {

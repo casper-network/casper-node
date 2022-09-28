@@ -158,12 +158,6 @@ impl ExecutionPreState {
             parent_seed: block_header.accumulated_seed(),
         }
     }
-
-    /// Returns the height of the next `Block` to be constructed. Note that this must match the
-    /// height of the `FinalizedBlock` used to generate the block.
-    pub(crate) fn next_block_height(&self) -> u64 {
-        self.next_block_height
-    }
 }
 
 type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
@@ -685,23 +679,6 @@ impl ContractRuntime {
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
         debug!(?result, "upgrade result");
-        result
-    }
-
-    /// Retrieve trie keys
-    #[cfg(test)]
-    pub(crate) fn retrieve_trie_keys(
-        &self,
-        trie_keys: Vec<Digest>,
-    ) -> Result<Vec<Digest>, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
-        let start = Instant::now();
-        let result = self
-            .engine_state
-            .missing_trie_keys(correlation_id, trie_keys);
-        self.metrics
-            .missing_trie_keys
-            .observe(start.elapsed().as_secs_f64());
         result
     }
 

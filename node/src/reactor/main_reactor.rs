@@ -528,14 +528,11 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
                 block,
-                approvals_checksum,
-                execution_results_checksum,
+                approvals_checksum: _, // TODO: Gossip BlockAdded
             }) => {
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
                     header: Box::new(block.header().clone()),
                     header_hash: *block.hash(),
-                    approvals_checksum,
-                    execution_results_checksum,
                 });
                 let reactor_block_gossiper_event =
                     MainEvent::BlockAddedGossiper(gossiper::Event::ItemReceived {
@@ -837,7 +834,6 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
                         block,
                         approvals_checksum,
-                        execution_results_checksum,
                         execution_results: execution_results
                             .iter()
                             .map(|(hash, _header, results)| (*hash, results.clone()))

@@ -3,7 +3,6 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_execution_engine::core::engine_state::execution_result::ExecutionResults;
 use casper_hashing::Digest;
 use derive_more::From;
 use serde::Serialize;
@@ -11,13 +10,12 @@ use serde::Serialize;
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
-use crate::components::block_synchronizer::{BlockSynchronizer, GlobalStateSynchronizerError};
+use crate::components::block_synchronizer::GlobalStateSynchronizerError;
 use crate::effect::requests::BlockSynchronizerRequest;
 use crate::{
     components::fetcher::FetchResult,
     types::{
         BlockAdded, BlockHash, BlockHeader, Deploy, EraValidatorWeights, FinalitySignature, NodeId,
-        TrieOrChunk, TrieOrChunkId,
     },
 };
 

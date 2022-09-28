@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockEffectsOrChunk, BlockEffectsOrChunkId, BlockHash, NodeId},
+    types::{BlockEffectsOrChunk, BlockEffectsOrChunkId, NodeId},
 };
 
 impl ItemFetcher<BlockEffectsOrChunk> for Fetcher<BlockEffectsOrChunk> {

@@ -2,16 +2,10 @@
 mod error;
 mod event;
 
-use std::{
-    cmp::Ordering,
-    collections::{BTreeMap, HashMap},
-    fmt::{Display, Formatter},
-};
+use std::{cmp::Ordering, collections::HashMap};
 
 use datasize::DataSize;
-use itertools::Itertools;
 use num_rational::Ratio;
-use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -19,10 +13,7 @@ use crate::{
         fetcher::{self, FetchResult, FetchedData},
         Component,
     },
-    effect::{
-        requests::{FetcherRequest, SyncLeapRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
-    },
+    effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
     types::{BlockHash, NodeId, SyncLeap},
     NodeRng,
 };

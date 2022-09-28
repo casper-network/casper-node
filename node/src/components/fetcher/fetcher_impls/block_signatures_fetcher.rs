@@ -29,11 +29,11 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
 
     fn get_from_storage<REv>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
+        _effect_builder: EffectBuilder<REv>,
+        _id: BlockHash,
+        _peer: NodeId,
         _validation_metadata: (),
-        responder: FetchResponder<BlockSignatures>,
+        _responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>>
     where
         REv: From<StorageRequest> + Send,

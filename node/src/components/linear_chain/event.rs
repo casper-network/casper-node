@@ -19,8 +19,6 @@ pub(crate) enum Event {
         block: Box<Block>,
         /// The checksum of the deploys' approvals.
         approvals_checksum: Digest,
-        /// The checksum of the execution results of the deploys.
-        execution_results_checksum: Digest,
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
@@ -33,8 +31,6 @@ pub(crate) enum Event {
         block: Box<Block>,
         /// The checksum of the deploys' approvals.
         approvals_checksum: Digest,
-        /// The checksum of the execution results of the deploys.
-        execution_results_checksum: Digest,
     },
     /// The result of requesting finality signatures from storage to add pending signatures.
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
