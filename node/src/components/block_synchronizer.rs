@@ -348,7 +348,7 @@ impl BlockSynchronizer {
                 NeedNext::Peers(block_hash) => results.extend(
                     effect_builder
                         .get_blocks_accumulated_peers(block_hash)
-                        .event(Event::AccumulatedPeers),
+                        .event(move |maybe_peers| Event::AccumulatedPeers(block_hash, maybe_peers)),
                 ),
                 NeedNext::ExecutionResults(block_hash) => {
                     todo!()
@@ -621,11 +621,11 @@ where
                 let effects = self.deploy_fetched(block_hash, result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::AccumulatedPeers(Some((block_hash, peers))) => {
+            Event::AccumulatedPeers(block_hash, Some(peers)) => {
                 let effects = self.register_peers(block_hash, peers);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::AccumulatedPeers(None) => self.hook_need_next(effect_builder, Effects::new()),
+            Event::AccumulatedPeers(_, None) => self.hook_need_next(effect_builder, Effects::new()),
             // this is an explicit ask via need_next for validators if they are
             // missing for a given era
             Event::MaybeEraValidators(era_id, Some(era_validators)) => {

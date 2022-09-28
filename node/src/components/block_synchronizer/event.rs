@@ -49,7 +49,7 @@ pub(crate) enum Event {
         block_hash: BlockHash,
         result: FetchResult<Deploy>,
     },
-    AccumulatedPeers(Option<(BlockHash, Vec<NodeId>)>),
+    AccumulatedPeers(BlockHash, Option<Vec<NodeId>>),
     #[from]
     GlobalStateSynchronizer(GlobalStateSynchronizerEvent),
     // ExecutionResultsFetched {
@@ -114,7 +114,7 @@ impl Display for Event {
             Event::GlobalStateSynchronizer(event) => {
                 write!(f, "{:?}", event)
             }
-            Event::AccumulatedPeers(_) => {
+            Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")
             }
             // Event::ExecutionResultsFetched {

@@ -2384,7 +2384,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_blocks_accumulated_peers(
         self,
         block_hash: BlockHash,
-    ) -> Option<(BlockHash, Vec<NodeId>)>
+    ) -> Option<Vec<NodeId>>
     where
         REv: From<BlocksAccumulatorRequest>,
     {

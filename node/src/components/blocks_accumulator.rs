@@ -358,11 +358,10 @@ impl BlocksAccumulator {
         self.block_gossip_acceptors.get_mut(&block_hash)
     }
 
-    fn get_peers(&self, block_hash: BlockHash) -> Option<(BlockHash, Vec<NodeId>)> {
-        if let Some(gossiper) = self.block_gossip_acceptors.get(&block_hash) {
-            return Some((block_hash, gossiper.peers()));
-        }
-        None
+    fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
+        self.block_gossip_acceptors
+            .get(&block_hash)
+            .map(BlockGossipAcceptor::peers)
     }
 }
 
