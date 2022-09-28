@@ -9,9 +9,7 @@ use serde::Serialize;
 
 use crate::{
     components::{
-        block_synchronizer::{
-            self, BlockSyncRequest, GlobalStateSynchronizerEvent, TrieAccumulatorEvent,
-        },
+        block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, blocks_accumulator, consensus, contract_runtime, deploy_acceptor,
         deploy_buffer, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
         rest_server, rpc_server,
@@ -132,8 +130,8 @@ pub(crate) enum MainEvent {
     BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
     #[from]
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
-    #[from]
-    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
+    // #[from]
+    // BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
     #[from]
     BlockAddedRequestIncoming(BlockAddedRequestIncoming),
     #[from]
@@ -311,7 +309,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::BlocksAccumulator(_) => "BlocksAccumulator",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
-            MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
+            //MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
         }
     }
 }
@@ -494,9 +492,9 @@ impl Display for MainEvent {
                 write!(f, "block validator request: {}", req)
             }
             MainEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
-            MainEvent::BlockSynchronizerRequest(req) => {
-                write!(f, "block synchronizer request: {}", req)
-            }
+            // MainEvent::BlockSynchronizerRequest(req) => {
+            //     write!(f, "block synchronizer request: {}", req)
+            // }
             MainEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)

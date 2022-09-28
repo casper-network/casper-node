@@ -69,23 +69,23 @@ pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub(crate) struct BlockSyncRequest {
-    block_hash: BlockHash,
-    era_id: EraId,
-    should_fetch_execution_state: bool,
-    max_simultaneous_peers: u32,
-}
-
-impl Display for BlockSyncRequest {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "complete block ID {} with should fetch execution state: {}",
-            self.block_hash, self.should_fetch_execution_state
-        )
-    }
-}
+// #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+// pub(crate) struct BlockSyncRequest {
+//     block_hash: BlockHash,
+//     era_id: EraId,
+//     should_fetch_execution_state: bool,
+//     max_simultaneous_peers: u32,
+// }
+//
+// impl Display for BlockSyncRequest {
+//     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+//         write!(
+//             formatter,
+//             "complete block ID {} with should fetch execution state: {}",
+//             self.block_hash, self.should_fetch_execution_state
+//         )
+//     }
+// }
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
@@ -207,24 +207,24 @@ impl BlockSynchronizer {
         }
     }
 
-    fn upsert(&mut self, request: BlockSyncRequest) {
-        if let Entry::Vacant(v) = self.builders.entry(request.block_hash) {
-            let validator_matrix = &self.validator_matrix;
-            match validator_matrix.validator_weights(request.era_id) {
-                Some(validator_weights) => {
-                    let builder = BlockBuilder::new(
-                        request.block_hash,
-                        request.era_id,
-                        validator_weights,
-                        request.should_fetch_execution_state,
-                        request.max_simultaneous_peers,
-                    );
-                    v.insert(builder);
-                }
-                None => {}
-            }
-        }
-    }
+    // fn upsert(&mut self, request: BlockSyncRequest) {
+    //     if let Entry::Vacant(v) = self.builders.entry(request.block_hash) {
+    //         let validator_matrix = &self.validator_matrix;
+    //         match validator_matrix.validator_weights(request.era_id) {
+    //             Some(validator_weights) => {
+    //                 let builder = BlockBuilder::new(
+    //                     request.block_hash,
+    //                     request.era_id,
+    //                     validator_weights,
+    //                     request.should_fetch_execution_state,
+    //                     request.max_simultaneous_peers,
+    //                 );
+    //                 v.insert(builder);
+    //             }
+    //             None => {}
+    //         }
+    //     }
+    // }
 
     fn need_next<REv>(
         &mut self,
@@ -569,10 +569,10 @@ where
                     .register_era_validator_weights(validators);
                 Effects::new()
             }
-            Event::Upsert(request) => {
-                self.upsert(request);
-                Effects::new()
-            }
+            // Event::Upsert(request) => {
+            //     self.upsert(request);
+            //     Effects::new()
+            // }
             Event::Next => self.need_next(effect_builder, rng),
             Event::DisconnectFromPeer(node_id) => self.disconnect_from_peer(node_id),
             Event::BlockHeaderFetched(result) => self.block_header_fetched(result),

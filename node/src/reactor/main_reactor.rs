@@ -633,11 +633,11 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlockSynchronizerRequest(req) => reactor::wrap_effects(
-                MainEvent::BlockSynchronizer,
-                self.block_synchronizer
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
+            // MainEvent::BlockSynchronizerRequest(req) => reactor::wrap_effects(
+            //     MainEvent::BlockSynchronizer,
+            //     self.block_synchronizer
+            //         .handle_event(effect_builder, rng, req.into()),
+            // ),
             MainEvent::BlockAddedRequestIncoming(_req) => {
                 // if this gets routed to storage, we can remove this BlockAddedRequestIncoming
                 // variant and just use the NetRequestIncoming

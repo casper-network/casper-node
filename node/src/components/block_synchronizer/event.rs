@@ -12,7 +12,8 @@ use casper_types::{EraId, PublicKey, U512};
 use super::GlobalStateSynchronizerEvent;
 use crate::components::block_synchronizer::GlobalStateSynchronizerError;
 use crate::{
-    components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
+    //components::{block_synchronizer::BlockSyncRequest, fetcher::FetchResult},
+    components::fetcher::FetchResult,
     types::{
         BlockAdded, BlockHash, BlockHeader, Deploy, EraValidatorWeights, FinalitySignature, NodeId,
         TrieOrChunk, TrieOrChunkId,
@@ -21,10 +22,6 @@ use crate::{
 
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
-    /// The initiating event to fetch an item by its id.
-    #[from]
-    Upsert(BlockSyncRequest),
-
     /// Received announcement about era validators.
     EraValidators {
         era_validator_weights: EraValidatorWeights,
@@ -57,9 +54,6 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Upsert(request) => {
-                write!(f, "upsert: {}", request)
-            }
             Event::EraValidators { .. } => {
                 write!(f, "new era validators")
             }
