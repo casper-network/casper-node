@@ -14,6 +14,8 @@ use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::block_synchronizer::{
+        deploy_acquisition::DeployAcquisition,
+        execution_results_accumulator::ExecutionResultsAccumulator, need_next::NeedNext,
         peer_list::PeerList, signature_acquisition::SignatureAcquisition,
     },
     types::{

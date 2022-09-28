@@ -47,6 +47,7 @@ use casper_hashing::Digest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 pub(crate) use execution_results_accumulator::Error as ExecutionResultsAccumulatorError;
+use execution_results_accumulator::ExecutionResultsAccumulator;
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
