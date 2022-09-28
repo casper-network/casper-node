@@ -185,6 +185,7 @@ impl SyncLeaper {
         }
     }
 
+    // called from Reactor control logic to scrape results
     pub(crate) fn leap_status(&mut self) -> LeapStatus {
         match &self.leap_activity {
             None => LeapStatus::Inactive,

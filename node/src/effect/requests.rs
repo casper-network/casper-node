@@ -33,7 +33,7 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
-use crate::components::block_synchronizer::ExecutionResultsAccumulatorError;
+use crate::components::block_synchronizer::{ExecutionResultsAccumulatorError, NeedNext};
 use crate::types::appendable_block::AppendableBlock;
 use crate::types::{FetcherItem, FinalitySignature, GossiperItem, SyncLeap};
 use crate::{
@@ -1367,5 +1367,16 @@ pub(crate) enum BlocksAccumulatorRequest {
 impl Display for BlocksAccumulatorRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "blocks accumulator request")
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockSynchronizerRequest {
+    NeedNext,
+}
+
+impl Display for BlockSynchronizerRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block synchronizer request")
     }
 }

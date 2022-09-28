@@ -132,9 +132,10 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
+use crate::components::block_synchronizer;
 use crate::components::block_synchronizer::GlobalStateSynchronizerError;
 use crate::components::blocks_accumulator::BlocksAccumulator;
-use crate::effect::requests::BlocksAccumulatorRequest;
+use crate::effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest};
 use crate::types::{BlockEffectsOrChunk, BlockEffectsOrChunkId};
 use crate::{
     components::{
@@ -2379,8 +2380,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Reads deploy hashes for a specific block from the storage.
-    pub(crate) async fn get_block_accumulated_peers(
+    /// Gets peers for a given block from the blocks accumulator.
+    pub(crate) async fn get_blocks_accumulated_peers(
         self,
         block_hash: BlockHash,
     ) -> Option<(BlockHash, Vec<NodeId>)>

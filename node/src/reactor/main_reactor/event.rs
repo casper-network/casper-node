@@ -7,7 +7,7 @@ use casper_execution_engine::core::{
 use derive_more::From;
 use serde::Serialize;
 
-use crate::effect::requests::BlocksAccumulatorRequest;
+use crate::effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest};
 use crate::{
     components::{
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
@@ -133,8 +133,8 @@ pub(crate) enum MainEvent {
     BlocksAccumulatorRequest(#[serde(skip_serializing)] BlocksAccumulatorRequest),
     #[from]
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
-    // #[from]
-    // BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSyncRequest),
+    #[from]
+    BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSynchronizerRequest),
     #[from]
     BlockAddedRequestIncoming(BlockAddedRequestIncoming),
     #[from]
@@ -313,7 +313,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlocksAccumulator(_) => "BlocksAccumulator",
             MainEvent::BlocksAccumulatorRequest(_) => "BlocksAccumulatorRequest",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
-            //MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
+            MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
         }
     }
 }
@@ -451,6 +451,9 @@ impl Display for MainEvent {
             }
             MainEvent::BlockSynchronizer(event) => {
                 write!(f, "block synchronizer: {}", event)
+            }
+            MainEvent::BlockSynchronizerRequest(req) => {
+                write!(f, "blocks synchronizer request: {}", req)
             }
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
