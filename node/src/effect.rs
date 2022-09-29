@@ -136,14 +136,14 @@ use crate::components::block_synchronizer;
 use crate::components::block_synchronizer::GlobalStateSynchronizerError;
 use crate::components::blocks_accumulator::BlocksAccumulator;
 use crate::effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest};
-use crate::types::{BlockEffectsOrChunk, BlockEffectsOrChunkId};
+use crate::types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId};
 use crate::{
     components::{
         block_synchronizer::TrieAccumulatorError,
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
+            BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
             EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
@@ -2342,16 +2342,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Reads block effects (or chunk) from Storage component.
-    pub(crate) async fn get_block_effects_or_chunk_from_storage(
+    /// Reads block execution results (or chunk) from Storage component.
+    pub(crate) async fn get_block_execution_results_or_chunk_from_storage(
         self,
-        id: BlockEffectsOrChunkId,
-    ) -> Option<BlockEffectsOrChunk>
+        id: BlockExecutionResultsOrChunkId,
+    ) -> Option<BlockExecutionResultsOrChunk>
     where
         REv: From<StorageRequest>, // TODO: Extract to a separate component for caching.
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockEffectsOrChunk { id, responder },
+            |responder| StorageRequest::GetBlockExecutionResultsOrChunk { id, responder },
             QueueKind::Regular,
         )
         .await

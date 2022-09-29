@@ -60,7 +60,7 @@ use metrics::Metrics;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionEffects, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
+    BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
 };
 
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
@@ -731,7 +731,7 @@ impl ContractRuntime {
             + Send,
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
-        let BlockAndExecutionEffects {
+        let BlockAndExecutionResults {
             block,
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
@@ -750,7 +750,7 @@ impl ContractRuntime {
         })
         .await
         {
-            Ok(block_and_execution_effects) => block_and_execution_effects,
+            Ok(block_and_execution_results) => block_and_execution_results,
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 

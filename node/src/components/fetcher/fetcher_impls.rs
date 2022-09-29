@@ -1,7 +1,7 @@
 mod block_added_fetcher;
 mod block_and_deploys_fetcher;
 mod block_deploy_approvals_fetcher;
-mod block_effects_or_chunk_fetcher;
+mod block_execution_results_or_chunk_fetcher;
 mod block_fetcher;
 mod block_header_fetcher;
 mod block_headers_batch_fetcher;

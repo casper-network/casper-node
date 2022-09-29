@@ -1367,7 +1367,7 @@ mod tests {
             ),
             format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
             format!(
-                r#"{{"BlockEffectsRootHash":"block-effects-root-hash-{}"}}"#,
+                r#"{{"BlockExecutionResultsRootHash":"block-effects-root-hash-{}"}}"#,
                 BLOCK_HEIGHT
             ),
             format!(

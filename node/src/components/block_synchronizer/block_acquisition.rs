@@ -84,7 +84,7 @@ impl Display for Error {
 enum ExecutionState {
     Unneeded,
     GlobalState(Digest),
-    ExecutionEffects(BTreeMap<DeployHash, DeployState>),
+    ExecutionResults(BTreeMap<DeployHash, DeployState>),
 }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]

@@ -23,7 +23,7 @@ use crate::{
         consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionEffects, ExecutionPreState, Metrics,
+            BlockAndExecutionResults, ExecutionPreState, Metrics,
         },
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
@@ -46,7 +46,7 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
-) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
+) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
             finalized_block: Box::new(finalized_block),
@@ -92,7 +92,7 @@ pub fn execute_finalized_block(
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) = commit_execution_effects(
+        let (state_hash, execution_result) = commit_execution_results(
             &scratch_state,
             metrics.clone(),
             state_root_hash,
@@ -203,7 +203,7 @@ pub fn execute_finalized_block(
         protocol_version,
     )?);
 
-    Ok(BlockAndExecutionEffects {
+    Ok(BlockAndExecutionResults {
         block,
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
@@ -212,8 +212,8 @@ pub fn execute_finalized_block(
     })
 }
 
-/// Commits the execution effects.
-fn commit_execution_effects<S>(
+/// Commits the execution results.
+fn commit_execution_results<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,

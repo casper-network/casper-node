@@ -42,7 +42,7 @@ use crate::{
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, ContractRuntimeError,
+            BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
             EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
@@ -54,12 +54,12 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockEffectsOrChunk, BlockEffectsOrChunkId,
-        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo,
-        ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState, StatusFeed, TrieOrChunk,
-        TrieOrChunkId,
+        AvailableBlockRange, Block, BlockAndDeploys, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata,
+        Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
+        StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -427,12 +427,12 @@ pub(crate) enum StorageRequest {
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
-    GetBlockEffectsOrChunk {
+    GetBlockExecutionResultsOrChunk {
         /// Request ID.
-        id: BlockEffectsOrChunkId,
+        id: BlockExecutionResultsOrChunkId,
         /// Responder to call with the execution results.
         /// None is returned when we don't have the block in the storage.
-        responder: Responder<Option<BlockEffectsOrChunk>>,
+        responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
@@ -613,7 +613,7 @@ impl Display for StorageRequest {
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
-            StorageRequest::GetBlockEffectsOrChunk { id, .. } => {
+            StorageRequest::GetBlockExecutionResultsOrChunk { id, .. } => {
                 write!(formatter, "get execution results for {}", id)
             }
 

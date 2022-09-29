@@ -944,8 +944,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::BlockAddedFetcherRequest(..)
             | MainEvent::FinalitySignatureFetcher(..)
             | MainEvent::FinalitySignatureFetcherRequest(..)
-            | MainEvent::BlockEffectsOrChunkFetcher(..)
-            | MainEvent::BlockEffectsOrChunkFetcherRequest(..) => self
+            | MainEvent::BlockExecutionResultsOrChunkFetcher(..)
+            | MainEvent::BlockExecutionResultsOrChunkFetcherRequest(..) => self
                 .fetchers
                 .dispatch_fetcher_event(effect_builder, rng, event),
         }

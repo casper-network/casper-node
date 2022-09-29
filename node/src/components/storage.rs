@@ -71,7 +71,7 @@ use casper_types::{
 
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
-use crate::types::BlockEffectsOrChunk;
+use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::{fetcher::FetchResponse, Component},
     effect::{
@@ -84,11 +84,11 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockDeployApprovals,
-        BlockEffectsOrChunkId, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy,
-        DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        EraValidatorWeights, FetcherItem, FinalitySignature, FinalizedApprovals, Item, NodeId,
-        SignatureWeight, SyncLeap, ValueOrChunk,
+        BlockExecutionResultsOrChunkId, BlockHash, BlockHashAndHeight, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
+        BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem, FinalitySignature,
+        FinalizedApprovals, Item, NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -706,9 +706,9 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::BlockEffects(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockEffectsOrChunk>(serialized_id)?;
-                let opt_item = self.read_block_effects_or_chunk(&item_id)?;
+            NetRequest::BlockExecutionResults(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockExecutionResultsOrChunk>(serialized_id)?;
+                let opt_item = self.read_block_execution_results_or_chunk(&item_id)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
@@ -807,8 +807,8 @@ impl Storage {
                     )
                     .ignore()
             }
-            StorageRequest::GetBlockEffectsOrChunk { id, responder } => responder
-                .respond(self.read_block_effects_or_chunk(&id)?)
+            StorageRequest::GetBlockExecutionResultsOrChunk { id, responder } => responder
+                .respond(self.read_block_execution_results_or_chunk(&id)?)
                 .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
@@ -2254,10 +2254,10 @@ impl Storage {
             .map(|block| block.body().transaction_hashes().cloned().collect()))
     }
 
-    fn read_block_effects_or_chunk(
+    fn read_block_execution_results_or_chunk(
         &self,
-        request: &BlockEffectsOrChunkId,
-    ) -> Result<Option<BlockEffectsOrChunk>, FatalStorageError> {
+        request: &BlockExecutionResultsOrChunkId,
+    ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
         // There's no mapping between block_hash -> execution results.
         // We store execution results under the deploy hash for the txn.
         // In order to pull it out, we have to:
@@ -2326,7 +2326,7 @@ impl Storage {
                 error!(
                     ?request,
                     ?error,
-                    "failed to construct `BlockEffectsOrChunk`"
+                    "failed to construct `BlockExecutionResultsOrChunk`"
                 );
                 return Ok(None);
             }

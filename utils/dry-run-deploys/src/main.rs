@@ -126,7 +126,7 @@ async fn main() -> Result<(), anyhow::Error> {
         let finalized_block = FinalizedBlock::from(block.clone());
 
         let start = Instant::now();
-        let block_and_execution_effects = execute_finalized_block(
+        let block_and_execution_results = execute_finalized_block(
             &engine_state,
             None,
             protocol_version,
@@ -140,7 +140,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .increment(elapsed_micros)
             .map_err(anyhow::Error::msg)?;
 
-        let header = block_and_execution_effects.block.take_header();
+        let header = block_and_execution_results.block.take_header();
         let expected = block.take_header();
         assert_eq!(
             header.state_root_hash(),

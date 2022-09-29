@@ -59,8 +59,8 @@ pub enum Tag {
     SyncLeap,
     /// A `BlockAdded`: a block which has been created by validators.
     BlockAdded,
-    /// Block effects fetched during syncing.
-    BlockEffects,
+    /// Block execution results fetched during syncing.
+    BlockExecutionResults,
 }
 
 /// A trait unifying the common pieces of the `FetcherItem` and `GossiperItem` traits.

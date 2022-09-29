@@ -95,7 +95,7 @@ pub struct StepEffectAndUpcomingEraValidators {
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
 /// effects it may have.
 #[derive(Clone, Debug, DataSize)]
-pub struct BlockAndExecutionEffects {
+pub struct BlockAndExecutionResults {
     /// The [`Block`] the contract runtime executed.
     pub block: Box<Block>,
     /// The results from executing the deploys in the block.
@@ -108,15 +108,15 @@ pub struct BlockAndExecutionEffects {
     pub execution_results_checksum: Digest,
 }
 
-impl BlockAndExecutionEffects {
+impl BlockAndExecutionResults {
     /// Gets the block.
     pub fn block(&self) -> &Block {
         &self.block
     }
 }
 
-impl From<BlockAndExecutionEffects> for Block {
-    fn from(block_and_execution_effects: BlockAndExecutionEffects) -> Self {
-        *block_and_execution_effects.block
+impl From<BlockAndExecutionResults> for Block {
+    fn from(block_and_execution_results: BlockAndExecutionResults) -> Self {
+        *block_and_execution_results.block
     }
 }

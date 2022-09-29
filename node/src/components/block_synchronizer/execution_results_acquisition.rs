@@ -20,7 +20,10 @@ use crate::{
         announcements::PeerBehaviorAnnouncement, requests::FetcherRequest, EffectBuilder,
         EffectExt, Effects, Responder,
     },
-    types::{BlockEffectsOrChunk, BlockEffectsOrChunkId, BlockHash, Item, NodeId, ValueOrChunk},
+    types::{
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, Item, NodeId,
+        ValueOrChunk,
+    },
     NodeRng,
 };
 
@@ -37,7 +40,7 @@ impl ExecutionResultsRootHash {
 }
 
 pub(crate) enum Need {
-    Request(BlockEffectsOrChunkId),
+    Request(BlockExecutionResultsOrChunkId),
     ShouldStore(Vec<casper_types::ExecutionResult>),
 }
 
@@ -61,15 +64,15 @@ impl ExecutionResultsAcquisition {
         }
     }
 
-    pub(super) fn apply_block_effects_or_chunk(
+    pub(super) fn apply_block_execution_results_or_chunk(
         &mut self,
-        block_effects_or_chunk: BlockEffectsOrChunk,
+        block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) {
-        debug!(%block_effects_or_chunk, "got block effects or chunk");
-        let id = block_effects_or_chunk.id();
-        let (block_hash, value) = match block_effects_or_chunk {
-            BlockEffectsOrChunk::BlockEffectsLegacy { block_hash, value } => (block_hash, value),
-            BlockEffectsOrChunk::BlockEffects { block_hash, value } => (block_hash, value),
+        debug!(%block_execution_results_or_chunk, "got block execution results or chunk");
+        let id = block_execution_results_or_chunk.id();
+        let (block_hash, value) = match block_execution_results_or_chunk {
+            BlockExecutionResultsOrChunk::Legacy { block_hash, value } => (block_hash, value),
+            BlockExecutionResultsOrChunk::Contemporary { block_hash, value } => (block_hash, value),
         };
 
         // TODO - reinstate?
@@ -92,7 +95,7 @@ impl ExecutionResultsAcquisition {
         }
     }
 
-    fn consume_chunk(&mut self, id: BlockEffectsOrChunkId, chunk: ChunkWithProof) {
+    fn consume_chunk(&mut self, id: BlockExecutionResultsOrChunkId, chunk: ChunkWithProof) {
         let digest = chunk.proof().root_hash();
         let index = chunk.proof().index();
         let count = chunk.proof().count();
@@ -133,9 +136,9 @@ impl ExecutionResultsAcquisition {
         }
 
         let id = if self.results_root_hash.is_legacy() {
-            BlockEffectsOrChunkId::legacy(self.block_hash)
+            BlockExecutionResultsOrChunkId::legacy(self.block_hash)
         } else {
-            BlockEffectsOrChunkId::new(self.block_hash)
+            BlockExecutionResultsOrChunkId::new(self.block_hash)
         };
 
         match self.missing_chunk() {

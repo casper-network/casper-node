@@ -41,9 +41,9 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockEffectsOrChunk, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy,
-        FinalitySignature, SyncLeap, TrieOrChunk,
+        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
+        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures,
+        BlockWithMetadata, Deploy, FinalitySignature, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -196,10 +196,12 @@ pub(crate) enum MainEvent {
     #[from]
     TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
     #[from]
-    BlockEffectsOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<BlockEffectsOrChunk>),
+    BlockExecutionResultsOrChunkFetcher(
+        #[serde(skip_serializing)] fetcher::Event<BlockExecutionResultsOrChunk>,
+    ),
     #[from]
-    BlockEffectsOrChunkFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<BlockEffectsOrChunk>,
+    BlockExecutionResultsOrChunkFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<BlockExecutionResultsOrChunk>,
     ),
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
@@ -257,7 +259,9 @@ impl ReactorEvent for MainEvent {
             MainEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             MainEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             MainEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
-            MainEvent::BlockEffectsOrChunkFetcher(_) => "BlockEffectsOrChunkFetcher",
+            MainEvent::BlockExecutionResultsOrChunkFetcher(_) => {
+                "BlockExecutionResultsOrChunkFetcher"
+            }
             MainEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
             MainEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
             MainEvent::BlockAddedFetcher(_) => "BlockAddedFetcher",
@@ -266,7 +270,9 @@ impl ReactorEvent for MainEvent {
             MainEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             MainEvent::BlockHeaderFetcherRequest(_) => "BlockHeaderFetcherRequest",
             MainEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
-            MainEvent::BlockEffectsOrChunkFetcherRequest(_) => "BlockEffectsOrChunkFetcherRequest",
+            MainEvent::BlockExecutionResultsOrChunkFetcherRequest(_) => {
+                "BlockExecutionResultsOrChunkFetcherRequest"
+            }
             MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
@@ -431,8 +437,8 @@ impl Display for MainEvent {
             MainEvent::TrieOrChunkFetcher(event) => {
                 write!(f, "trie or chunk fetcher: {}", event)
             }
-            MainEvent::BlockEffectsOrChunkFetcher(event) => {
-                write!(f, "block effects or chunk fetcher: {}", event)
+            MainEvent::BlockExecutionResultsOrChunkFetcher(event) => {
+                write!(f, "block execution results or chunk fetcher: {}", event)
             }
             MainEvent::FinalitySignatureFetcher(event) => {
                 write!(f, "finality signature fetcher: {}", event)
@@ -477,8 +483,12 @@ impl Display for MainEvent {
             MainEvent::TrieOrChunkFetcherRequest(request) => {
                 write!(f, "trie or chunk fetcher request: {}", request)
             }
-            MainEvent::BlockEffectsOrChunkFetcherRequest(request) => {
-                write!(f, "block effects or chunk fetcher request: {}", request)
+            MainEvent::BlockExecutionResultsOrChunkFetcherRequest(request) => {
+                write!(
+                    f,
+                    "block execution results or chunk fetcher request: {}",
+                    request
+                )
             }
             MainEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)

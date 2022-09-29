@@ -10,40 +10,41 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
-use std::collections::{BTreeMap, HashMap};
-use std::time::Duration;
+use std::{
+    collections::{BTreeMap, HashMap},
+    iter,
+    time::Duration,
+};
 
 use datasize::DataSize;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
+use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
-    components::{fetcher::FetchedData, Component},
-    effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
+    components::{
+        fetcher::{Error, FetchedData},
+        Component,
+    },
+    effect::{
+        announcements::PeerBehaviorAnnouncement,
+        requests::{
+            BlockSynchronizerRequest, BlocksAccumulatorRequest, ContractRuntimeRequest,
+            FetcherRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+        },
+        EffectBuilder, EffectExt, Effects,
+    },
     reactor,
     storage::StorageRequest,
     types::{
-        BlockAdded, BlockHash, BlockHeader, Deploy, FinalitySignature, FinalitySignatureId, NodeId,
+        BlockAdded, BlockHash, BlockHeader, BlockHeaderWithMetadata, Deploy, FinalitySignature,
+        FinalitySignatureId, Item, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
-
-use crate::components::fetcher::Error;
-
-use crate::effect::requests::{
-    BlockSynchronizerRequest, BlocksAccumulatorRequest, SyncGlobalStateRequest,
-};
-use crate::{
-    effect::{
-        announcements::PeerBehaviorAnnouncement,
-        requests::{ContractRuntimeRequest, TrieAccumulatorRequest},
-    },
-    types::{BlockHeaderWithMetadata, Item, SyncLeap, TrieOrChunk, ValidatorMatrix},
-};
 pub(crate) use block_builder::BlockBuilder;
-use casper_hashing::Digest;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash};
@@ -121,8 +122,8 @@ impl BlockSynchronizer {
         self.builders
             .values()
             .filter_map(BlockBuilder::last_progress_time)
-            .chain(std::iter::once(self.global_sync.last_progress()))
-            .chain(std::iter::once(self.last_progress))
+            .chain(iter::once(self.global_sync.last_progress()))
+            .chain(iter::once(self.last_progress))
             .max()
             .unwrap_or(self.last_progress)
     }
@@ -211,43 +212,30 @@ impl BlockSynchronizer {
 
     // NOT WIRED OR EVENTED
     fn dishonest_peers(&self) -> Vec<NodeId> {
-        let mut ret = vec![];
-        for v in self.builders.values() {
-            ret.extend(v.dishonest_peers());
-        }
-        ret
+        self.builders
+            .values()
+            .flat_map(BlockBuilder::dishonest_peers)
+            .collect()
     }
 
     // NOT WIRED OR EVENTED
     pub(crate) fn flush_dishonest_peers(&mut self) {
-        for v in self.builders.values_mut() {
-            v.flush_dishonest_peers();
+        for builder in self.builders.values_mut() {
+            builder.flush_dishonest_peers();
         }
     }
 
-    fn hook_need_next<REv>(
+    fn hook_need_next<REv: Send>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        effects: Effects<Event>,
-    ) -> Effects<Event>
-    where
-        REv: From<FetcherRequest<BlockAdded>>
-            + From<FetcherRequest<BlockHeader>>
-            + From<FetcherRequest<Deploy>>
-            + From<FetcherRequest<FinalitySignature>>
-            + From<SyncGlobalStateRequest>
-            + From<BlocksAccumulatorRequest>
-            + From<StorageRequest>
-            + Send,
-    {
-        let mut ret = Effects::new();
-        ret.extend(effects);
-        ret.extend(
+        mut effects: Effects<Event>,
+    ) -> Effects<Event> {
+        effects.extend(
             effect_builder
                 .set_timeout(Duration::from_millis(NEED_NEXT_INTERVAL_MILLIS))
                 .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
         );
-        ret
+        effects
     }
 
     fn need_next<REv>(
@@ -256,8 +244,8 @@ impl BlockSynchronizer {
         rng: &mut NodeRng,
     ) -> Effects<Event>
     where
-        REv: From<FetcherRequest<BlockAdded>>
-            + From<FetcherRequest<BlockHeader>>
+        REv: From<FetcherRequest<BlockHeader>>
+            + From<FetcherRequest<BlockAdded>>
             + From<FetcherRequest<Deploy>>
             + From<FetcherRequest<FinalitySignature>>
             + From<SyncGlobalStateRequest>
@@ -280,7 +268,6 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::BlockBody(block_hash) => {
-                    // TODO - change to fetch block/block-body
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<BlockAdded>(block_hash, node_id, ())
@@ -622,7 +609,6 @@ where
                 Effects::new()
             }
 
-            // CURRENTLY NOT TRIGGERED (I think...)
             Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
                 Event::GlobalStateSynchronizer,
                 self.global_sync.handle_event(effect_builder, rng, event),

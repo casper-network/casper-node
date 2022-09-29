@@ -72,7 +72,7 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAndDeploys, BlockEffectsOrChunk, BlockHeader, BlockHeaderWithMetadata,
+        Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader, BlockHeaderWithMetadata,
         BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, Item,
         NodeId,
     },
@@ -991,7 +991,7 @@ where
     <R as Reactor>::Event: From<deploy_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<BlockHeader>>
-        + From<fetcher::Event<BlockEffectsOrChunk>>
+        + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
@@ -1125,8 +1125,8 @@ where
             // )
             Effects::new()
         }
-        NetResponse::BlockEffects(ref serialized_item) => {
-            handle_fetch_response::<R, BlockEffectsOrChunk>(
+        NetResponse::BlockExecutionResults(ref serialized_item) => {
+            handle_fetch_response::<R, BlockExecutionResultsOrChunk>(
                 reactor,
                 effect_builder,
                 rng,
