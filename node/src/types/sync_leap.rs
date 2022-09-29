@@ -173,15 +173,9 @@ impl FetcherItem for SyncLeap {
         // TODO: Possibly check the size of the collections.
 
         // The header chain should only go back until it hits _one_ switch block.
-        if !self.trusted_block_header.is_switch_block() {
-            for header in iter::once(&self.trusted_block_header)
-                .chain(self.trusted_ancestor_headers.iter())
-                .rev()
-                .skip(1)
-            {
+        for header in self.trusted_ancestor_headers.iter().rev().skip(1) {
                 if header.is_switch_block() {
                     return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
-                }
             }
         }
 
