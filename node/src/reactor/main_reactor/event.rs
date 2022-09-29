@@ -7,7 +7,6 @@ use casper_execution_engine::core::{
 use derive_more::From;
 use serde::Serialize;
 
-use crate::effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest};
 use crate::{
     components::{
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
@@ -32,10 +31,11 @@ use crate::{
         },
         requests::{
             AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
-            BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest, StorageRequest,
-            SyncGlobalStateRequest, SyncLeapRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            BlockSynchronizerRequest, BlockValidationRequest, BlocksAccumulatorRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
+            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+            NetworkRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
+            SyncLeapRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,

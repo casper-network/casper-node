@@ -6,28 +6,28 @@ use tracing::{info, warn};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
-use crate::components::sync_leaper::LeapStatus;
-use crate::effect::requests::BlockSynchronizerRequest;
-use crate::types::ValidatorMatrix;
-use crate::{
-    components::linear_chain::era_validator_weights_for_block,
-    types::{ActivationPoint, ChainspecRawBytes, EraValidatorWeights, Item},
-};
 use crate::{
     components::{
         blocks_accumulator::{StartingWith, SyncInstruction},
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
-        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network,
+        diagnostics_port, event_stream_server,
+        linear_chain::era_validator_weights_for_block,
+        rest_server, rpc_server, small_network,
         storage::FatalStorageError,
-        sync_leaper, upgrade_watcher,
+        sync_leaper,
+        sync_leaper::LeapStatus,
+        upgrade_watcher,
     },
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{
         utils::{enqueue_shutdown, initialize_component},
         MainEvent, MainReactor,
     },
-    types::{BlockHash, BlockHeader, BlockPayload, FinalizedBlock},
+    types::{
+        ActivationPoint, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
+        EraValidatorWeights, FinalizedBlock, Item, ValidatorMatrix,
+    },
     NodeRng,
 };
 

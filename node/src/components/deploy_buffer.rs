@@ -11,7 +11,6 @@ use tracing::{debug, error, warn};
 
 use casper_types::Timestamp;
 
-use crate::types::Block;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
@@ -24,7 +23,7 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Deploy, DeployHash, DeployWithApprovals, FinalizedBlock,
+        Block, Deploy, DeployHash, DeployWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };

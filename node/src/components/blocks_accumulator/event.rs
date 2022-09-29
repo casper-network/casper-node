@@ -4,8 +4,10 @@ use derive_more::From;
 
 use casper_types::EraId;
 
-use crate::effect::requests::BlocksAccumulatorRequest;
-use crate::types::{BlockAdded, FinalitySignature, NodeId};
+use crate::{
+    effect::requests::BlocksAccumulatorRequest,
+    types::{BlockAdded, FinalitySignature, NodeId},
+};
 
 #[derive(Debug, From)]
 pub(crate) enum Event {

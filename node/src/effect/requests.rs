@@ -33,12 +33,9 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
-use crate::components::block_synchronizer::NeedNext;
-use crate::types::appendable_block::AppendableBlock;
-use crate::types::{FetcherItem, FinalitySignature, GossiperItem, SyncLeap};
 use crate::{
     components::{
-        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
+        block_synchronizer::{GlobalStateSynchronizerError, NeedNext, TrieAccumulatorError},
         block_validator::ValidatingBlock,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
@@ -54,12 +51,13 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata,
-        Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
-        StatusFeed, TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, NodeId,
+        NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };

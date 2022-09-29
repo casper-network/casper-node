@@ -17,8 +17,7 @@ use crate::{
     NodeRng,
 };
 
-use crate::effect::requests::BlocksAccumulatorRequest;
-use crate::types::BlockHeader;
+use crate::{effect::requests::BlocksAccumulatorRequest, types::BlockHeader};
 use block_gossip_acceptor::BlockGossipAcceptor;
 use error::Error;
 pub(crate) use event::Event;
