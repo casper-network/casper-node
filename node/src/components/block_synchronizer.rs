@@ -121,7 +121,7 @@ impl BlockSynchronizer {
         self.builders
             .values()
             .filter_map(BlockBuilder::last_progress_time)
-            .chain(std::iter::once(self.global_sync.last_progress()))
+            .chain(self.global_sync.last_progress())
             .chain(self.last_progress)
             .max()
     }

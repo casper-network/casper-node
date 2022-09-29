@@ -32,6 +32,7 @@ pub(crate) enum SyncInstruction {
     },
 }
 
+#[derive(Clone, Debug)]
 pub(crate) enum StartingWith {
     Block(Box<Block>),
     Hash(BlockHash),
