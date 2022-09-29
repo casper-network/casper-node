@@ -6,11 +6,13 @@ use std::{
 use casper_hashing::Digest;
 use derive_more::From;
 use serde::Serialize;
+use tracing::event;
 
 use casper_execution_engine::core::engine_state;
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
+use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
     effect::requests::BlockSynchronizerRequest,
@@ -52,23 +54,21 @@ pub(crate) enum Event {
         block_hash: BlockHash,
         result: FetchResult<Deploy>,
     },
+    ExecutionResultsFetched {
+        block_hash: BlockHash,
+        result: FetchResult<BlockExecutionResultsOrChunk>,
+    },
+    ExecutionResultsStored(BlockHash),
     AccumulatedPeers(BlockHash, Option<Vec<NodeId>>),
     #[from]
     GlobalStateSynchronizer(GlobalStateSynchronizerEvent),
-    // ExecutionResultsFetched {
-    //     block_hash: BlockHash,
-    //     result: FetchResult<ExecutionResults>,
-    // },
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
-                write!(
-                    f,
-                    "block synchronizer need next request"
-                )
+                write!(f, "block synchronizer need next request")
             }
             Event::Request(_) => {
                 write!(f, "block synchronizer request from effect builder")
@@ -122,19 +122,20 @@ impl Display for Event {
                 Ok(fetched_item) => write!(f, "{}", fetched_item),
                 Err(fetcher_error) => write!(f, "{}", fetcher_error),
             },
+            Event::ExecutionResultsFetched {
+                block_hash: _,
+                result,
+            } => match result {
+                Ok(fetched_item) => write!(f, "{}", fetched_item),
+                Err(fetcher_error) => write!(f, "{}", fetcher_error),
+            },
+            Event::ExecutionResultsStored { .. } => write!(f, "stored execution results"),
             Event::GlobalStateSynchronizer(event) => {
                 write!(f, "{:?}", event)
             }
             Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")
             }
-            // Event::ExecutionResultsFetched {
-            //     block_hash: _,
-            //     result,
-            // } => match result {
-            //     Ok(fetched_item) => write!(f, "{}", fetched_item),
-            //     Err(fetcher_error) => write!(f, "{}", fetcher_error),
-            // },
         }
     }
 }

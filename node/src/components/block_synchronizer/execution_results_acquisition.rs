@@ -39,6 +39,7 @@ impl ExecutionResultsRootHash {
     }
 }
 
+#[derive(DataSize, Debug, Clone)]
 pub(crate) enum Need {
     Request(BlockExecutionResultsOrChunkId),
     ShouldStore(Vec<casper_types::ExecutionResult>),

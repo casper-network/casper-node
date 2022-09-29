@@ -8,9 +8,11 @@ use datasize::DataSize;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
+use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::{DeployAcquisition, DeployState},
+        execution_results_acquisition::Need,
         need_next::NeedNext,
         peer_list::PeerList,
         signature_acquisition::SignatureAcquisition,
@@ -416,7 +418,36 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_execution_results(
+    pub(super) fn with_execution_results_or_chunk(
+        &mut self,
+        block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
+        need_execution_state: bool,
+    ) -> Result<(), Error> {
+        match self {
+            BlockAcquisitionState::HaveAllDeploys(
+                _header,
+                _signatures,
+                Some(execution_results_acquisition),
+            ) if need_execution_state => {
+                execution_results_acquisition
+                    .apply_block_execution_results_or_chunk(block_execution_results_or_chunk);
+            }
+            BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveSufficientFinalitySignatures(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::Fatal => {
+                return Err(Error::InvalidAttemptToApplyExecutionResults);
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn with_stored_execution_results(
         &mut self,
         need_execution_state: bool,
     ) -> Result<(), Error> {
@@ -428,8 +459,6 @@ impl BlockAcquisitionState {
             ) if need_execution_state => {
                 BlockAcquisitionState::HaveAllExecutionResults(header.clone(), signatures.clone())
             }
-            // we never ask for deploys in the following states, and thus it is erroneous to attempt
-            // to apply any
             BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveBlock(..)
@@ -574,9 +603,12 @@ impl BlockAcquisitionState {
                 rng,
                 deploy_hash,
             )),
-            Mode::GetExecResult(block_header, execution_results_acquisition) => Ok(
-                BlockAcquisitionAction::execution_results(peer_list, rng, block_header.id()),
-            ),
+            Mode::GetExecResult(block_header, execution_results_acquisition) => {
+                let need = execution_results_acquisition.needs_value_or_chunk();
+                Ok(BlockAcquisitionAction::execution_results(
+                    peer_list, rng, need,
+                ))
+            }
             Mode::GetStrictSignatures(block_header, acquired) => {
                 if validator_weights.is_empty() {
                     Ok(BlockAcquisitionAction::era_validators(
@@ -634,15 +666,11 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn execution_results(
-        peer_list: &PeerList,
-        rng: &mut NodeRng,
-        block_hash: BlockHash,
-    ) -> Self {
+    pub(super) fn execution_results(peer_list: &PeerList, rng: &mut NodeRng, need: Need) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::ExecutionResults(block_hash),
+            need_next: NeedNext::ExecutionResults(need),
         }
     }
 

@@ -1,8 +1,10 @@
 use datasize::DataSize;
 
-use crate::types::{BlockHash, DeployHash};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
+
+use crate::types::{BlockHash, DeployHash};
+use super::execution_results_acquisition::Need;
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
@@ -17,7 +19,7 @@ pub(crate) enum NeedNext {
     ExecutionResultsRootHash {
         global_state_root_hash: Digest,
     },
-    ExecutionResults(BlockHash),
+    ExecutionResults(Need),
     EraValidators(EraId),
     Peers(BlockHash),
 }

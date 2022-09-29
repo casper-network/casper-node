@@ -12,6 +12,7 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, Timestamp};
 
+use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::DeployAcquisition,
@@ -360,19 +361,32 @@ impl BlockBuilder {
     }
 
     // NOT WIRED
-    pub(crate) fn register_execution_results(
+    pub(crate) fn register_fetched_execution_results(
         &mut self,
         maybe_peer: Option<NodeId>,
+        block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<(), Error> {
-        if let Err(err) = self
-            .acquisition_state
-            .with_execution_results(self.should_fetch_execution_state)
-        {
+        if let Err(err) = self.acquisition_state.with_execution_results_or_chunk(
+            block_execution_results_or_chunk,
+            self.should_fetch_execution_state,
+        ) {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(err));
         }
         self.touch();
         self.promote_peer(maybe_peer);
+        Ok(())
+    }
+
+    // NOT WIRED
+    pub(crate) fn register_stored_execution_results(&mut self) -> Result<(), Error> {
+        if let Err(err) = self
+            .acquisition_state
+            .with_stored_execution_results(self.should_fetch_execution_state)
+        {
+            return Err(Error::BlockAcquisition(err));
+        }
+        self.touch();
         Ok(())
     }
 

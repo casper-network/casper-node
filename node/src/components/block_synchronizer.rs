@@ -26,7 +26,7 @@ use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
-        fetcher::{Error, FetchedData},
+        fetcher::{Error, FetchResult, FetchedData},
         Component,
     },
     effect::{
@@ -40,15 +40,16 @@ use crate::{
     reactor,
     storage::StorageRequest,
     types::{
-        BlockAdded, BlockHash, BlockHeader, BlockHeaderWithMetadata, Deploy, FinalitySignature,
-        FinalitySignatureId, Item, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item, NodeId, SyncLeap,
+        TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
 pub(crate) use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash};
+use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash, Need};
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
@@ -248,6 +249,7 @@ impl BlockSynchronizer {
             + From<FetcherRequest<BlockAdded>>
             + From<FetcherRequest<Deploy>>
             + From<FetcherRequest<FinalitySignature>>
+            + From<FetcherRequest<BlockExecutionResultsOrChunk>>
             + From<SyncGlobalStateRequest>
             + From<BlocksAccumulatorRequest>
             + From<ContractRuntimeRequest>
@@ -318,6 +320,33 @@ impl BlockSynchronizer {
                             .event(move |result| Event::DeployFetched { block_hash, result })
                     }))
                 }
+                NeedNext::ExecutionResults(Need::Request(id)) => {
+                    let block_hash = builder.block_hash();
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, ())
+                            .event(move |result| Event::ExecutionResultsFetched {
+                                block_hash,
+                                result,
+                            })
+                    }))
+                }
+                NeedNext::ExecutionResults(Need::ShouldStore(execution_results)) => {
+                    let block_hash = builder.block_hash();
+                    let execution_results = execution_results
+                        .into_iter()
+                        .map(|execution_result|
+                            {
+                                todo!("map this to the correct deploy hash - results should be in same order as the deploys for the block");
+                                (DeployHash::default(), execution_result)
+                            })
+                        .collect();
+                    results.extend(
+                        effect_builder
+                            .put_execution_results_to_storage(block_hash, execution_results)
+                            .event(move |()| Event::ExecutionResultsStored(block_hash)),
+                    )
+                }
                 NeedNext::EraValidators(era_id) => results.extend(
                     effect_builder
                         .get_era_validators(era_id)
@@ -328,17 +357,6 @@ impl BlockSynchronizer {
                         .get_blocks_accumulated_peers(block_hash)
                         .event(move |maybe_peers| Event::AccumulatedPeers(block_hash, maybe_peers)),
                 ),
-                NeedNext::ExecutionResults(block_hash) => {
-                    todo!()
-                    // results.extend(peers.into_iter().flat_map(|node_id| {
-                    //     effect_builder
-                    //         .fetch::<ExecutionResults>(block_hash, node_id, ())
-                    //         .event(move |result| Event::ExecutionResultsFetched {
-                    //             block_hash,
-                    //             result,
-                    //         })
-                    // }))
-                }
             }
         }
         results
@@ -558,6 +576,46 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    fn execution_results_fetched(
+        &mut self,
+        block_hash: BlockHash,
+        result: FetchResult<BlockExecutionResultsOrChunk>,
+    ) -> Effects<Event> {
+        let (value_or_chunk, maybe_peer) = match result {
+            Ok(FetchedData::FromPeer { item, peer }) => (item, Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (item, None),
+            Err(err) => {
+                debug!(%err, "failed to fetch execution results or chunk");
+                // TODO: Remove peer?
+                return Effects::new();
+            }
+        };
+
+        match self.builders.get_mut(&block_hash) {
+            Some(builder) => {
+                if let Err(error) =
+                    builder.register_fetched_execution_results(maybe_peer, *value_or_chunk)
+                {
+                    error!(%block_hash, %error, "failed to apply execution results or chunk");
+                }
+            }
+            None => debug!(%block_hash, "not currently synchronizing block"),
+        };
+        Effects::new()
+    }
+
+    fn execution_results_stored(&mut self, block_hash: BlockHash) -> Effects<Event> {
+        match self.builders.get_mut(&block_hash) {
+            Some(builder) => {
+                if let Err(error) = builder.register_stored_execution_results() {
+                    error!(%block_hash, %error, "failed to apply stored execution results");
+                }
+            }
+            None => debug!(%block_hash, "not currently synchronizing block"),
+        };
+        Effects::new()
+    }
+
     // NOT WIRED OR EVENTED
     fn stop(&mut self, block_hash: &BlockHash) {
         match self.builders.get_mut(block_hash) {
@@ -586,6 +644,7 @@ where
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
+        + From<FetcherRequest<BlockExecutionResultsOrChunk>>
         + From<BlocksAccumulatorRequest>
         + From<PeerBehaviorAnnouncement>
         + From<StorageRequest>
@@ -636,6 +695,14 @@ where
             }
             Event::DeployFetched { block_hash, result } => {
                 let effects = self.deploy_fetched(block_hash, result);
+                self.hook_need_next(effect_builder, effects)
+            }
+            Event::ExecutionResultsFetched { block_hash, result } => {
+                let effects = self.execution_results_fetched(block_hash, result);
+                self.hook_need_next(effect_builder, effects)
+            }
+            Event::ExecutionResultsStored(block_hash) => {
+                let effects = self.execution_results_stored(block_hash);
                 self.hook_need_next(effect_builder, effects)
             }
             Event::AccumulatedPeers(block_hash, Some(peers)) => {
