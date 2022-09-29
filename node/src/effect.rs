@@ -132,15 +132,12 @@ use casper_types::{
     Transfer, URef, U512,
 };
 
-use crate::components::block_synchronizer;
-use crate::components::block_synchronizer::GlobalStateSynchronizerError;
-use crate::components::blocks_accumulator::BlocksAccumulator;
-use crate::effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest};
-use crate::types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId};
 use crate::{
     components::{
-        block_synchronizer::TrieAccumulatorError,
+        block_synchronizer,
+        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
         block_validator::ValidatingBlock,
+        blocks_accumulator::BlocksAccumulator,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
@@ -152,12 +149,14 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
+    effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest},
     reactor::{EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAdded, BlockAndDeploys,
-        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
-        BlockPayload, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
         TrieOrChunk, TrieOrChunkId,
     },

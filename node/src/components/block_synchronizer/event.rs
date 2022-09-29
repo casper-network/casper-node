@@ -10,10 +10,9 @@ use serde::Serialize;
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
-use crate::components::block_synchronizer::GlobalStateSynchronizerError;
-use crate::effect::requests::BlockSynchronizerRequest;
 use crate::{
-    components::fetcher::FetchResult,
+    components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
+    effect::requests::BlockSynchronizerRequest,
     types::{
         BlockAdded, BlockHash, BlockHeader, Deploy, EraValidatorWeights, FinalitySignature, NodeId,
     },

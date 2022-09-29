@@ -58,9 +58,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-use crate::types::{
-    BlockAdded, Chainspec, ChainspecRawBytes, FetcherItem, FinalitySignature, SyncLeap, TrieOrChunk,
-};
 use crate::{
     components::{
         deploy_acceptor, fetcher, fetcher::FetchResponse,
@@ -72,9 +69,10 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, ExitCode, Item,
-        NodeId,
+        Block, BlockAdded, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecRawBytes, Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, Item,
+        NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{

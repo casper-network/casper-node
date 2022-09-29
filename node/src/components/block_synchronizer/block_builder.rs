@@ -12,12 +12,13 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, Timestamp};
 
-use crate::components::block_synchronizer::execution_results_acquisition::ExecutionResultsRootHash;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::DeployAcquisition,
-        execution_results_acquisition::ExecutionResultsAcquisition, need_next::NeedNext,
-        peer_list::PeerList, signature_acquisition::SignatureAcquisition,
+        execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash},
+        need_next::NeedNext,
+        peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition,
     },
     types::{
         BlockAdded, BlockHash, BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature,

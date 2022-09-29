@@ -3,11 +3,10 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 
-use crate::types::Block;
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::requests::DeployBufferRequest,
-    types::{Deploy, FinalizedBlock},
+    types::{Block, Deploy, FinalizedBlock},
 };
 
 #[derive(Debug, From, DataSize)]

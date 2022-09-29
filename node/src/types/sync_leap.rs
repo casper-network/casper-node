@@ -12,11 +12,12 @@ use thiserror::Error;
 use tokio::io::AsyncReadExt;
 
 use casper_types::{crypto, system::auction::ValidatorWeights, EraId, PublicKey, U512};
+use tracing::log::error;
 
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
-        error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
+        block, error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights, FetcherItem, Item, Tag,
         ValidatorMatrix,
     },
@@ -29,7 +30,6 @@ pub(crate) struct SyncLeap {
     /// The header of the trusted block specified by hash by the requester.
     pub trusted_block_header: BlockHeader,
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.
-    /// If the trusted one is already a switch block, this is empty.
     /// Sorted from highest to lowest.
     pub trusted_ancestor_headers: Vec<BlockHeader>,
     /// The headers of all switch blocks known to the sender, after the trusted block but before
@@ -98,8 +98,47 @@ impl SyncLeap {
         }
     }
 
-    pub(crate) fn validators_of_highest_block(&self) -> ValidatorWeights {
-        todo!("need to reconsider the case where the trusted block is a switch block")
+    pub(crate) fn validators_of_highest_block(&self) -> Option<ValidatorWeights> {
+        let highest = self.highest_block_height();
+        if highest == 0 {
+            // There's just one genesis block in the chain.
+            return Some(
+                self.trusted_block_header
+                    .next_era_validator_weights()
+                    .expect("block of height 0 must have next era validator weights")
+                    .clone(),
+            );
+        }
+
+        if !self.trusted_block_header.is_switch_block() && self.signed_block_headers.len() == 1 {
+            if let Some(trusted_ancestor_headers) = self.trusted_ancestor_headers.last() {
+                if let Some(next_era_validator_weights) =
+                    trusted_ancestor_headers.next_era_validator_weights()
+                {
+                    return Some(next_era_validator_weights.clone());
+                }
+            }
+            return None;
+        }
+
+        if self.trusted_block_header.is_switch_block() && self.signed_block_headers.len() == 1 {
+            if let Some(next_era_validator_weights) =
+                self.trusted_block_header.next_era_validator_weights()
+            {
+                return Some(next_era_validator_weights.clone());
+            }
+            return None;
+        }
+
+        if let Some(signed_block_header) = self.signed_block_headers.iter().rev().nth(1) {
+            if let Some(next_era_validator_weights) = signed_block_header
+                .block_header
+                .next_era_validator_weights()
+            {
+                return Some(next_era_validator_weights.clone());
+            }
+        }
+        None
     }
 }
 
@@ -134,13 +173,9 @@ impl FetcherItem for SyncLeap {
         // TODO: Possibly check the size of the collections.
 
         // The header chain should only go back until it hits _one_ switch block.
-        for header in iter::once(&self.trusted_block_header)
-            .chain(self.trusted_ancestor_headers.iter())
-            .rev()
-            .skip(1)
-        {
-            if header.is_switch_block() {
-                return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
+        for header in self.trusted_ancestor_headers.iter().rev().skip(1) {
+                if header.is_switch_block() {
+                    return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
             }
         }
 

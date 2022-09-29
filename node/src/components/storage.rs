@@ -71,7 +71,6 @@ use casper_types::{
 
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
-use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::{fetcher::FetchResponse, Component},
     effect::{
@@ -84,11 +83,12 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockDeployApprovals,
-        BlockExecutionResultsOrChunkId, BlockHash, BlockHashAndHeight, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem, FinalitySignature,
-        FinalizedApprovals, Item, NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
+        FetcherItem, FinalitySignature, FinalizedApprovals, Item, NodeId, SignatureWeight,
+        SyncLeap, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1667,10 +1667,6 @@ impl Storage {
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
-        if trusted_block_header.is_switch_block() {
-            return Ok(Some(vec![]));
-        }
-
         let mut current_trusted_block_header = trusted_block_header.clone();
 
         let mut result = vec![];

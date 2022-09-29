@@ -36,7 +36,6 @@ use casper_types::{
 
 pub(crate) use block_added::{BlockAdded, BlockAddedValidationError};
 
-use crate::types::{Chunkable, ValueOrChunk};
 use crate::{
     components::consensus,
     effect::GossipTarget,
@@ -47,8 +46,8 @@ use crate::{
             BlockHeadersBatchValidationError, BlockValidationError,
             BlockWithMetadataValidationError,
         },
-        Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, FetcherItem,
-        GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag,
+        Approval, Chunkable, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals,
+        FetcherItem, GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag, ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
