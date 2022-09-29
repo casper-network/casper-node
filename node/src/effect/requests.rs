@@ -1074,6 +1074,18 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
+    /// Returns the value of the deploys' approvals root hash stored in the ChecksumRegistry for the
+    /// given state root hash.
+    GetApprovalsRootHash {
+        state_root_hash: Digest,
+        responder: Responder<Result<Option<Digest>, engine_state::Error>>,
+    },
+    /// Returns the value of the execution results root hash stored in the ChecksumRegistry for the
+    /// given state root hash.
+    GetExecutionResultsRootHash {
+        state_root_hash: Digest,
+        responder: Responder<Result<Option<Digest>, engine_state::Error>>,
+    },
     /// Check if validator is bonded in the future era (identified by `era_id`).
     IsBonded {
         /// State root hash of the LFB.
@@ -1167,6 +1179,22 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
+
+            ContractRuntimeRequest::GetApprovalsRootHash {
+                state_root_hash, ..
+            } => write!(
+                formatter,
+                "get approvals root hash under {}",
+                state_root_hash
+            ),
+
+            ContractRuntimeRequest::GetExecutionResultsRootHash {
+                state_root_hash, ..
+            } => write!(
+                formatter,
+                "get execution results root hash under {}",
+                state_root_hash
+            ),
 
             ContractRuntimeRequest::IsBonded {
                 public_key, era_id, ..

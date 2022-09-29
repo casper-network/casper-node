@@ -7,6 +7,7 @@ use casper_hashing::Digest;
 use derive_more::From;
 use serde::Serialize;
 
+use casper_execution_engine::core::engine_state;
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
@@ -41,6 +42,11 @@ pub(crate) enum Event {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
         result: Result<Digest, GlobalStateSynchronizerError>,
+    },
+    GotExecutionResultsRootHash {
+        block_hash: BlockHash,
+        #[serde(skip_serializing)]
+        result: Result<Option<Digest>, engine_state::Error>,
     },
     DeployFetched {
         block_hash: BlockHash,
@@ -100,6 +106,14 @@ impl Display for Event {
             } => match result {
                 Ok(root_hash) => write!(f, "synced global state under root {}", root_hash),
                 Err(error) => write!(f, "failed to sync global state: {}", error),
+            },
+            Event::GotExecutionResultsRootHash {
+                block_hash: _,
+                result,
+            } => match result {
+                Ok(Some(digest)) => write!(f, "got exec results root hash {}", digest),
+                Ok(None) => write!(f, "got no exec results root hash"),
+                Err(error) => write!(f, "failed to get exec results root hash: {}", error),
             },
             Event::DeployFetched {
                 block_hash: _,

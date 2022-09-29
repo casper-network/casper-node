@@ -2123,6 +2123,44 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Returns the value of the deploys' approvals root hash stored in the ChecksumRegistry for the
+    /// given state root hash.
+    pub(crate) async fn get_approvals_root_hash(
+        self,
+        state_root_hash: Digest,
+    ) -> Result<Option<Digest>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetApprovalsRootHash {
+                state_root_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Returns the value of the execution results root hash stored in the ChecksumRegistry for the
+    /// given state root hash.
+    pub(crate) async fn get_execution_results_root_hash(
+        self,
+        state_root_hash: Digest,
+    ) -> Result<Option<Digest>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetExecutionResultsRootHash {
+                state_root_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the correct era validators set for the given era.
     /// Takes emergency restarts into account based on the information in the immediate switch
     /// block after a restart.

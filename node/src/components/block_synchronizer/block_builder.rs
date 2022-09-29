@@ -316,13 +316,26 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
-        let execution_results_root_hash: ExecutionResultsRootHash = todo!();
-        if let Err(error) = self.acquisition_state.with_global_state(
-            global_state,
+        if let Err(error) = self
+            .acquisition_state
+            .with_global_state(global_state, self.should_fetch_execution_state)
+        {
+            return Err(Error::BlockAcquisition(error));
+        }
+        self.touch();
+        Ok(())
+    }
+
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(crate) fn register_execution_results_root_hash(
+        &mut self,
+        execution_results_root_hash: ExecutionResultsRootHash,
+    ) -> Result<(), Error> {
+        if let Err(err) = self.acquisition_state.with_execution_results_root_hash(
             execution_results_root_hash,
             self.should_fetch_execution_state,
         ) {
-            return Err(Error::BlockAcquisition(error));
+            return Err(Error::BlockAcquisition(err));
         }
         self.touch();
         Ok(())
@@ -349,7 +362,6 @@ impl BlockBuilder {
     // NOT WIRED
     pub(crate) fn register_execution_results(
         &mut self,
-        deploy_hash: DeployHash,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(err) = self

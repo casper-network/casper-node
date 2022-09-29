@@ -1,6 +1,7 @@
 //!  This module contains all the execution related code.
 pub mod balance;
 pub mod chainspec_registry;
+pub mod checksum_registry;
 pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
@@ -54,6 +55,7 @@ use casper_types::{
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     chainspec_registry::ChainspecRegistry,
+    checksum_registry::ChecksumRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
@@ -2085,6 +2087,26 @@ where
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
     }
+
+    /// Returns the checksum registry at the given state root hash.
+    pub fn get_checksum_registry(
+        &self,
+        correlation_id: CorrelationId,
+        state_root_hash: Digest,
+    ) -> Result<ChecksumRegistry, Error> {
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+            None => return Err(Error::RootNotFound(state_root_hash)),
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+        };
+        let result = tracking_copy
+            .borrow_mut()
+            .get_checksum_registry(correlation_id)
+            .map_err(|error| {
+                error!(%error, "Failed to retrieve checksum registry");
+                Error::MissingChecksumRegistry
+            });
+        result
+    }
 }
 
 fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool {
@@ -2163,6 +2185,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::CommitError(_)
             | Error::MissingSystemContractRegistry
             | Error::MissingSystemContractHash(_)
+            | Error::MissingChecksumRegistry
             | Error::RuntimeStackOverflow
             | Error::FailedToGetWithdrawKeys
             | Error::FailedToGetStoredWithdraws

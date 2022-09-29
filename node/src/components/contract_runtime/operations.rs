@@ -4,13 +4,16 @@ use itertools::Itertools;
 use tracing::{debug, trace, warn};
 
 use casper_execution_engine::{
-    core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
-        StepRequest, StepSuccess,
+    core::{
+        engine_state::{
+            self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry,
+            DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+            GetEraValidatorsRequest, RewardItem, StepError, StepRequest, StepSuccess,
+        },
+        execution,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::lmdb::LmdbGlobalState,
+    storage::global_state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -18,6 +21,7 @@ use casper_types::{
     PublicKey, U512,
 };
 
+use super::SpeculativeExecutionState;
 use crate::{
     components::{
         consensus::EraReport,
@@ -29,12 +33,6 @@ use crate::{
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock},
 };
-use casper_execution_engine::{
-    core::{engine_state::execution_result::ExecutionResults, execution},
-    storage::global_state::{CommitProvider, StateProvider},
-};
-
-use super::SpeculativeExecutionState;
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
@@ -115,9 +113,9 @@ pub fn execute_finalized_block(
     )?;
 
     let mut effects = AdditiveMap::new();
-    let mut checksum_registry = BTreeMap::new();
-    let _ = checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
-    let _ = checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
+    let mut checksum_registry = ChecksumRegistry::new();
+    checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
+    checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
     let _ = effects.insert(
         Key::ChecksumRegistry,
         Transform::Write(

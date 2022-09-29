@@ -20,6 +20,7 @@ use datasize::DataSize;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
+use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
@@ -140,11 +141,11 @@ impl BlockSynchronizer {
             let block_hash = builder.block_hash();
             let era_id = fat_block_header.block_header.era_id();
             for (public_key, sig) in fat_block_header.block_signatures.proofs {
-                if let Err(err) = builder.register_finality_signature(
+                if let Err(error) = builder.register_finality_signature(
                     FinalitySignature::new(block_hash, era_id, sig, public_key),
                     None,
                 ) {
-                    todo!("handle error: {}", err)
+                    debug!(%error, "failed to register finality signature");
                 }
             }
         }
@@ -249,6 +250,7 @@ impl BlockSynchronizer {
             + From<FetcherRequest<FinalitySignature>>
             + From<SyncGlobalStateRequest>
             + From<BlocksAccumulatorRequest>
+            + From<ContractRuntimeRequest>
             + From<StorageRequest>
             + Send,
     {
@@ -296,6 +298,19 @@ impl BlockSynchronizer {
                         )
                         .event(move |result| Event::GlobalStateSynced { block_hash, result }),
                 ),
+                NeedNext::ExecutionResultsRootHash {
+                    global_state_root_hash,
+                } => {
+                    let block_hash = builder.block_hash();
+                    results.extend(
+                        effect_builder
+                            .get_execution_results_root_hash(global_state_root_hash)
+                            .event(move |result| Event::GotExecutionResultsRootHash {
+                                block_hash,
+                                result,
+                            }),
+                    );
+                }
                 NeedNext::Deploy(block_hash, deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -482,6 +497,41 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    fn got_execution_results_root_hash(
+        &mut self,
+        block_hash: BlockHash,
+        result: Result<Option<Digest>, engine_state::Error>,
+    ) -> Effects<Event> {
+        let execution_results_root_hash = match result {
+            Ok(Some(digest)) => ExecutionResultsRootHash::Some(digest),
+            Ok(None) => {
+                error!("the checksum registry should contain the execution results checksum");
+                ExecutionResultsRootHash::Legacy
+            }
+            Err(engine_state::Error::MissingChecksumRegistry) => {
+                // The registry will not exist for legacy blocks.
+                ExecutionResultsRootHash::Legacy
+            }
+            Err(error) => {
+                error!(%error, "unexpected error getting checksum registry");
+                ExecutionResultsRootHash::Legacy
+            }
+        };
+
+        match self.builders.get_mut(&block_hash) {
+            Some(builder) => {
+                if let Err(error) =
+                    builder.register_execution_results_root_hash(execution_results_root_hash)
+                {
+                    error!(%block_hash, %error, "failed to apply execution results root hash");
+                }
+            }
+            None => debug!(%block_hash, "not currently synchronising block"),
+        }
+
+        Effects::new()
+    }
+
     fn deploy_fetched(
         &mut self,
         block_hash: BlockHash,
@@ -578,6 +628,10 @@ where
             }
             Event::GlobalStateSynced { block_hash, result } => {
                 let effects = self.global_state_synced(block_hash, result);
+                self.hook_need_next(effect_builder, effects)
+            }
+            Event::GotExecutionResultsRootHash { block_hash, result } => {
+                let effects = self.got_execution_results_root_hash(block_hash, result);
                 self.hook_need_next(effect_builder, effects)
             }
             Event::DeployFetched { block_hash, result } => {
