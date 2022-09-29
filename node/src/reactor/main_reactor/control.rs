@@ -410,8 +410,16 @@ impl MainReactor {
                     from_peers,
                     ..
                 } => {
-                    let validator_weights = best_available.validators_of_highest_block();
                     let era_id = best_available.highest_era();
+                    let validator_weights = match best_available.validators_of_highest_block() {
+                        Some(validator_weights) => validator_weights,
+                        None => {
+                            let msg =
+                                format!("unable to read validators_of_highest_block from sync leap for block: {}", block_hash);
+                            error!("{}", msg);
+                            return CatchUpInstruction::Shutdown(msg);
+                        }
+                    };
                     self.block_synchronizer.register_sync_leap(
                         block_hash,
                         *best_available,

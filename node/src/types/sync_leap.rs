@@ -98,45 +98,47 @@ impl SyncLeap {
         }
     }
 
-    pub(crate) fn validators_of_highest_block(&self) -> ValidatorWeights {
+    pub(crate) fn validators_of_highest_block(&self) -> Option<ValidatorWeights> {
         let highest = self.highest_block_height();
         if highest == 0 {
             // There's just one genesis block in the chain.
-            return self
-                .trusted_block_header
-                .next_era_validator_weights()
-                .expect("block of height 0 must have next era validator weights")
-                .clone();
+            return Some(
+                self.trusted_block_header
+                    .next_era_validator_weights()
+                    .expect("block of height 0 must have next era validator weights")
+                    .clone(),
+            );
         }
 
         if !self.trusted_block_header.is_switch_block() && self.signed_block_headers.len() == 1 {
-            return self
-                .trusted_ancestor_headers
-                .last()
-                .expect("block of height 0 must have next era validator weights")
-                .next_era_validator_weights()
-                .unwrap()
-                .clone();
+            if let Some(trusted_ancestor_headers) = self.trusted_ancestor_headers.last() {
+                if let Some(next_era_validator_weights) =
+                    trusted_ancestor_headers.next_era_validator_weights()
+                {
+                    return Some(next_era_validator_weights.clone());
+                }
+            }
+            return None;
         }
 
         if self.trusted_block_header.is_switch_block() && self.signed_block_headers.len() == 1 {
-            return self
-                .trusted_block_header
-                .next_era_validator_weights()
-                .expect("block of height 0 must have next era validator weights")
-                .clone();
+            if let Some(next_era_validator_weights) =
+                self.trusted_block_header.next_era_validator_weights()
+            {
+                return Some(next_era_validator_weights.clone());
+            }
+            return None;
         }
 
-        self.signed_block_headers
-            .iter()
-            .rev()
-            .skip(1)
-            .next()
-            .unwrap()
-            .block_header
-            .next_era_validator_weights()
-            .expect("block of height 0 must have next era validator weights")
-            .clone()
+        if let Some(signed_block_header) = self.signed_block_headers.iter().rev().nth(1) {
+            if let Some(next_era_validator_weights) = signed_block_header
+                .block_header
+                .next_era_validator_weights()
+            {
+                return Some(next_era_validator_weights.clone());
+            }
+        }
+        None
     }
 }
 
