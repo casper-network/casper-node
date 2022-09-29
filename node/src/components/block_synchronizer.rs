@@ -60,7 +60,7 @@ pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
     builders: HashMap<BlockHash, BlockBuilder>,
     validator_matrix: ValidatorMatrix,
-    last_progress: Timestamp,
+    last_progress: Option<Timestamp>,
     global_sync: GlobalStateSynchronizer,
     disabled: bool,
 }
@@ -71,7 +71,7 @@ impl BlockSynchronizer {
             timeout: config.timeout(),
             builders: Default::default(),
             validator_matrix: Default::default(),
-            last_progress: Timestamp::now(),
+            last_progress: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
             disabled: false,
         }
@@ -104,7 +104,7 @@ impl BlockSynchronizer {
         max_simultaneous_peers: u32,
     ) {
         if self.builders.get_mut(&block_hash).is_none() {
-            self.last_progress = Timestamp::now();
+            self.last_progress = Some(Timestamp::now());
             self.builders.insert(
                 block_hash,
                 BlockBuilder::new(
@@ -117,14 +117,13 @@ impl BlockSynchronizer {
     }
 
     // CALLED FROM REACTOR
-    pub(crate) fn last_progress(&self) -> Timestamp {
+    pub(crate) fn last_progress(&self) -> Option<Timestamp> {
         self.builders
             .values()
             .filter_map(BlockBuilder::last_progress_time)
             .chain(std::iter::once(self.global_sync.last_progress()))
-            .chain(std::iter::once(self.last_progress))
+            .chain(self.last_progress)
             .max()
-            .unwrap_or(self.last_progress)
     }
 
     // CALLED FROM REACTOR
@@ -150,7 +149,7 @@ impl BlockSynchronizer {
         }
 
         if sync_leap.apply_validator_weights(&mut self.validator_matrix) {
-            self.last_progress = Timestamp::now();
+            self.last_progress = Some(Timestamp::now());
         }
         if let Some(fat_block_header) = sync_leap.highest_block_header() {
             match self.builders.get_mut(&block_hash) {
