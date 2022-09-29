@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Message to be returned by a peer. Indicates if the item could be fetched or not.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum FetchResponse<T, Id> {
     /// The requested item.
     Fetched(T),

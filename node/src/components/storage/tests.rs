@@ -66,13 +66,19 @@ fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMeta
         .collect()
 }
 
-fn create_sync_leap_test_chain(non_signed_blocks: &[u64]) -> (Storage, Vec<Block>) {
+fn create_sync_leap_test_chain(
+    non_signed_blocks: &[u64],
+    include_switch_block_at_tip: bool,
+) -> (Storage, Vec<Block>) {
     // Test chain:
     //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
     //  era 0 | era 1  | era 2  | era 3  | era 4 ...
     //  where
     //   S - switch block
     //   B - non-switch block
+
+    // If `include_switch_block_at_tip`, the additional switch block of height 12 will be added at
+    // the tip of the chain.
 
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
@@ -111,6 +117,21 @@ fn create_sync_leap_test_chain(non_signed_blocks: &[u64]) -> (Storage, Vec<Block
 
             blocks.push(block);
         });
+    if include_switch_block_at_tip {
+        let height = 12;
+        let parent = Some(blocks.get((height - 1) as usize).unwrap());
+        let block = Block::random_with_specifics_and_parent_and_validator_weights(
+            &mut harness.rng,
+            EraId::from((height - 1) / 3 + 1),
+            height,
+            ProtocolVersion::from_parts(1, 5, 0),
+            true,
+            None,
+            parent,
+            trusted_validator_weights.clone(),
+        );
+        blocks.push(block);
+    }
     blocks.iter().for_each(|block| {
         storage.write_block(block).unwrap();
 
@@ -1300,7 +1321,7 @@ fn can_put_and_get_block() {
 
 #[test]
 fn should_get_trusted_ancestor_headers() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[]);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1314,14 +1335,14 @@ fn should_get_trusted_ancestor_headers() {
             .collect()
     };
 
-    assert!(get_results(6).is_empty());
+    assert_eq!(get_results(6), &[5, 4, 3]);
     assert_eq!(get_results(8), &[7, 6]);
     assert_eq!(get_results(4), &[3]);
 }
 
 #[test]
 fn should_get_signed_block_headers() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[]);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1370,7 +1391,7 @@ fn should_get_signed_block_headers() {
 
 #[test]
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[11]);
+    let (storage, blocks) = create_sync_leap_test_chain(&[11], false);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1420,7 +1441,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 
 #[test]
 fn should_get_sync_leap() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[]);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
     let requested_block_hash = blocks.get(5).unwrap().header().hash();
     let allowed_era_diff = 100;
@@ -1447,8 +1468,33 @@ fn should_get_sync_leap() {
 }
 
 #[test]
+fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
+    let (storage, blocks) = create_sync_leap_test_chain(&[], true);
+
+    let requested_block_hash = blocks.get(12).unwrap().header().hash();
+    let allowed_era_diff = 100;
+    let sync_leap_result = storage
+        .get_sync_leap(requested_block_hash, allowed_era_diff)
+        .unwrap();
+
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(sync_leap.trusted_block_header.height(), 12);
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![11, 10, 9],
+    );
+    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
+
+    assert!(sync_leap.validate(&Ratio::new(1, 3)).is_ok());
+}
+
+#[test]
 fn should_respect_allowed_era_diff_in_get_sync_leap() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[]);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
     let requested_block_hash = blocks.get(5).unwrap().header().hash();
     let allowed_era_diff = 1;
