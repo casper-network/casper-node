@@ -89,8 +89,9 @@ use crate::{
     storage::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
         },
-        trie::TrieRaw,
+        trie::{merkle_proof::TrieMerkleProof, TrieRaw},
     },
     system::auction,
 };
@@ -2106,6 +2107,26 @@ where
                 Error::MissingChecksumRegistry
             });
         result
+    }
+
+    /// Returns the Merkle proof for the checksum registry at the given state root hash.
+    pub fn get_checksum_registry_proof(
+        &self,
+        correlation_id: CorrelationId,
+        state_root_hash: Digest,
+    ) -> Result<TrieMerkleProof<Key, StoredValue>, Error> {
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+            None => return Err(Error::RootNotFound(state_root_hash)),
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+        };
+
+        let key = Key::ChecksumRegistry;
+        let maybe_proof = tracking_copy
+            .borrow_mut()
+            .reader()
+            .read_with_proof(correlation_id, &key)
+            .map_err(Into::into)?;
+        maybe_proof.ok_or(Error::MissingChecksumRegistry)
     }
 }
 

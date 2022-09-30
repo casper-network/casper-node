@@ -140,7 +140,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .increment(elapsed_micros)
             .map_err(anyhow::Error::msg)?;
 
-        let header = block_and_execution_results.block.take_header();
+        let header = block_and_execution_results.block_header().clone();
         let expected = block.take_header();
         assert_eq!(
             header.state_root_hash(),

@@ -21,6 +21,7 @@ use casper_types::{
 };
 
 use super::SpeculativeExecutionState;
+use crate::types::BlockAdded;
 use crate::{
     components::{
         consensus::EraReport,
@@ -64,11 +65,15 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
+    let finalized_approvals: Vec<_> = deploys
+        .iter()
+        .chain(transfers.iter())
+        .map(|deploy| (*deploy.id(), deploy.approvals().clone()))
+        .collect();
     let approvals_checksum = types::compute_approvals_checksum(
-        deploys
+        finalized_approvals
             .iter()
-            .chain(transfers.iter())
-            .map(Deploy::approvals),
+            .map(|(_deploy_hash, approval)| approval),
     )
     .map_err(BlockCreationError::BytesRepr)?;
 
@@ -181,6 +186,9 @@ pub fn execute_finalized_block(
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
+    let proof_of_checksum_registry =
+        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
+
     // Update the metric.
     if let Some(metrics) = metrics.as_ref() {
         metrics.chain_height.set(block_height as i64);
@@ -199,21 +207,25 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
-    let block = Box::new(Block::new(
+    let block = Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
         protocol_version,
-    )?);
+    )?;
+
+    let block_added = Box::new(BlockAdded::new(
+        block,
+        finalized_approvals,
+        proof_of_checksum_registry,
+    ));
 
     Ok(BlockAndExecutionResults {
-        block,
+        block_added,
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
-        approvals_checksum,
-        execution_results_checksum,
     })
 }
 

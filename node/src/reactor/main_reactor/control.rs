@@ -622,6 +622,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         let mut effects = Effects::new();
+        // TODO - try to avoid repeating executing the same blocks.
         let mut executable_block_hashes = self.block_synchronizer.all_executable_block_hashes();
         executable_block_hashes.sort_by(|x, y| x.0.cmp(&y.0));
         for (height, block_hash) in executable_block_hashes {
@@ -643,33 +644,6 @@ impl MainReactor {
                             block_hash
                         ));
                     }
-                }
-            }
-        }
-        Ok(effects)
-    }
-
-    pub(crate) fn enqueue_executable_blocks_alt(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-    ) -> Result<Effects<MainEvent>, String> {
-        let mut effects = Effects::new();
-        let mut executable_block_hashes = self.block_synchronizer.all_executable_block_hashes();
-        executable_block_hashes.sort_by(|x, y| x.0.cmp(&y.0));
-        for (height, block_hash) in executable_block_hashes {
-            match self.storage.make_finalized_block(block_hash) {
-                Ok(Some((finalized_block, deploys, transfers))) => {
-                    effects.extend(
-                        effect_builder
-                            .enqueue_block_for_execution(finalized_block, deploys, transfers)
-                            .ignore(),
-                    );
-                }
-                Ok(None) => {
-                    // noop
-                }
-                Err(_) => {
-                    return Err(format!("failure to fetch block: {}", block_hash));
                 }
             }
         }

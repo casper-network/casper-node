@@ -1284,31 +1284,9 @@ impl Storage {
             .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
             .unwrap_or_default();
 
+        // TODO - provide deploys with the FINALIZED approvals
+
         Ok(Some((finalized_block, deploys, transfers)))
-    }
-
-    /// Make a finalized block.
-    pub fn make_finalized_block(
-        &self,
-        block_hash: BlockHash,
-    ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
-        let maybe_block = self.read_block(&block_hash)?;
-        if let Some(block) = maybe_block {
-            let finalized_block = FinalizedBlock::from(block.clone());
-
-            let deploy_hashes = block.deploy_hashes().clone();
-            let deploys = self
-                .read_deploys(deploy_hashes.len(), deploy_hashes.iter())?
-                .unwrap_or_default();
-            let transfer_hashes = block.transfer_hashes().clone();
-            let transfers = self
-                .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
-                .unwrap_or_default();
-
-            Ok(Some((finalized_block, deploys, transfers)))
-        } else {
-            Ok(None)
-        }
     }
 
     /// Writes a block to storage, updating indices as necessary.

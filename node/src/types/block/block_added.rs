@@ -102,6 +102,10 @@ impl BlockAdded {
         &self.block
     }
 
+    pub(crate) fn take_block(self) -> Block {
+        self.block
+    }
+
     pub(crate) fn finalized_approvals(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
         &self.finalized_approvals
     }

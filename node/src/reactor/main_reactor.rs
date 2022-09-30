@@ -526,27 +526,29 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block,
-                approvals_checksum: _, // TODO: Gossip BlockAdded
-            }) => {
+            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
+                block_added,
+            )) => {
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(block.header().clone()),
-                    header_hash: *block.hash(),
+                    header: Box::new(block_added.block().header().clone()),
+                    header_hash: *block_added.block().hash(),
                 });
-                let reactor_block_gossiper_event =
+                // TODO - only gossip once we have enough finality signatures (and only if we're
+                //        a validator?)
+                let reactor_block_added_gossiper_event =
                     MainEvent::BlockAddedGossiper(gossiper::Event::ItemReceived {
-                        item_id: *block.hash(),
+                        item_id: *block_added.block().hash(),
                         source: Source::Ourself,
                     });
-                let reactor_event_es =
-                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                let reactor_event_es = MainEvent::EventStreamServer(
+                    event_stream_server::Event::BlockAdded(Box::new(block_added.block().clone())),
+                );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects.extend(self.dispatch_event(
                     effect_builder,
                     rng,
-                    reactor_block_gossiper_event,
+                    reactor_block_added_gossiper_event,
                 ));
 
                 effects
@@ -820,20 +822,17 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::LinearChainBlock {
-                    block,
-                    approvals_checksum,
-                    execution_results_checksum,
+                    block_added,
                     execution_results,
                 },
             ) => {
                 let mut effects = Effects::new();
-                let block_hash = *block.hash();
+                let block_hash = *block_added.block().hash();
 
                 // send to linear chain
                 let reactor_event =
                     MainEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
-                        block,
-                        approvals_checksum,
+                        block_added,
                         execution_results: execution_results
                             .iter()
                             .map(|(hash, _header, results)| (*hash, results.clone()))

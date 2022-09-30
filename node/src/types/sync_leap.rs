@@ -212,7 +212,7 @@ impl FetcherItem for SyncLeap {
             .trusted_ancestor_headers
             .last()
             .unwrap_or(&self.trusted_block_header);
-        assert!(oldest_header.is_switch_block());
+        debug_assert!(oldest_header.is_switch_block());
 
         let mut validator_weights = oldest_header
             .next_era_validator_weights()
