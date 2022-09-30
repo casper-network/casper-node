@@ -25,8 +25,8 @@ use crate::{
         MainEvent, MainReactor,
     },
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
-        EraValidatorWeights, FinalizedBlock, Item, ValidatorMatrix,
+        ActivationPoint, BlockAdded, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
+        DeployHash, EraValidatorWeights, FinalizedBlock, Item, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -257,12 +257,21 @@ impl MainReactor {
                                 self.block_synchronizer.turn_off();
                             }
                         }
-                        // Fraser...maybe this would be more practical?
-                        /*
-                            self.contract_runtime.enqueue_executable_blocks(
-                                self.block_synchronizer.get_executable_blocks()
-                            );
-                        */
+                        match self.enqueue_executable_blocks(effect_builder) {
+                            Ok(mut effects) => {
+                                effects.extend(
+                                    effect_builder
+                                        .immediately()
+                                        .event(|_| MainEvent::ReactorCrank),
+                                );
+                                return effects;
+                            }
+                            Err(msg) => {
+                                return effect_builder
+                                    .immediately()
+                                    .event(move |_| MainEvent::Shutdown(msg));
+                            }
+                        }
                     }
                 }
             }
@@ -606,5 +615,38 @@ impl MainReactor {
             },
             Err(msg) => Err(msg),
         }
+    }
+
+    pub(crate) fn enqueue_executable_blocks(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> Result<Effects<MainEvent>, String> {
+        let mut effects = Effects::new();
+        // TODO - try to avoid repeating executing the same blocks.
+        let mut executable_block_hashes = self.block_synchronizer.all_executable_block_hashes();
+        executable_block_hashes.sort_by(|x, y| x.0.cmp(&y.0));
+        for (height, block_hash) in executable_block_hashes {
+            if let Some(block_added) = self.blocks_accumulator.block_added(block_hash) {
+                match self.storage.make_executable_block(block_added) {
+                    Ok(Some((finalized_block, deploys, transfers))) => {
+                        effects.extend(
+                            effect_builder
+                                .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                                .ignore(),
+                        );
+                    }
+                    Ok(None) => {
+                        // noop
+                    }
+                    Err(_) => {
+                        return Err(format!(
+                            "failure to make block_added into executable block: {}",
+                            block_hash
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(effects)
     }
 }

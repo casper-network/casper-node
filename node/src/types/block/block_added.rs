@@ -16,7 +16,9 @@ use super::{Block, BlockHash};
 use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
-    types::{Approval, BlockValidationError, FetcherItem, GossiperItem, Item, Tag},
+    types::{
+        self, Approval, BlockValidationError, DeployHash, FetcherItem, GossiperItem, Item, Tag,
+    },
     utils::ds,
 };
 
@@ -24,21 +26,22 @@ use crate::{
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct BlockAdded {
     /// The block.
-    pub block: Block,
-    /// The set of all deploys' finalized approvals in the order in which they appear in the block.
-    pub finalized_approvals: Vec<BTreeSet<Approval>>,
+    block: Block,
+    /// The set of all deploys' finalized approvals in the block.
+    finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
     /// The Merkle proof of the finalized approvals.
     #[data_size(skip)]
-    pub merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     is_verified: OnceCell<Result<(), BlockAddedValidationError>>,
 }
 
 impl BlockAdded {
+    // TODO: Fraser, this appears to have no usages which is worrisome
     pub(crate) fn new(
         block: Block,
-        finalized_approvals: Vec<BTreeSet<Approval>>,
+        finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
@@ -78,16 +81,12 @@ impl BlockAdded {
             })
             .ok_or(BlockAddedValidationError::InvalidChecksumRegistry)?;
 
-        let computed_approvals_root_hash = {
-            let mut approval_hashes = vec![];
-            for approvals in &self.finalized_approvals {
-                let bytes = approvals
-                    .to_bytes()
-                    .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
-                approval_hashes.push(Digest::hash(bytes));
-            }
-            Digest::hash_merkle_tree(approval_hashes)
-        };
+        let computed_approvals_root_hash = types::compute_approvals_checksum(
+            self.finalized_approvals
+                .iter()
+                .map(|(_deploy_hash, approvals)| approvals),
+        )
+        .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
 
         if value_in_proof != computed_approvals_root_hash {
             return Err(BlockAddedValidationError::ApprovalsRootHashMismatch {
@@ -97,6 +96,22 @@ impl BlockAdded {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn block(&self) -> &Block {
+        &self.block
+    }
+
+    pub(crate) fn take_block(self) -> Block {
+        self.block
+    }
+
+    pub(crate) fn finalized_approvals(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
+        &self.finalized_approvals
+    }
+
+    pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
+        &self.merkle_proof_approvals
     }
 }
 

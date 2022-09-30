@@ -9,12 +9,16 @@ use std::{
     fs::File,
 };
 
+use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp, U512};
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, StoredValue, Timestamp, U512,
+};
 
+use crate::types::BlockAdded;
 use crate::{
     components::{
         deploy_acceptor::Error, diagnostics_port::FileSerializer, upgrade_watcher::NextUpgrade,
@@ -306,10 +310,7 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
 #[derive(Debug)]
 pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
-    BlockAdded {
-        block: Box<Block>,
-        approvals_checksum: Digest,
-    },
+    BlockAdded(Box<BlockAdded>),
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -317,8 +318,8 @@ pub(crate) enum LinearChainAnnouncement {
 impl Display for LinearChainAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinearChainAnnouncement::BlockAdded { block, .. } => {
-                write!(f, "block added {}", block.hash())
+            LinearChainAnnouncement::BlockAdded(block_added) => {
+                write!(f, "block added {}", block_added.block().hash())
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)
@@ -350,11 +351,7 @@ pub(crate) enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
     LinearChainBlock {
         /// The block.
-        block: Box<Block>,
-        /// The checksum of the deploys' approvals.
-        approvals_checksum: Digest,
-        /// The checksum of the execution results of the deploys.
-        execution_results_checksum: Digest,
+        block_added: Box<BlockAdded>,
         /// The results of executing the deploys in this block.
         // #[serde(skip_serializing)]
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
@@ -378,8 +375,12 @@ pub(crate) enum ContractRuntimeAnnouncement {
 impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
-                write!(f, "created linear chain block {}", block.hash())
+            ContractRuntimeAnnouncement::LinearChainBlock { block_added, .. } => {
+                write!(
+                    f,
+                    "created linear chain block {}",
+                    block_added.block().hash()
+                )
             }
             ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
                 write!(f, "commit step completed for {}", era_id)

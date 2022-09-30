@@ -17,11 +17,11 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, U512,
+    CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use super::SpeculativeExecutionState;
+use crate::types::BlockAdded;
 use crate::{
     components::{
         consensus::EraReport,
@@ -31,7 +31,9 @@ use crate::{
         },
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
-    types::{error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock},
+    types::{
+        self, error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock,
+    },
 };
 
 /// Executes a finalized block.
@@ -63,7 +65,17 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    let approvals_checksum = compute_approvals_checksum(&deploys, &transfers)?;
+    let finalized_approvals: Vec<_> = deploys
+        .iter()
+        .chain(transfers.iter())
+        .map(|deploy| (*deploy.id(), deploy.approvals().clone()))
+        .collect();
+    let approvals_checksum = types::compute_approvals_checksum(
+        finalized_approvals
+            .iter()
+            .map(|(_deploy_hash, approval)| approval),
+    )
+    .map_err(BlockCreationError::BytesRepr)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
@@ -174,6 +186,9 @@ pub fn execute_finalized_block(
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
+    let proof_of_checksum_registry =
+        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
+
     // Update the metric.
     if let Some(metrics) = metrics.as_ref() {
         metrics.chain_height.set(block_height as i64);
@@ -192,21 +207,25 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
-    let block = Box::new(Block::new(
+    let block = Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
         protocol_version,
-    )?);
+    )?;
+
+    let block_added = Box::new(BlockAdded::new(
+        block,
+        finalized_approvals,
+        proof_of_checksum_registry,
+    ));
 
     Ok(BlockAndExecutionResults {
-        block,
+        block_added,
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
-        approvals_checksum,
-        execution_results_checksum,
     })
 }
 
@@ -411,21 +430,4 @@ fn compute_execution_results_checksum(
     (&execution_results)
         .hash()
         .map_err(BlockCreationError::BytesRepr)
-}
-
-/// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
-/// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
-fn compute_approvals_checksum(
-    deploys: &[Deploy],
-    transfers: &[Deploy],
-) -> Result<Digest, BlockCreationError> {
-    let mut approval_hashes = vec![];
-    for deploy in deploys.iter().chain(transfers) {
-        let bytes = deploy
-            .approvals()
-            .to_bytes()
-            .map_err(BlockCreationError::BytesRepr)?;
-        approval_hashes.push(Digest::hash(bytes));
-    }
-    Ok(Digest::hash_merkle_tree(approval_hashes))
 }

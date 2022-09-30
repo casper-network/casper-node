@@ -1,11 +1,13 @@
+use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, Key, StoredValue};
 
+use crate::types::BlockAdded;
 use crate::{
     effect::incoming::FinalitySignatureIncoming,
     types::{ActivationPoint, Block, BlockSignatures, DeployHash, FinalitySignature},
@@ -16,9 +18,7 @@ pub(crate) enum Event {
     /// New linear chain block has been produced.
     NewLinearChainBlock {
         /// The block.
-        block: Box<Block>,
-        /// The checksum of the deploys' approvals.
-        approvals_checksum: Digest,
+        block_added: Box<BlockAdded>,
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
@@ -26,12 +26,7 @@ pub(crate) enum Event {
     /// Not necessarily _new_ finality signature.
     FinalitySignatureReceived(Box<FinalitySignature>, bool),
     /// The result of putting a block to storage.
-    PutBlockResult {
-        /// The block.
-        block: Box<Block>,
-        /// The checksum of the deploys' approvals.
-        approvals_checksum: Digest,
-    },
+    PutBlockResult(Box<BlockAdded>),
     /// The result of requesting finality signatures from storage to add pending signatures.
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
     /// Result of testing if creator of the finality signature is bonded validator.
@@ -51,8 +46,8 @@ impl From<FinalitySignatureIncoming> for Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::NewLinearChainBlock { block, .. } => {
-                write!(f, "linear chain new block: {}", block.hash())
+            Event::NewLinearChainBlock { block_added, .. } => {
+                write!(f, "linear chain new block: {}", block_added.block().hash())
             }
             Event::FinalitySignatureReceived(fs, gossiped) => write!(
                 f,

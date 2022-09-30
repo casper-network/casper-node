@@ -17,7 +17,10 @@ use crate::{
     NodeRng,
 };
 
-use crate::{effect::requests::BlocksAccumulatorRequest, types::BlockHeader};
+use crate::{
+    effect::requests::BlocksAccumulatorRequest,
+    types::{BlockHeader, BlockPayload, DeployHash, FinalizedBlock},
+};
 use block_gossip_acceptor::BlockGossipAcceptor;
 use error::Error;
 pub(crate) use event::Event;
@@ -198,9 +201,9 @@ impl BlocksAccumulator {
     where
         REv: Send + From<PeerBehaviorAnnouncement>,
     {
-        let block_hash = *block_added.block.hash();
-        let era_id = block_added.block.header().era_id();
-        if let Some(parent_hash) = block_added.block.parent() {
+        let block_hash = *block_added.block().hash();
+        let era_id = block_added.block().header().era_id();
+        if let Some(parent_hash) = block_added.block().parent() {
             self.block_children.insert(*parent_hash, block_hash);
         }
         let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
@@ -299,6 +302,14 @@ impl BlocksAccumulator {
         {
             self.block_gossip_acceptors.remove(&block_hash);
             self.filter.push(block_hash);
+        }
+    }
+
+    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<BlockAdded> {
+        if let Some(acceptor) = self.block_gossip_acceptors.get(&block_hash) {
+            acceptor.block_added()
+        } else {
+            None
         }
     }
 

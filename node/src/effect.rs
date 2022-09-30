@@ -128,8 +128,8 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
-    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transfer, URef, U512,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue,
+    TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -168,6 +168,7 @@ use announcements::{
     GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
+use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockPayloadRequest,
@@ -991,9 +992,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces a new block has been created.
     pub(crate) async fn announce_new_linear_chain_block(
         self,
-        block: Box<Block>,
-        approvals_checksum: Digest,
-        execution_results_checksum: Digest,
+        block_added: Box<BlockAdded>,
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
@@ -1001,9 +1000,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeAnnouncement::LinearChainBlock {
-                    block,
-                    approvals_checksum,
-                    execution_results_checksum,
+                    block_added,
                     execution_results,
                 },
                 QueueKind::Regular,
@@ -1814,16 +1811,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block: Box<Block>, approvals_checksum: Digest)
+    pub(crate) async fn announce_block_added(self, block_added: Box<BlockAdded>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.event_queue
             .schedule(
-                LinearChainAnnouncement::BlockAdded {
-                    block,
-                    approvals_checksum,
-                },
+                LinearChainAnnouncement::BlockAdded(block_added),
                 QueueKind::Regular,
             )
             .await

@@ -64,7 +64,7 @@ impl BlockGossipAcceptor {
         let block_added = match self.block_added {
             None => None,
             Some(block_added) => {
-                if block_added.block.header().era_id() != era_validator_weights.era_id() {
+                if block_added.block().header().era_id() != era_validator_weights.era_id() {
                     None
                 } else {
                     Some(block_added)
@@ -109,12 +109,12 @@ impl BlockGossipAcceptor {
             });
         }
         if let Some(block_added) = &self.block_added {
-            let era_id = block_added.block.header().era_id();
+            let era_id = block_added.block().header().era_id();
             let evw_era_id = era_validator_weights.era_id();
             if evw_era_id != era_id {
                 return Err(AcceptorError::EraMismatch(
                     EraMismatchError::EraValidatorWeights {
-                        block_hash: block_added.block.header().id(),
+                        block_hash: block_added.block().header().id(),
                         expected: era_id,
                         actual: evw_era_id,
                     },
@@ -135,7 +135,7 @@ impl BlockGossipAcceptor {
             warn!(%error, "received invalid block-added");
             return Err(AcceptorError::InvalidGossip(Box::new(
                 InvalidGossipError::BlockAdded {
-                    block_hash: block_added.block.header().id(),
+                    block_hash: block_added.block().header().id(),
                     peer,
                     validation_error: error,
                 },
@@ -143,10 +143,10 @@ impl BlockGossipAcceptor {
         }
 
         if let Some(era_id) = self.era_validator_weights_era_id() {
-            let block_era_id = block_added.block.header().era_id();
+            let block_era_id = block_added.block().header().era_id();
             if block_era_id != era_id {
                 return Err(AcceptorError::EraMismatch(EraMismatchError::Block {
-                    block_hash: block_added.block.id(),
+                    block_hash: block_added.block().id(),
                     expected: era_id,
                     actual: block_era_id,
                 }));
@@ -244,7 +244,7 @@ impl BlockGossipAcceptor {
 
     fn block_era_id(&self) -> Option<EraId> {
         if let Some(block_added) = &self.block_added {
-            return Some(block_added.block.header().era_id());
+            return Some(block_added.block().header().era_id());
         }
         None
     }
@@ -252,7 +252,7 @@ impl BlockGossipAcceptor {
     pub(super) fn block_height(&self) -> Option<u64> {
         self.block_added
             .as_ref()
-            .map(|block_added| block_added.block.header().height())
+            .map(|block_added| block_added.block().header().height())
     }
 
     pub(super) fn block_era_and_height(&self) -> Option<(EraId, u64)> {
@@ -269,7 +269,7 @@ impl BlockGossipAcceptor {
             return None;
         }
         if let Some(block_added) = &self.block_added {
-            return Some(block_added.block.clone());
+            return Some(block_added.block().clone());
         }
         None
     }
@@ -282,7 +282,7 @@ impl BlockGossipAcceptor {
         }
         if let Some(block_added) = &self.block_added {
             return Some((
-                block_added.block.clone(),
+                block_added.block().clone(),
                 self.signatures.values().cloned().collect_vec(),
             ));
         }
@@ -291,6 +291,10 @@ impl BlockGossipAcceptor {
 
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
+    }
+
+    pub(super) fn block_added(&self) -> Option<BlockAdded> {
+        self.block_added.clone()
     }
 
     pub(super) fn has_era_validator_weights(&self) -> bool {
@@ -311,8 +315,8 @@ impl BlockGossipAcceptor {
                 .signatures
                 .iter()
                 .filter(|(_, v)| {
-                    v.block_hash != block_added.block.id()
-                        || v.era_id != block_added.block.header().era_id()
+                    v.block_hash != block_added.block().id()
+                        || v.era_id != block_added.block().header().era_id()
                 })
                 .map(|(k, _)| k.clone())
                 .collect_vec();
