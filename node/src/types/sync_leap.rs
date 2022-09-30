@@ -405,7 +405,7 @@ mod tests {
         // - there's a single entry in signed_block_headers
         let sync_leap = create_sync_leap(
             &mut rng,
-            BlockHeaderSpec::new(10),
+            BlockHeaderSpec::new(17),
             &[
                 BlockHeaderSpec::new(16),
                 BlockHeaderSpec::new(15),
@@ -420,7 +420,7 @@ mod tests {
         // empty.
         let sync_leap = create_sync_leap(
             &mut rng,
-            BlockHeaderSpec::new_switch(10),
+            BlockHeaderSpec::new_switch(17),
             &[
                 BlockHeaderSpec::new(16),
                 BlockHeaderSpec::new(15),
@@ -464,13 +464,12 @@ mod tests {
 
         // Case 2:
         //   - Trusted header IS NOT a switch block
-        //   - signed_block_headers contains just one entry (meaning, it contains a non-switch tip
-        //     only)
+        //   - signed_block_headers contains just one entry (meaning, it contains a tip only)
         // Take validator weights from the least recent entry in `trusted_ancestor_header`, which is
         // a switch block of interest.
         let sync_leap = create_sync_leap(
             &mut rng,
-            BlockHeaderSpec::new(10),
+            BlockHeaderSpec::new(17),
             &[
                 BlockHeaderSpec::new(16),
                 BlockHeaderSpec::new(15),
@@ -483,13 +482,12 @@ mod tests {
 
         // Case 3:
         //   - Trusted header IS a switch block
-        //   - signed_block_headers contains just one entry (meaning, it contains a non-switch tip
-        //     only)
+        //   - signed_block_headers contains just one entry (meaning, it contains a tip only)
         // Take validator weights from the trusted block header, which is a switch block of
         // interest.
         let sync_leap = create_sync_leap(
             &mut rng,
-            BlockHeaderSpec::new_switch(10),
+            BlockHeaderSpec::new_switch(17),
             &[
                 BlockHeaderSpec::new(16),
                 BlockHeaderSpec::new(15),
@@ -498,7 +496,7 @@ mod tests {
             ],
             &[BlockHeaderSpec::new(20)],
         );
-        assert_validator_weights(10, sync_leap);
+        assert_validator_weights(17, sync_leap);
 
         // Case 4:
         //  - signed_block_headers is empty (meaning, we were asked for a tip)
@@ -506,7 +504,7 @@ mod tests {
         // a switch block of interest.
         let sync_leap = create_sync_leap(
             &mut rng,
-            BlockHeaderSpec::new_switch(10),
+            BlockHeaderSpec::new_switch(17),
             &[
                 BlockHeaderSpec::new(16),
                 BlockHeaderSpec::new(15),
