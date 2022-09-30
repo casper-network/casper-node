@@ -293,6 +293,10 @@ impl BlockGossipAcceptor {
         self.block_hash
     }
 
+    pub(super) fn block_added(&self) -> Option<BlockAdded> {
+        self.block_added.clone()
+    }
+
     pub(super) fn has_era_validator_weights(&self) -> bool {
         self.era_validator_weights.is_some()
     }

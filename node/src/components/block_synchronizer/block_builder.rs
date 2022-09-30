@@ -12,7 +12,6 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, Timestamp};
 
-use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::DeployAcquisition,
@@ -22,8 +21,8 @@ use crate::{
         signature_acquisition::SignatureAcquisition,
     },
     types::{
-        BlockAdded, BlockHash, BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature,
-        NodeId, SyncLeap,
+        BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
+        EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
     },
     NodeRng,
 };

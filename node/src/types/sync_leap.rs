@@ -174,8 +174,8 @@ impl FetcherItem for SyncLeap {
 
         // The header chain should only go back until it hits _one_ switch block.
         for header in self.trusted_ancestor_headers.iter().rev().skip(1) {
-                if header.is_switch_block() {
-                    return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
+            if header.is_switch_block() {
+                return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
             }
         }
 

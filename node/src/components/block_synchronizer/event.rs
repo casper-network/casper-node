@@ -12,12 +12,12 @@ use casper_execution_engine::core::engine_state;
 use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
-use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
     effect::requests::BlockSynchronizerRequest,
     types::{
-        BlockAdded, BlockHash, BlockHeader, Deploy, EraValidatorWeights, FinalitySignature, NodeId,
+        BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
+        EraValidatorWeights, FinalitySignature, NodeId,
     },
 };
 
