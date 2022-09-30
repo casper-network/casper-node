@@ -2601,6 +2601,19 @@ impl Display for FinalitySignatureId {
     }
 }
 
+/// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
+/// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
+pub(crate) fn compute_approvals_checksum<'a>(
+    approvals: impl Iterator<Item = &'a BTreeSet<Approval>>,
+) -> Result<Digest, bytesrepr::Error> {
+    let mut approval_hashes = vec![];
+    for approval in approvals {
+        let bytes = approval.to_bytes()?;
+        approval_hashes.push(Digest::hash(bytes));
+    }
+    Ok(Digest::hash_merkle_tree(approval_hashes))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{iter, rc::Rc};

@@ -17,8 +17,7 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, U512,
+    CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use super::SpeculativeExecutionState;
@@ -31,7 +30,9 @@ use crate::{
         },
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
-    types::{error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock},
+    types::{
+        self, error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock,
+    },
 };
 
 /// Executes a finalized block.
@@ -63,7 +64,13 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    let approvals_checksum = compute_approvals_checksum(&deploys, &transfers)?;
+    let approvals_checksum = types::compute_approvals_checksum(
+        deploys
+            .iter()
+            .chain(transfers.iter())
+            .map(Deploy::approvals),
+    )
+    .map_err(BlockCreationError::BytesRepr)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
@@ -411,21 +418,4 @@ fn compute_execution_results_checksum(
     (&execution_results)
         .hash()
         .map_err(BlockCreationError::BytesRepr)
-}
-
-/// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
-/// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
-fn compute_approvals_checksum(
-    deploys: &[Deploy],
-    transfers: &[Deploy],
-) -> Result<Digest, BlockCreationError> {
-    let mut approval_hashes = vec![];
-    for deploy in deploys.iter().chain(transfers) {
-        let bytes = deploy
-            .approvals()
-            .to_bytes()
-            .map_err(BlockCreationError::BytesRepr)?;
-        approval_hashes.push(Digest::hash(bytes));
-    }
-    Ok(Digest::hash_merkle_tree(approval_hashes))
 }

@@ -16,7 +16,9 @@ use super::{Block, BlockHash};
 use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
-    types::{Approval, BlockValidationError, DeployHash, FetcherItem, GossiperItem, Item, Tag},
+    types::{
+        self, Approval, BlockValidationError, DeployHash, FetcherItem, GossiperItem, Item, Tag,
+    },
     utils::ds,
 };
 
@@ -79,16 +81,12 @@ impl BlockAdded {
             })
             .ok_or(BlockAddedValidationError::InvalidChecksumRegistry)?;
 
-        let computed_approvals_root_hash = {
-            let mut approval_hashes = vec![];
-            for (_deploy_hash, approvals) in &self.finalized_approvals {
-                let bytes = approvals
-                    .to_bytes()
-                    .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
-                approval_hashes.push(Digest::hash(bytes));
-            }
-            Digest::hash_merkle_tree(approval_hashes)
-        };
+        let computed_approvals_root_hash = types::compute_approvals_checksum(
+            self.finalized_approvals
+                .iter()
+                .map(|(_deploy_hash, approvals)| approvals),
+        )
+        .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
 
         if value_in_proof != computed_approvals_root_hash {
             return Err(BlockAddedValidationError::ApprovalsRootHashMismatch {

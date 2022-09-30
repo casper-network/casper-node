@@ -27,15 +27,16 @@ use rand::{CryptoRng, RngCore};
 use rand_chacha::ChaCha20Rng;
 
 pub use available_block_range::AvailableBlockRange;
+pub(crate) use block::{
+    compute_approvals_checksum, BlockAdded, BlockAddedValidationError, BlockHashAndHeight,
+    BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+    BlockWithMetadata, FinalitySignatureId,
+};
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockAndDeploys, BlockBody, BlockExecutionResultsOrChunk,
     BlockExecutionResultsOrChunkId, BlockExecutionResultsOrChunkIdDisplay, BlockHash, BlockHeader,
     BlockSignatures, FinalitySignature, FinalizedBlock,
-};
-pub(crate) use block::{
-    BlockAdded, BlockAddedValidationError, BlockHashAndHeight, BlockHeaderWithMetadata,
-    BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockWithMetadata, FinalitySignatureId,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
