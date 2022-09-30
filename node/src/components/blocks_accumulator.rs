@@ -201,9 +201,9 @@ impl BlocksAccumulator {
     where
         REv: Send + From<PeerBehaviorAnnouncement>,
     {
-        let block_hash = *block_added.block.hash();
-        let era_id = block_added.block.header().era_id();
-        if let Some(parent_hash) = block_added.block.parent() {
+        let block_hash = *block_added.block().hash();
+        let era_id = block_added.block().header().era_id();
+        if let Some(parent_hash) = block_added.block().parent() {
             self.block_children.insert(*parent_hash, block_hash);
         }
         let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {

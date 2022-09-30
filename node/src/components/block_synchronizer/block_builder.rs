@@ -271,7 +271,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_body(&block_added.block, self.should_fetch_execution_state)
+            .with_body(block_added.block(), self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));

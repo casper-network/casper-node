@@ -438,8 +438,8 @@ impl BlockSynchronizer {
             Option<Box<BlockAdded>>,
             Option<NodeId>,
         ) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (item.block.id(), Some(item), Some(peer)),
-            Ok(FetchedData::FromStorage { item }) => (item.block.id(), Some(item), None),
+            Ok(FetchedData::FromPeer { item, peer }) => (item.block().id(), Some(item), Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (item.block().id(), Some(item), None),
             Err(err) => {
                 debug!(%err, "failed to fetch block-added");
                 match err {

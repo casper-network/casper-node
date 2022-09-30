@@ -1274,12 +1274,12 @@ impl Storage {
         // check all approvals in block_added against stored approvals,
         // deal with any discrepancies
         // TODO: self.check_verified_approvals_or_sth_like_that()
-        let finalized_block = FinalizedBlock::from(block_added.block.clone());
-        let deploy_hashes = block_added.block.deploy_hashes().clone();
+        let finalized_block = FinalizedBlock::from(block_added.block().clone());
+        let deploy_hashes = block_added.block().deploy_hashes().clone();
         let deploys = self
             .read_deploys(deploy_hashes.len(), deploy_hashes.iter())?
             .unwrap_or_default();
-        let transfer_hashes = block_added.block.transfer_hashes().clone();
+        let transfer_hashes = block_added.block().transfer_hashes().clone();
         let transfers = self
             .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
             .unwrap_or_default();

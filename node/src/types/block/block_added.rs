@@ -24,12 +24,12 @@ use crate::{
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct BlockAdded {
     /// The block.
-    pub block: Block,
+    block: Block,
     /// The set of all deploys' finalized approvals in the block.
-    pub finalized_approvals: BTreeMap<DeployHash, BTreeSet<Approval>>,
+    finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
     /// The Merkle proof of the finalized approvals.
     #[data_size(skip)]
-    pub merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     is_verified: OnceCell<Result<(), BlockAddedValidationError>>,
@@ -39,7 +39,7 @@ impl BlockAdded {
     // TODO: Fraser, this appears to have no usages which is worrisome
     pub(crate) fn new(
         block: Block,
-        finalized_approvals: BTreeMap<DeployHash, BTreeSet<Approval>>,
+        finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
@@ -81,7 +81,7 @@ impl BlockAdded {
 
         let computed_approvals_root_hash = {
             let mut approval_hashes = vec![];
-            for approvals in self.finalized_approvals.values() {
+            for (_deploy_hash, approvals) in &self.finalized_approvals {
                 let bytes = approvals
                     .to_bytes()
                     .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
@@ -98,6 +98,18 @@ impl BlockAdded {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn block(&self) -> &Block {
+        &self.block
+    }
+
+    pub(crate) fn finalized_approvals(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
+        &self.finalized_approvals
+    }
+
+    pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
+        &self.merkle_proof_approvals
     }
 }
 
