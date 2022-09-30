@@ -1468,6 +1468,31 @@ fn should_get_sync_leap() {
 }
 
 #[test]
+fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+
+    let requested_block_hash = blocks.get(11).unwrap().header().hash();
+    let allowed_era_diff = 100;
+    let sync_leap_result = storage
+        .get_sync_leap(requested_block_hash, allowed_era_diff)
+        .unwrap();
+
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(sync_leap.trusted_block_header.height(), 11);
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![10, 9],
+    );
+    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
+
+    assert!(sync_leap.validate(&Ratio::new(1, 3)).is_ok());
+}
+
+#[test]
 fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], true);
 
