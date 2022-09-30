@@ -3,8 +3,8 @@ use datasize::DataSize;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::types::{BlockHash, DeployHash};
 use super::execution_results_acquisition::Need;
+use crate::types::{BlockHash, DeployHash};
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {

@@ -100,6 +100,20 @@ impl BlockSynchronizer {
     }
 
     // CALLED FROM REACTOR
+    pub(crate) fn all_executable_block_hashes(&self) -> Vec<(u64, BlockHash)> {
+        let mut ret: Vec<(u64, BlockHash)> = vec![];
+        for (block_hash, builder) in &self.builders {
+            if builder.is_complete() == false {
+                continue;
+            }
+            if let Some(block_height) = builder.block_height() {
+                ret.push((block_height, *block_hash));
+            }
+        }
+        ret
+    }
+
+    // CALLED FROM REACTOR
     pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,
@@ -332,6 +346,8 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::ExecutionResults(Need::ShouldStore(execution_results)) => {
+                    // Fraser, I straight up don't like this approach on several levels;
+                    // would like to discuss tomorrow
                     let block_hash = builder.block_hash();
                     let execution_results = execution_results
                         .into_iter()

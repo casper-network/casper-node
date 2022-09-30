@@ -17,7 +17,10 @@ use crate::{
     NodeRng,
 };
 
-use crate::{effect::requests::BlocksAccumulatorRequest, types::BlockHeader};
+use crate::{
+    effect::requests::BlocksAccumulatorRequest,
+    types::{BlockHeader, BlockPayload, DeployHash, FinalizedBlock},
+};
 use block_gossip_acceptor::BlockGossipAcceptor;
 use error::Error;
 pub(crate) use event::Event;
@@ -299,6 +302,14 @@ impl BlocksAccumulator {
         {
             self.block_gossip_acceptors.remove(&block_hash);
             self.filter.push(block_hash);
+        }
+    }
+
+    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<BlockAdded> {
+        if let Some(acceptor) = self.block_gossip_acceptors.get(&block_hash) {
+            acceptor.block_added()
+        } else {
+            None
         }
     }
 

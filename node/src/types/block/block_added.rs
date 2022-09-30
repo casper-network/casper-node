@@ -16,7 +16,7 @@ use super::{Block, BlockHash};
 use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
-    types::{Approval, BlockValidationError, FetcherItem, GossiperItem, Item, Tag},
+    types::{Approval, BlockValidationError, DeployHash, FetcherItem, GossiperItem, Item, Tag},
     utils::ds,
 };
 
@@ -25,8 +25,8 @@ use crate::{
 pub(crate) struct BlockAdded {
     /// The block.
     pub block: Block,
-    /// The set of all deploys' finalized approvals in the order in which they appear in the block.
-    pub finalized_approvals: Vec<BTreeSet<Approval>>,
+    /// The set of all deploys' finalized approvals in the block.
+    pub finalized_approvals: BTreeMap<DeployHash, BTreeSet<Approval>>,
     /// The Merkle proof of the finalized approvals.
     #[data_size(skip)]
     pub merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
@@ -36,9 +36,10 @@ pub(crate) struct BlockAdded {
 }
 
 impl BlockAdded {
+    // TODO: Fraser, this appears to have no usages which is worrisome
     pub(crate) fn new(
         block: Block,
-        finalized_approvals: Vec<BTreeSet<Approval>>,
+        finalized_approvals: BTreeMap<DeployHash, BTreeSet<Approval>>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
@@ -80,7 +81,7 @@ impl BlockAdded {
 
         let computed_approvals_root_hash = {
             let mut approval_hashes = vec![];
-            for approvals in &self.finalized_approvals {
+            for approvals in self.finalized_approvals.values() {
                 let bytes = approvals
                     .to_bytes()
                     .map_err(BlockAddedValidationError::ApprovalsRootHash)?;

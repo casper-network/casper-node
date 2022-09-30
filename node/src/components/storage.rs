@@ -71,6 +71,7 @@ use casper_types::{
 
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
+
 use crate::{
     components::{fetcher::FetchResponse, Component},
     effect::{
@@ -87,8 +88,8 @@ use crate::{
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
-        FetcherItem, FinalitySignature, FinalizedApprovals, Item, NodeId, SignatureWeight,
-        SyncLeap, ValueOrChunk,
+        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
+        SignatureWeight, SyncLeap, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -135,6 +136,8 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 // const_assert!(_STORAGE_EVENT_SIZE <= 96);
+
+type FinalizedBlockUple = (FinalizedBlock, Vec<Deploy>, Vec<Deploy>);
 
 #[test]
 fn size() {
@@ -1261,6 +1264,51 @@ impl Storage {
     pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         self.get_highest_block(&mut txn)
+    }
+
+    /// Make a finalized block from a block added, respecting Deploy Approvals.
+    pub(crate) fn make_executable_block(
+        &self,
+        block_added: crate::types::BlockAdded,
+    ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
+        // check all approvals in block_added against stored approvals,
+        // deal with any discrepancies
+        // TODO: self.check_verified_approvals_or_sth_like_that()
+        let finalized_block = FinalizedBlock::from(block_added.block.clone());
+        let deploy_hashes = block_added.block.deploy_hashes().clone();
+        let deploys = self
+            .read_deploys(deploy_hashes.len(), deploy_hashes.iter())?
+            .unwrap_or_default();
+        let transfer_hashes = block_added.block.transfer_hashes().clone();
+        let transfers = self
+            .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
+            .unwrap_or_default();
+
+        Ok(Some((finalized_block, deploys, transfers)))
+    }
+
+    /// Make a finalized block.
+    pub fn make_finalized_block(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
+        let maybe_block = self.read_block(&block_hash)?;
+        if let Some(block) = maybe_block {
+            let finalized_block = FinalizedBlock::from(block.clone());
+
+            let deploy_hashes = block.deploy_hashes().clone();
+            let deploys = self
+                .read_deploys(deploy_hashes.len(), deploy_hashes.iter())?
+                .unwrap_or_default();
+            let transfer_hashes = block.transfer_hashes().clone();
+            let transfers = self
+                .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
+                .unwrap_or_default();
+
+            Ok(Some((finalized_block, deploys, transfers)))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Writes a block to storage, updating indices as necessary.
