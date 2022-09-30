@@ -39,19 +39,12 @@ impl ExecutionResultsRootHash {
     }
 }
 
-#[derive(DataSize, Debug, Clone)]
-pub(crate) enum Need {
-    Request(BlockExecutionResultsOrChunkId),
-    ShouldStore(Vec<casper_types::ExecutionResult>),
-}
-
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(crate) struct ExecutionResultsAcquisition {
     block_hash: BlockHash,
     results_root_hash: ExecutionResultsRootHash,
     chunks: HashMap<u64, ChunkWithProof>,
     chunk_count: Option<u64>,
-    results: Option<Vec<casper_types::ExecutionResult>>,
 }
 
 impl ExecutionResultsAcquisition {
@@ -61,16 +54,14 @@ impl ExecutionResultsAcquisition {
             results_root_hash,
             chunks: HashMap::new(),
             chunk_count: None,
-            results: None,
         }
     }
 
     pub(super) fn apply_block_execution_results_or_chunk(
         &mut self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
-    ) {
+    ) -> Option<Vec<casper_types::ExecutionResult>> {
         debug!(%block_execution_results_or_chunk, "got block execution results or chunk");
-        let id = block_execution_results_or_chunk.id();
         let (block_hash, value) = match block_execution_results_or_chunk {
             BlockExecutionResultsOrChunk::Legacy { block_hash, value } => (block_hash, value),
             BlockExecutionResultsOrChunk::Contemporary { block_hash, value } => (block_hash, value),
@@ -90,13 +81,16 @@ impl ExecutionResultsAcquisition {
             ValueOrChunk::Value(execution_results) => {
                 debug!(%block_hash, "got a full set of execution results (unchunked)");
                 // TODO - check merkle root
-                self.results = Some(execution_results);
+                Some(execution_results)
             }
-            ValueOrChunk::ChunkWithProof(chunk) => self.consume_chunk(id, chunk),
+            ValueOrChunk::ChunkWithProof(chunk) => self.consume_chunk(chunk),
         }
     }
 
-    fn consume_chunk(&mut self, id: BlockExecutionResultsOrChunkId, chunk: ChunkWithProof) {
+    fn consume_chunk(
+        &mut self,
+        chunk: ChunkWithProof,
+    ) -> Option<Vec<casper_types::ExecutionResult>> {
         let digest = chunk.proof().root_hash();
         let index = chunk.proof().index();
         let count = chunk.proof().count();
@@ -107,7 +101,7 @@ impl ExecutionResultsAcquisition {
             Some(existing_count) => {
                 if existing_count != count {
                     debug!(existing_count, ?chunk, "chunk with different count");
-                    return;
+                    return None;
                 }
             }
         }
@@ -123,32 +117,23 @@ impl ExecutionResultsAcquisition {
             ExecutionResultsRootHash::Some(root_hash) => {
                 if root_hash != digest {
                     debug!(%root_hash, ?chunk, "chunk with different root hash");
-                    return;
+                    return None;
                 }
             }
         }
         let _ = self.chunks.insert(index, chunk);
-        self.assemble_chunks();
+        self.assemble_chunks()
     }
 
-    pub(super) fn needs_value_or_chunk(&self) -> Need {
-        if let Some(results) = self.results.clone() {
-            return Need::ShouldStore(results);
-        }
-
+    pub(super) fn needs_value_or_chunk(&self) -> Option<BlockExecutionResultsOrChunkId> {
         let id = if self.results_root_hash.is_legacy() {
             BlockExecutionResultsOrChunkId::legacy(self.block_hash)
         } else {
             BlockExecutionResultsOrChunkId::new(self.block_hash)
         };
 
-        match self.missing_chunk() {
-            Some(missing_index) => {
-                let next_id = id.next_chunk(missing_index);
-                Need::Request(next_id)
-            }
-            None => Need::Request(id),
-        }
+        self.missing_chunk()
+            .map(|missing_index| id.next_chunk(missing_index))
     }
 
     fn missing_chunk(&self) -> Option<u64> {
@@ -156,10 +141,10 @@ impl ExecutionResultsAcquisition {
         (0..count).find(|idx| !self.chunks.contains_key(idx))
     }
 
-    fn assemble_chunks(&mut self) {
+    fn assemble_chunks(&mut self) -> Option<Vec<casper_types::ExecutionResult>> {
         let count = match self.chunk_count {
             Some(count) => count,
-            None => return,
+            None => return None,
         };
         let serialized: Vec<u8> = (0..count)
             .filter_map(|index| self.chunks.get(&index))
@@ -167,11 +152,15 @@ impl ExecutionResultsAcquisition {
             .copied()
             .collect();
         match bytesrepr::deserialize(serialized) {
-            Ok(value) => self.results = Some(value),
+            Ok(value) => {
+                // TODO - check merkle root
+                Some(value)
+            }
             Err(error) => {
                 error!(%error, "failed to deserialize execution results");
                 self.chunks.clear();
                 self.chunk_count = None;
+                None
             }
         }
     }

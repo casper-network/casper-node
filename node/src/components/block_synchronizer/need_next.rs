@@ -3,8 +3,7 @@ use datasize::DataSize;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use super::execution_results_acquisition::Need;
-use crate::types::{BlockHash, DeployHash};
+use crate::types::{BlockExecutionResultsOrChunkId, BlockHash, DeployHash};
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
@@ -19,7 +18,7 @@ pub(crate) enum NeedNext {
     ExecutionResultsRootHash {
         global_state_root_hash: Digest,
     },
-    ExecutionResults(Need),
+    ExecutionResults(BlockHash, BlockExecutionResultsOrChunkId),
     EraValidators(EraId),
     Peers(BlockHash),
 }

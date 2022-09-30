@@ -359,25 +359,29 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // NOT WIRED
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn register_fetched_execution_results(
         &mut self,
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
-    ) -> Result<(), Error> {
-        if let Err(err) = self.acquisition_state.with_execution_results_or_chunk(
+    ) -> Result<Option<Vec<casper_types::ExecutionResult>>, Error> {
+        match self.acquisition_state.with_execution_results_or_chunk(
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
         ) {
-            self.disqualify_peer(maybe_peer);
-            return Err(Error::BlockAcquisition(err));
+            Ok(maybe_results) => {
+                self.touch();
+                self.promote_peer(maybe_peer);
+                Ok(maybe_results)
+            }
+            Err(error) => {
+                self.disqualify_peer(maybe_peer);
+                Err(Error::BlockAcquisition(error))
+            }
         }
-        self.touch();
-        self.promote_peer(maybe_peer);
-        Ok(())
     }
 
-    // NOT WIRED
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn register_stored_execution_results(&mut self) -> Result<(), Error> {
         if let Err(err) = self
             .acquisition_state
