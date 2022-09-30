@@ -8,7 +8,6 @@ use datasize::DataSize;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::types::BlockExecutionResultsOrChunk;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::{DeployAcquisition, DeployState},
@@ -19,8 +18,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsRootHash,
     },
     types::{
-        Block, BlockHash, BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature, Item,
-        NodeId, SignatureWeight,
+        Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
+        EraValidatorWeights, FinalitySignature, Item, NodeId, SignatureWeight,
     },
     NodeRng,
 };

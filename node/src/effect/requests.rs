@@ -1074,8 +1074,8 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-    /// Returns the value of the deploys' approvals root hash stored in the ChecksumRegistry for the
-    /// given state root hash.
+    /// Returns the value of the deploys' approvals root hash stored in the ChecksumRegistry for
+    /// the given state root hash.
     GetApprovalsRootHash {
         state_root_hash: Digest,
         responder: Responder<Result<Option<Digest>, engine_state::Error>>,
