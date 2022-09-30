@@ -18,15 +18,14 @@ use casper_types::{
     EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, StoredValue, Timestamp, U512,
 };
 
-use crate::types::BlockAdded;
 use crate::{
     components::{
         deploy_acceptor::Error, diagnostics_port::FileSerializer, upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, GossiperItem,
-        NodeId,
+        Block, BlockAdded, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
+        GossiperItem, NodeId,
     },
     utils::Source,
 };

@@ -8,7 +8,6 @@ use datasize::DataSize;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::types::BlockExecutionResultsOrChunkId;
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::{DeployAcquisition, DeployState},
@@ -18,8 +17,9 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsRootHash,
     },
     types::{
-        Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        EraValidatorWeights, FinalitySignature, Item, NodeId, SignatureWeight,
+        Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature, Item, NodeId,
+        SignatureWeight,
     },
     NodeRng,
 };
@@ -559,7 +559,8 @@ impl BlockAcquisitionState {
                     let block_hash = (*header).hash();
                     Mode::GetExecResult(
                         header,
-                        // ExecutionResultsAcquisition::new(block_hash, execution_results_root_hash),
+                        // ExecutionResultsAcquisition::new(block_hash,
+                        // execution_results_root_hash),
                         todo!(),
                     )
                 }
