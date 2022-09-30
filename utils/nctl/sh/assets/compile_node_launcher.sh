@@ -26,7 +26,6 @@ while getopts 'd' opt; do
     esac
 done
 
-
 if [ "$NCTL_COMPILE_TARGET" = "debug" ] || [ "$COMPILE_MODE" = "debug" ]; then
     cargo build
 else
