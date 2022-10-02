@@ -43,7 +43,7 @@ use crate::{
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures,
-        BlockWithMetadata, Deploy, FinalitySignature, SyncLeap, TrieOrChunk,
+        BlockWithMetadata, Deploy, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -180,6 +180,10 @@ pub(crate) enum MainEvent {
     #[from]
     DeployBufferAnnouncement(#[serde(skip_serializing)] DeployBufferAnnouncement),
     #[from]
+    LegacyDeployFetcher(#[serde(skip_serializing)] fetcher::Event<LegacyDeploy>),
+    #[from]
+    LegacyDeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<LegacyDeploy>),
+    #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
@@ -249,6 +253,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             MainEvent::Consensus(_) => "Consensus",
             MainEvent::DeployAcceptor(_) => "DeployAcceptor",
+            MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::DeployFetcher(_) => "DeployFetcher",
             MainEvent::DeployGossiper(_) => "DeployGossiper",
             MainEvent::BlockAddedGossiper(_) => "BlockGossiper",
@@ -273,6 +278,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockExecutionResultsOrChunkFetcherRequest(_) => {
                 "BlockExecutionResultsOrChunkFetcherRequest"
             }
+            MainEvent::LegacyDeployFetcherRequest(_) => "LegacyDeployFetcherRequest",
             MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
@@ -419,6 +425,7 @@ impl Display for MainEvent {
             MainEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             MainEvent::Consensus(event) => write!(f, "consensus: {}", event),
             MainEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             MainEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             MainEvent::BlockAddedGossiper(event) => write!(f, "block gossiper: {}", event),
@@ -489,6 +496,9 @@ impl Display for MainEvent {
                     "block execution results or chunk fetcher request: {}",
                     request
                 )
+            }
+            MainEvent::LegacyDeployFetcherRequest(request) => {
+                write!(f, "legacy deploy fetcher request: {}", request)
             }
             MainEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)

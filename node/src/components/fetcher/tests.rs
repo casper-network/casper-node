@@ -40,7 +40,8 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        BlockAdded, Chainspec, ChainspecRawBytes, Deploy, DeployHash, FinalitySignature, NodeId,
+        BlockAdded, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, FinalitySignature,
+        Item, NodeId,
     },
     utils::WithDir,
 };
@@ -378,13 +379,13 @@ fn announce_deploy_received(
 type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy>>)>>;
 
 fn fetch_deploy(
-    deploy_hash: DeployHash,
+    deploy_id: DeployId,
     node_id: NodeId,
     fetched: FetchedDeployResult,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     move |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .fetch::<Deploy>(deploy_hash, node_id, ())
+            .fetch::<Deploy>(deploy_id, node_id, ())
             .then(move |deploy| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
@@ -438,7 +439,7 @@ enum ExpectedFetchedDeployResult {
 
 async fn assert_settled(
     node_id: &NodeId,
-    deploy_hash: DeployHash,
+    deploy_id: DeployId,
     expected_result: ExpectedFetchedDeployResult,
     fetched: FetchedDeployResult,
     network: &mut Network<Reactor>,
@@ -458,7 +459,7 @@ async fn assert_settled(
         .reactor()
         .inner()
         .storage
-        .get_deploy_by_hash(deploy_hash);
+        .get_deploy_by_hash(*deploy_id.deploy_hash());
 
     // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
     let actual_fetcher_result = fetched.lock().unwrap().1.clone();
@@ -514,12 +515,12 @@ async fn should_fetch_from_local() {
 
     // Try to fetch the deploy from a node that holds it.
     let node_id = node_ids[0];
-    let deploy_hash = *deploy.id();
+    let deploy_id = deploy.id();
     let fetched = Arc::new(Mutex::new((false, None)));
     network
         .process_injected_effect_on(
             &node_id,
-            fetch_deploy(deploy_hash, node_id, Arc::clone(&fetched)),
+            fetch_deploy(deploy_id, node_id, Arc::clone(&fetched)),
         )
         .await;
 
@@ -528,7 +529,7 @@ async fn should_fetch_from_local() {
     };
     assert_settled(
         &node_id,
-        deploy_hash,
+        deploy_id,
         expected_result,
         fetched,
         &mut network,
@@ -560,14 +561,14 @@ async fn should_fetch_from_peer() {
     store_deploy(&deploy, &node_with_deploy, &mut network, None, &mut rng).await;
 
     let node_without_deploy = node_ids[1];
-    let deploy_hash = *deploy.id();
+    let deploy_id = deploy.id();
     let fetched = Arc::new(Mutex::new((false, None)));
 
     // Try to fetch the deploy from a node that does not hold it; should get from peer.
     network
         .process_injected_effect_on(
             &node_without_deploy,
-            fetch_deploy(deploy_hash, node_with_deploy, Arc::clone(&fetched)),
+            fetch_deploy(deploy_id, node_with_deploy, Arc::clone(&fetched)),
         )
         .await;
 
@@ -577,7 +578,7 @@ async fn should_fetch_from_peer() {
     };
     assert_settled(
         &node_without_deploy,
-        deploy_hash,
+        deploy_id,
         expected_result,
         fetched,
         &mut network,
@@ -603,7 +604,7 @@ async fn should_timeout_fetch_from_peer() {
 
     // Create a random deploy.
     let deploy = Deploy::random_valid_native_transfer(&mut rng);
-    let deploy_hash = *deploy.id();
+    let deploy_id = deploy.id();
 
     let holding_node = node_ids[0];
     let requesting_node = node_ids[1];
@@ -616,7 +617,7 @@ async fn should_timeout_fetch_from_peer() {
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_hash, holding_node, Arc::clone(&fetched)),
+            fetch_deploy(deploy_id, holding_node, Arc::clone(&fetched)),
         )
         .await;
 
@@ -667,7 +668,7 @@ async fn should_timeout_fetch_from_peer() {
     let expected_result = ExpectedFetchedDeployResult::TimedOut;
     assert_settled(
         &requesting_node,
-        deploy_hash,
+        deploy_id,
         expected_result,
         fetched,
         &mut network,

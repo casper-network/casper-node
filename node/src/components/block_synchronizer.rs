@@ -17,6 +17,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use either::Either;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
@@ -26,6 +27,7 @@ use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
+        fetcher,
         fetcher::{Error, FetchResult, FetchedData},
         Component,
     },
@@ -41,12 +43,12 @@ use crate::{
     storage::StorageRequest,
     types::{
         BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item, NodeId,
-        SyncLeap, TrieOrChunk, ValidatorMatrix,
+        BlockSignatures, Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item,
+        LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
-pub(crate) use block_builder::BlockBuilder;
+use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash};
@@ -61,6 +63,7 @@ pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAc
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<BlockAdded>>
     + From<FetcherRequest<BlockHeader>>
+    + From<FetcherRequest<LegacyDeploy>>
     + From<FetcherRequest<Deploy>>
     + From<FetcherRequest<FinalitySignature>>
     + From<FetcherRequest<TrieOrChunk>>
@@ -79,6 +82,7 @@ pub(crate) trait ReactorEvent:
 impl<REv> ReactorEvent for REv where
     REv: From<FetcherRequest<BlockAdded>>
         + From<FetcherRequest<BlockHeader>>
+        + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<Deploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
@@ -148,13 +152,13 @@ impl BlockSynchronizer {
         );
         if should_fetch_execution_state {
             if let Some(historical) = self.historical.replace(builder) {
-                error!(
+                debug!(
                     block_hash = %historical.block_hash(),
                     "replacing current sync of historical complete block"
                 );
             }
         } else if let Some(forward) = self.forward.replace(builder) {
-            error!(
+            debug!(
                 block_hash = %forward.block_hash(),
                 "replacing current sync of forward complete block"
             );
@@ -210,7 +214,6 @@ impl BlockSynchronizer {
                         sync_leap,
                         validator_weights,
                         peers,
-                        self.validator_matrix.fault_tolerance_threshold(),
                         should_fetch_execution_state,
                         max_simultaneous_peers,
                     );
@@ -367,13 +370,28 @@ impl BlockSynchronizer {
                             }),
                     );
                 }
-                NeedNext::Deploy(block_hash, deploy_hash) => {
-                    results.extend(peers.into_iter().flat_map(|node_id| {
-                        effect_builder
-                            .fetch::<Deploy>(deploy_hash, node_id, ())
-                            .event(move |result| Event::DeployFetched { block_hash, result })
-                    }))
-                }
+                NeedNext::Deploy(block_hash, deploy_hash_or_id) => match deploy_hash_or_id {
+                    Either::Left(deploy_hash) => {
+                        results.extend(peers.into_iter().flat_map(|node_id| {
+                            effect_builder
+                                .fetch::<LegacyDeploy>(deploy_hash, node_id, ())
+                                .event(move |result| Event::DeployFetched {
+                                    block_hash,
+                                    result: Either::Left(result),
+                                })
+                        }))
+                    }
+                    Either::Right(deploy_id) => {
+                        results.extend(peers.into_iter().flat_map(|node_id| {
+                            effect_builder
+                                .fetch::<Deploy>(deploy_id, node_id, ())
+                                .event(move |result| Event::DeployFetched {
+                                    block_hash,
+                                    result: Either::Right(result),
+                                })
+                        }))
+                    }
+                },
                 NeedNext::ExecutionResults(block_hash, id) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -606,21 +624,16 @@ impl BlockSynchronizer {
     fn deploy_fetched(
         &mut self,
         block_hash: BlockHash,
-        result: Result<FetchedData<Deploy>, Error<Deploy>>,
+        fetched_deploy: FetchedData<Deploy>,
     ) -> Effects<Event> {
-        let (deploy, maybe_peer) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (item, Some(peer)),
-            Ok(FetchedData::FromStorage { item }) => (item, None),
-            Err(err) => {
-                debug!(%err, "failed to fetch deploy");
-                // TODO: Remove peer?
-                return Effects::new();
-            }
+        let (deploy, maybe_peer) = match fetched_deploy {
+            FetchedData::FromPeer { item, peer } => (item, Some(peer)),
+            FetchedData::FromStorage { item } => (item, None),
         };
 
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
-                if let Err(error) = builder.register_deploy(*deploy.id(), maybe_peer) {
+                if let Err(error) = builder.register_deploy(deploy.id(), maybe_peer) {
                     error!(%block_hash, %error, "failed to apply deploy");
                 }
             }
@@ -754,7 +767,22 @@ where
                 self.hook_need_next(effect_builder, effects)
             }
             Event::DeployFetched { block_hash, result } => {
-                let effects = self.deploy_fetched(block_hash, result);
+                let effects = match result {
+                    Either::Left(Ok(fetched_legacy_deploy)) => {
+                        self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
+                    }
+                    Either::Left(Err(error)) => {
+                        debug!(%error, "failed to fetch legacy deploy");
+                        Effects::new()
+                    }
+                    Either::Right(Ok(fetched_deploy)) => {
+                        self.deploy_fetched(block_hash, fetched_deploy)
+                    }
+                    Either::Right(Err(error)) => {
+                        debug!(%error, "failed to fetch deploy");
+                        Effects::new()
+                    }
+                };
                 self.hook_need_next(effect_builder, effects)
             }
             Event::ExecutionResultsFetched { block_hash, result } => {

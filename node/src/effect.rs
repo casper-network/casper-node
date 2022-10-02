@@ -156,9 +156,9 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, NodeId, NodeState,
-        TrieOrChunk, TrieOrChunkId,
+        DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy, NodeId,
+        NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1487,6 +1487,45 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
                 deploy_hashes,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploy from the deploy store by DeployHash only.
+    ///
+    /// Returns the legacy deploy containing the set of approvals used during execution of the
+    /// recorded block, if known.
+    pub(crate) async fn get_stored_legacy_deploy(
+        self,
+        deploy_hash: DeployHash,
+    ) -> Option<LegacyDeploy>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetLegacyDeploy {
+                deploy_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploy from the deploy store by DeployId.
+    ///
+    /// Returns the "original" deploy, which are the first received by the node, along with a
+    /// potentially different set of approvals used during execution of the recorded block.
+    pub(crate) async fn get_stored_deploy(self, deploy_id: DeployId) -> Option<Deploy>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetDeploy {
+                deploy_id,
                 responder,
             },
             QueueKind::Regular,

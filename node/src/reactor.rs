@@ -71,8 +71,8 @@ use crate::{
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecRawBytes, Deploy, DeployHash, ExitCode, FetcherItem, FinalitySignature, Item,
-        NodeId, SyncLeap, TrieOrChunk,
+        ChainspecRawBytes, Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature,
+        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -990,6 +990,7 @@ where
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
+        + From<fetcher::Event<LegacyDeploy>>
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
@@ -1022,11 +1023,54 @@ where
                 serialized_item,
             )
         }
+        NetResponse::LegacyDeploy(ref serialized_item) => {
+            // Incoming LegacyDeploys should be routed to the `DeployAcceptor` rather than directly
+            // to the `DeployFetcher`.
+            let event = match bincode::deserialize::<FetchResponse<LegacyDeploy, DeployHash>>(
+                serialized_item,
+            ) {
+                Ok(FetchResponse::Fetched(legacy_deploy)) => {
+                    <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
+                        deploy: Box::new(Deploy::from(legacy_deploy)),
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    })
+                }
+                Ok(FetchResponse::NotFound(deploy_hash)) => {
+                    info!(%sender, ?deploy_hash, "peer did not have deploy",);
+                    <R as Reactor>::Event::from(fetcher::Event::<LegacyDeploy>::AbsentRemotely {
+                        id: deploy_hash,
+                        peer: sender,
+                    })
+                }
+                Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                    warn!(
+                        %sender,
+                        %deploy_hash,
+                        "peer refused to provide deploy, banning peer"
+                    );
+                    return effect_builder
+                        .announce_disconnect_from_peer(sender)
+                        .ignore();
+                }
+                Err(error) => {
+                    warn!(
+                        %sender,
+                        %error,
+                        "received a legacy deploy item we couldn't parse, banning peer",
+                    );
+                    return effect_builder
+                        .announce_disconnect_from_peer(sender)
+                        .ignore();
+                }
+            };
+            <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
+        }
         NetResponse::Deploy(ref serialized_item) => {
             // Incoming Deploys should be routed to the `DeployAcceptor` rather than directly to the
             // `DeployFetcher`.
             let event =
-                match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(serialized_item) {
+                match bincode::deserialize::<FetchResponse<Deploy, DeployId>>(serialized_item) {
                     Ok(FetchResponse::Fetched(deploy)) => {
                         <R as Reactor>::Event::from(deploy_acceptor::Event::Accept {
                             deploy: Box::new(deploy),
@@ -1034,17 +1078,17 @@ where
                             maybe_responder: None,
                         })
                     }
-                    Ok(FetchResponse::NotFound(deploy_hash)) => {
-                        info!(%sender, ?deploy_hash, "peer did not have deploy",);
+                    Ok(FetchResponse::NotFound(deploy_id)) => {
+                        info!(%sender, ?deploy_id, "peer did not have deploy",);
                         <R as Reactor>::Event::from(fetcher::Event::<Deploy>::AbsentRemotely {
-                            id: deploy_hash,
+                            id: deploy_id,
                             peer: sender,
                         })
                     }
-                    Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                    Ok(FetchResponse::NotProvided(deploy_id)) => {
                         warn!(
                             %sender,
-                            ?deploy_hash,
+                            %deploy_id,
                             "peer refused to provide deploy, banning peer"
                         );
                         return effect_builder

@@ -31,7 +31,7 @@ impl Display for Event {
                 write!(formatter, "get appendable block request")
             }
             Event::ReceiveDeploy(deploy) => {
-                write!(formatter, "receive deploy {}", deploy.id())
+                write!(formatter, "receive deploy {}", deploy.hash())
             }
             Event::BlockProposed(_) => {
                 write!(formatter, "proposed block")

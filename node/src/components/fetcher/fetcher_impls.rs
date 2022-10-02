@@ -8,5 +8,6 @@ mod block_headers_batch_fetcher;
 mod block_signatures_fetcher;
 mod deploy_fetcher;
 mod finality_signature_fetcher;
+mod legacy_deploy_fetcher;
 mod sync_leap_fetcher;
 mod trie_or_chunk_fetcher;

@@ -60,19 +60,13 @@ impl AppendableBlock {
     /// Attempts to add any kind of deploy (transfer or other kind).
     pub(crate) fn add(
         &mut self,
-        any_kind_of_deploy_which_by_the_way_includes_transfers: DeployHashWithApprovals,
+        deploy_hash_with_approvals: DeployHashWithApprovals,
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if footprint.is_transfer {
-            self.add_transfer(
-                any_kind_of_deploy_which_by_the_way_includes_transfers,
-                footprint,
-            )
+            self.add_transfer(deploy_hash_with_approvals, footprint)
         } else {
-            self.add_deploy(
-                any_kind_of_deploy_which_by_the_way_includes_transfers,
-                footprint,
-            )
+            self.add_deploy(deploy_hash_with_approvals, footprint)
         }
     }
 

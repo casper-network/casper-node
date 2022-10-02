@@ -169,7 +169,7 @@ impl Display for RpcServerAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             RpcServerAnnouncement::DeployReceived { deploy, .. } => {
-                write!(formatter, "api server received {}", deploy.id())
+                write!(formatter, "api server received {}", deploy.hash())
             }
         }
     }
@@ -201,11 +201,16 @@ impl Display for DeployAcceptorAnnouncement {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
                 formatter,
                 "accepted new deploy {} from {}",
-                deploy.id(),
+                deploy.hash(),
                 source
             ),
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
-                write!(formatter, "invalid deploy {} from {}", deploy.id(), source)
+                write!(
+                    formatter,
+                    "invalid deploy {} from {}",
+                    deploy.hash(),
+                    source
+                )
             }
         }
     }

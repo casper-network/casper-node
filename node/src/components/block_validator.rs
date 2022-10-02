@@ -454,44 +454,45 @@ where
 {
     async move {
         let deploy_hash: DeployHash = dt_hash.into();
-        let deploy = match effect_builder
-            .fetch::<Deploy>(deploy_hash, sender, ())
-            .await
-        {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => item,
-            Err(fetcher_error) => {
-                warn!(
-                    "Could not fetch deploy with deploy hash {}: {}",
-                    deploy_hash, fetcher_error
-                );
-                return Event::DeployMissing(dt_hash);
-            }
-        };
-        if deploy.deploy_or_transfer_hash() != dt_hash {
-            warn!(
-                deploy = ?deploy,
-                expected_deploy_or_transfer_hash = ?dt_hash,
-                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
-                "Deploy has incorrect transfer hash"
-            );
-            return Event::CannotConvertDeploy(dt_hash);
-        }
-        match deploy.footprint() {
-            Ok(deploy_info) => Event::DeployFound {
-                dt_hash,
-                approvals: deploy.approvals().clone(),
-                deploy_info: Box::new(deploy_info),
-            },
-            Err(error) => {
-                warn!(
-                    deploy = ?deploy,
-                    deploy_or_transfer_hash = ?dt_hash,
-                    ?error,
-                    "Could not convert deploy",
-                );
-                Event::CannotConvertDeploy(dt_hash)
-            }
-        }
+        todo!();
+        // let deploy = match effect_builder
+        //     .fetch::<Deploy>(deploy_hash, sender, ())
+        //     .await
+        // {
+        //     Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) =>
+        // item,     Err(fetcher_error) => {
+        //         warn!(
+        //             "Could not fetch deploy with deploy hash {}: {}",
+        //             deploy_hash, fetcher_error
+        //         );
+        //         return Event::DeployMissing(dt_hash);
+        //     }
+        // };
+        // if deploy.deploy_or_transfer_hash() != dt_hash {
+        //     warn!(
+        //         deploy = ?deploy,
+        //         expected_deploy_or_transfer_hash = ?dt_hash,
+        //         actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
+        //         "Deploy has incorrect transfer hash"
+        //     );
+        //     return Event::CannotConvertDeploy(dt_hash);
+        // }
+        // match deploy.footprint() {
+        //     Ok(deploy_info) => Event::DeployFound {
+        //         dt_hash,
+        //         approvals: deploy.approvals().clone(),
+        //         deploy_info: Box::new(deploy_info),
+        //     },
+        //     Err(error) => {
+        //         warn!(
+        //             deploy = ?deploy,
+        //             deploy_or_transfer_hash = ?dt_hash,
+        //             ?error,
+        //             "Could not convert deploy",
+        //         );
+        //         Event::CannotConvertDeploy(dt_hash)
+        //     }
+        // }
     }
     .event(std::convert::identity)
 }

@@ -77,7 +77,7 @@ impl Payload for Message {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
                 match tag {
-                    Tag::Deploy => MessageKind::DeployTransfer,
+                    Tag::LegacyDeploy | Tag::Deploy => MessageKind::DeployTransfer,
                     Tag::BlockDeployApprovals => MessageKind::FinalizedApprovalsTransfer,
                     Tag::Block => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
@@ -123,7 +123,7 @@ impl Payload for Message {
             Message::FinalitySignatureGossiper(_) => weights.gossip,
             Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy => weights.deploy_requests,
+                Tag::LegacyDeploy | Tag::Deploy => weights.deploy_requests,
                 Tag::BlockDeployApprovals => weights.finalized_approvals_requests,
                 Tag::Block => weights.block_requests,
                 Tag::FinalitySignature => weights.gossip,
@@ -138,7 +138,7 @@ impl Payload for Message {
                 Tag::BlockExecutionResults => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy => weights.deploy_responses,
+                Tag::LegacyDeploy | Tag::Deploy => weights.deploy_responses,
                 Tag::BlockDeployApprovals => weights.finalized_approvals_responses,
                 Tag::Block => weights.block_responses,
                 Tag::FinalitySignature => weights.gossip,
@@ -328,6 +328,11 @@ where
             }
             Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::GetRequest { tag, serialized_id } => match tag {
+                Tag::LegacyDeploy => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::LegacyDeploy(serialized_id),
+                }
+                .into(),
                 Tag::Deploy => NetRequestIncoming {
                     sender,
                     message: NetRequest::Deploy(serialized_id),
@@ -398,6 +403,11 @@ where
                 tag,
                 serialized_item,
             } => match tag {
+                Tag::LegacyDeploy => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::LegacyDeploy(serialized_item),
+                }
+                .into(),
                 Tag::Deploy => NetResponseIncoming {
                     sender,
                     message: NetResponse::Deploy(serialized_item),

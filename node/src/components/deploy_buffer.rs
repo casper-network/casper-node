@@ -122,7 +122,7 @@ impl DeployBuffer {
     }
 
     fn register_deploy(&mut self, deploy: Deploy) {
-        let deploy_hash = deploy.id();
+        let deploy_hash = deploy.hash();
         if deploy.is_valid().is_err() {
             error!(?deploy_hash, "invalid deploy must not be buffered");
             return;
@@ -203,7 +203,7 @@ impl DeployBuffer {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
         let mut holds = vec![];
         for deploy in self.proposable() {
-            let deploy_hash = *deploy.id();
+            let deploy_hash = *deploy.hash();
             let footprint = match deploy.footprint() {
                 Ok(deploy_footprint) => deploy_footprint,
                 Err(_) => {

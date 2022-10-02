@@ -37,7 +37,7 @@ impl DeployHashWithApprovals {
 impl From<&Deploy> for DeployHashWithApprovals {
     fn from(deploy: &Deploy) -> Self {
         DeployHashWithApprovals {
-            deploy_hash: *deploy.id(),
+            deploy_hash: *deploy.hash(),
             approvals: deploy.approvals().clone(),
         }
     }

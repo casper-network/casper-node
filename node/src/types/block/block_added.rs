@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
 };
 
@@ -17,7 +17,7 @@ use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
     types::{
-        self, Approval, BlockValidationError, DeployHash, FetcherItem, GossiperItem, Item, Tag,
+        self, ApprovalsHash, BlockValidationError, DeployId, FetcherItem, GossiperItem, Item, Tag,
     },
     utils::ds,
 };
@@ -27,8 +27,8 @@ use crate::{
 pub(crate) struct BlockAdded {
     /// The block.
     block: Block,
-    /// The set of all deploys' finalized approvals in the block.
-    finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
+    /// The set of all deploys' finalized approvals' hashes.
+    approvals_hashes: Vec<ApprovalsHash>,
     /// The Merkle proof of the finalized approvals.
     #[data_size(skip)]
     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
@@ -40,12 +40,12 @@ pub(crate) struct BlockAdded {
 impl BlockAdded {
     pub(crate) fn new(
         block: Block,
-        finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
+        approvals_hashes: Vec<ApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
             block,
-            finalized_approvals,
+            approvals_hashes,
             merkle_proof_approvals,
             is_verified: OnceCell::new(),
         }
@@ -80,12 +80,9 @@ impl BlockAdded {
             })
             .ok_or(BlockAddedValidationError::InvalidChecksumRegistry)?;
 
-        let computed_approvals_root_hash = types::compute_approvals_checksum(
-            self.finalized_approvals
-                .iter()
-                .map(|(_deploy_hash, approvals)| approvals),
-        )
-        .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
+        let computed_approvals_root_hash =
+            types::compute_approvals_checksum(self.deploy_ids().collect())
+                .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
 
         if value_in_proof != computed_approvals_root_hash {
             return Err(BlockAddedValidationError::ApprovalsRootHashMismatch {
@@ -97,6 +94,13 @@ impl BlockAdded {
         Ok(())
     }
 
+    pub(crate) fn deploy_ids(&self) -> impl Iterator<Item = DeployId> + '_ {
+        self.block()
+            .deploy_and_transfer_hashes()
+            .zip(&self.approvals_hashes)
+            .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
+    }
+
     pub(crate) fn block(&self) -> &Block {
         &self.block
     }
@@ -105,8 +109,8 @@ impl BlockAdded {
         self.block
     }
 
-    // pub(crate) fn finalized_approvals(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
-    //     &self.finalized_approvals
+    // pub(crate) fn approvals_hashes(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
+    //     &self.approvals_hashes
     // }
     //
     // pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {

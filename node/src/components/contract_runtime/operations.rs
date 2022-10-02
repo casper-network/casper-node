@@ -32,7 +32,7 @@ use crate::{
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
         self, error::BlockCreationError, Block, BlockAdded, Chunkable, Deploy, DeployHeader,
-        FinalizedBlock,
+        FinalizedBlock, Item,
     },
 };
 
@@ -65,17 +65,13 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    let finalized_approvals: Vec<_> = deploys
+    let deploy_ids = deploys
         .iter()
         .chain(transfers.iter())
-        .map(|deploy| (*deploy.id(), deploy.approvals().clone()))
-        .collect();
-    let approvals_checksum = types::compute_approvals_checksum(
-        finalized_approvals
-            .iter()
-            .map(|(_deploy_hash, approval)| approval),
-    )
-    .map_err(BlockCreationError::BytesRepr)?;
+        .map(|deploy| deploy.id())
+        .collect_vec();
+    let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
+        .map_err(BlockCreationError::BytesRepr)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
@@ -83,7 +79,7 @@ pub fn execute_finalized_block(
     // WARNING: Do not change the order of `deploys` and `transfers` as it will result in a
     // different root hash.
     for deploy in deploys.into_iter().chain(transfers) {
-        let deploy_hash = *deploy.id();
+        let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
             state_root_hash,
@@ -216,9 +212,13 @@ pub fn execute_finalized_block(
         protocol_version,
     )?;
 
+    let approvals_hashes = deploy_ids
+        .into_iter()
+        .map(|id| id.destructure().1)
+        .collect();
     let block_added = Box::new(BlockAdded::new(
         block,
-        finalized_approvals,
+        approvals_hashes,
         proof_of_checksum_registry,
     ));
 

@@ -737,7 +737,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                        item_id: *deploy.id(),
+                        item_id: deploy.id(),
                         source: source.clone(),
                     }),
                 ));
@@ -928,7 +928,9 @@ impl reactor::Reactor for MainReactor {
             ),
 
             // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
-            MainEvent::DeployFetcher(..)
+            MainEvent::LegacyDeployFetcher(..)
+            | MainEvent::LegacyDeployFetcherRequest(..)
+            | MainEvent::DeployFetcher(..)
             | MainEvent::DeployFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)
             | MainEvent::BlockHeaderFetcherRequest(..)

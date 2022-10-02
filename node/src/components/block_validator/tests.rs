@@ -11,7 +11,7 @@ use itertools::Itertools;
 use crate::{
     components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals},
+    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals, Item},
     utils::{self, Loadable},
 };
 
@@ -72,7 +72,7 @@ impl MockReactor {
                         .await
                 }
                 Some(deploy) => {
-                    assert_eq!(id, *deploy.id());
+                    assert_eq!(id, deploy.id());
                     let response = FetchedData::FromPeer {
                         item: Box::new(deploy),
                         peer,

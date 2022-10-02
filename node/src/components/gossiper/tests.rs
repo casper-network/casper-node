@@ -389,7 +389,7 @@ impl reactor::Reactor for Reactor {
                 source,
             }) => {
                 let event = super::Event::ItemReceived {
-                    item_id: *deploy.id(),
+                    item_id: deploy.id(),
                     source,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
@@ -432,24 +432,24 @@ impl reactor::Reactor for Reactor {
             ),
             Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
                 NetResponse::Deploy(ref serialized_item) => {
-                    let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
+                    let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployId>>(
                         serialized_item,
                     ) {
                         Ok(FetchResponse::Fetched(deploy)) => Box::new(deploy),
-                        Ok(FetchResponse::NotFound(deploy_hash)) => {
+                        Ok(FetchResponse::NotFound(deploy_id)) => {
                             return fatal!(
                                 effect_builder,
                                 "peer did not have deploy with hash {}: {}",
-                                deploy_hash,
+                                deploy_id,
                                 sender,
                             )
                             .ignore();
                         }
-                        Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                        Ok(FetchResponse::NotProvided(deploy_id)) => {
                             return fatal!(
                                 effect_builder,
                                 "peer refused to provide deploy with hash {}: {}",
-                                deploy_hash,
+                                deploy_id,
                                 sender,
                             )
                             .ignore();
@@ -477,7 +477,8 @@ impl reactor::Reactor for Reactor {
                         ),
                     )
                 }
-                other @ (NetResponse::FinalizedApprovals(_)
+                other @ (NetResponse::LegacyDeploy(_)
+                | NetResponse::FinalizedApprovals(_)
                 | NetResponse::Block(_)
                 | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
@@ -539,7 +540,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
         let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
-        (*deploy.id(), deploy)
+        (*deploy.hash(), deploy)
     })
     .take(deploy_count)
     .unzip();
@@ -596,7 +597,7 @@ async fn should_get_from_alternate_source() {
 
     // Create random deploy.
     let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
-    let deploy_id = *deploy.id();
+    let deploy_id = *deploy.hash();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
@@ -675,7 +676,7 @@ async fn should_timeout_gossip_response() {
 
     // Create random deploy.
     let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
-    let deploy_id = *deploy.id();
+    let deploy_id = *deploy.hash();
 
     // Give the deploy to node 0 to be gossiped.
     network

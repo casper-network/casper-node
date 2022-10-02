@@ -1,9 +1,10 @@
 use datasize::DataSize;
+use itertools::Either;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::types::{BlockExecutionResultsOrChunkId, BlockHash, DeployHash};
+use crate::types::{BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId};
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
@@ -12,8 +13,10 @@ pub(crate) enum NeedNext {
     BlockBody(BlockHash),
     FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     GlobalState(BlockHash, Digest),
-    Deploy(BlockHash, DeployHash),
-    /// We want the merkle root hash stored in global state under the ChecksumRegistry key for the
+    // TODO - don't skip
+    #[data_size(skip)]
+    Deploy(BlockHash, Either<DeployHash, DeployId>),
+    /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
     ExecutionResultsRootHash {
         global_state_root_hash: Digest,

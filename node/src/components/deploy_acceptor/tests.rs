@@ -922,7 +922,7 @@ async fn run_deploy_acceptor_without_timeout(
             .reactor()
             .inner()
             .storage
-            .get_deploy_by_hash(*deploy.id())
+            .get_deploy_by_hash(*deploy.hash())
             .is_some();
 
         if test_scenario.is_valid_deploy_case() {

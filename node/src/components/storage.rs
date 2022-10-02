@@ -82,14 +82,15 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::ReactorEvent,
+    storage::lmdb_ext::BytesreprError,
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockBody, BlockDeployApprovals,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        ApprovalsHash, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
+        BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployId,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
-        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId,
-        SignatureWeight, SyncLeap, ValueOrChunk,
+        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy,
+        NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -586,6 +587,20 @@ impl Storage {
                     fetch_response,
                 )?)
             }
+            NetRequest::LegacyDeploy(ref serialized_id) => {
+                let id = decode_item_id::<LegacyDeploy>(serialized_id)?;
+                let opt_item = self
+                    .get_legacy_deploy(id)
+                    .map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    fetch_response,
+                )?)
+            }
             NetRequest::BlockDeployApprovals(ref serialized_id) => {
                 let id = decode_item_id::<BlockDeployApprovals>(serialized_id)?;
 
@@ -595,7 +610,7 @@ impl Storage {
                     .map(|block_and_deploys| {
                         let approvals = block_and_deploys.deploys.into_iter().map(|deploy| {
                             let deploy_approvals = deploy.approvals().clone();
-                            (*deploy.id(), FinalizedApprovals::new(deploy_approvals))
+                            (*deploy.hash(), FinalizedApprovals::new(deploy_approvals))
                         });
                         BlockDeployApprovals::new(id, approvals.collect())
                     });
@@ -809,6 +824,34 @@ impl Storage {
                         )?,
                     )
                     .ignore()
+            }
+            StorageRequest::GetLegacyDeploy {
+                deploy_hash,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let maybe_deploy = self
+                    .get_deploy_with_finalized_approvals(&mut txn, &deploy_hash)?
+                    .map(|deploy_with_finalized_approvals| {
+                        LegacyDeploy::from(deploy_with_finalized_approvals.into_naive())
+                    });
+                responder.respond(maybe_deploy).ignore()
+            }
+            StorageRequest::GetDeploy {
+                deploy_id,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let maybe_deploy = match self
+                    .get_deploy_with_finalized_approvals(&mut txn, deploy_id.deploy_hash())?
+                {
+                    None => None,
+                    Some(deploy_with_finalized_approvals) => {
+                        let deploy = deploy_with_finalized_approvals.into_naive();
+                        (deploy.id() == deploy_id).then(|| deploy)
+                    }
+                };
+                responder.respond(maybe_deploy).ignore()
             }
             StorageRequest::GetBlockExecutionResultsOrChunk { id, responder } => responder
                 .respond(self.read_block_execution_results_or_chunk(&id)?)
@@ -1226,7 +1269,7 @@ impl Storage {
     /// Put a single deploy into storage.
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let outcome = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
+        let outcome = txn.put_value(self.deploy_db, deploy.hash(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
     }
@@ -1248,7 +1291,7 @@ impl Storage {
         }
 
         for deploy in deploys {
-            let _ = txn.put_value(deploy_db, deploy.id(), deploy, false)?;
+            let _ = txn.put_value(deploy_db, deploy.hash(), deploy, false)?;
         }
         txn.commit()?;
 
@@ -2126,12 +2169,40 @@ impl Storage {
         Ok(())
     }
 
-    /// Retrieves a deploy from the deploy store.
-    fn get_deploy(&self, deploy_hash: DeployHash) -> Result<Option<Deploy>, LmdbExtError> {
+    /// Retrieves a deploy from the deploy store by deploy hash.
+    fn get_legacy_deploy(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<LegacyDeploy>, LmdbExtError> {
         self.env
             .begin_ro_txn()
             .map_err(Into::into)
             .and_then(|mut txn| txn.get_value(self.deploy_db, &deploy_hash))
+    }
+
+    /// Retrieves a deploy from the deploy store by deploy ID.
+    fn get_deploy(&self, deploy_id: DeployId) -> Result<Option<Deploy>, LmdbExtError> {
+        let mut txn = self.env.begin_ro_txn()?;
+
+        let deploy = match txn.get_value::<_, Deploy>(self.deploy_db, deploy_id.deploy_hash())? {
+            None => return Ok(None),
+            Some(deploy) if deploy.id() == deploy_id => return Ok(Some(deploy)),
+            Some(deploy) => deploy,
+        };
+
+        match txn.get_value(self.finalized_approvals_db, deploy_id.deploy_hash())? {
+            Some(approvals) => match ApprovalsHash::compute(&approvals) {
+                Ok(approvals_hash) if approvals_hash == *deploy_id.approvals_hash() => {
+                    Ok(Some(deploy.with_approvals(approvals)))
+                }
+                Ok(_approvals_hash) => Ok(None),
+                Err(error) => {
+                    error!(%error, "failed to calculate finalized approvals hash");
+                    Err(LmdbExtError::Other(Box::new(BytesreprError(error))))
+                }
+            },
+            None => Ok(None),
+        }
     }
 
     fn read_block_headers_batch(

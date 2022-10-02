@@ -3,15 +3,15 @@ use std::{collections::HashMap, time::Duration};
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{Deploy, DeployId, NodeId},
+    types::{DeployHash, LegacyDeploy, NodeId},
 };
 
-impl ItemFetcher<Deploy> for Fetcher<Deploy> {
+impl ItemFetcher<LegacyDeploy> for Fetcher<LegacyDeploy> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<DeployId, HashMap<NodeId, Vec<FetchResponder<Deploy>>>> {
+    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<LegacyDeploy>>>> {
         &mut self.responders
     }
 
@@ -27,35 +27,35 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         self.get_from_peer_timeout
     }
 
-    /// Gets a `Deploy` from the storage component.
+    /// Gets a `LegacyDeploy` from the storage component.
     fn get_from_storage<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        id: DeployId,
+        id: DeployHash,
         peer: NodeId,
         _validation_metadata: (),
-        responder: FetchResponder<Deploy>,
-    ) -> Effects<Event<Deploy>>
+        responder: FetchResponder<LegacyDeploy>,
+    ) -> Effects<Event<LegacyDeploy>>
     where
         REv: From<StorageRequest> + Send,
     {
         effect_builder
-            .get_stored_deploy(id)
-            .event(move |results| Event::GetFromStorageResult {
+            .get_stored_legacy_deploy(id)
+            .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
                 validation_metadata: (),
-                maybe_item: Box::new(results),
+                maybe_item: Box::new(result),
                 responder,
             })
     }
 
     fn put_to_storage<REv>(
         &self,
-        _item: Deploy,
+        _item: LegacyDeploy,
         _peer: NodeId,
         _effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<Deploy>>>
+    ) -> Option<Effects<Event<LegacyDeploy>>>
     where
         REv: From<StorageRequest> + Send,
     {

@@ -89,29 +89,19 @@ pub(crate) type BlockAddedResponseIncoming = MessageIncoming<BlockAddedResponse>
 #[derive(DataSize, Debug, Serialize)]
 #[repr(u8)]
 pub(crate) enum NetRequest {
-    /// Request for a deploy.
     Deploy(Vec<u8>),
-    /// Request for finalized approvals.
+    LegacyDeploy(Vec<u8>),
     BlockDeployApprovals(Vec<u8>),
-    /// Request for a block.
     Block(Vec<u8>),
-    /// Request for a gossiped finality signature.
     // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     FinalitySignature(Vec<u8>),
-    /// Request for a gossiped public listening address.
     // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     GossipedAddress(Vec<u8>),
-    /// Request for a block and its deploys by hash.
     BlockAndDeploys(Vec<u8>),
-    /// Request for a block header by its hash.
     BlockHeaderByHash(Vec<u8>),
-    /// Request for a batch of block headers.
     BlockHeadersBatch(Vec<u8>),
-    /// Request for finality signatures for a block.
     FinalitySignatures(Vec<u8>),
-    /// Request for a SyncLeap.
     SyncLeap(Vec<u8>),
-    /// Request for block execution results.
     BlockExecutionResults(Vec<u8>),
 }
 
@@ -119,6 +109,7 @@ impl Display for NetRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
+            NetRequest::LegacyDeploy(_) => f.write_str("request for legacy deploy"),
             NetRequest::BlockDeployApprovals(_) => f.write_str("request for finalized approvals"),
             NetRequest::Block(_) => f.write_str("request for block"),
             NetRequest::FinalitySignature(_) => {
@@ -142,6 +133,7 @@ impl NetRequest {
     pub(crate) fn unique_id(&self) -> Vec<u8> {
         let id = match self {
             NetRequest::Deploy(ref id) => id,
+            NetRequest::LegacyDeploy(ref id) => id,
             NetRequest::BlockDeployApprovals(ref id) => id,
             NetRequest::Block(ref id) => id,
             NetRequest::FinalitySignature(ref id) => id,
@@ -164,6 +156,7 @@ impl NetRequest {
     pub(crate) fn tag(&self) -> Tag {
         match self {
             NetRequest::Deploy(_) => Tag::Deploy,
+            NetRequest::LegacyDeploy(_) => Tag::LegacyDeploy,
             NetRequest::BlockDeployApprovals(_) => Tag::BlockDeployApprovals,
             NetRequest::Block(_) => Tag::Block,
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
@@ -184,6 +177,7 @@ impl NetRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum NetResponse {
     Deploy(Arc<[u8]>),
+    LegacyDeploy(Arc<[u8]>),
     FinalizedApprovals(Arc<[u8]>),
     Block(Arc<[u8]>),
     GossipedAddress(Arc<[u8]>),
@@ -211,6 +205,7 @@ impl Display for NetResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NetResponse::Deploy(_) => f.write_str("response, deploy"),
+            NetResponse::LegacyDeploy(_) => f.write_str("response, legacy deploy"),
             NetResponse::FinalizedApprovals(_) => f.write_str("response, finalized approvals"),
             NetResponse::Block(_) => f.write_str("response, block"),
             NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),

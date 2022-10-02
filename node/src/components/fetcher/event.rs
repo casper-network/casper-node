@@ -7,7 +7,7 @@ use super::FetchResponder;
 use crate::{
     components::fetcher::FetchResponse,
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest},
-    types::{Deploy, FetcherItem, NodeId},
+    types::{Deploy, FetcherItem, Item, NodeId},
     utils::Source,
 };
 
@@ -80,7 +80,7 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
             }
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
                 Event::GotInvalidRemotely {
-                    id: *Deploy::id(&deploy),
+                    id: deploy.id(),
                     source,
                 }
             }

@@ -4,6 +4,8 @@ use std::{
 };
 
 use datasize::DataSize;
+use either::Either;
+use itertools::Itertools;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
@@ -17,8 +19,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsRootHash,
     },
     types::{
-        Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, DeployHash, EraValidatorWeights, FinalitySignature, Item, NodeId,
+        Block, BlockAdded, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, Item, NodeId,
         SignatureWeight,
     },
     NodeRng,
@@ -32,7 +34,7 @@ pub(crate) enum Error {
         root_hash: Digest,
     },
     InvalidAttemptToApplyDeploy {
-        deploy_hash: DeployHash,
+        deploy_id: DeployId,
     },
     InvalidAttemptToApplyExecutionResults,
     InvalidAttemptToApplyExecutionResultsRootHash,
@@ -60,8 +62,8 @@ impl Display for Error {
                     root_hash
                 )
             }
-            Error::InvalidAttemptToApplyDeploy { deploy_hash } => {
-                write!(f, "invalid attempt to apply invalid deploy {}", deploy_hash)
+            Error::InvalidAttemptToApplyDeploy { deploy_id } => {
+                write!(f, "invalid attempt to apply invalid deploy {}", deploy_id)
             }
             Error::InvalidAttemptToApplyExecutionResults => {
                 write!(f, "invalid attempt to apply execution results")
@@ -93,7 +95,7 @@ enum ExecutionState {
 }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(crate) enum BlockAcquisitionState {
+pub(super) enum BlockAcquisitionState {
     Initialized(BlockHash, SignatureAcquisition),
     HaveBlockHeader(Box<BlockHeader>, SignatureAcquisition),
     HaveSufficientFinalitySignatures(Box<BlockHeader>, SignatureAcquisition),
@@ -164,23 +166,30 @@ impl BlockAcquisitionState {
 
     pub(super) fn with_body(
         &mut self,
-        block: &Block,
+        block_or_block_added: Either<&Block, &BlockAdded>,
         need_execution_state: bool,
     ) -> Result<(), Error> {
-        let block_hash = *block.hash();
+        let block_hash = match block_or_block_added {
+            Either::Left(block) => *block.hash(),
+            Either::Right(block_added) => *block_added.block().hash(),
+        };
         let new_state = match self {
             BlockAcquisitionState::HaveBlockHeader(header, signatures) => {
                 if header.id() == block_hash {
-                    let deploy_hashes = block
-                        .deploy_hashes()
-                        .iter()
-                        .chain(block.body().transfer_hashes())
-                        .copied()
-                        .collect();
+                    let deploy_acquisition = match block_or_block_added {
+                        Either::Left(block) => DeployAcquisition::new_by_hash(
+                            block.deploy_and_transfer_hashes().copied().collect(),
+                            need_execution_state,
+                        ),
+                        Either::Right(block_added) => DeployAcquisition::new_by_id(
+                            block_added.deploy_ids().collect(),
+                            need_execution_state,
+                        ),
+                    };
                     BlockAcquisitionState::HaveBlock(
                         header.clone(),
                         signatures.clone(),
-                        DeployAcquisition::new(deploy_hashes, need_execution_state),
+                        deploy_acquisition,
                     )
                 } else {
                     return Err(Error::BlockHashMismatch {
@@ -290,14 +299,14 @@ impl BlockAcquisitionState {
 
     pub(super) fn with_deploy(
         &mut self,
-        deploy_hash: DeployHash,
+        deploy_id: DeployId,
         need_execution_state: bool,
     ) -> Result<(), Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlock(header, signatures, acquired)
                 if !need_execution_state =>
             {
-                acquired.apply_deploy(deploy_hash);
+                acquired.apply_deploy(deploy_id);
                 match acquired.needs_deploy() {
                     None => BlockAcquisitionState::HaveAllDeploys(
                         header.clone(),
@@ -316,7 +325,7 @@ impl BlockAcquisitionState {
                 acquired,
                 Some(execution_results_root_hash),
             ) if need_execution_state => {
-                acquired.apply_deploy(deploy_hash);
+                acquired.apply_deploy(deploy_id);
                 match acquired.needs_deploy() {
                     None => BlockAcquisitionState::HaveAllDeploys(
                         header.clone(),
@@ -343,7 +352,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToApplyDeploy { deploy_hash });
+                return Err(Error::InvalidAttemptToApplyDeploy { deploy_id });
             }
         };
         *self = new_state;
@@ -526,7 +535,7 @@ impl BlockAcquisitionState {
         enum Mode {
             GetGlobalState(Box<BlockHeader>, Digest),
             GetExecResultRootHash(Box<BlockHeader>),
-            GetDeploy(Box<BlockHeader>, DeployHash),
+            GetDeploy(Box<BlockHeader>, Either<DeployHash, DeployId>),
             GetExecResult(Box<BlockHeader>, BlockExecutionResultsOrChunkId),
             GetStrictSignatures(Box<BlockHeader>, SignatureAcquisition),
             Err,
@@ -554,7 +563,7 @@ impl BlockAcquisitionState {
                 ),
                 true,
             ) => match deploy_state.needs_deploy() {
-                Some(deploy_hash) => Mode::GetDeploy(header, deploy_hash),
+                Some(deploy_hash_or_id) => Mode::GetDeploy(header, deploy_hash_or_id),
                 None => {
                     let block_hash = (*header).hash();
                     Mode::GetExecResult(
@@ -596,11 +605,11 @@ impl BlockAcquisitionState {
                     *block_header.state_root_hash(),
                 ))
             }
-            Mode::GetDeploy(block_header, deploy_hash) => Ok(BlockAcquisitionAction::deploy(
+            Mode::GetDeploy(block_header, deploy_hash_or_id) => Ok(BlockAcquisitionAction::deploy(
                 (*block_header).hash(),
                 peer_list,
                 rng,
-                deploy_hash,
+                deploy_hash_or_id,
             )),
             Mode::GetExecResult(block_header, value_or_chunk_id) => {
                 Ok(BlockAcquisitionAction::execution_results(
@@ -693,12 +702,12 @@ impl BlockAcquisitionAction {
         block_hash: BlockHash,
         peer_list: &PeerList,
         rng: &mut NodeRng,
-        deploy_hash: DeployHash,
+        deploy_hash_or_id: Either<DeployHash, DeployId>,
     ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::Deploy(block_hash, deploy_hash),
+            need_next: NeedNext::Deploy(block_hash, deploy_hash_or_id),
         }
     }
 

@@ -55,9 +55,9 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, NodeId,
-        NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
+        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -405,6 +405,16 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
     },
+    /// Retrieve legacy deploy with given hash.
+    GetLegacyDeploy {
+        deploy_hash: DeployHash,
+        responder: Responder<Option<LegacyDeploy>>,
+    },
+    /// Retrieve deploy with given ID.
+    GetDeploy {
+        deploy_id: DeployId,
+        responder: Responder<Option<Deploy>>,
+    },
     /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
     GetFinalizedBlocks {
         /// Responder to call with the results.
@@ -607,6 +617,12 @@ impl Display for StorageRequest {
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
                 write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
+            }
+            StorageRequest::GetLegacyDeploy { deploy_hash, .. } => {
+                write!(formatter, "get legacy deploy {}", deploy_hash)
+            }
+            StorageRequest::GetDeploy { deploy_id, .. } => {
+                write!(formatter, "get deploy {}", deploy_id)
             }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
@@ -1223,7 +1239,7 @@ impl Display for ContractRuntimeRequest {
                 write!(
                     formatter,
                     "Execute {} on {}",
-                    deploy.id(),
+                    deploy.hash(),
                     execution_prestate.state_root_hash
                 )
             }

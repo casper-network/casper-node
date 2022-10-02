@@ -42,9 +42,9 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
-        Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployOrTransferHash,
-        FetcherItem, FinalizedApprovals, GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag,
-        ValueOrChunk,
+        Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployId,
+        DeployOrTransferHash, FetcherItem, FinalizedApprovals, GossiperItem, Item, JsonBlock,
+        JsonBlockHeader, Tag, ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
@@ -94,7 +94,7 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     EraEnd::new(era_report, next_era_validator_weights)
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
-    let transfer_hashes = vec![*Deploy::doc_example().id()];
+    let transfer_hashes = vec![*Deploy::doc_example().hash()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
     let secret_key = SecretKey::doc_example();
@@ -1523,6 +1523,14 @@ impl Block {
         self.body.transfer_hashes()
     }
 
+    /// The list of deploy hashes chained with the list of transfer hashes.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.body
+            .deploy_hashes
+            .iter()
+            .chain(&self.body.transfer_hashes)
+    }
+
     /// The height of a block.
     pub fn height(&self) -> u64 {
         self.header.height()
@@ -1836,7 +1844,7 @@ impl FetcherItem for BlockAndDeploys {
             match self
                 .deploys
                 .iter()
-                .find(|&deploy| deploy.id() == deploy_hash)
+                .find(|&deploy| deploy.hash() == deploy_hash)
             {
                 Some(deploy) => deploy.has_valid_hash().map_err(|error| {
                     BlockValidationError::UnexpectedDeployHash {
@@ -2697,17 +2705,12 @@ impl Display for BlockDeployApprovals {
     }
 }
 
-/// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
-/// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
-pub(crate) fn compute_approvals_checksum<'a>(
-    approvals: impl Iterator<Item = &'a BTreeSet<Approval>>,
+/// Returns the hash of the bytesrepr-encoded deploy_ids.
+pub(crate) fn compute_approvals_checksum(
+    deploy_ids: Vec<DeployId>,
 ) -> Result<Digest, bytesrepr::Error> {
-    let mut approval_hashes = vec![];
-    for approval in approvals {
-        let bytes = approval.to_bytes()?;
-        approval_hashes.push(Digest::hash(bytes));
-    }
-    Ok(Digest::hash_merkle_tree(approval_hashes))
+    let bytes = deploy_ids.into_bytes()?;
+    Ok(Digest::hash(bytes))
 }
 
 #[cfg(test)]
@@ -2938,7 +2941,9 @@ mod tests {
 
         match block_and_deploys.validate(&()).unwrap_err() {
             BlockValidationError::MissingDeploy { missing_deploy, .. } => {
-                assert!(deploys2.iter().any(|deploy| *deploy.id() == missing_deploy))
+                assert!(deploys2
+                    .iter()
+                    .any(|deploy| *deploy.hash() == missing_deploy))
             }
             _ => panic!("should report missing deploy"),
         };

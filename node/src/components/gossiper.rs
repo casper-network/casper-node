@@ -27,8 +27,8 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        BlockAdded, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalitySignatureId, GossiperItem, Item, NodeId,
+        BlockAdded, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId,
+        GossiperItem, Item, NodeId,
     },
     utils::Source,
     NodeRng,
@@ -73,26 +73,17 @@ where
 /// constructing a `Gossiper<Deploy>`.
 pub(crate) fn get_deploy_from_storage<T: GossiperItem + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
-    deploy_hash: DeployHash,
+    item_id: DeployId,
     sender: NodeId,
 ) -> Effects<Event<Deploy>> {
     effect_builder
-        .get_deploys_from_storage(vec![deploy_hash])
-        .event(move |mut results| {
-            let result = if results.len() == 1 {
-                results
-                    .pop()
-                    .unwrap()
-                    .ok_or_else(|| String::from("failed to get deploy from storage"))
-                    .map(DeployWithFinalizedApprovals::into_naive)
-            } else {
-                Err(String::from("expected a single result"))
-            };
-            Event::GetFromHolderResult {
-                item_id: deploy_hash,
-                requester: sender,
-                result: Box::new(result),
-            }
+        .get_stored_deploy(item_id)
+        .event(move |result| Event::GetFromHolderResult {
+            item_id,
+            requester: sender,
+            result: Box::new(
+                result.ok_or_else(|| format!("failed to get {} from storage", item_id)),
+            ),
         })
 }
 

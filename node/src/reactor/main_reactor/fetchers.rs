@@ -1,3 +1,6 @@
+use datasize::DataSize;
+use prometheus::Registry;
+
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
     effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
@@ -6,12 +9,11 @@ use crate::{
     types::{
         Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures,
-        BlockWithMetadata, Chainspec, Deploy, FinalitySignature, SyncLeap, TrieOrChunk,
+        BlockWithMetadata, Chainspec, Deploy, FinalitySignature, LegacyDeploy, SyncLeap,
+        TrieOrChunk,
     },
     FetcherConfig, NodeRng,
 };
-use datasize::DataSize;
-use prometheus::Registry;
 
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
@@ -19,6 +21,7 @@ pub(super) struct Fetchers {
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_added_fetcher: Fetcher<BlockAdded>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,
+    legacy_deploy_fetcher: Fetcher<LegacyDeploy>,
     deploy_fetcher: Fetcher<Deploy>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     block_execution_results_or_chunk_fetcher: Fetcher<BlockExecutionResultsOrChunk>,
@@ -44,6 +47,7 @@ impl Fetchers {
                 config,
                 metrics_registry,
             )?,
+            legacy_deploy_fetcher: Fetcher::new("legacy_deploy", config, metrics_registry)?,
             deploy_fetcher: Fetcher::new("deploy", config, metrics_registry)?,
             trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
             block_execution_results_or_chunk_fetcher: Fetcher::new(
@@ -101,6 +105,16 @@ impl Fetchers {
                 self.finality_signature_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            MainEvent::LegacyDeployFetcher(event) => reactor::wrap_effects(
+                MainEvent::LegacyDeployFetcher,
+                self.legacy_deploy_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::LegacyDeployFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::LegacyDeployFetcher,
+                self.legacy_deploy_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             MainEvent::DeployFetcher(event) => reactor::wrap_effects(
                 MainEvent::DeployFetcher,
                 self.deploy_fetcher.handle_event(effect_builder, rng, event),
@@ -142,17 +156,31 @@ impl Fetchers {
             // MISC DISPATCHING
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-            ) => reactor::wrap_effects(
-                MainEvent::DeployFetcher,
-                self.deploy_fetcher.handle_event(
-                    effect_builder,
-                    rng,
-                    fetcher::Event::GotRemotely {
-                        item: deploy,
-                        source,
-                    },
-                ),
-            ),
+            ) => {
+                let mut effects = reactor::wrap_effects(
+                    MainEvent::LegacyDeployFetcher,
+                    self.legacy_deploy_fetcher.handle_event(
+                        effect_builder,
+                        rng,
+                        fetcher::Event::GotRemotely {
+                            item: Box::new(LegacyDeploy::from((*deploy).clone())),
+                            source: source.clone(),
+                        },
+                    ),
+                );
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::DeployFetcher,
+                    self.deploy_fetcher.handle_event(
+                        effect_builder,
+                        rng,
+                        fetcher::Event::GotRemotely {
+                            item: deploy,
+                            source,
+                        },
+                    ),
+                ));
+                effects
+            }
             // allow non-fetcher events to fall thru
             _ => Effects::new(),
         }

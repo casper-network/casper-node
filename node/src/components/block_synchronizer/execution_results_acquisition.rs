@@ -28,7 +28,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
-pub(crate) enum ExecutionResultsRootHash {
+pub(super) enum ExecutionResultsRootHash {
     Legacy,
     Some(Digest),
 }
@@ -40,7 +40,7 @@ impl ExecutionResultsRootHash {
 }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(crate) struct ExecutionResultsAcquisition {
+pub(super) struct ExecutionResultsAcquisition {
     block_hash: BlockHash,
     results_root_hash: ExecutionResultsRootHash,
     chunks: HashMap<u64, ChunkWithProof>,
@@ -48,7 +48,7 @@ pub(crate) struct ExecutionResultsAcquisition {
 }
 
 impl ExecutionResultsAcquisition {
-    pub(crate) fn new(block_hash: BlockHash, results_root_hash: ExecutionResultsRootHash) -> Self {
+    pub(super) fn new(block_hash: BlockHash, results_root_hash: ExecutionResultsRootHash) -> Self {
         ExecutionResultsAcquisition {
             block_hash,
             results_root_hash,

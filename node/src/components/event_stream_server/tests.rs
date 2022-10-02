@@ -211,7 +211,7 @@ impl TestFixture {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, deploy) = SseData::random_deploy_accepted(rng);
-                    assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                    assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                     event
                 }
                 2 => SseData::random_deploy_processed(rng),

@@ -27,7 +27,7 @@ casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "
 datasize = { version = "0.2.10", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 ed25519-dalek = { version = "1", default-features = false, features = ["rand", "serde", "u64_backend"] }
-either = "1"
+either = { version = "1", features = ["serde"] }
 enum-iterator = "0.6.0"
 erased-serde = "0.3.18"
 fs2 = "0.4.3"

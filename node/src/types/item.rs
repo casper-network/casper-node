@@ -33,8 +33,10 @@ use crate::{
 )]
 #[repr(u8)]
 pub enum Tag {
-    /// A deploy.
+    /// A deploy identified by its hash and its approvals hash.
     Deploy,
+    /// A legacy deploy identified by its hash alone.
+    LegacyDeploy,
     /// Finalized approvals for a deploy.
     BlockDeployApprovals,
     /// A block.

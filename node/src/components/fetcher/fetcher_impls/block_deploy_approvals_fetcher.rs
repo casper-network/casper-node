@@ -48,7 +48,7 @@ impl ItemFetcher<BlockDeployApprovals> for Fetcher<BlockDeployApprovals> {
                 maybe_item: Box::new(result.map(|block_and_deploys| {
                     let approvals = block_and_deploys.deploys.into_iter().map(|deploy| {
                         let deploy_approvals = deploy.approvals().clone();
-                        (*deploy.id(), FinalizedApprovals::new(deploy_approvals))
+                        (*deploy.hash(), FinalizedApprovals::new(deploy_approvals))
                     });
                     BlockDeployApprovals::new(id, approvals.collect())
                 })),

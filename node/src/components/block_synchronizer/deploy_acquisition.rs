@@ -1,48 +1,78 @@
-use std::collections::BTreeMap;
+use std::{cmp::Ord, collections::BTreeMap};
 
 use datasize::DataSize;
+use either::Either;
 
-use crate::types::DeployHash;
-
-#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Default)]
-pub(crate) enum DeployState {
-    #[default]
-    Vacant,
-    HaveDeployBody,
-    HaveDeployBodyWithEffects,
-}
+use crate::types::{DeployHash, DeployId};
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(crate) struct DeployAcquisition {
-    inner: BTreeMap<DeployHash, DeployState>,
-    need_execution_result: bool,
+pub(super) enum DeployAcquisition {
+    ByHash(Acquisition<DeployHash>),
+    ById(Acquisition<DeployId>),
 }
 
 impl DeployAcquisition {
-    pub(super) fn new(deploy_hashes: Vec<DeployHash>, need_execution_result: bool) -> Self {
-        let inner = deploy_hashes
+    pub(super) fn new_by_hash(deploy_hashes: Vec<DeployHash>, need_execution_result: bool) -> Self {
+        DeployAcquisition::ByHash(Acquisition::new(deploy_hashes, need_execution_result))
+    }
+
+    pub(super) fn new_by_id(deploy_ids: Vec<DeployId>, need_execution_result: bool) -> Self {
+        DeployAcquisition::ById(Acquisition::new(deploy_ids, need_execution_result))
+    }
+
+    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) {
+        match self {
+            DeployAcquisition::ByHash(acquisition) => {
+                acquisition.apply_deploy(*deploy_id.deploy_hash())
+            }
+            DeployAcquisition::ById(acquisition) => acquisition.apply_deploy(deploy_id),
+        }
+    }
+
+    pub(super) fn needs_deploy(&self) -> Option<Either<DeployHash, DeployId>> {
+        match self {
+            DeployAcquisition::ByHash(acquisition) => acquisition.needs_deploy().map(Either::Left),
+            DeployAcquisition::ById(acquisition) => acquisition.needs_deploy().map(Either::Right),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Default)]
+pub(super) enum DeployState {
+    #[default]
+    Vacant,
+    HaveDeployBody,
+}
+
+#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+pub(super) struct Acquisition<T> {
+    inner: BTreeMap<T, DeployState>,
+    need_execution_result: bool,
+}
+
+impl<T: Copy + Ord> Acquisition<T> {
+    fn new(deploy_identifiers: Vec<T>, need_execution_result: bool) -> Self {
+        let inner = deploy_identifiers
             .into_iter()
-            .map(|dh| (dh, DeployState::Vacant))
+            .map(|deploy_identifier| (deploy_identifier, DeployState::Vacant))
             .collect();
-        DeployAcquisition {
+        Acquisition {
             inner,
             need_execution_result,
         }
     }
 
-    pub(crate) fn apply_deploy(&mut self, deploy_hash: DeployHash) {
-        self.inner.insert(deploy_hash, DeployState::HaveDeployBody);
-    }
-
-    pub(crate) fn apply_execution_effect(&mut self, deploy_hash: DeployHash) {
+    fn apply_deploy(&mut self, deploy_identifier: T) {
         self.inner
-            .insert(deploy_hash, DeployState::HaveDeployBodyWithEffects);
+            .insert(deploy_identifier, DeployState::HaveDeployBody);
     }
 
-    pub(crate) fn needs_deploy(&self) -> Option<DeployHash> {
-        self.inner.iter().find_map(|(k, v)| match v {
-            DeployState::Vacant => Some(*k),
-            DeployState::HaveDeployBody | DeployState::HaveDeployBodyWithEffects => None,
-        })
+    fn needs_deploy(&self) -> Option<T> {
+        self.inner
+            .iter()
+            .find_map(|(deploy_identifier, state)| match state {
+                DeployState::Vacant => Some(*deploy_identifier),
+                DeployState::HaveDeployBody => None,
+            })
     }
 }

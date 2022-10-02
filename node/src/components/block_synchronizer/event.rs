@@ -5,6 +5,7 @@ use std::{
 
 use casper_hashing::Digest;
 use derive_more::From;
+use either::Either;
 use serde::Serialize;
 use tracing::event;
 
@@ -17,7 +18,7 @@ use crate::{
     effect::requests::BlockSynchronizerRequest,
     types::{
         BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        EraValidatorWeights, FinalitySignature, NodeId,
+        EraValidatorWeights, FinalitySignature, LegacyDeploy, NodeId,
     },
 };
 
@@ -52,7 +53,7 @@ pub(crate) enum Event {
     },
     DeployFetched {
         block_hash: BlockHash,
-        result: FetchResult<Deploy>,
+        result: Either<FetchResult<LegacyDeploy>, FetchResult<Deploy>>,
     },
     ExecutionResultsFetched {
         block_hash: BlockHash,
@@ -119,8 +120,10 @@ impl Display for Event {
                 block_hash: _,
                 result,
             } => match result {
-                Ok(fetched_item) => write!(f, "{}", fetched_item),
-                Err(fetcher_error) => write!(f, "{}", fetcher_error),
+                Either::Left(Ok(fetched_item)) => write!(f, "{}", fetched_item),
+                Either::Left(Err(fetcher_error)) => write!(f, "{}", fetcher_error),
+                Either::Right(Ok(fetched_item)) => write!(f, "{}", fetched_item),
+                Either::Right(Err(fetcher_error)) => write!(f, "{}", fetcher_error),
             },
             Event::ExecutionResultsFetched {
                 block_hash: _,

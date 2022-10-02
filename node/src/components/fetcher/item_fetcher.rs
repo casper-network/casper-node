@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
-use tracing::{error, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 use super::{Error, Event, FetchResponder, FetchedData, Metrics};
 use crate::{
@@ -119,6 +119,12 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
     {
+        let item_id = item.id();
+        if !self.responders().contains_key(&item_id) {
+            debug!(%item_id, %peer, "got unexpected item from peer");
+            return Effects::new();
+        }
+
         self.metrics().found_on_peer.inc();
 
         if let Err(err) = item.validate(self.validation_metadata()) {
@@ -126,7 +132,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
             effect_builder.announce_disconnect_from_peer(peer).ignore()
         } else {
             match self.put_to_storage(*item.clone(), peer, effect_builder) {
-                None => self.signal(item.id(), Ok(*item), peer),
+                None => self.signal(item_id, Ok(*item), peer),
                 Some(effects) => effects,
             }
         }

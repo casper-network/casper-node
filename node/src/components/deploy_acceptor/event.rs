@@ -110,7 +110,7 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Accept { deploy, source, .. } => {
-                write!(formatter, "accept {} from {}", deploy.id(), source)
+                write!(formatter, "accept {} from {}", deploy.hash(), source)
             }
             Event::PutToStorageResult {
                 event_metadata,
@@ -121,13 +121,13 @@ impl Display for Event {
                     write!(
                         formatter,
                         "put new {} to storage",
-                        event_metadata.deploy.id()
+                        event_metadata.deploy.hash()
                     )
                 } else {
                     write!(
                         formatter,
                         "had already stored {}",
-                        event_metadata.deploy.id()
+                        event_metadata.deploy.hash()
                     )
                 }
             }
@@ -135,21 +135,21 @@ impl Display for Event {
                 write!(
                     formatter,
                     "received highest block from storage to validate deploy with hash: {}.",
-                    event_metadata.deploy.id()
+                    event_metadata.deploy.hash()
                 )
             }
             Event::GetAccountResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "verifying account to validate deploy with hash {}.",
-                    event_metadata.deploy.id()
+                    event_metadata.deploy.hash()
                 )
             }
             Event::GetBalanceResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "verifying account balance to validate deploy with hash {}.",
-                    event_metadata.deploy.id()
+                    event_metadata.deploy.hash()
                 )
             }
             Event::GetContractResult {
@@ -160,7 +160,7 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying contract to validate deploy with hash {} with state hash: {}.",
-                    event_metadata.deploy.id(),
+                    event_metadata.deploy.hash(),
                     prestate_hash
                 )
             }
@@ -172,7 +172,7 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying contract package to validate deploy with hash {} with state hash: {}.",
-                    event_metadata.deploy.id(),
+                    event_metadata.deploy.hash(),
                     prestate_hash
                 )
             }

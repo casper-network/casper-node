@@ -191,7 +191,7 @@ mod tests {
             stored_block_by_height.unwrap().unwrap()
         );
 
-        let stored_deploy = storage.read_deploy_by_hash(example_deploy.id());
+        let stored_deploy = storage.read_deploy_by_hash(example_deploy.hash());
         assert!(matches!(stored_deploy, Ok(Some(_deploy))));
     }
 }

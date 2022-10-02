@@ -7,13 +7,13 @@ use crate::types::FinalitySignature;
 use casper_types::PublicKey;
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(super) enum SignatureState {
+enum SignatureState {
     Vacant,
     Signature(Box<FinalitySignature>),
 }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(crate) struct SignatureAcquisition {
+pub(super) struct SignatureAcquisition {
     inner: BTreeMap<PublicKey, SignatureState>,
 }
 

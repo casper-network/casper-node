@@ -45,8 +45,8 @@ pub use deploy::{
     DeployHeader, DeployOrTransferHash, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
 pub(crate) use deploy::{
-    DeployFootprint, DeployHashWithApprovals, DeployMetadata, DeployMetadataExt,
-    DeployWithFinalizedApprovals, FinalizedApprovals,
+    DeployFootprint, DeployHashWithApprovals, DeployId, DeployMetadata, DeployMetadataExt,
+    DeployWithFinalizedApprovals, FinalizedApprovals, LegacyDeploy,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

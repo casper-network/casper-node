@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use datasize::DataSize;
+use either::Either;
 use itertools::Itertools;
 use num_rational::Ratio;
 use tracing::{error, warn};
@@ -21,14 +22,14 @@ use crate::{
         signature_acquisition::SignatureAcquisition,
     },
     types::{
-        BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
+        Block, BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
+        DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
     },
     NodeRng,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
-pub(crate) enum Error {
+pub(super) enum Error {
     BlockAcquisition(block_acquisition::Error),
     MissingValidatorWeights(BlockHash),
 }
@@ -45,7 +46,7 @@ impl Display for Error {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockBuilder {
+pub(super) struct BlockBuilder {
     // imputed
     block_hash: BlockHash,
     should_fetch_execution_state: bool,
@@ -64,7 +65,7 @@ pub(crate) struct BlockBuilder {
 
 impl BlockBuilder {
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn new(
+    pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
@@ -85,11 +86,10 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn new_from_sync_leap(
+    pub(super) fn new_from_sync_leap(
         sync_leap: &SyncLeap,
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
-        fault_tolerance_fraction: Ratio<u64>,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
@@ -118,12 +118,12 @@ impl BlockBuilder {
             peer_list,
             should_fetch_execution_state,
             started: None,
-            last_progress: None,
+            last_progress: Some(Timestamp::now()),
         }
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn needs_validators(&self, era_id: EraId) -> bool {
+    pub(super) fn needs_validators(&self, era_id: EraId) -> bool {
         match self.validator_weights {
             None => match self.era_id {
                 None => false, // can't get validators w/o era, so must be false
@@ -134,7 +134,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn abort(&mut self) -> bool {
+    pub(super) fn abort(&mut self) -> bool {
         self.acquisition_state = BlockAcquisitionState::Fatal;
         self.flush_peers();
         self.touch();
@@ -142,37 +142,37 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn block_hash(&self) -> BlockHash {
+    pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn block_height(&self) -> Option<u64> {
+    pub(super) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
     }
 
     // NOT WIRED
-    pub(crate) fn builder_state(&self) -> &BlockAcquisitionState {
+    pub(super) fn builder_state(&self) -> &BlockAcquisitionState {
         &self.acquisition_state
     }
 
     // NOT WIRED
-    pub(crate) fn started(&self) -> Option<Timestamp> {
+    pub(super) fn started(&self) -> Option<Timestamp> {
         self.started
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn last_progress_time(&self) -> Option<Timestamp> {
+    pub(super) fn last_progress_time(&self) -> Option<Timestamp> {
         self.last_progress
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn is_fatal(&self) -> bool {
+    pub(super) fn is_fatal(&self) -> bool {
         self.acquisition_state == BlockAcquisitionState::Fatal
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn is_complete(&self) -> bool {
+    pub(super) fn is_complete(&self) -> bool {
         matches!(
             self.acquisition_state,
             BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
@@ -180,7 +180,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_peer(&mut self, peer: NodeId) {
+    pub(super) fn register_peer(&mut self, peer: NodeId) {
         if self.is_complete() || self.is_fatal() {
             return;
         }
@@ -188,32 +188,32 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn dishonest_peers(&self) -> Vec<NodeId> {
+    pub(super) fn dishonest_peers(&self) -> Vec<NodeId> {
         self.peer_list.dishonest_peers()
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.disqualify_peer(peer);
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn promote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.promote_peer(peer);
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn demote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.demote_peer(peer);
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn flush_dishonest_peers(&mut self) {
+    pub(super) fn flush_dishonest_peers(&mut self) {
         self.peer_list.flush_dishonest_peers();
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
+    pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
         if self.peer_list.need_peers() {
             return BlockAcquisitionAction::peers(self.block_hash);
         }
@@ -245,7 +245,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_block_header(
+    pub(super) fn register_block_header(
         &mut self,
         block_header: BlockHeader,
         maybe_peer: Option<NodeId>,
@@ -260,14 +260,14 @@ impl BlockBuilder {
     }
 
     // NOT WIRED
-    pub(crate) fn register_block_added(
+    pub(super) fn register_block(
         &mut self,
-        block_added: &BlockAdded,
+        block: &Block,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_body(block_added.block(), self.should_fetch_execution_state)
+            .with_body(Either::Left(block), self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -277,8 +277,26 @@ impl BlockBuilder {
         Ok(())
     }
 
+    // NOT WIRED
+    pub(super) fn register_block_added(
+        &mut self,
+        block_added: &BlockAdded,
+        maybe_peer: Option<NodeId>,
+    ) -> Result<(), Error> {
+        if let Err(error) = self.acquisition_state.with_body(
+            Either::Right(block_added),
+            self.should_fetch_execution_state,
+        ) {
+            self.disqualify_peer(maybe_peer);
+            return Err(Error::BlockAcquisition(error));
+        }
+        self.touch();
+        self.promote_peer(maybe_peer);
+        Ok(())
+    }
+
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_finality_signature(
+    pub(super) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
         maybe_peer: Option<NodeId>,
@@ -311,7 +329,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
+    pub(super) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
             .with_global_state(global_state, self.should_fetch_execution_state)
@@ -323,7 +341,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_execution_results_root_hash(
+    pub(super) fn register_execution_results_root_hash(
         &mut self,
         execution_results_root_hash: ExecutionResultsRootHash,
     ) -> Result<(), Error> {
@@ -338,14 +356,14 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_deploy(
+    pub(super) fn register_deploy(
         &mut self,
-        deploy_hash: DeployHash,
+        deploy_id: DeployId,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_deploy(deploy_hash, self.should_fetch_execution_state)
+            .with_deploy(deploy_id, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -356,7 +374,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_fetched_execution_results(
+    pub(super) fn register_fetched_execution_results(
         &mut self,
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
@@ -378,7 +396,7 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(crate) fn register_stored_execution_results(&mut self) -> Result<(), Error> {
+    pub(super) fn register_stored_execution_results(&mut self) -> Result<(), Error> {
         if let Err(err) = self
             .acquisition_state
             .with_stored_execution_results(self.should_fetch_execution_state)
@@ -390,7 +408,7 @@ impl BlockBuilder {
     }
 
     // NOT WIRED
-    pub(crate) fn register_era_validator_weights(
+    pub(super) fn register_era_validator_weights(
         &mut self,
         validator_weights: EraValidatorWeights,
     ) {
@@ -399,7 +417,7 @@ impl BlockBuilder {
     }
 
     // NOT WIRED
-    pub(crate) fn register_peers(&mut self, peers: Vec<NodeId>) -> Result<(), Error> {
+    pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) -> Result<(), Error> {
         peers
             .into_iter()
             .for_each(|peer| self.peer_list.register_peer(peer));

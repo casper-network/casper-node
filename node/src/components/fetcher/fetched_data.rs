@@ -24,6 +24,21 @@ impl<T> FetchedData<T> {
             peer,
         }
     }
+
+    pub(crate) fn convert<U>(self) -> FetchedData<U>
+    where
+        T: Into<U>,
+    {
+        match self {
+            FetchedData::FromStorage { item } => FetchedData::FromStorage {
+                item: Box::new((*item).into()),
+            },
+            FetchedData::FromPeer { item, peer } => FetchedData::FromPeer {
+                item: Box::new((*item).into()),
+                peer,
+            },
+        }
+    }
 }
 
 impl<T: FetcherItem> Display for FetchedData<T> {

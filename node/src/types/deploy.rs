@@ -11,6 +11,8 @@ mod deploy_with_finalized_approvals;
 mod error;
 mod finalized_approvals;
 mod footprint;
+mod id;
+mod legacy_deploy;
 mod metadata;
 
 use std::{
@@ -27,7 +29,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[cfg(test)]
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
@@ -62,6 +64,8 @@ pub(crate) use deploy_with_finalized_approvals::DeployWithFinalizedApprovals;
 pub use error::{DeployConfigurationFailure, Error as DeployError, ExcessiveSizeError};
 pub(crate) use finalized_approvals::FinalizedApprovals;
 pub(crate) use footprint::Footprint as DeployFootprint;
+pub use id::Id as DeployId;
+pub(crate) use legacy_deploy::LegacyDeploy;
 pub(crate) use metadata::{Metadata as DeployMetadata, MetadataExt as DeployMetadataExt};
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -174,8 +178,13 @@ impl Deploy {
     }
 
     /// Returns the `DeployHash` identifying this `Deploy`.
-    pub fn id(&self) -> &DeployHash {
+    pub fn hash(&self) -> &DeployHash {
         &self.hash
+    }
+
+    /// Returns the `ApprovalsHash` of this `Deploy`'s approvals.
+    pub fn approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
+        ApprovalsHash::compute(&self.approvals)
     }
 
     /// Returns a reference to the `DeployHeader` of this `Deploy`.
@@ -210,6 +219,11 @@ impl Deploy {
         } else {
             DeployOrTransferHash::Deploy(self.hash)
         }
+    }
+
+    pub(crate) fn with_approvals(mut self, approvals: BTreeSet<Approval>) -> Self {
+        self.approvals = approvals;
+        self
     }
 
     /// Returns the `DeployFootprint`.
@@ -285,7 +299,7 @@ impl Deploy {
         let header = self.header();
         if header.chain_name() != chain_name {
             info!(
-                deploy_hash = %self.id(),
+                deploy_hash = %self.hash(),
                 deploy_header = %header,
                 chain_name = %header.chain_name(),
                 "invalid chain identifier"
@@ -298,7 +312,7 @@ impl Deploy {
 
         if header.dependencies().len() > config.max_dependencies as usize {
             info!(
-                deploy_hash = %self.id(),
+                deploy_hash = %self.hash(),
                 deploy_header = %header,
                 max_dependencies = %config.max_dependencies,
                 "deploy dependency ceiling exceeded"
@@ -311,7 +325,7 @@ impl Deploy {
 
         if header.ttl() > config.max_ttl {
             info!(
-                deploy_hash = %self.id(),
+                deploy_hash = %self.hash(),
                 deploy_header = %header,
                 max_ttl = %config.max_ttl,
                 "deploy ttl excessive"
@@ -324,7 +338,7 @@ impl Deploy {
 
         if self.approvals.len() > max_associated_keys as usize {
             info!(
-                deploy_hash = %self.id(),
+                deploy_hash = %self.hash(),
                 number_of_associated_keys = %self.approvals.len(),
                 max_associated_keys = %max_associated_keys,
                 "number of associated keys exceeds the maximum limit"
@@ -526,12 +540,17 @@ impl FromBytes for Deploy {
 }
 
 impl Item for Deploy {
-    type Id = DeployHash;
+    type Id = DeployId;
 
     const TAG: Tag = Tag::Deploy;
 
     fn id(&self) -> Self::Id {
-        *self.id()
+        let deploy_hash = *self.hash();
+        let approvals_hash = self.approvals_hash().unwrap_or_else(|error| {
+            error!(%error, "failed to serialize approvals");
+            ApprovalsHash::from(Digest::default())
+        });
+        DeployId::new(deploy_hash, approvals_hash)
     }
 }
 
@@ -588,7 +607,7 @@ impl From<Deploy> for DeployItem {
             deploy.payment().clone(),
             deploy.header().gas_price(),
             authorization_keys,
-            casper_types::DeployHash::new(deploy.id().inner().value()),
+            casper_types::DeployHash::new(deploy.hash().inner().value()),
         )
     }
 }
