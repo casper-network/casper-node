@@ -1,5 +1,3 @@
-#![allow(unused)] // TODO: To be removed
-
 //! Common types used across multiple components.
 
 pub(crate) mod appendable_block;

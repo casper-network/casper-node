@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
@@ -38,7 +38,6 @@ pub(crate) struct BlockAdded {
 }
 
 impl BlockAdded {
-    // TODO: Fraser, this appears to have no usages which is worrisome
     pub(crate) fn new(
         block: Block,
         finalized_approvals: Vec<(DeployHash, BTreeSet<Approval>)>,
@@ -106,13 +105,13 @@ impl BlockAdded {
         self.block
     }
 
-    pub(crate) fn finalized_approvals(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
-        &self.finalized_approvals
-    }
-
-    pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
-        &self.merkle_proof_approvals
-    }
+    // pub(crate) fn finalized_approvals(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
+    //     &self.finalized_approvals
+    // }
+    //
+    // pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
+    //     &self.merkle_proof_approvals
+    // }
 }
 
 impl Item for BlockAdded {

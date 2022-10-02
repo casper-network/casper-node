@@ -483,10 +483,15 @@ impl MainReactor {
                 match self.linear_chain.highest_block() {
                     Some(block) => {
                         let era_id = block.header().era_id();
+                        // TODO - this seems wrong - should use
+                        // `ProtocolConfig::is_last_block_before_activation`?
                         if era_id == block.header().next_block_era_id() {
                             match self.validator_matrix.validator_weights(era_id) {
-                                Some(evw) => {
-                                    if self.storage.era_has_sufficient_finality_signatures(&evw) {
+                                Some(validator_weights) => {
+                                    if self
+                                        .storage
+                                        .era_has_sufficient_finality_signatures(&validator_weights)
+                                    {
                                         return CatchUpInstruction::CommitUpgrade(Box::new(
                                             block.header().clone(),
                                         ));

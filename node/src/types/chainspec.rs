@@ -13,7 +13,7 @@ mod network_config;
 mod parse_toml;
 mod protocol_config;
 
-use std::{collections::BTreeMap, fmt::Debug, path::Path, sync::Arc};
+use std::{fmt::Debug, path::Path, sync::Arc};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -30,7 +30,7 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, Key, ProtocolVersion, StoredValue,
+    EraId, ProtocolVersion,
 };
 
 #[cfg(test)]
@@ -93,11 +93,6 @@ impl Chainspec {
             vec![]
         });
         Digest::hash(&serialized_chainspec)
-    }
-
-    /// Returns true if this chainspec has an activation_point specifying era ID 0.
-    pub(crate) fn is_genesis(&self) -> bool {
-        self.protocol_config.activation_point.is_genesis()
     }
 
     /// Returns the protocol version of the chainspec.

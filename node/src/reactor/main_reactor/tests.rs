@@ -312,8 +312,8 @@ async fn run_equivocator_network() {
 
     let mut rng = crate::new_rng();
 
-    let alice_sk = Arc::new(SecretKey::random(&mut rng));
-    let alice_pk = PublicKey::from(&*alice_sk);
+    let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
     let size: usize = 2;
     let mut keys: Vec<Arc<SecretKey>> = (1..size)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
@@ -322,9 +322,9 @@ async fn run_equivocator_network() {
         .iter()
         .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
-    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1u64));
-    keys.push(alice_sk.clone());
-    keys.push(alice_sk);
+    stakes.insert(PublicKey::from(&*alice_secret_key), U512::from(1u64));
+    keys.push(alice_secret_key.clone());
+    keys.push(alice_secret_key);
 
     // We configure the era to take ten rounds, and delay all messages to and from one of Alice's
     // nodes until three rounds after the first message. That should guarantee that the two nodes
@@ -339,7 +339,7 @@ async fn run_equivocator_network() {
     let min_round_len = chain.chainspec.highway_config.min_round_length();
     let mut maybe_first_message_time = None;
     net.reactors_mut()
-        .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
+        .find(|reactor| *reactor.inner().consensus().public_key() == alice_public_key)
         .unwrap()
         .set_filter(move |event| {
             let now = Timestamp::now();
@@ -380,23 +380,29 @@ async fn run_equivocator_network() {
     // Era 0 consists only of the genesis block.
     // In era 1, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
-    assert_eq!(switch_blocks.equivocators(1), [alice_pk.clone()]);
+    assert_eq!(switch_blocks.equivocators(1), [alice_public_key.clone()]);
     assert_eq!(switch_blocks.inactive_validators(1), []);
-    assert!(bids[1][&alice_pk].inactive());
-    assert!(switch_blocks.next_era_validators(1).contains_key(&alice_pk));
+    assert!(bids[1][&alice_public_key].inactive());
+    assert!(switch_blocks
+        .next_era_validators(1)
+        .contains_key(&alice_public_key));
 
     // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
     assert_eq!(switch_blocks.equivocators(2), []);
     assert_eq!(switch_blocks.inactive_validators(2), []);
-    assert!(bids[2][&alice_pk].inactive());
-    assert!(!switch_blocks.next_era_validators(2).contains_key(&alice_pk));
+    assert!(bids[2][&alice_public_key].inactive());
+    assert!(!switch_blocks
+        .next_era_validators(2)
+        .contains_key(&alice_public_key));
 
     // In era 3 she is not a validator anymore and her bid remains deactivated.
     assert_eq!(switch_blocks.equivocators(3), []);
     assert_eq!(switch_blocks.inactive_validators(3), []);
-    assert!(bids[3][&alice_pk].inactive());
-    assert!(!switch_blocks.next_era_validators(3).contains_key(&alice_pk));
+    assert!(bids[3][&alice_public_key].inactive());
+    assert!(!switch_blocks
+        .next_era_validators(3)
+        .contains_key(&alice_public_key));
 
     // We don't slash, so the stakes are never reduced.
     for (pk, stake) in &stakes {

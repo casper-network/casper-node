@@ -50,6 +50,7 @@ impl ProtocolConfig {
         Ok(update_mapping)
     }
 
+    #[allow(unused)] // TODO: To be removed
     /// Returns whether the block header belongs to the last block before the upgrade to the
     /// current protocol version.
     pub(crate) fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {

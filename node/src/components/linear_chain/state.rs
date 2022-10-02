@@ -15,11 +15,10 @@ use casper_types::{
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
-use crate::types::BlockAdded;
 use crate::{
     components::linear_chain,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash,
+        ActivationPoint, Block, BlockAdded, BlockHash, BlockHeader, BlockSignatures, DeployHash,
         FinalitySignature,
     },
 };

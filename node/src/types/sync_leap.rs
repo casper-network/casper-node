@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     iter,
 };
@@ -9,17 +8,15 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::io::AsyncReadExt;
 
-use casper_types::{crypto, system::auction::ValidatorWeights, EraId, PublicKey, U512};
+use casper_types::{crypto, system::auction::ValidatorWeights, EraId};
 use tracing::log::error;
 
 use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
-        block, error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights, FetcherItem, Item, Tag,
-        ValidatorMatrix,
+        error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, EraValidatorWeights, FetcherItem, Item, Tag, ValidatorMatrix,
     },
 };
 
@@ -89,13 +86,6 @@ impl SyncLeap {
             .find_or_first(|block_header_with_metadata| {
                 block_header_with_metadata.block_header.height() == highest
             })
-    }
-
-    pub(crate) fn highest_block_signatures(&self) -> Option<BlockSignatures> {
-        match self.highest_block_header() {
-            None => None,
-            Some(v) => Some(v.block_signatures),
-        }
     }
 
     pub(crate) fn validators_of_highest_block(&self) -> Option<ValidatorWeights> {

@@ -21,7 +21,6 @@ use casper_types::{
 };
 
 use super::SpeculativeExecutionState;
-use crate::types::BlockAdded;
 use crate::{
     components::{
         consensus::EraReport,
@@ -32,7 +31,8 @@ use crate::{
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
-        self, error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, FinalizedBlock,
+        self, error::BlockCreationError, Block, BlockAdded, Chunkable, Deploy, DeployHeader,
+        FinalizedBlock,
     },
 };
 

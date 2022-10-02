@@ -13,7 +13,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::Display;
 use itertools::Itertools;
-use num_traits::Zero;
 use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
 use rand::{Rng, RngCore};
@@ -36,8 +35,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    ExecutionResult, Gas, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp,
-    U512,
+    ExecutionResult, Gas, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp, U512,
 };
 
 use crate::{

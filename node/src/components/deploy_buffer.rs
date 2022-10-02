@@ -237,8 +237,7 @@ impl DeployBuffer {
                         | AddError::DeployCount
                         | AddError::ApprovalCount
                         | AddError::GasLimit
-                        | AddError::BlockSize
-                        | AddError::InvalidGasAmount => {
+                        | AddError::BlockSize => {
                             // one or more block limits have been reached
                             break;
                         }

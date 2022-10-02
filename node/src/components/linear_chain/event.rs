@@ -7,10 +7,9 @@ use std::{
 
 use casper_types::{ExecutionResult, Key, StoredValue};
 
-use crate::types::BlockAdded;
 use crate::{
     effect::incoming::FinalitySignatureIncoming,
-    types::{ActivationPoint, Block, BlockSignatures, DeployHash, FinalitySignature},
+    types::{ActivationPoint, Block, BlockAdded, BlockSignatures, DeployHash, FinalitySignature},
 };
 
 #[derive(Debug)]

@@ -23,8 +23,6 @@ pub(crate) enum AddError {
     BlockSize,
     #[error("duplicate deploy")]
     Duplicate,
-    #[error("payment amount could not be converted to gas")]
-    InvalidGasAmount,
     #[error("deploy is not valid in this context")]
     InvalidDeploy,
 }
@@ -56,11 +54,6 @@ impl AppendableBlock {
             total_size: 0,
             total_approvals: 0,
         }
-    }
-
-    /// Returns the total size of all deploys so far.
-    pub(crate) fn total_size(&self) -> usize {
-        self.total_size
     }
 
     /// Attempts to add any kind of deploy (transfer or other kind).

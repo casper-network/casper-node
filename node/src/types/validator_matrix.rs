@@ -1,5 +1,7 @@
+#![allow(unused)] // TODO: To be removed
+
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet},
     sync::{Arc, RwLock},
 };
 
@@ -8,7 +10,6 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
 
-use crate::types::FinalitySignature;
 use casper_types::{EraId, PublicKey, U512};
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]

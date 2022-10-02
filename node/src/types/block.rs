@@ -41,11 +41,7 @@ use crate::{
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
-        error::{
-            BlockCreationError, BlockHeaderWithMetadataValidationError,
-            BlockHeadersBatchValidationError, BlockValidationError,
-            BlockWithMetadataValidationError,
-        },
+        error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
         Approval, Chunkable, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals,
         FetcherItem, GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag, ValueOrChunk,
     },
@@ -1011,6 +1007,7 @@ pub(crate) struct BlockHeadersBatchId {
     pub lowest: u64,
 }
 
+#[allow(unused)] // TODO: To be removed
 impl BlockHeadersBatchId {
     pub(crate) fn new(highest: u64, lowest: u64) -> Self {
         Self { highest, lowest }
@@ -1046,6 +1043,7 @@ impl Display for BlockHeadersBatchId {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct BlockHeadersBatch(Vec<BlockHeader>);
 
+#[allow(unused)] // TODO: To be removed
 impl BlockHeadersBatch {
     /// Validates whether received batch is:
     /// 1) highest block header from the batch has a hash is `latest_known.hash`
@@ -1206,6 +1204,22 @@ impl FetcherItem for BlockHeadersBatch {
 
         Ok(())
     }
+}
+
+#[allow(unused)] // TODO: To be removed
+#[derive(Error, Debug, PartialEq, Eq)]
+pub(crate) enum BlockHeadersBatchValidationError {
+    #[error("Batch has incorrect length. Expect: {expected}, got: {got}")]
+    IncorrectLength { expected: u64, got: u64 },
+    #[error("Returned batch is not continuous sequence of blocks of parent-child relationship.")]
+    BatchNotContinuous,
+    #[error("Empty batch")]
+    BatchEmpty,
+    #[error(
+        "Hash of the highest block from batch doesn't match expected.
+        Expected: {expected}, got: {got}."
+    )]
+    HighestBlockHashMismatch { expected: BlockHash, got: BlockHash },
 }
 
 /// The body portion of a block.
