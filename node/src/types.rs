@@ -41,8 +41,8 @@ pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use deploy::{
-    Approval, Deploy, DeployConfigurationFailure, DeployError, DeployHash, DeployHeader,
-    DeployOrTransferHash, ExcessiveSizeError as ExcessiveSizeDeployError,
+    Approval, ApprovalsHash, Deploy, DeployConfigurationFailure, DeployError, DeployHash,
+    DeployHeader, DeployOrTransferHash, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
 pub(crate) use deploy::{
     DeployFootprint, DeployHashWithApprovals, DeployMetadata, DeployMetadataExt,

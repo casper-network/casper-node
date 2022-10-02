@@ -2,6 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 mod approval;
+mod approvals_hash;
 mod deploy_hash;
 mod deploy_hash_with_approvals;
 mod deploy_header;
@@ -52,6 +53,7 @@ use crate::{
     utils::{ds, DisplayIter},
 };
 pub use approval::Approval;
+pub use approvals_hash::ApprovalsHash;
 pub use deploy_hash::DeployHash;
 pub(crate) use deploy_hash_with_approvals::DeployHashWithApprovals;
 pub use deploy_header::DeployHeader;
