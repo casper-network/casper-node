@@ -42,8 +42,9 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
-        Approval, Chunkable, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals,
-        FetcherItem, GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag, ValueOrChunk,
+        Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployOrTransferHash,
+        FetcherItem, FinalizedApprovals, GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag,
+        ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
@@ -106,7 +107,7 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
                 let approval = Approval::create(&hash, secret_key);
                 let mut approvals = BTreeSet::new();
                 approvals.insert(approval);
-                DeployWithApprovals::new(hash, approvals)
+                DeployHashWithApprovals::new(hash, approvals)
             })
             .collect(),
         vec![],
@@ -216,16 +217,16 @@ impl From<TryFromSliceError> for Error {
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
 pub(crate) struct BlockPayload {
-    deploys: Vec<DeployWithApprovals>,
-    transfers: Vec<DeployWithApprovals>,
+    deploys: Vec<DeployHashWithApprovals>,
+    transfers: Vec<DeployHashWithApprovals>,
     accusations: Vec<PublicKey>,
     random_bit: bool,
 }
 
 impl BlockPayload {
     pub(crate) fn new(
-        deploys: Vec<DeployWithApprovals>,
-        transfers: Vec<DeployWithApprovals>,
+        deploys: Vec<DeployHashWithApprovals>,
+        transfers: Vec<DeployHashWithApprovals>,
         accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Self {
@@ -243,12 +244,12 @@ impl BlockPayload {
     }
 
     /// The list of deploys included in the block, excluding transfers.
-    pub(crate) fn deploys(&self) -> &Vec<DeployWithApprovals> {
+    pub(crate) fn deploys(&self) -> &Vec<DeployHashWithApprovals> {
         &self.deploys
     }
 
     /// The list of transfers included in the block.
-    pub(crate) fn transfers(&self) -> &Vec<DeployWithApprovals> {
+    pub(crate) fn transfers(&self) -> &Vec<DeployHashWithApprovals> {
         &self.transfers
     }
 
@@ -318,7 +319,7 @@ impl BlockPayload {
                     .min(total_approvals_left - (num_transfers + num_deploys - n - 1));
                 let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
                 total_approvals_left -= n_approvals;
-                DeployWithApprovals::new(
+                DeployHashWithApprovals::new(
                     DeployHash::random(rng),
                     (0..n_approvals).map(|_| Approval::random(rng)).collect(),
                 )
@@ -338,7 +339,7 @@ impl BlockPayload {
                     MAX_APPROVALS_PER_DEPLOY.min(total_approvals_left - (num_transfers - n - 1));
                 let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
                 total_approvals_left -= n_approvals;
-                DeployWithApprovals::new(
+                DeployHashWithApprovals::new(
                     DeployHash::random(rng),
                     (0..n_approvals).map(|_| Approval::random(rng)).collect(),
                 )
@@ -507,12 +508,13 @@ impl FinalizedBlock {
 
         let mut deploys = deploys_iter
             .into_iter()
-            .map(DeployWithApprovals::from)
+            .map(DeployHashWithApprovals::from)
             .collect::<Vec<_>>();
         if deploys.is_empty() {
             let count = rng.gen_range(0..11);
             deploys.extend(
-                iter::repeat_with(|| DeployWithApprovals::from(&Deploy::random(rng))).take(count),
+                iter::repeat_with(|| DeployHashWithApprovals::from(&Deploy::random(rng)))
+                    .take(count),
             );
         }
         let random_bit = rng.gen();
@@ -2611,6 +2613,80 @@ impl Display for FinalitySignatureId {
             f,
             "finality signature id for block hash {}, from {}",
             self.block_hash, self.public_key
+        )
+    }
+}
+
+/// A set of finalized approval sets for a block.
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
+pub(crate) struct BlockDeployApprovals {
+    block_hash: BlockHash,
+    approvals: Vec<(DeployHash, FinalizedApprovals)>,
+}
+
+impl BlockDeployApprovals {
+    /// Creates a new instance of `BlockDeployApprovals`.
+    pub(crate) fn new(
+        block_hash: BlockHash,
+        approvals: Vec<(DeployHash, FinalizedApprovals)>,
+    ) -> Self {
+        Self {
+            block_hash,
+            approvals,
+        }
+    }
+
+    #[allow(unused)] // TODO: remove when used
+    /// Returns the inner set of approvals.
+    pub(crate) fn approvals(&self) -> &Vec<(DeployHash, FinalizedApprovals)> {
+        &self.approvals
+    }
+}
+
+/// Error type containing the error message passed from `crypto::verify`
+#[derive(Debug, Error)]
+#[error("invalid approval from {signer}: {error}")]
+pub struct BlockDeployApprovalsVerificationError {
+    signer: PublicKey,
+    error: String,
+}
+
+impl Item for BlockDeployApprovals {
+    type Id = BlockHash;
+
+    const TAG: Tag = Tag::BlockDeployApprovals;
+
+    fn id(&self) -> Self::Id {
+        self.block_hash
+    }
+}
+
+impl FetcherItem for BlockDeployApprovals {
+    type ValidationError = BlockDeployApprovalsVerificationError;
+    type ValidationMetadata = (); // TODO: Optional approvals root hash?
+
+    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+        for (deploy_hash, approval_set) in &self.approvals {
+            for approval in approval_set.inner() {
+                crypto::verify(deploy_hash, approval.signature(), approval.signer()).map_err(
+                    |err| BlockDeployApprovalsVerificationError {
+                        signer: approval.signer().clone(),
+                        error: format!("{}", err),
+                    },
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Display for BlockDeployApprovals {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "finalized approvals for block {}: {}",
+            self.block_hash,
+            self.approvals.len() // TODO: DisplayIter::new(self.approvals.iter())?
         )
     }
 }

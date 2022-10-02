@@ -2114,7 +2114,7 @@ impl Storage {
             })?;
 
         // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.as_ref() {
+        if original_deploy.approvals() != finalized_approvals.inner() {
             let _ = txn.put_value(
                 self.finalized_approvals_db,
                 deploy_hash,

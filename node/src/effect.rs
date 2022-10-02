@@ -18,9 +18,9 @@
 //!
 //! * (unbound) events: These events are not associated with a particular reactor or component and
 //!   represent information or requests by themselves. An example is the
-//!   [`BlocklistAnnouncement`](`crate::effect::announcements::BlocklistAnnouncement`), it can be
-//!   emitted through an effect by different components and contains the ID of a peer that should be
-//!   shunned. It is not associated with a particular reactor or component though.
+//!   [`PeerBehaviorAnnouncement`](`crate::effect::announcements::PeerBehaviorAnnouncement`), it can
+//!   be emitted through an effect by different components and contains the ID of a peer that should
+//!   be shunned. It is not associated with a particular reactor or component though.
 //!
 //!   While the node is running, these unbound events cannot exist on their own, instead they are
 //!   typically converted into a concrete reactor event by the effect builder as soon as they are

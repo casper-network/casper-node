@@ -37,7 +37,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployOrTransferHash, DeployWithApprovals, NodeId,
+        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
     },
     NodeRng,
 };
@@ -335,13 +335,13 @@ where
                         let add_result = match dt_hash {
                             DeployOrTransferHash::Deploy(hash) => {
                                 state.appendable_block.add_deploy(
-                                    DeployWithApprovals::new(hash, approvals.clone()),
+                                    DeployHashWithApprovals::new(hash, approvals.clone()),
                                     &*deploy_info,
                                 )
                             }
                             DeployOrTransferHash::Transfer(hash) => {
                                 state.appendable_block.add_transfer(
-                                    DeployWithApprovals::new(hash, approvals.clone()),
+                                    DeployHashWithApprovals::new(hash, approvals.clone()),
                                     &*deploy_info,
                                 )
                             }

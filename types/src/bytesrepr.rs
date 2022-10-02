@@ -84,6 +84,7 @@ pub trait ToBytes {
 pub trait FromBytes: Sized {
     /// Deserializes the slice into `Self`.
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error>;
+
     /// Deserializes the `Vec<u8>` into `Self`.
     fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
         Self::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))

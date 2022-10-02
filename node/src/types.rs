@@ -26,9 +26,9 @@ use rand_chacha::ChaCha20Rng;
 
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
-    compute_approvals_checksum, BlockAdded, BlockAddedValidationError, BlockHashAndHeight,
-    BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-    BlockWithMetadata, FinalitySignatureId,
+    compute_approvals_checksum, BlockAdded, BlockAddedValidationError, BlockDeployApprovals,
+    BlockHashAndHeight, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId,
+    BlockPayload, BlockWithMetadata, FinalitySignatureId,
 };
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
@@ -41,10 +41,12 @@ pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use deploy::{
-    Approval, BlockDeployApprovals, Deploy, DeployConfigurationFailure, DeployFootprint,
-    DeployHash, DeployHeader, DeployMetadata, DeployMetadataExt, DeployOrTransferHash,
-    DeployWithApprovals, DeployWithFinalizedApprovals, Error as DeployError,
-    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals,
+    Approval, Deploy, DeployConfigurationFailure, DeployError, DeployHash, DeployHeader,
+    DeployOrTransferHash, ExcessiveSizeError as ExcessiveSizeDeployError,
+};
+pub(crate) use deploy::{
+    DeployFootprint, DeployHashWithApprovals, DeployMetadata, DeployMetadataExt,
+    DeployWithFinalizedApprovals, FinalizedApprovals,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

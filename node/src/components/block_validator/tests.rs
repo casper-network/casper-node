@@ -11,7 +11,7 @@ use itertools::Itertools;
 use crate::{
     components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, ChainspecRawBytes, DeployWithApprovals},
+    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals},
     utils::{self, Loadable},
 };
 
@@ -88,8 +88,8 @@ impl MockReactor {
 
 fn new_proposed_block(
     timestamp: Timestamp,
-    deploys: Vec<DeployWithApprovals>,
-    transfers: Vec<DeployWithApprovals>,
+    deploys: Vec<DeployHashWithApprovals>,
+    transfers: Vec<DeployHashWithApprovals>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
@@ -159,10 +159,13 @@ async fn validate_block(
     transfers: Vec<Deploy>,
 ) -> bool {
     // Assemble the block to be validated.
-    let deploys_for_block = deploys.iter().map(DeployWithApprovals::from).collect_vec();
+    let deploys_for_block = deploys
+        .iter()
+        .map(DeployHashWithApprovals::from)
+        .collect_vec();
     let transfers_for_block = transfers
         .iter()
-        .map(DeployWithApprovals::from)
+        .map(DeployHashWithApprovals::from)
         .collect_vec();
     let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
 

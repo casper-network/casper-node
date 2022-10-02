@@ -6,7 +6,8 @@ use num_traits::Zero;
 use thiserror::Error;
 
 use crate::types::{
-    chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash, DeployWithApprovals,
+    chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash,
+    DeployHashWithApprovals,
 };
 
 #[derive(Debug, Error)]
@@ -31,8 +32,8 @@ pub(crate) enum AddError {
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     deploy_config: DeployConfig,
-    deploys: Vec<DeployWithApprovals>,
-    transfers: Vec<DeployWithApprovals>,
+    deploys: Vec<DeployHashWithApprovals>,
+    transfers: Vec<DeployHashWithApprovals>,
     deploy_and_transfer_set: HashSet<DeployHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
@@ -59,7 +60,7 @@ impl AppendableBlock {
     /// Attempts to add any kind of deploy (transfer or other kind).
     pub(crate) fn add(
         &mut self,
-        any_kind_of_deploy_which_by_the_way_includes_transfers: DeployWithApprovals,
+        any_kind_of_deploy_which_by_the_way_includes_transfers: DeployHashWithApprovals,
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if footprint.is_transfer {
@@ -82,7 +83,7 @@ impl AppendableBlock {
     /// actually a transfer.
     pub(crate) fn add_transfer(
         &mut self,
-        transfer: DeployWithApprovals,
+        transfer: DeployHashWithApprovals,
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
@@ -116,7 +117,7 @@ impl AppendableBlock {
     /// is actually not a transfer.
     pub(crate) fn add_deploy(
         &mut self,
-        deploy: DeployWithApprovals,
+        deploy: DeployHashWithApprovals,
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {

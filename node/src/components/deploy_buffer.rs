@@ -23,7 +23,7 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Block, Deploy, DeployHash, DeployWithApprovals, FinalizedBlock,
+        Block, Deploy, DeployHash, DeployHashWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };
@@ -212,7 +212,8 @@ impl DeployBuffer {
                     continue;
                 }
             };
-            let with_approvals = DeployWithApprovals::new(deploy_hash, deploy.approvals().clone());
+            let with_approvals =
+                DeployHashWithApprovals::new(deploy_hash, deploy.approvals().clone());
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     holds.push(deploy_hash);

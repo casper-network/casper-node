@@ -636,7 +636,7 @@ async fn should_store_finalized_approvals() {
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
-            .map(|fa| fa.as_ref().iter().cloned().collect());
+            .map(|fa| fa.inner().iter().cloned().collect());
         let maybe_original_approvals = maybe_dwa
             .as_ref()
             .map(|dwa| dwa.original_approvals().iter().cloned().collect());
