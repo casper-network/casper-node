@@ -97,10 +97,9 @@ impl<REv> ReactorEvent for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
-    fwd: Option<BlockBuilder>,
+    forward: Option<BlockBuilder>,
     historical: Option<BlockBuilder>,
     validator_matrix: ValidatorMatrix,
-    last_progress: Option<Timestamp>,
     global_sync: GlobalStateSynchronizer,
     disabled: bool,
 }
@@ -109,10 +108,9 @@ impl BlockSynchronizer {
     pub(crate) fn new(config: Config) -> Self {
         BlockSynchronizer {
             timeout: config.timeout(),
-            fwd: None,
+            forward: None,
             historical: None,
             validator_matrix: Default::default(),
-            last_progress: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
             disabled: false,
         }
@@ -130,7 +128,7 @@ impl BlockSynchronizer {
 
     // CALLED FROM REACTOR
     pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
-        if let Some(fwd) = &self.fwd {
+        if let Some(fwd) = &self.forward {
             return Some(fwd.block_hash());
         }
         None
@@ -143,41 +141,43 @@ impl BlockSynchronizer {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) {
-        let builder = Some(BlockBuilder::new(
+        let builder = BlockBuilder::new(
             block_hash,
             should_fetch_execution_state,
             max_simultaneous_peers,
-        ));
+        );
         if should_fetch_execution_state {
-            self.historical = builder;
-        } else {
-            self.fwd = builder
+            if let Some(historical) = self.historical.replace(builder) {
+                error!(
+                    block_hash = %historical.block_hash(),
+                    "replacing current sync of historical complete block"
+                );
+            }
+        } else if let Some(forward) = self.forward.replace(builder) {
+            error!(
+                block_hash = %forward.block_hash(),
+                "replacing current sync of forward complete block"
+            );
         }
     }
 
     // CALLED FROM REACTOR
     pub(crate) fn last_progress(&self) -> Option<Timestamp> {
-        fn pusher(vec: &mut Vec<Timestamp>, val: Option<Timestamp>) {
-            if let Some(ts) = val {
-                vec.push(ts);
-            }
-        }
-        let mut vec = vec![];
-        if let Some(builder) = &self.fwd {
-            pusher(&mut vec, builder.last_progress_time());
-        }
-        if let Some(builder) = &self.historical {
-            pusher(&mut vec, builder.last_progress_time());
-        }
-        pusher(&mut vec, self.global_sync.last_progress());
-        pusher(&mut vec, self.last_progress);
-        vec.into_iter().max()
+        self.forward
+            .as_ref()
+            .and_then(BlockBuilder::last_progress_time)
+            .into_iter()
+            .chain(
+                self.historical
+                    .as_ref()
+                    .and_then(BlockBuilder::last_progress_time),
+            )
+            .max()
     }
 
     // CALLED FROM REACTOR
     pub(crate) fn register_sync_leap(
         &mut self,
-        block_hash: BlockHash,
         sync_leap: SyncLeap,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
@@ -196,12 +196,12 @@ impl BlockSynchronizer {
             }
         }
 
-        if sync_leap.apply_validator_weights(&mut self.validator_matrix) {
-            self.last_progress = Some(Timestamp::now());
-        }
+        let _ = sync_leap.apply_validator_weights(&mut self.validator_matrix);
         if let Some(fat_block_header) = sync_leap.highest_block_header() {
-            match (&mut self.fwd, &mut self.historical) {
-                (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
+            match (&mut self.forward, &mut self.historical) {
+                (Some(builder), _) | (_, Some(builder))
+                    if builder.block_hash() == fat_block_header.block_header.hash() =>
+                {
                     apply_sigs(builder, fat_block_header);
                 }
                 _ => {
@@ -209,7 +209,6 @@ impl BlockSynchronizer {
                     if let Some(vw) = self.validator_matrix.validator_weights(era_id) {
                         let validator_weights = vw;
                         let mut builder = BlockBuilder::new_from_sync_leap(
-                            block_hash,
                             sync_leap,
                             validator_weights,
                             peers,
@@ -221,12 +220,12 @@ impl BlockSynchronizer {
                         if should_fetch_execution_state {
                             self.historical = Some(builder);
                         } else {
-                            self.fwd = Some(builder);
+                            self.forward = Some(builder);
                         }
                     } else {
                         warn!(
-                            "unable to create block builder for block_hash: {}",
-                            block_hash
+                            block_hash = %fat_block_header.block_header.hash(),
+                            "unable to create block builder",
                         );
                     }
                 }
@@ -236,7 +235,7 @@ impl BlockSynchronizer {
 
     // EVENTED
     fn register_peers(&mut self, block_hash: BlockHash, peers: Vec<NodeId>) -> Effects<Event> {
-        match (&mut self.fwd, &mut self.historical) {
+        match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 for peer in peers {
                     builder.register_peer(peer);
@@ -259,7 +258,7 @@ impl BlockSynchronizer {
             .register_validator_weights(era_id, validators);
 
         if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
-            if let Some(builder) = &mut self.fwd {
+            if let Some(builder) = &mut self.forward {
                 if builder.needs_validators(era_id) {
                     builder.register_era_validator_weights(validator_weights.clone());
                 }
@@ -275,7 +274,7 @@ impl BlockSynchronizer {
     // NOT WIRED OR EVENTED
     fn dishonest_peers(&self) -> Vec<NodeId> {
         let mut ret = vec![];
-        if let Some(builder) = &self.fwd {
+        if let Some(builder) = &self.forward {
             ret.extend(builder.dishonest_peers());
         }
         if let Some(builder) = &self.historical {
@@ -286,7 +285,7 @@ impl BlockSynchronizer {
 
     // NOT WIRED OR EVENTED
     pub(crate) fn flush_dishonest_peers(&mut self) {
-        if let Some(builder) = &mut self.fwd {
+        if let Some(builder) = &mut self.forward {
             builder.flush_dishonest_peers();
         }
         if let Some(builder) = &mut self.historical {
@@ -315,15 +314,8 @@ impl BlockSynchronizer {
     where
         REv: ReactorEvent,
     {
-        fn builder_needs_next<REv>(
-            builder: &mut BlockBuilder,
-            effect_builder: EffectBuilder<REv>,
-            rng: &mut NodeRng,
-        ) -> Effects<Event>
-        where
-            REv: ReactorEvent,
-        {
-            let mut results = Effects::new();
+        let mut results = Effects::new();
+        let mut builder_needs_next = |builder: &mut BlockBuilder| {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             match action.need_next() {
@@ -406,21 +398,19 @@ impl BlockSynchronizer {
                         .event(move |maybe_peers| Event::AccumulatedPeers(block_hash, maybe_peers)),
                 ),
             }
-            results
-        }
+        };
 
-        let mut ret = Effects::new();
-        if let Some(builder) = &mut self.fwd {
-            ret.extend(builder_needs_next(builder, effect_builder, rng));
+        if let Some(builder) = &mut self.forward {
+            builder_needs_next(builder);
         }
         if let Some(builder) = &mut self.historical {
-            ret.extend(builder_needs_next(builder, effect_builder, rng));
+            builder_needs_next(builder);
         }
-        ret
+        results
     }
 
     fn disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
-        if let Some(builder) = &mut self.fwd {
+        if let Some(builder) = &mut self.forward {
             builder.demote_peer(Some(node_id));
         }
         if let Some(builder) = &mut self.historical {
@@ -451,7 +441,7 @@ impl BlockSynchronizer {
             }
         };
 
-        match (&mut self.fwd, &mut self.historical) {
+        match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block_header {
                     None => {
@@ -495,7 +485,7 @@ impl BlockSynchronizer {
             }
         };
 
-        match (&mut self.fwd, &mut self.historical) {
+        match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block_added {
                     None => {
@@ -537,7 +527,7 @@ impl BlockSynchronizer {
 
         let block_hash = id.block_hash;
 
-        match (&mut self.fwd, &mut self.historical) {
+        match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_finality_signature {
                     None => {
@@ -631,7 +621,7 @@ impl BlockSynchronizer {
             }
         };
 
-        match (&mut self.fwd, &mut self.historical) {
+        match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 if let Err(error) = builder.register_deploy(*deploy.id(), maybe_peer) {
                     error!(%block_hash, %error, "failed to apply deploy");

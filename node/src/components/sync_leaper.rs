@@ -38,7 +38,6 @@ pub(crate) enum LeapStatus {
         in_flight: usize,
     },
     Received {
-        block_hash: BlockHash,
         best_available: Box<SyncLeap>,
         from_peers: Vec<NodeId>,
         in_flight: usize,
@@ -98,7 +97,6 @@ impl LeapActivity {
         }
         match self.best_response() {
             Ok((best_available, from_peers)) => LeapStatus::Received {
-                block_hash,
                 in_flight,
                 best_available: Box::new(best_available),
                 from_peers,

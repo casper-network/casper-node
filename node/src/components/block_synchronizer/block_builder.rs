@@ -86,7 +86,6 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn new_from_sync_leap(
-        block_hash: BlockHash,
         sync_leap: SyncLeap,
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
@@ -96,6 +95,7 @@ impl BlockBuilder {
     ) -> Self {
         if let Some(fat_block_header) = sync_leap.highest_block_header() {
             let block_header = fat_block_header.block_header;
+            let block_hash = block_header.hash();
             let sigs = fat_block_header.block_signatures;
             let era_id = Some(block_header.era_id());
             let public_keys = sigs.proofs.into_iter().map(|(k, _)| k).collect_vec();
@@ -118,6 +118,7 @@ impl BlockBuilder {
                 last_progress: None,
             }
         } else {
+            let block_hash = sync_leap.trusted_block_header.hash();
             BlockBuilder::new(
                 block_hash,
                 should_fetch_execution_state,
