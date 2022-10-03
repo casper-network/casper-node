@@ -97,7 +97,6 @@ impl<REv> ReactorEvent for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
-    // builders: HashMap<BlockHash, BlockBuilder>,
     fwd: Option<BlockBuilder>,
     historical: Option<BlockBuilder>,
     validator_matrix: ValidatorMatrix,
@@ -130,25 +129,11 @@ impl BlockSynchronizer {
     }
 
     // CALLED FROM REACTOR
-    pub(crate) fn highest_executable_block_hash(&self) -> Option<BlockHash> {
+    pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
         if let Some(fwd) = &self.fwd {
             return Some(fwd.block_hash());
         }
         None
-    }
-
-    // CALLED FROM REACTOR
-    pub(crate) fn all_executable_block_hashes(&self) -> Vec<(u64, BlockHash)> {
-        let mut ret: Vec<(u64, BlockHash)> = vec![];
-        if let Some(fwd) = &self.fwd {
-            if fwd.is_complete() {
-                let block_hash = fwd.block_hash();
-                if let Some(block_height) = fwd.block_height() {
-                    ret.push((block_height, block_hash));
-                }
-            }
-        }
-        ret
     }
 
     // CALLED FROM REACTOR

@@ -208,7 +208,7 @@ impl MainReactor {
                 // missing historical block
 
                 // TODO: double check getting this from block_sync actually makes sense
-                let starting_with = match self.block_synchronizer.highest_executable_block_hash() {
+                let starting_with = match self.block_synchronizer.maybe_executable_block_hash() {
                     // TODO: We might have the complete block, with state: We should execute.
                     // If we don't, we might want to go back to CatchUp mode?
                     Some(block_hash) => StartingWith::Hash(block_hash),
@@ -257,7 +257,7 @@ impl MainReactor {
                                 self.block_synchronizer.turn_off();
                             }
                         }
-                        match self.enqueue_executable_blocks(effect_builder) {
+                        match self.enqueue_executable_block(effect_builder) {
                             Ok(mut effects) => {
                                 effects.extend(
                                     effect_builder
@@ -622,15 +622,13 @@ impl MainReactor {
         }
     }
 
-    pub(crate) fn enqueue_executable_blocks(
+    pub(crate) fn enqueue_executable_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         let mut effects = Effects::new();
         // TODO - try to avoid repeating executing the same blocks.
-        let mut executable_block_hashes = self.block_synchronizer.all_executable_block_hashes();
-        executable_block_hashes.sort_by(|x, y| x.0.cmp(&y.0));
-        for (height, block_hash) in executable_block_hashes {
+        if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
             if let Some(block_added) = self.blocks_accumulator.block_added(block_hash) {
                 match self.storage.make_executable_block(block_added) {
                     Ok(Some((finalized_block, deploys, transfers))) => {
