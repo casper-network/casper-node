@@ -289,10 +289,7 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
         let blocks_accumulator = BlocksAccumulator::new(validator_matrix.clone());
-        let block_synchronizer = BlockSynchronizer::new(
-            config.block_synchronizer,
-            chainspec.highway_config.finality_threshold_fraction,
-        );
+        let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
 
         let diagnostics_port =
             DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
