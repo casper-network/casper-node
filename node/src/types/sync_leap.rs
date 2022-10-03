@@ -1,10 +1,10 @@
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     iter,
 };
 
 use datasize::DataSize;
-use itertools::Itertools;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -16,7 +16,8 @@ use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, EraValidatorWeights, FetcherItem, Item, Tag, ValidatorMatrix,
+        BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights, FetcherItem, Item, Tag,
+        ValidatorMatrix,
     },
 };
 
@@ -26,6 +27,7 @@ use crate::{
 pub(crate) struct SyncLeap {
     /// The header of the trusted block specified by hash by the requester.
     pub trusted_block_header: BlockHeader,
+    // TODO: Validate the order or remove the comments?
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.
     /// Sorted from highest to lowest.
     pub trusted_ancestor_headers: Vec<BlockHeader>,
@@ -37,20 +39,14 @@ pub(crate) struct SyncLeap {
 
 impl SyncLeap {
     pub(crate) fn highest_era(&self) -> EraId {
-        // TODO - just use last signed block header
-        self.signed_block_headers
-            .iter()
-            .map(|header_with_metadata| header_with_metadata.block_header.era_id())
+        self.headers()
+            .map(BlockHeader::era_id)
             .max()
             .unwrap_or_else(|| self.trusted_block_header.era_id())
     }
 
     pub(crate) fn switch_blocks(&self) -> impl Iterator<Item = &BlockHeader> {
-        self.trusted_ancestor_headers
-            .iter()
-            .chain(vec![&self.trusted_block_header])
-            .chain(self.signed_block_headers.iter().map(|v| &v.block_header))
-            .filter(|bh| bh.is_switch_block())
+        self.headers().filter(|header| header.is_switch_block())
     }
 
     // Returns `true` if any new validator weight was registered.
@@ -70,72 +66,46 @@ impl SyncLeap {
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
-        // TODO - just use last signed block header
-        self.signed_block_headers
-            .iter()
-            .map(|header_with_metadata| header_with_metadata.block_header.height())
+        self.headers()
+            .map(BlockHeader::height)
             .max()
             .unwrap_or_else(|| self.trusted_block_header.height())
     }
 
-    pub(crate) fn highest_block_header(&self) -> Option<BlockHeaderWithMetadata> {
-        let highest = self.highest_block_height();
-        self.signed_block_headers
+    pub(crate) fn highest_block_header(&self) -> (&BlockHeader, Option<&BlockSignatures>) {
+        let header = self
+            .headers()
+            .max_by_key(|header| header.height())
+            .unwrap_or(&self.trusted_block_header);
+        let signatures = self
+            .signed_block_headers
             .iter()
-            .cloned()
-            .find_or_first(|block_header_with_metadata| {
-                block_header_with_metadata.block_header.height() == highest
+            .find(|block_header_with_metadata| {
+                block_header_with_metadata.block_header.height() == header.height()
             })
+            .map(|block_header_with_metadata| &block_header_with_metadata.block_signatures);
+        (header, signatures)
     }
 
-    pub(crate) fn validators_of_highest_block(&self) -> Option<ValidatorWeights> {
-        let highest = self.highest_block_height();
-        if highest == 0 {
+    pub(crate) fn validators_of_highest_block(&self) -> Option<&ValidatorWeights> {
+        let (highest_header, _) = self.highest_block_header();
+        if highest_header.height() == 0 {
             // There's just one genesis block in the chain.
-            return Some(
-                self.trusted_block_header
-                    .next_era_validator_weights()
-                    .expect("block of height 0 must have next era validator weights")
-                    .clone(),
-            );
+            match highest_header.next_era_validator_weights() {
+                None => error!(%highest_header, "genesis block is not a switch block"),
+                Some(validator_weights) => return Some(validator_weights),
+            };
         }
 
-        if self.signed_block_headers.is_empty()
-            || (!self.trusted_block_header.is_switch_block()
-                && self.signed_block_headers.len() == 1)
-        {
-            if let Some(trusted_ancestor_header) = self.trusted_ancestor_headers.last() {
-                if let Some(next_era_validator_weights) =
-                    trusted_ancestor_header.next_era_validator_weights()
-                {
-                    return Some(next_era_validator_weights.clone());
-                }
-            }
-            return None;
-        }
+        self.switch_blocks()
+            .find(|switch_block| switch_block.next_block_era_id() == highest_header.era_id())
+            .and_then(BlockHeader::next_era_validator_weights)
+    }
 
-        if self.trusted_block_header.is_switch_block() && self.signed_block_headers.len() == 1 {
-            if let Some(next_era_validator_weights) =
-                self.trusted_block_header.next_era_validator_weights()
-            {
-                return Some(next_era_validator_weights.clone());
-            }
-            error!(
-                block_hash = %self.trusted_block_header.hash(),
-                "switch block without next era validator weights"
-            );
-            return None;
-        }
-
-        if let Some(signed_block_header) = self.signed_block_headers.iter().rev().nth(1) {
-            if let Some(next_era_validator_weights) = signed_block_header
-                .block_header
-                .next_era_validator_weights()
-            {
-                return Some(next_era_validator_weights.clone());
-            }
-        }
-        None
+    fn headers(&self) -> impl Iterator<Item = &BlockHeader> {
+        iter::once(&self.trusted_block_header)
+            .chain(&self.trusted_ancestor_headers)
+            .chain(self.signed_block_headers.iter().map(|sh| &sh.block_header))
     }
 }
 
@@ -168,89 +138,68 @@ impl FetcherItem for SyncLeap {
         finality_threshold_fraction: &Ratio<u64>,
     ) -> Result<(), Self::ValidationError> {
         // TODO: Possibly check the size of the collections.
+        // TODO: Put protocol version in validation metadata; only check for latest block?
 
-        // The header chain should only go back until it hits _one_ switch block.
-        for header in self.trusted_ancestor_headers.iter().rev().skip(1) {
-            if header.is_switch_block() {
-                return Err(SyncLeapValidationError::UnexpectedSwitchBlock);
-            }
+        if self.trusted_ancestor_headers.is_empty() {
+            return Err(SyncLeapValidationError::MissingTrustedAncestors);
         }
 
         // All headers must have the same protocol versions: sync leaps across upgrade boundaries
         // are not supported.
         let protocol_version = self.trusted_block_header.protocol_version();
-        if self
-            .trusted_ancestor_headers
+
+        for signed_header in &self.signed_block_headers {
+            signed_header
+                .validate()
+                .map_err(SyncLeapValidationError::BlockWithMetadata)?;
+        }
+
+        let mut headers: BTreeMap<BlockHash, &BlockHeader> = self
+            .headers()
+            .map(|header| (header.hash(), header))
+            .collect();
+        let mut signatures: BTreeMap<EraId, Vec<&BlockSignatures>> = BTreeMap::new();
+        for signed_header in &self.signed_block_headers {
+            signatures
+                .entry(signed_header.block_signatures.era_id)
+                .or_default()
+                .push(&signed_header.block_signatures);
+        }
+
+        if headers
             .iter()
-            .any(|header| header.protocol_version() != protocol_version)
-            || self.signed_block_headers.iter().any(|signed_header| {
-                signed_header.block_header.protocol_version() != protocol_version
-            })
+            .any(|(_, header)| header.protocol_version() != protocol_version)
         {
             return Err(SyncLeapValidationError::MultipleProtocolVersions);
         }
 
-        // The chain from the oldest switch block to the trusted one must be contiguous.
-        for (parent_header, child_header) in self
-            .trusted_ancestor_headers
-            .iter()
-            .rev()
-            .chain(iter::once(&self.trusted_block_header))
-            .tuple_windows()
-        {
-            if *child_header.parent_hash() != parent_header.hash() {
-                return Err(SyncLeapValidationError::HeadersNotContiguous);
+        let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.hash()];
+
+        while let Some(hash) = verified.pop() {
+            if let Some(header) = headers.remove(&hash) {
+                verified.push(*header.parent_hash());
+                if let Some(validator_weights) = header.next_era_validator_weights() {
+                    if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
+                        for sigs in era_sigs {
+                            if let Err(err) = linear_chain::check_sufficient_block_signatures(
+                                validator_weights,
+                                *finality_threshold_fraction,
+                                Some(sigs),
+                            ) {
+                                return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(
+                                    err,
+                                ));
+                            }
+                            sigs.verify().map_err(SyncLeapValidationError::Crypto)?;
+                            verified.push(sigs.block_hash);
+                        }
+                    }
+                }
             }
         }
 
-        // The oldest provided block must be a switch block, so that we know the validators
-        // who are expected to sign later blocks.
-        let oldest_header = self
-            .trusted_ancestor_headers
-            .last()
-            .unwrap_or(&self.trusted_block_header);
-        debug_assert!(oldest_header.is_switch_block());
-
-        let mut validator_weights = oldest_header
-            .next_era_validator_weights()
-            .ok_or(SyncLeapValidationError::MissingSwitchBlock)?;
-        let mut validators_era_id = oldest_header.next_block_era_id();
-
-        // All but (possibly) the last signed header must be switch blocks.
-        for signed_header in self.signed_block_headers.iter().rev().skip(1) {
-            if !signed_header.block_header.is_switch_block() {
-                return Err(SyncLeapValidationError::SignedHeadersNotInConsecutiveEras);
-            }
-        }
-
-        // Finally we verify the signatures, and check that their weight is sufficient.
-        for signed_header in &self.signed_block_headers {
-            if validators_era_id != signed_header.block_header.era_id() {
-                return Err(SyncLeapValidationError::SignedHeadersNotInConsecutiveEras);
-            }
-            match linear_chain::check_sufficient_block_signatures(
-                validator_weights,
-                *finality_threshold_fraction,
-                Some(&signed_header.block_signatures),
-            ) {
-                Ok(()) => (),
-                Err(err) => return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(err)),
-            }
-            signed_header
-                .validate()
-                .map_err(SyncLeapValidationError::BlockWithMetadata)?;
-
-            signed_header
-                .block_signatures
-                .verify()
-                .map_err(SyncLeapValidationError::Crypto)?;
-
-            if let Some(next_validator_weights) =
-                signed_header.block_header.next_era_validator_weights()
-            {
-                validator_weights = next_validator_weights;
-                validators_era_id = signed_header.block_header.era_id().successor();
-            }
+        if !headers.is_empty() || !signatures.is_empty() {
+            return Err(SyncLeapValidationError::IncompleteProof);
         }
 
         Ok(())
@@ -274,6 +223,7 @@ mod tests {
     }
 
     impl BlockHeaderSpec {
+        // TODO: Add era ID.
         fn new(height: u64) -> Self {
             Self {
                 height,
@@ -285,7 +235,7 @@ mod tests {
             // For the sake of making the assertions simpler, we'll match validator weight
             // with the block height.
             let mut validator_weights = BTreeMap::new();
-            let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
+            let (_validator_secret_key, validator_public_key) = generate_ed25519_keypair();
             validator_weights.insert(validator_public_key, U512::from(height));
 
             Self {
@@ -532,16 +482,12 @@ mod tests {
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
-    #[error("The oldest provided block is not a switch block.")]
-    MissingSwitchBlock,
-    #[error("The headers chain before the trusted hash contains more than one switch block.")]
-    UnexpectedSwitchBlock,
     #[error("The provided headers have different protocol versions.")]
     MultipleProtocolVersions,
-    #[error("The sequence of headers up to the trusted one is not contiguous.")]
-    HeadersNotContiguous,
-    #[error("The signed headers are not in consecutive eras.")]
-    SignedHeadersNotInConsecutiveEras,
+    #[error("No ancestors of the trusted block provided.")]
+    MissingTrustedAncestors,
+    #[error("The SyncLeap does not contain proof that all its headers are on the right chain.")]
+    IncompleteProof,
     #[error(transparent)]
     HeadersNotSufficientlySigned(BlockSignatureError),
     #[error("The block signatures are not cryptographically valid: {0}")]

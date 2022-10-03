@@ -41,8 +41,8 @@ use crate::{
     storage::StorageRequest,
     types::{
         BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item, NodeId, SyncLeap,
-        TrieOrChunk, ValidatorMatrix,
+        BlockSignatures, Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item, NodeId,
+        SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -178,56 +178,53 @@ impl BlockSynchronizer {
     // CALLED FROM REACTOR
     pub(crate) fn register_sync_leap(
         &mut self,
-        sync_leap: SyncLeap,
+        sync_leap: &SyncLeap,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) {
-        fn apply_sigs(builder: &mut BlockBuilder, fat_block_header: BlockHeaderWithMetadata) {
-            let block_hash = builder.block_hash();
-            let era_id = fat_block_header.block_header.era_id();
-            for (public_key, sig) in fat_block_header.block_signatures.proofs {
-                if let Err(error) = builder.register_finality_signature(
-                    FinalitySignature::new(block_hash, era_id, sig, public_key),
-                    None,
-                ) {
-                    debug!(%error, "failed to register finality signature");
+        fn apply_sigs(builder: &mut BlockBuilder, maybe_sigs: Option<&BlockSignatures>) {
+            if let Some(signatures) = maybe_sigs {
+                for finality_signature in signatures.finality_signatures() {
+                    if let Err(error) =
+                        builder.register_finality_signature(finality_signature, None)
+                    {
+                        debug!(%error, "failed to register finality signature");
+                    }
                 }
             }
         }
 
         let _ = sync_leap.apply_validator_weights(&mut self.validator_matrix);
-        if let Some(fat_block_header) = sync_leap.highest_block_header() {
-            match (&mut self.forward, &mut self.historical) {
-                (Some(builder), _) | (_, Some(builder))
-                    if builder.block_hash() == fat_block_header.block_header.hash() =>
-                {
-                    apply_sigs(builder, fat_block_header);
-                }
-                _ => {
-                    let era_id = fat_block_header.block_header.era_id();
-                    if let Some(vw) = self.validator_matrix.validator_weights(era_id) {
-                        let validator_weights = vw;
-                        let mut builder = BlockBuilder::new_from_sync_leap(
-                            sync_leap,
-                            validator_weights,
-                            peers,
-                            self.validator_matrix.fault_tolerance_threshold(),
-                            should_fetch_execution_state,
-                            max_simultaneous_peers,
-                        );
-                        apply_sigs(&mut builder, fat_block_header);
-                        if should_fetch_execution_state {
-                            self.historical = Some(builder);
-                        } else {
-                            self.forward = Some(builder);
-                        }
+        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        match (&mut self.forward, &mut self.historical) {
+            (Some(builder), _) | (_, Some(builder))
+                if builder.block_hash() == block_header.hash() =>
+            {
+                apply_sigs(builder, maybe_sigs);
+            }
+            _ => {
+                let era_id = block_header.era_id();
+                if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
+                    let mut builder = BlockBuilder::new_from_sync_leap(
+                        sync_leap,
+                        validator_weights,
+                        peers,
+                        self.validator_matrix.fault_tolerance_threshold(),
+                        should_fetch_execution_state,
+                        max_simultaneous_peers,
+                    );
+                    apply_sigs(&mut builder, maybe_sigs);
+                    if should_fetch_execution_state {
+                        self.historical = Some(builder);
                     } else {
-                        warn!(
-                            block_hash = %fat_block_header.block_header.hash(),
-                            "unable to create block builder",
-                        );
+                        self.forward = Some(builder);
                     }
+                } else {
+                    warn!(
+                        block_hash = %block_header.hash(),
+                        "unable to create block builder",
+                    );
                 }
             }
         }

@@ -86,44 +86,39 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(crate) fn new_from_sync_leap(
-        sync_leap: SyncLeap,
+        sync_leap: &SyncLeap,
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
         fault_tolerance_fraction: Ratio<u64>,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
-        if let Some(fat_block_header) = sync_leap.highest_block_header() {
-            let block_header = fat_block_header.block_header;
-            let block_hash = block_header.hash();
-            let sigs = fat_block_header.block_signatures;
-            let era_id = Some(block_header.era_id());
-            let public_keys = sigs.proofs.into_iter().map(|(k, _)| k).collect_vec();
-            let signature_acquisition = SignatureAcquisition::new(public_keys);
-            let acquisition_state = BlockAcquisitionState::HaveBlockHeader(
-                Box::new(block_header),
-                signature_acquisition,
-            );
-            let mut peer_list = PeerList::new(max_simultaneous_peers);
-            peers.iter().for_each(|p| peer_list.register_peer(*p));
-
-            BlockBuilder {
-                block_hash,
-                era_id,
-                validator_weights: Some(validator_weights),
-                acquisition_state,
-                peer_list,
-                should_fetch_execution_state,
-                started: None,
-                last_progress: None,
+        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        let block_hash = block_header.hash();
+        let era_id = Some(block_header.era_id());
+        let mut signature_acquisition =
+            SignatureAcquisition::new(validator_weights.validator_public_keys().cloned().collect());
+        if let Some(signatures) = maybe_sigs {
+            for finality_signature in signatures.finality_signatures() {
+                signature_acquisition.apply_signature(finality_signature);
             }
-        } else {
-            let block_hash = sync_leap.trusted_block_header.hash();
-            BlockBuilder::new(
-                block_hash,
-                should_fetch_execution_state,
-                max_simultaneous_peers,
-            )
+        }
+        let acquisition_state = BlockAcquisitionState::HaveSufficientFinalitySignatures(
+            Box::new(block_header.clone()),
+            signature_acquisition,
+        );
+        let mut peer_list = PeerList::new(max_simultaneous_peers);
+        peers.iter().for_each(|p| peer_list.register_peer(*p));
+
+        BlockBuilder {
+            block_hash,
+            era_id,
+            validator_weights: Some(validator_weights),
+            acquisition_state,
+            peer_list,
+            should_fetch_execution_state,
+            started: None,
+            last_progress: None,
         }
     }
 

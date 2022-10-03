@@ -1373,6 +1373,12 @@ impl BlockSignatures {
         })
     }
 
+    pub(crate) fn finality_signatures(&self) -> impl Iterator<Item = FinalitySignature> + '_ {
+        self.proofs.iter().map(move |(public_key, signature)| {
+            FinalitySignature::new(self.block_hash, self.era_id, *signature, public_key.clone())
+        })
+    }
+
     pub(crate) fn public_keys(&self) -> Option<Vec<PublicKey>> {
         if self.proofs.is_empty() {
             None

@@ -431,7 +431,7 @@ impl MainReactor {
                         }
                     };
                     self.block_synchronizer.register_sync_leap(
-                        *best_available,
+                        &*best_available,
                         from_peers,
                         true,
                         self.chainspec
@@ -442,7 +442,7 @@ impl MainReactor {
                     let mut validator_matrix = ValidatorMatrix::new(
                         self.chainspec.highway_config.finality_threshold_fraction,
                     );
-                    validator_matrix.register_validator_weights(era_id, validator_weights);
+                    validator_matrix.register_validator_weights(era_id, validator_weights.clone());
                     self.blocks_accumulator
                         .register_updated_validator_matrix(validator_matrix);
                     let effects = effect_builder.immediately().event(|_| {
