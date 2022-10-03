@@ -17,8 +17,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use itertools::Itertools;
-use libc::time;
 use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
