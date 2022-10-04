@@ -54,9 +54,9 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
-        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, ExecutedBlock,
+        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item,
+        LegacyDeploy, NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -296,6 +296,10 @@ pub(crate) enum StorageRequest {
         block: Box<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
+        responder: Responder<bool>,
+    },
+    PutExecutedBlock {
+        executed_block: Box<ExecutedBlock>,
         responder: Responder<bool>,
     },
     /// Store given block and its deploys.
@@ -574,6 +578,9 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutExecutedBlock { executed_block, .. } => {
+                write!(formatter, "put {}", executed_block)
+            }
             StorageRequest::PutBlockAndDeploys {
                 block: block_deploys,
                 ..

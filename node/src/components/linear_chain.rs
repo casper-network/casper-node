@@ -102,17 +102,17 @@ where
                 .put_signatures_to_storage(block_signatures)
                 .events(move |_| should_upgrade.then(|| Event::Upgrade).into_iter()),
             Outcome::StoreBlock {
-                block_added,
+                executed_block,
                 execution_results,
             } => async move {
-                let block_hash = *block_added.block().hash();
+                let block_hash = *executed_block.block().hash();
                 effect_builder
-                    .put_block_added_to_storage(block_added.clone())
+                    .put_executed_block_to_storage(executed_block.clone())
                     .await;
                 effect_builder
                     .put_execution_results_to_storage(block_hash, execution_results)
                     .await;
-                block_added
+                executed_block
             }
             .event(Event::PutBlockResult),
             Outcome::Gossip(fs) => {

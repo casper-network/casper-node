@@ -61,7 +61,7 @@ impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
         let item = Box::new(item);
         Some(
             effect_builder
-                .put_block_added_to_storage(item.clone())
+                .put_executed_block_to_storage(item.clone())
                 .event(move |_| Event::PutToStorage { item, peer }),
         )
     }

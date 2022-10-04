@@ -151,13 +151,13 @@ use crate::{
     effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest},
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, AvailableBlockRange, Block, ExecutedBlock, BlockAndDeploys,
+        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy, NodeId,
-        NodeState, TrieOrChunk, TrieOrChunkId,
+        DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, ExecutedBlock,
+        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem,
+        LegacyDeploy, NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1055,20 +1055,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given BlockAdded into the linear block store.
-    pub(crate) async fn put_block_added_to_storage(self, block_added: Box<ExecutedBlock>) -> bool
+    /// Puts the given ExecutedBlock into the linear block store.
+    pub(crate) async fn put_executed_block_to_storage(
+        self,
+        executed_block: Box<ExecutedBlock>,
+    ) -> bool
     where
         REv: From<StorageRequest>,
     {
-        // self.make_request(
-        //     |responder| StorageRequest::PutBlockAdded {
-        //         block_added,
-        //         responder,
-        //     },
-        //     QueueKind::Regular,
-        // )
-        // .await
-        todo!()
+        self.make_request(
+            |responder| StorageRequest::PutExecutedBlock {
+                executed_block,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Puts the given block and its deploys into the store.

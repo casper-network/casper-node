@@ -46,6 +46,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, mem,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
 };
 
@@ -89,8 +90,8 @@ use crate::{
         BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployId,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
-        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy,
-        NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
+        ExecutedBlock, FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        LegacyDeploy, NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -122,7 +123,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 8;
+const MAX_DB_COUNT: u32 = 9;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 
@@ -160,13 +161,16 @@ pub struct Storage {
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
-    env: Environment,
+    env: Rc<Environment>,
     /// The block header database.
     #[data_size(skip)]
     block_header_db: Database,
     /// The block body database.
     #[data_size(skip)]
     block_body_db: Database,
+    /// The executed blocks database.
+    #[data_size(skip)]
+    executed_blocks_db: Database,
     /// The block metadata db.
     #[data_size(skip)]
     block_metadata_db: Database,
@@ -351,6 +355,7 @@ impl Storage {
         let finalized_approvals_db =
             env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
         let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
+        let executed_blocks_db = env.create_db(Some("executed_blocks"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
@@ -428,10 +433,11 @@ impl Storage {
 
         let mut component = Self {
             root,
-            env,
+            env: Rc::new(env),
             block_header_db,
             block_body_db,
             block_metadata_db,
+            executed_blocks_db,
             deploy_db,
             deploy_metadata_db,
             transfer_db,
@@ -753,6 +759,12 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&*block)?).ignore()
             }
+            StorageRequest::PutExecutedBlock {
+                executed_block,
+                responder,
+            } => responder
+                .respond(self.write_executed_block(&*executed_block)?)
+                .ignore(),
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
@@ -1287,7 +1299,9 @@ impl Storage {
 
         block.verify()?;
         let deploy_db = self.deploy_db;
-        let (wrote, mut txn) = self.write_validated_block(block)?;
+        let env = Rc::clone(&self.env);
+        let mut txn = env.begin_rw_txn()?;
+        let wrote = self.write_validated_block(&mut txn, block)?;
         if !wrote {
             return Err(FatalStorageError::FailedToOverwriteBlock);
         }
@@ -1314,7 +1328,7 @@ impl Storage {
     /// Make a finalized block from a executed block, respecting Deploy Approvals.
     pub(crate) fn make_executable_block(
         &self,
-        executed_block: crate::types::ExecutedBlock,
+        executed_block: ExecutedBlock,
     ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
         // check all approvals in block_added against stored approvals,
         // deal with any discrepancies
@@ -1341,11 +1355,41 @@ impl Storage {
     pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
-        let (wrote, txn) = self.write_validated_block(block)?;
+        let env = Rc::clone(&self.env);
+        let mut txn = env.begin_rw_txn()?;
+        let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
             txn.commit()?;
         }
         Ok(wrote)
+    }
+
+    /// Writes an executed block to storage, updating indices as necessary.
+    fn write_executed_block(
+        &mut self,
+        executed_block: &ExecutedBlock,
+    ) -> Result<bool, FatalStorageError> {
+        let env = Rc::clone(&self.env);
+        let mut txn = env.begin_rw_txn()?;
+        let _ = self.write_validated_block(&mut txn, executed_block.block())?;
+
+        let overwrite = true;
+        if !txn.put_value(
+            self.executed_blocks_db,
+            executed_block.block().hash(),
+            &(
+                executed_block.approvals_hashes().to_vec(),
+                executed_block.merkle_proof_approvals().clone(),
+            ),
+            overwrite,
+        )? {
+            error!(
+                "could not insert approvals' hashes for executed block: {}",
+                executed_block
+            );
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     #[cfg(test)]
@@ -1371,15 +1415,15 @@ impl Storage {
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     fn write_validated_block(
         &mut self,
+        txn: &mut RwTransaction,
         block: &Block,
-    ) -> Result<(bool, RwTransaction), FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
+    ) -> Result<bool, FatalStorageError> {
         {
             let block_body_hash = block.header().body_hash();
             let block_body = block.body();
-            if !self.put_single_block_body(&mut txn, block_body_hash, block_body)? {
-                error!("Could not insert body for: {}", block);
-                return Ok((false, txn));
+            if !self.put_single_block_body(txn, block_body_hash, block_body)? {
+                error!("could not insert body for: {}", block);
+                return Ok(false);
             }
         }
 
@@ -1391,8 +1435,8 @@ impl Storage {
             block.header(),
             overwrite,
         )? {
-            error!("Could not insert block header for block: {}", block);
-            return Ok((false, txn));
+            error!("could not insert block header for block: {}", block);
+            return Ok(false);
         }
 
         {
@@ -1408,7 +1452,7 @@ impl Storage {
                 block.header().height(),
             )?;
         }
-        Ok((true, txn))
+        Ok(true)
     }
 
     /// Get the switch block header for a specified [`EraID`].

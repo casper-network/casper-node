@@ -18,7 +18,7 @@ use super::{
 use crate::{
     components::linear_chain,
     types::{
-        ActivationPoint, Block, ExecutedBlock, BlockHash, BlockHeader, BlockSignatures, DeployHash,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash, ExecutedBlock,
         FinalitySignature,
     },
 };
@@ -104,7 +104,7 @@ pub(super) enum Outcome {
     StoreBlockSignatures(BlockSignatures, bool),
     // Store block and execution results.
     StoreBlock {
-        block_added: Box<ExecutedBlock>,
+        executed_block: Box<ExecutedBlock>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     // Read finality signatures for the block from storage.
@@ -297,11 +297,11 @@ impl LinearChain {
 
     pub(super) fn handle_new_block(
         &mut self,
-        block_added: Box<ExecutedBlock>,
+        executed_block: Box<ExecutedBlock>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Outcomes {
         vec![Outcome::StoreBlock {
-            block_added,
+            executed_block,
             execution_results,
         }]
     }
@@ -533,7 +533,7 @@ mod tests {
             lc.handle_new_block(Box::new(block_added.clone()), execution_results.clone());
         match &*new_block_outcomes {
             [Outcome::StoreBlock {
-                block_added: outcome_block_added,
+                executed_block: outcome_block_added,
                 execution_results: outcome_execution_results,
             }] => {
                 assert_eq!(&**outcome_block_added, &block_added);

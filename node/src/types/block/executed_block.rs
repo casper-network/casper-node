@@ -109,6 +109,14 @@ impl ExecutedBlock {
     pub(crate) fn take_block(self) -> Block {
         self.block
     }
+
+    pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
+        self.approvals_hashes.as_ref()
+    }
+
+    pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
+        &self.merkle_proof_approvals
+    }
 }
 
 impl Item for ExecutedBlock {
