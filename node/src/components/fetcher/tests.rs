@@ -24,9 +24,9 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, RpcServerAnnouncement},
         incoming::{
-            ConsensusMessageIncoming,
-            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{AppStateRequest, BlockCompleteConfirmationRequest},
         Responder,
@@ -40,8 +40,8 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        ExecutedBlock, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, FinalitySignature,
-        Item, NodeId,
+        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, ExecutedBlock,
+        FinalitySignature, Item, NodeId,
     },
     utils::WithDir,
 };

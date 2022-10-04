@@ -20,13 +20,13 @@ use crate::{
     },
     effect::{
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming,
-            GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
-            TrieDemand, TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
+            TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{ExecutedBlock, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
+    types::{Deploy, ExecutedBlock, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
 };
 
 /// Reactor message.
@@ -124,7 +124,7 @@ impl Payload for Message {
             Message::GetRequest { tag, .. } => match tag {
                 Tag::LegacyDeploy | Tag::Deploy => weights.deploy_requests,
                 Tag::BlockDeployApprovals => weights.finalized_approvals_requests,
-                Tag::Block=> weights.block_requests,
+                Tag::Block => weights.block_requests,
                 Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
                 Tag::BlockHeaderByHash => weights.block_requests,
@@ -139,7 +139,7 @@ impl Payload for Message {
             Message::GetResponse { tag, .. } => match tag {
                 Tag::LegacyDeploy | Tag::Deploy => weights.deploy_responses,
                 Tag::BlockDeployApprovals => weights.finalized_approvals_responses,
-                Tag::Block=> weights.block_responses,
+                Tag::Block => weights.block_responses,
                 Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
                 Tag::BlockHeaderByHash => weights.block_responses,
@@ -249,7 +249,9 @@ impl Debug for Message {
         match self {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
             Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
-            Message::ExecutedBlockGossiper(bg) => f.debug_tuple("BlockGossiper").field(&bg).finish(),
+            Message::ExecutedBlockGossiper(bg) => {
+                f.debug_tuple("BlockGossiper").field(&bg).finish()
+            }
             Message::FinalitySignatureGossiper(sig) => f
                 .debug_tuple("FinalitySignatureGossiper")
                 .field(&sig)

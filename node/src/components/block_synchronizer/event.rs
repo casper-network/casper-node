@@ -17,8 +17,8 @@ use crate::{
     components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ExecutedBlock, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        EraValidatorWeights, FinalitySignature, LegacyDeploy, NodeId,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy, EraValidatorWeights,
+        ExecutedBlock, FinalitySignature, LegacyDeploy, NodeId,
     },
 };
 

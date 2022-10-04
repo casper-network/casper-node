@@ -42,9 +42,9 @@ use crate::{
     reactor,
     storage::StorageRequest,
     types::{
-        ExecutedBlock, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item,
-        LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, Deploy, DeployHash, ExecutedBlock, FinalitySignature, FinalitySignatureId,
+        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };

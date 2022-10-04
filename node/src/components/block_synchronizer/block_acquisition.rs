@@ -19,9 +19,9 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsRootHash,
     },
     types::{
-        Block, ExecutedBlock, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, Item, NodeId,
-        SignatureWeight,
+        Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHeader, DeployHash, DeployId, EraValidatorWeights, ExecutedBlock, FinalitySignature,
+        Item, NodeId, SignatureWeight,
     },
     NodeRng,
 };

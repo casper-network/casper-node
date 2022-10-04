@@ -46,9 +46,8 @@ use crate::{
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming,
-            FinalitySignatureIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
-            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
+            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{BlockCompleteConfirmationRequest, ConsensusRequest, ContractRuntimeRequest},
         Responder,

@@ -22,8 +22,8 @@ use crate::{
         signature_acquisition::SignatureAcquisition,
     },
     types::{
-        Block, ExecutedBlock, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
+        Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash, DeployId,
+        EraValidatorWeights, ExecutedBlock, FinalitySignature, NodeId, SyncLeap,
     },
     NodeRng,
 };

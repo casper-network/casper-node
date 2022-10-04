@@ -31,7 +31,7 @@ use crate::{
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
-        self, error::BlockCreationError, Block, ExecutedBlock, Chunkable, Deploy, DeployHeader,
+        self, error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, ExecutedBlock,
         FinalizedBlock, Item,
     },
 };

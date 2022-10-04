@@ -75,9 +75,9 @@ use crate::{
         EventQueueHandle, ReactorExit,
     },
     types::{
-        ActivationPoint, Block, ExecutedBlock, BlockHash, BlockHeader, BlockPayload, Chainspec,
-        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId,
-        SyncLeap, TrieOrChunk, ValidatorMatrix,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes,
+        Deploy, ExecutedBlock, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId, SyncLeap,
+        TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -650,15 +650,15 @@ impl reactor::Reactor for MainReactor {
                 self.executed_block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::ExecutedBlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_block_added_id,
-            )) => {
+            MainEvent::ExecutedBlockGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(gossiped_block_added_id),
+            ) => {
                 error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
                 Effects::new()
             }
-            MainEvent::ExecutedBlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_block_added_id,
-            )) => Effects::new(),
+            MainEvent::ExecutedBlockGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(_gossiped_block_added_id),
+            ) => Effects::new(),
 
             MainEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
                 MainEvent::FinalitySignatureGossiper,

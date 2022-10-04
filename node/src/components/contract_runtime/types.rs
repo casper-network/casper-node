@@ -8,7 +8,7 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
-use crate::types::{Block, ExecutedBlock, BlockHeader, DeployHash, DeployHeader};
+use crate::types::{Block, BlockHeader, DeployHash, DeployHeader, ExecutedBlock};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]

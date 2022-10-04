@@ -25,9 +25,9 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming,
-            FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponseIncoming,
-            TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
             AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
@@ -41,9 +41,9 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        Block, ExecutedBlock, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures,
-        BlockWithMetadata, Deploy, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        Block, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy,
+        ExecutedBlock, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -140,7 +140,9 @@ pub(crate) enum MainEvent {
     #[from]
     ExecutedBlockGossiperIncoming(GossiperIncoming<ExecutedBlock>),
     #[from]
-    ExecutedBlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<ExecutedBlock>),
+    ExecutedBlockGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<ExecutedBlock>,
+    ),
     #[from]
     ExecutedBlockFetcher(#[serde(skip_serializing)] fetcher::Event<ExecutedBlock>),
     #[from]

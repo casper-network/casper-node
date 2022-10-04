@@ -11,7 +11,7 @@ use crate::{
         EraMismatchError, Error as AcceptorError, InvalidGossipError,
     },
     types::{
-        Block, ExecutedBlock, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, Item,
+        Block, BlockHash, EraValidatorWeights, ExecutedBlock, FetcherItem, FinalitySignature, Item,
         NodeId, SignatureWeight,
     },
 };

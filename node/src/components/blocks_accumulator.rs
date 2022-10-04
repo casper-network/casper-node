@@ -13,7 +13,7 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{Block, ExecutedBlock, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
+    types::{Block, BlockHash, ExecutedBlock, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 

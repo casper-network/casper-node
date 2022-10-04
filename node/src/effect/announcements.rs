@@ -24,7 +24,7 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, ExecutedBlock, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
+        Block, Deploy, DeployHash, DeployHeader, ExecutedBlock, FinalitySignature, FinalizedBlock,
         GossiperItem, NodeId,
     },
     utils::Source,

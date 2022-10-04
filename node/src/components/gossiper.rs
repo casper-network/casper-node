@@ -27,7 +27,7 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        ExecutedBlock, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId,
+        BlockHash, Deploy, DeployId, ExecutedBlock, FinalitySignature, FinalitySignatureId,
         GossiperItem, Item, NodeId,
     },
     utils::Source,

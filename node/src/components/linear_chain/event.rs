@@ -9,7 +9,9 @@ use casper_types::{ExecutionResult, Key, StoredValue};
 
 use crate::{
     effect::incoming::FinalitySignatureIncoming,
-    types::{ActivationPoint, Block, ExecutedBlock, BlockSignatures, DeployHash, FinalitySignature},
+    types::{
+        ActivationPoint, Block, BlockSignatures, DeployHash, ExecutedBlock, FinalitySignature,
+    },
 };
 
 #[derive(Debug)]
