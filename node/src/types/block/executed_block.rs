@@ -24,20 +24,21 @@ use crate::{
 
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct BlockAdded {
-    /// The block.
+pub(crate) struct ExecutedBlock {
+    /// The block without the associated deploy approvals.
     block: Block,
     /// The set of all deploys' finalized approvals' hashes.
     approvals_hashes: Vec<ApprovalsHash>,
-    /// The Merkle proof of the finalized approvals.
+    /// The Merkle proof of the checksum registry containing the checksum of
+    /// the finalized approvals.
     #[data_size(skip)]
     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
-    is_verified: OnceCell<Result<(), BlockAddedValidationError>>,
+    is_verified: OnceCell<Result<(), ExecutedBlockValidationError>>,
 }
 
-impl BlockAdded {
+impl ExecutedBlock {
     pub(crate) fn new(
         block: Block,
         approvals_hashes: Vec<ApprovalsHash>,
@@ -51,9 +52,9 @@ impl BlockAdded {
         }
     }
 
-    fn verify(&self) -> Result<(), BlockAddedValidationError> {
+    fn verify(&self) -> Result<(), ExecutedBlockValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
-            return Err(BlockAddedValidationError::InvalidKeyType);
+            return Err(ExecutedBlockValidationError::InvalidKeyType);
         }
 
         self.block.validate(&())?;
@@ -61,10 +62,10 @@ impl BlockAdded {
         let proof_state_root_hash = self
             .merkle_proof_approvals
             .compute_state_hash()
-            .map_err(BlockAddedValidationError::TrieMerkleProof)?;
+            .map_err(ExecutedBlockValidationError::TrieMerkleProof)?;
 
         if proof_state_root_hash != *self.block.state_root_hash() {
-            return Err(BlockAddedValidationError::StateRootHashMismatch {
+            return Err(ExecutedBlockValidationError::StateRootHashMismatch {
                 proof_state_root_hash,
                 block_state_root_hash: *self.block.state_root_hash(),
             });
@@ -78,14 +79,14 @@ impl BlockAdded {
             .and_then(|registry: BTreeMap<String, Digest>| {
                 registry.get(APPROVALS_CHECKSUM_NAME).copied()
             })
-            .ok_or(BlockAddedValidationError::InvalidChecksumRegistry)?;
+            .ok_or(ExecutedBlockValidationError::InvalidChecksumRegistry)?;
 
         let computed_approvals_root_hash =
             types::compute_approvals_checksum(self.deploy_ids().collect())
-                .map_err(BlockAddedValidationError::ApprovalsRootHash)?;
+                .map_err(ExecutedBlockValidationError::ApprovalsRootHash)?;
 
         if value_in_proof != computed_approvals_root_hash {
-            return Err(BlockAddedValidationError::ApprovalsRootHashMismatch {
+            return Err(ExecutedBlockValidationError::ApprovalsRootHashMismatch {
                 computed_approvals_root_hash,
                 value_in_proof,
             });
@@ -108,27 +109,19 @@ impl BlockAdded {
     pub(crate) fn take_block(self) -> Block {
         self.block
     }
-
-    // pub(crate) fn approvals_hashes(&self) -> &Vec<(DeployHash, BTreeSet<Approval>)> {
-    //     &self.approvals_hashes
-    // }
-    //
-    // pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
-    //     &self.merkle_proof_approvals
-    // }
 }
 
-impl Item for BlockAdded {
+impl Item for ExecutedBlock {
     type Id = BlockHash;
-    const TAG: Tag = Tag::BlockAdded;
+    const TAG: Tag = Tag::ExecutedBlock;
 
     fn id(&self) -> Self::Id {
         *self.block.hash()
     }
 }
 
-impl FetcherItem for BlockAdded {
-    type ValidationError = BlockAddedValidationError;
+impl FetcherItem for ExecutedBlock {
+    type ValidationError = ExecutedBlockValidationError;
     type ValidationMetadata = ();
 
     fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
@@ -136,7 +129,7 @@ impl FetcherItem for BlockAdded {
     }
 }
 
-impl GossiperItem for BlockAdded {
+impl GossiperItem for ExecutedBlock {
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn target(&self) -> GossipTarget {
@@ -144,16 +137,16 @@ impl GossiperItem for BlockAdded {
     }
 }
 
-impl Display for BlockAdded {
+impl Display for ExecutedBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block added: {}", self.block.hash())
+        write!(f, "executed block: {}", self.block.hash())
     }
 }
 
-/// An error that can arise when validating a `BlockAdded`.
+/// An error that can arise when validating a `ExecutedBlock`.
 #[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
 #[non_exhaustive]
-pub(crate) enum BlockAddedValidationError {
+pub(crate) enum ExecutedBlockValidationError {
     /// The key provided in the proof is not a `Key::ChecksumRegistry`.
     #[error("key provided in proof is not a Key::ChecksumRegistry")]
     InvalidKeyType,

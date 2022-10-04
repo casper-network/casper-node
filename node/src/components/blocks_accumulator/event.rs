@@ -6,7 +6,7 @@ use casper_types::EraId;
 
 use crate::{
     effect::requests::BlocksAccumulatorRequest,
-    types::{BlockAdded, FinalitySignature, NodeId},
+    types::{ExecutedBlock, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -14,7 +14,7 @@ pub(crate) enum Event {
     #[from]
     Request(BlocksAccumulatorRequest),
     ReceivedBlock {
-        block: Box<BlockAdded>,
+        block: Box<ExecutedBlock>,
         sender: NodeId,
     },
     ReceivedFinalitySignature {

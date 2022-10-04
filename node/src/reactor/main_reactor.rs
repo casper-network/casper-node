@@ -62,7 +62,7 @@ use crate::{
             DeployBufferAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
             PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
-        incoming::{BlockAddedResponseIncoming, NetResponseIncoming, TrieResponseIncoming},
+        incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
         EffectBuilder, EffectExt, Effects,
     },
@@ -75,7 +75,7 @@ use crate::{
         EventQueueHandle, ReactorExit,
     },
     types::{
-        ActivationPoint, Block, BlockAdded, BlockHash, BlockHeader, BlockPayload, Chainspec,
+        ActivationPoint, Block, ExecutedBlock, BlockHash, BlockHeader, BlockPayload, Chainspec,
         ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId,
         SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
@@ -105,7 +105,7 @@ pub(crate) struct MainReactor {
                                                       * internal init state */
     //  non-io based components
     consensus: EraSupervisor, /* TODO: Update constructor (provide less state) and extend
-                               * handler for the "block added" ann. */
+                               * handler for the "executed block" ann. */
 
     // block handling
     linear_chain: LinearChainComponent, // TODO: Maybe redundant.
@@ -122,7 +122,7 @@ pub(crate) struct MainReactor {
     address_gossiper: Gossiper<GossipedAddress, MainEvent>, /* TODO - has its own timing belt -
                                                              * should it? */
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    block_added_gossiper: Gossiper<BlockAdded, MainEvent>,
+    executed_block_gossiper: Gossiper<ExecutedBlock, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
 
     // record retrieval
@@ -250,7 +250,7 @@ impl reactor::Reactor for MainReactor {
         let block_added_gossiper = Gossiper::new_for_partial_items(
             "block_added_gossiper",
             config.gossip,
-            gossiper::get_block_added_from_storage::<BlockAdded, MainEvent>,
+            gossiper::get_block_added_from_storage::<ExecutedBlock, MainEvent>,
             registry,
         )?;
         let finality_signature_gossiper = Gossiper::new_for_partial_items(
@@ -308,7 +308,7 @@ impl reactor::Reactor for MainReactor {
             deploy_acceptor,
             fetchers,
             deploy_gossiper,
-            block_added_gossiper,
+            executed_block_gossiper: block_added_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,
@@ -533,7 +533,7 @@ impl reactor::Reactor for MainReactor {
                 // TODO - only gossip once we have enough finality signatures (and only if we're
                 //        a validator?)
                 let reactor_block_added_gossiper_event =
-                    MainEvent::BlockAddedGossiper(gossiper::Event::ItemReceived {
+                    MainEvent::ExecutedBlockGossiper(gossiper::Event::ItemReceived {
                         item_id: *block_added.block().hash(),
                         source: Source::Ourself,
                     });
@@ -640,45 +640,23 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockAddedRequestIncoming(_req) => {
-                // if this gets routed to storage, we can remove this BlockAddedRequestIncoming
-                // variant and just use the NetRequestIncoming
-                //    OR
-                // route to blocks-accumulator? to construct and send the network response
-                todo!()
-            }
-            MainEvent::BlockAddedResponseIncoming(BlockAddedResponseIncoming {
-                sender,
-                message,
-            }) => {
-                // route to blocks-accumulator and announce once validated to route to gossiper
-                // AND
-                // route to fetcher
-                reactor::handle_fetch_response::<Self, BlockAdded>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    &message.0,
-                )
-            }
-            MainEvent::BlockAddedGossiper(event) => reactor::wrap_effects(
-                MainEvent::BlockAddedGossiper,
-                self.block_added_gossiper
+            MainEvent::ExecutedBlockGossiper(event) => reactor::wrap_effects(
+                MainEvent::ExecutedBlockGossiper,
+                self.executed_block_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlockAddedGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::BlockAddedGossiper,
-                self.block_added_gossiper
+            MainEvent::ExecutedBlockGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::ExecutedBlockGossiper,
+                self.executed_block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::BlockAddedGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+            MainEvent::ExecutedBlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_block_added_id,
             )) => {
                 error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
                 Effects::new()
             }
-            MainEvent::BlockAddedGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+            MainEvent::ExecutedBlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_added_id,
             )) => Effects::new(),
 
@@ -938,8 +916,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::TrieOrChunkFetcherRequest(..)
             | MainEvent::SyncLeapFetcher(..)
             | MainEvent::SyncLeapFetcherRequest(..)
-            | MainEvent::BlockAddedFetcher(..)
-            | MainEvent::BlockAddedFetcherRequest(..)
+            | MainEvent::ExecutedBlockFetcher(..)
+            | MainEvent::ExecutedBlockFetcherRequest(..)
             | MainEvent::FinalitySignatureFetcher(..)
             | MainEvent::FinalitySignatureFetcherRequest(..)
             | MainEvent::BlockExecutionResultsOrChunkFetcher(..)

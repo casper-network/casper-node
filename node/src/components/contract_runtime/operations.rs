@@ -31,7 +31,7 @@ use crate::{
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
-        self, error::BlockCreationError, Block, BlockAdded, Chunkable, Deploy, DeployHeader,
+        self, error::BlockCreationError, Block, ExecutedBlock, Chunkable, Deploy, DeployHeader,
         FinalizedBlock, Item,
     },
 };
@@ -216,7 +216,7 @@ pub fn execute_finalized_block(
         .into_iter()
         .map(|id| id.destructure().1)
         .collect();
-    let block_added = Box::new(BlockAdded::new(
+    let block_added = Box::new(ExecutedBlock::new(
         block,
         approvals_hashes,
         proof_of_checksum_registry,

@@ -17,7 +17,7 @@ use crate::{
     components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
     effect::requests::BlockSynchronizerRequest,
     types::{
-        BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
+        ExecutedBlock, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
         EraValidatorWeights, FinalitySignature, LegacyDeploy, NodeId,
     },
 };
@@ -38,7 +38,7 @@ pub(crate) enum Event {
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
-    BlockAddedFetched(FetchResult<BlockAdded>),
+    BlockAddedFetched(FetchResult<ExecutedBlock>),
     #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
     GlobalStateSynced {

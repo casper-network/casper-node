@@ -42,7 +42,7 @@ use crate::{
     reactor,
     storage::StorageRequest,
     types::{
-        BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        ExecutedBlock, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
         BlockSignatures, Deploy, DeployHash, FinalitySignature, FinalitySignatureId, Item,
         LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
@@ -61,7 +61,7 @@ use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
 pub(crate) trait ReactorEvent:
-    From<FetcherRequest<BlockAdded>>
+    From<FetcherRequest<ExecutedBlock>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
     + From<FetcherRequest<Deploy>>
@@ -80,7 +80,7 @@ pub(crate) trait ReactorEvent:
 }
 
 impl<REv> ReactorEvent for REv where
-    REv: From<FetcherRequest<BlockAdded>>
+    REv: From<FetcherRequest<ExecutedBlock>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<Deploy>>
@@ -330,7 +330,7 @@ impl BlockSynchronizer {
                 NeedNext::BlockBody(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<BlockAdded>(block_hash, node_id, ())
+                            .fetch::<ExecutedBlock>(block_hash, node_id, ())
                             .event(Event::BlockAddedFetched)
                     }))
                 }
@@ -480,11 +480,11 @@ impl BlockSynchronizer {
 
     fn block_added_fetched(
         &mut self,
-        result: Result<FetchedData<BlockAdded>, Error<BlockAdded>>,
+        result: Result<FetchedData<ExecutedBlock>, Error<ExecutedBlock>>,
     ) -> Effects<Event> {
         let (block_hash, maybe_block_added, maybe_peer_id): (
             BlockHash,
-            Option<Box<BlockAdded>>,
+            Option<Box<ExecutedBlock>>,
             Option<NodeId>,
         ) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => (item.block().id(), Some(item), Some(peer)),

@@ -11,7 +11,7 @@ use crate::{
         EraMismatchError, Error as AcceptorError, InvalidGossipError,
     },
     types::{
-        Block, BlockAdded, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, Item,
+        Block, ExecutedBlock, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature, Item,
         NodeId, SignatureWeight,
     },
 };
@@ -19,7 +19,7 @@ use crate::{
 #[derive(DataSize, Debug)]
 pub(super) struct BlockGossipAcceptor {
     block_hash: BlockHash,
-    block_added: Option<BlockAdded>,
+    block_added: Option<ExecutedBlock>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     era_validator_weights: Option<EraValidatorWeights>,
     peers: Vec<NodeId>,
@@ -128,7 +128,7 @@ impl BlockGossipAcceptor {
 
     pub(super) fn register_block_added(
         &mut self,
-        block_added: BlockAdded,
+        block_added: ExecutedBlock,
         peer: NodeId,
     ) -> Result<(), AcceptorError> {
         if let Err(error) = block_added.validate(&()) {
@@ -293,7 +293,7 @@ impl BlockGossipAcceptor {
         self.block_hash
     }
 
-    pub(super) fn block_added(&self) -> Option<BlockAdded> {
+    pub(super) fn block_added(&self) -> Option<ExecutedBlock> {
         self.block_added.clone()
     }
 

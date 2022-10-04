@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{BlockAddedValidationError, BlockHash, NodeId};
+use crate::types::{ExecutedBlockValidationError, BlockHash, NodeId};
 
 #[derive(Error, Debug)]
 pub(super) enum EraMismatchError {
@@ -42,7 +42,7 @@ pub(super) enum InvalidGossipError {
     BlockAdded {
         block_hash: BlockHash,
         peer: NodeId,
-        validation_error: BlockAddedValidationError,
+        validation_error: ExecutedBlockValidationError,
     },
     #[error("received cryptographically invalid finality_signature for: {block_hash} from: {peer} with error: {validation_error}")]
     FinalitySignature {

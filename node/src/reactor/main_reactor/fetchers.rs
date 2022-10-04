@@ -7,7 +7,7 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
+        Block, ExecutedBlock, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures,
         BlockWithMetadata, Chainspec, Deploy, FinalitySignature, LegacyDeploy, SyncLeap,
         TrieOrChunk,
@@ -19,7 +19,7 @@ use crate::{
 pub(super) struct Fetchers {
     sync_leap_fetcher: Fetcher<SyncLeap>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
-    block_added_fetcher: Fetcher<BlockAdded>,
+    executed_block_fetcher: Fetcher<ExecutedBlock>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,
     legacy_deploy_fetcher: Fetcher<LegacyDeploy>,
     deploy_fetcher: Fetcher<Deploy>,
@@ -41,7 +41,7 @@ impl Fetchers {
                 chainspec.highway_config.finality_threshold_fraction,
             )?,
             block_header_by_hash_fetcher: Fetcher::new("block_header", config, metrics_registry)?,
-            block_added_fetcher: Fetcher::new("block_added_fetcher", config, metrics_registry)?,
+            executed_block_fetcher: Fetcher::new("block_added_fetcher", config, metrics_registry)?,
             finality_signature_fetcher: Fetcher::new(
                 "finality_signature_fetcher",
                 config,
@@ -85,14 +85,14 @@ impl Fetchers {
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            MainEvent::BlockAddedFetcher(event) => reactor::wrap_effects(
-                MainEvent::BlockAddedFetcher,
-                self.block_added_fetcher
+            MainEvent::ExecutedBlockFetcher(event) => reactor::wrap_effects(
+                MainEvent::ExecutedBlockFetcher,
+                self.executed_block_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlockAddedFetcherRequest(request) => reactor::wrap_effects(
-                MainEvent::BlockAddedFetcher,
-                self.block_added_fetcher
+            MainEvent::ExecutedBlockFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::ExecutedBlockFetcher,
+                self.executed_block_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::FinalitySignatureFetcher(event) => reactor::wrap_effects(

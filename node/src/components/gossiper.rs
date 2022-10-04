@@ -27,7 +27,7 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        BlockAdded, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId,
+        ExecutedBlock, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId,
         GossiperItem, Item, NodeId,
     },
     utils::Source,
@@ -105,7 +105,7 @@ pub(crate) fn get_block_added_from_storage<T: GossiperItem + 'static, REv: React
     effect_builder: EffectBuilder<REv>,
     block_hash: BlockHash,
     sender: NodeId,
-) -> Effects<Event<BlockAdded>> {
+) -> Effects<Event<ExecutedBlock>> {
     effect_builder
         .get_block_added_from_storage(block_hash)
         .event(move |results| {

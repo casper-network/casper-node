@@ -13,7 +13,7 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockAdded, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
+    types::{Block, ExecutedBlock, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -195,7 +195,7 @@ impl BlocksAccumulator {
     pub(crate) fn register_block_added<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block_added: BlockAdded,
+        block_added: ExecutedBlock,
         sender: NodeId,
     ) -> Effects<Event>
     where
@@ -228,7 +228,7 @@ impl BlocksAccumulator {
                 }
                 Error::DuplicatedEraValidatorWeights { .. } => {
                     // this should be unreachable; definitely a programmer error
-                    debug!(%err, "unexpected error registering block added");
+                    debug!(%err, "unexpected error registering executed block");
                 }
             }
         }
@@ -305,7 +305,7 @@ impl BlocksAccumulator {
         }
     }
 
-    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<BlockAdded> {
+    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<ExecutedBlock> {
         if let Some(acceptor) = self.block_gossip_acceptors.get(&block_hash) {
             acceptor.block_added()
         } else {

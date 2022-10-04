@@ -8,7 +8,7 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
-use crate::types::{Block, BlockAdded, BlockHeader, DeployHash, DeployHeader};
+use crate::types::{Block, ExecutedBlock, BlockHeader, DeployHash, DeployHeader};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +98,7 @@ pub(crate) struct StepEffectAndUpcomingEraValidators {
 #[derive(Clone, Debug, DataSize)]
 pub struct BlockAndExecutionResults {
     /// The [`BlockAdded`] the contract runtime executed.
-    pub(crate) block_added: Box<BlockAdded>,
+    pub(crate) block_added: Box<ExecutedBlock>,
     /// The results from executing the deploys in the block.
     pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`

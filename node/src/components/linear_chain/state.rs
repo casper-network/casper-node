@@ -18,7 +18,7 @@ use super::{
 use crate::{
     components::linear_chain,
     types::{
-        ActivationPoint, Block, BlockAdded, BlockHash, BlockHeader, BlockSignatures, DeployHash,
+        ActivationPoint, Block, ExecutedBlock, BlockHash, BlockHeader, BlockSignatures, DeployHash,
         FinalitySignature,
     },
 };
@@ -104,7 +104,7 @@ pub(super) enum Outcome {
     StoreBlockSignatures(BlockSignatures, bool),
     // Store block and execution results.
     StoreBlock {
-        block_added: Box<BlockAdded>,
+        block_added: Box<ExecutedBlock>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     // Read finality signatures for the block from storage.
@@ -114,7 +114,7 @@ pub(super) enum Outcome {
     // Create a reactor announcement about new (valid) finality signatures.
     AnnounceSignature(Box<FinalitySignature>),
     // Create a reactor announcement about new (valid) block.
-    AnnounceBlock(Box<BlockAdded>),
+    AnnounceBlock(Box<ExecutedBlock>),
     // Check if creator of `new_fs` is known trusted validator.
     // Carries additional context necessary to create the corresponding event.
     VerifyIfBonded {
@@ -174,7 +174,7 @@ impl LinearChain {
 
     // New linear chain block received. Collect any pending finality signatures that
     // were waiting for that block.
-    fn new_block(&mut self, block_added: &BlockAdded) -> Vec<Signature> {
+    fn new_block(&mut self, block_added: &ExecutedBlock) -> Vec<Signature> {
         let signatures = self.collect_pending_finality_signatures(block_added.block().hash());
         let mut block_signatures = BlockSignatures::new(
             *block_added.block().hash(),
@@ -297,7 +297,7 @@ impl LinearChain {
 
     pub(super) fn handle_new_block(
         &mut self,
-        block_added: Box<BlockAdded>,
+        block_added: Box<ExecutedBlock>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Outcomes {
         vec![Outcome::StoreBlock {
@@ -306,7 +306,7 @@ impl LinearChain {
         }]
     }
 
-    pub(super) fn handle_put_block(&mut self, block_added: Box<BlockAdded>) -> Outcomes {
+    pub(super) fn handle_put_block(&mut self, block_added: Box<ExecutedBlock>) -> Outcomes {
         let mut outcomes = Vec::new();
         let signatures = self.new_block(&*block_added);
         self.latest_block = Some(block_added.block().clone());
@@ -528,7 +528,7 @@ mod tests {
             Default::default(),
         );
         let execution_results = HashMap::new();
-        let block_added = BlockAdded::new(block.clone(), vec![], proof_of_checksum_registry);
+        let block_added = ExecutedBlock::new(block.clone(), vec![], proof_of_checksum_registry);
         let new_block_outcomes =
             lc.handle_new_block(Box::new(block_added.clone()), execution_results.clone());
         match &*new_block_outcomes {

@@ -46,7 +46,7 @@ use crate::{
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
+            ConsensusMessageIncoming,
             FinalitySignatureIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
             TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
@@ -83,7 +83,7 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    BlockAddedGossiper(super::Event<BlockAdded>),
+    BlockAddedGossiper(super::Event<ExecutedBlock>),
     #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
@@ -99,7 +99,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    BlockAddedGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<BlockAdded>),
+    BlockAddedGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<ExecutedBlock>),
     #[from]
     FinalitySignatureGossiperAnnouncement(
         #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
@@ -113,7 +113,7 @@ enum Event {
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
-    BlockAddedGossiperIncoming(GossiperIncoming<BlockAdded>),
+    BlockAddedGossiperIncoming(GossiperIncoming<ExecutedBlock>),
     #[from]
     FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
@@ -128,10 +128,6 @@ enum Event {
     TrieDemand(TrieDemand),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
-    #[from]
-    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -160,8 +156,8 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
     }
 }
 
-impl From<NetworkRequest<Message<BlockAdded>>> for Event {
-    fn from(request: NetworkRequest<Message<BlockAdded>>) -> Self {
+impl From<NetworkRequest<Message<ExecutedBlock>>> for Event {
+    fn from(request: NetworkRequest<Message<ExecutedBlock>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }
@@ -227,8 +223,6 @@ impl Display for Event {
             Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::BlockAddedRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::BlockAddedResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
     }
@@ -246,7 +240,7 @@ struct Reactor {
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
-    block_added_gossiper: Gossiper<BlockAdded, Event>,
+    block_added_gossiper: Gossiper<ExecutedBlock, Event>,
     contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
@@ -312,7 +306,7 @@ impl reactor::Reactor for Reactor {
         let block_added_gossiper = Gossiper::new_for_partial_items(
             "block_added_gossiper",
             config,
-            get_block_added_from_storage::<BlockAdded, Event>,
+            get_block_added_from_storage::<ExecutedBlock, Event>,
             registry,
         )?;
 
@@ -480,6 +474,7 @@ impl reactor::Reactor for Reactor {
                 other @ (NetResponse::LegacyDeploy(_)
                 | NetResponse::FinalizedApprovals(_)
                 | NetResponse::Block(_)
+                | NetResponse::ExecutedBlock(_)
                 | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndDeploys(_)
@@ -497,9 +492,7 @@ impl reactor::Reactor for Reactor {
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)
-            | Event::TrieResponseIncoming(_)
-            | Event::BlockAddedRequestIncoming(_)
-            | Event::BlockAddedResponseIncoming(_)) => {
+            | Event::TrieResponseIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }
         }

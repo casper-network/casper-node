@@ -22,7 +22,7 @@ use crate::{
         signature_acquisition::SignatureAcquisition,
     },
     types::{
-        Block, BlockAdded, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
+        Block, ExecutedBlock, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
         DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
     },
     NodeRng,
@@ -280,7 +280,7 @@ impl BlockBuilder {
     // NOT WIRED
     pub(super) fn register_block_added(
         &mut self,
-        block_added: &BlockAdded,
+        block_added: &ExecutedBlock,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(error) = self.acquisition_state.with_body(

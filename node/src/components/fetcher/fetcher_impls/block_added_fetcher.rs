@@ -3,15 +3,15 @@ use std::{collections::HashMap, time::Duration};
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockAdded, BlockHash, NodeId},
+    types::{ExecutedBlock, BlockHash, NodeId},
 };
 
-impl ItemFetcher<BlockAdded> for Fetcher<BlockAdded> {
+impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockAdded>>>> {
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<ExecutedBlock>>>> {
         &mut self.responders
     }
 
@@ -33,8 +33,8 @@ impl ItemFetcher<BlockAdded> for Fetcher<BlockAdded> {
         id: BlockHash,
         peer: NodeId,
         _validation_metadata: (),
-        responder: FetchResponder<BlockAdded>,
-    ) -> Effects<Event<BlockAdded>>
+        responder: FetchResponder<ExecutedBlock>,
+    ) -> Effects<Event<ExecutedBlock>>
     where
         REv: From<StorageRequest> + Send,
     {
@@ -51,10 +51,10 @@ impl ItemFetcher<BlockAdded> for Fetcher<BlockAdded> {
 
     fn put_to_storage<REv>(
         &self,
-        item: BlockAdded,
+        item: ExecutedBlock,
         peer: NodeId,
         effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<BlockAdded>>>
+    ) -> Option<Effects<Event<ExecutedBlock>>>
     where
         REv: From<StorageRequest> + Send,
     {

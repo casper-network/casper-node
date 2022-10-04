@@ -151,7 +151,7 @@ use crate::{
     effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest},
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAdded, BlockAndDeploys,
+        appendable_block::AppendableBlock, AvailableBlockRange, Block, ExecutedBlock, BlockAndDeploys,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
@@ -991,7 +991,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces a new block has been created.
     pub(crate) async fn announce_new_linear_chain_block(
         self,
-        block_added: Box<BlockAdded>,
+        block_added: Box<ExecutedBlock>,
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
@@ -1056,7 +1056,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given BlockAdded into the linear block store.
-    pub(crate) async fn put_block_added_to_storage(self, block_added: Box<BlockAdded>) -> bool
+    pub(crate) async fn put_block_added_to_storage(self, block_added: Box<ExecutedBlock>) -> bool
     where
         REv: From<StorageRequest>,
     {
@@ -1102,7 +1102,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_added_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<BlockAdded>
+    ) -> Option<ExecutedBlock>
     where
         REv: From<StorageRequest>,
     {
@@ -1852,7 +1852,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_added: Box<BlockAdded>)
+    pub(crate) async fn announce_block_added(self, block_added: Box<ExecutedBlock>)
     where
         REv: From<LinearChainAnnouncement>,
     {

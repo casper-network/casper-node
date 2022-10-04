@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-mod block_added;
+mod executed_block;
 
 use std::{
     array::TryFromSliceError,
@@ -34,7 +34,7 @@ use casper_types::{
     crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
 };
 
-pub(crate) use block_added::{BlockAdded, BlockAddedValidationError};
+pub(crate) use executed_block::{ExecutedBlock, ExecutedBlockValidationError};
 
 use crate::{
     components::consensus,

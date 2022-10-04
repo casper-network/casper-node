@@ -19,7 +19,7 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsRootHash,
     },
     types::{
-        Block, BlockAdded, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        Block, ExecutedBlock, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, Item, NodeId,
         SignatureWeight,
     },
@@ -166,7 +166,7 @@ impl BlockAcquisitionState {
 
     pub(super) fn with_body(
         &mut self,
-        block_or_block_added: Either<&Block, &BlockAdded>,
+        block_or_block_added: Either<&Block, &ExecutedBlock>,
         need_execution_state: bool,
     ) -> Result<(), Error> {
         let block_hash = match block_or_block_added {

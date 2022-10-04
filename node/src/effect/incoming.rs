@@ -75,12 +75,6 @@ pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 /// A new finality signature arrived over the network.
 pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
 
-/// A new message requesting a BlockAdded structure.
-pub(crate) type BlockAddedRequestIncoming = MessageIncoming<BlockAddedRequest>;
-
-/// A new message responding to a BlockAdded request.
-pub(crate) type BlockAddedResponseIncoming = MessageIncoming<BlockAddedResponse>;
-
 /// A request for an object out of storage arrived.
 ///
 /// Note: The variants here are grouped under a common enum, since they are usually handled by the
@@ -103,6 +97,7 @@ pub(crate) enum NetRequest {
     FinalitySignatures(Vec<u8>),
     SyncLeap(Vec<u8>),
     BlockExecutionResults(Vec<u8>),
+    ExecutedBlock(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -124,6 +119,7 @@ impl Display for NetRequest {
             NetRequest::BlockExecutionResults(_) => {
                 f.write_str("request for block execution results")
             }
+            NetRequest::ExecutedBlock(_) => f.write_str("request for executed block"),
         }
     }
 }
@@ -144,6 +140,7 @@ impl NetRequest {
             NetRequest::FinalitySignatures(ref id) => id,
             NetRequest::SyncLeap(ref id) => id,
             NetRequest::BlockExecutionResults(ref id) => id,
+            NetRequest::ExecutedBlock(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -167,6 +164,7 @@ impl NetRequest {
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
             NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
+            NetRequest::ExecutedBlock(_) => Tag::ExecutedBlock,
         }
     }
 }
@@ -187,7 +185,8 @@ pub(crate) enum NetResponse {
     FinalitySignature(Arc<[u8]>),
     FinalitySignatures(Arc<[u8]>),
     SyncLeap(Arc<[u8]>),
-    BlockExecutionResults(Vec<u8>),
+    BlockExecutionResults(Arc<[u8]>),
+    ExecutedBlock(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -218,6 +217,7 @@ impl Display for NetResponse {
             NetResponse::BlockExecutionResults(_) => {
                 f.write_str("response for block execution results")
             }
+            NetResponse::ExecutedBlock(_) => f.write_str("response for executed block"),
         }
     }
 }
@@ -239,26 +239,6 @@ pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 impl Display for TrieResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("response, trie")
-    }
-}
-
-/// A request for a BlockAdded.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct BlockAddedRequest(pub(crate) Vec<u8>);
-
-impl Display for BlockAddedRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "request for block added")
-    }
-}
-
-/// A response to a request for a BlockAdded.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct BlockAddedResponse(pub(crate) Vec<u8>);
-
-impl Display for BlockAddedResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("response, block added")
     }
 }
 

@@ -25,7 +25,7 @@ use crate::{
         MainEvent, MainReactor,
     },
     types::{
-        ActivationPoint, BlockAdded, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
+        ActivationPoint, ExecutedBlock, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
         DeployHash, EraValidatorWeights, FinalizedBlock, Item, ValidatorMatrix,
     },
     NodeRng,

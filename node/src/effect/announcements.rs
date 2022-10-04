@@ -24,7 +24,7 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, BlockAdded, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
+        Block, ExecutedBlock, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
         GossiperItem, NodeId,
     },
     utils::Source,
@@ -314,7 +314,7 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
 #[derive(Debug)]
 pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
-    BlockAdded(Box<BlockAdded>),
+    BlockAdded(Box<ExecutedBlock>),
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -355,7 +355,7 @@ pub(crate) enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
     LinearChainBlock {
         /// The block.
-        block_added: Box<BlockAdded>,
+        block_added: Box<ExecutedBlock>,
         /// The results of executing the deploys in this block.
         // #[serde(skip_serializing)]
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,

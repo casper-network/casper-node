@@ -24,7 +24,7 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, RpcServerAnnouncement},
         incoming::{
-            BlockAddedRequestIncoming, BlockAddedResponseIncoming, ConsensusMessageIncoming,
+            ConsensusMessageIncoming,
             FinalitySignatureIncoming, GossiperIncoming, NetRequestIncoming, NetResponse,
             NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
@@ -40,7 +40,7 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        BlockAdded, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, FinalitySignature,
+        ExecutedBlock, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, FinalitySignature,
         Item, NodeId,
     },
     utils::WithDir,
@@ -116,7 +116,7 @@ enum Event {
     #[from]
     GossiperIncomingDeploy(GossiperIncoming<Deploy>),
     #[from]
-    GossiperIncomingBlockAdded(GossiperIncoming<BlockAdded>),
+    GossiperIncomingExecutedBlock(GossiperIncoming<ExecutedBlock>),
     #[from]
     GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
     #[from]
@@ -125,10 +125,6 @@ enum Event {
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
     TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    BlockAddedRequestIncoming(BlockAddedRequestIncoming),
-    #[from]
-    BlockAddedResponseIncoming(BlockAddedResponseIncoming),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
@@ -246,13 +242,11 @@ impl ReactorTrait for Reactor {
             | Event::ContractRuntimeRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)
-            | Event::GossiperIncomingBlockAdded(_)
+            | Event::GossiperIncomingExecutedBlock(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
-            | Event::BlockAddedRequestIncoming(_)
-            | Event::BlockAddedResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)
             | Event::FinalitySignatureIncoming(_)
             | Event::ControlAnnouncement(_) => panic!("unexpected: {}", event),

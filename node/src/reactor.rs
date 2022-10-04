@@ -69,7 +69,7 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAdded, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
+        Block, ExecutedBlock, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
         ChainspecRawBytes, Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature,
         Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
@@ -994,7 +994,7 @@ where
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
-        + From<fetcher::Event<BlockAdded>>
+        + From<fetcher::Event<ExecutedBlock>>
         + From<PeerBehaviorAnnouncement>,
 {
     match message {
@@ -1169,6 +1169,15 @@ where
         }
         NetResponse::BlockExecutionResults(ref serialized_item) => {
             handle_fetch_response::<R, BlockExecutionResultsOrChunk>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
+        }
+        NetResponse::ExecutedBlock(ref serialized_item) => {
+            handle_fetch_response::<R, ExecutedBlock>(
                 reactor,
                 effect_builder,
                 rng,
