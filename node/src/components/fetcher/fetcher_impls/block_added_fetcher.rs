@@ -39,7 +39,7 @@ impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
         REv: From<StorageRequest> + Send,
     {
         effect_builder
-            .get_block_added_from_storage(id)
+            .get_executed_block_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,

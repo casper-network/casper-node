@@ -1100,23 +1100,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested `BlockAdded` from the linear block store.
-    pub(crate) async fn get_block_added_from_storage(
+    /// Gets the requested `ExecutedBlock` from the linear block store.
+    pub(crate) async fn get_executed_block_from_storage(
         self,
         block_hash: BlockHash,
     ) -> Option<ExecutedBlock>
     where
         REv: From<StorageRequest>,
     {
-        // self.make_request(
-        //     |responder| StorageRequest::GetBlockAdded {
-        //         block_hash,
-        //         responder,
-        //     },
-        //     QueueKind::Regular,
-        // )
-        // .await
-        todo!()
+        self.make_request(
+            |responder| StorageRequest::GetExecutedBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Gets the requested block and its deploys from the store.

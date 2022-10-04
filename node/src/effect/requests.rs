@@ -298,6 +298,7 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
+    /// Store the executed block.
     PutExecutedBlock {
         executed_block: Box<ExecutedBlock>,
         responder: Responder<bool>,
@@ -316,6 +317,14 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve the executed block.
+    GetExecutedBlock {
+        /// Hash of executed block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the executed block doesn't exist
+        /// in local storage.
+        responder: Responder<Option<ExecutedBlock>>,
     },
     /// Retrieve block and deploys with given hash.
     GetBlockAndDeploys {
@@ -591,7 +600,12 @@ impl Display for StorageRequest {
                     block_deploys.block.hash()
                 )
             }
-            StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlock { block_hash, .. } => {
+                write!(formatter, "get block {}", block_hash)
+            }
+            StorageRequest::GetExecutedBlock { block_hash, .. } => {
+                write!(formatter, "get executed block {}", block_hash)
+            }
             StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
                 write!(formatter, "get block and deploys {}", block_hash)
             }

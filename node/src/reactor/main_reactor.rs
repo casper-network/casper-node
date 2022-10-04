@@ -247,10 +247,10 @@ impl reactor::Reactor for MainReactor {
             gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let block_added_gossiper = Gossiper::new_for_partial_items(
-            "block_added_gossiper",
+        let executed_block_gossiper = Gossiper::new_for_partial_items(
+            "executed_block_gossiper",
             config.gossip,
-            gossiper::get_block_added_from_storage::<ExecutedBlock, MainEvent>,
+            gossiper::get_executed_block_from_storage::<ExecutedBlock, MainEvent>,
             registry,
         )?;
         let finality_signature_gossiper = Gossiper::new_for_partial_items(
@@ -308,7 +308,7 @@ impl reactor::Reactor for MainReactor {
             deploy_acceptor,
             fetchers,
             deploy_gossiper,
-            executed_block_gossiper: block_added_gossiper,
+            executed_block_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,

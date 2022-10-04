@@ -64,10 +64,12 @@ use smallvec::SmallVec;
 use tempfile::TempDir;
 use tracing::{debug, error, info, warn};
 
+use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
+    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff, Transfer,
+    Transform,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -769,6 +771,12 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
+            StorageRequest::GetExecutedBlock {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_executed_block(&block_hash)?)
+                .ignore(),
             StorageRequest::GetHighestBlock { responder } => {
                 responder.respond(self.read_highest_block()?).ignore()
             }
@@ -1317,6 +1325,30 @@ impl Storage {
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
+    }
+
+    /// Retrieves a executed block by hash.
+    fn read_executed_block(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<ExecutedBlock>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block = self.get_single_block(&mut txn, block_hash)?;
+        if let Some(block) = maybe_block {
+            let (approvals_hashes, merkle_proof_approvals): (
+                Vec<ApprovalsHash>,
+                TrieMerkleProof<Key, StoredValue>,
+            ) = match txn.get_value(self.executed_blocks_db, &block_hash)? {
+                Some(data) => data,
+                None => return Ok(None),
+            };
+            return Ok(Some(ExecutedBlock::new(
+                block,
+                approvals_hashes,
+                merkle_proof_approvals,
+            )));
+        };
+        Ok(None)
     }
 
     /// Gets the highest block.
