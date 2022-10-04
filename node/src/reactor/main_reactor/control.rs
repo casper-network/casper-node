@@ -229,6 +229,7 @@ impl MainReactor {
                         self.block_synchronizer.register_block_by_hash(
                             block_hash,
                             should_fetch_execution_state,
+                            true,
                             self.chainspec
                                 .core_config
                                 .sync_leap_simultaneous_peer_requests,
@@ -276,6 +277,11 @@ impl MainReactor {
                 }
             }
             ReactorState::Validate => {
+                // todo!
+                // if self.blocks_accumulator.foo() {
+                // we have a block with sufficient finality sigs to start gossiping
+                // enqueue it (add event or direct gossiper call)
+                // }
                 if self.consensus.is_active_validator() == false {
                     // either consensus doesn't have enough protocol data
                     // or this node has been evicted or has naturally
@@ -467,6 +473,7 @@ impl MainReactor {
                 self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     should_fetch_execution_state,
+                    true,
                     self.chainspec
                         .core_config
                         .sync_leap_simultaneous_peer_requests,

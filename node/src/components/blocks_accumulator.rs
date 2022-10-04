@@ -1,4 +1,4 @@
-mod block_gossip_acceptor;
+mod block_acceptor;
 mod error;
 mod event;
 
@@ -21,7 +21,7 @@ use crate::{
     effect::requests::BlocksAccumulatorRequest,
     types::{BlockHeader, BlockPayload, DeployHash, FinalizedBlock},
 };
-use block_gossip_acceptor::BlockGossipAcceptor;
+use block_acceptor::BlockAcceptor;
 use error::Error;
 pub(crate) use event::Event;
 
@@ -67,8 +67,8 @@ impl StartingWith {
 /// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlocksAccumulator {
-    filter: Vec<BlockHash>,
-    block_gossip_acceptors: BTreeMap<BlockHash, BlockGossipAcceptor>,
+    already_handled: Vec<BlockHash>,
+    block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
     validator_matrix: ValidatorMatrix,
     last_progress: Timestamp,
@@ -77,8 +77,8 @@ pub(crate) struct BlocksAccumulator {
 impl BlocksAccumulator {
     pub(crate) fn new(validator_matrix: ValidatorMatrix) -> Self {
         Self {
-            filter: Default::default(),
-            block_gossip_acceptors: Default::default(),
+            already_handled: Default::default(),
+            block_acceptors: Default::default(),
             block_children: Default::default(),
             validator_matrix,
             last_progress: Timestamp::now(),
@@ -87,8 +87,8 @@ impl BlocksAccumulator {
 
     pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
         Self {
-            filter: Default::default(),
-            block_gossip_acceptors: Default::default(),
+            already_handled: Default::default(),
+            block_acceptors: Default::default(),
             block_children: Default::default(),
             validator_matrix,
             ..self
@@ -96,8 +96,15 @@ impl BlocksAccumulator {
     }
 
     pub(crate) fn flush_filter(&mut self) {
-        self.filter.clear();
+        self.already_handled.clear();
     }
+
+    // pub(crate) fn foo(&self) -> bool / Option<something> {
+    //     todo!()
+    //     // for acceptor in self.block_acceptors {
+    //     //     // if acceptor can gossip, return true
+    //     // }
+    // }
 
     pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
         // BEFORE the f-seq cant help you, LEAP
@@ -123,7 +130,7 @@ impl BlocksAccumulator {
                 }
                 StartingWith::Block(block) => (block.header().era_id(), block.header().height()),
                 StartingWith::Hash(trusted_hash) => {
-                    match self.block_gossip_acceptors.get(&trusted_hash) {
+                    match self.block_acceptors.get(&trusted_hash) {
                         None => {
                             // the accumulator is unaware of the starting-with block
                             return SyncInstruction::Leap;
@@ -179,17 +186,17 @@ impl BlocksAccumulator {
         block_hash: BlockHash,
         era_id: EraId,
     ) {
-        if self.filter.contains(&block_hash) {
+        if self.already_handled.contains(&block_hash) {
             return;
         }
-        let mut acceptor = BlockGossipAcceptor::new(block_hash, vec![]);
+        let mut acceptor = BlockAcceptor::new(block_hash, vec![]);
         if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
             if let Err(err) = acceptor.register_era_validator_weights(evw) {
                 warn!(%err, "unable to register era_validator_weights");
                 return;
             }
         }
-        self.block_gossip_acceptors.insert(block_hash, acceptor);
+        self.block_acceptors.insert(block_hash, acceptor);
     }
 
     pub(crate) fn register_block_added<REv>(
@@ -224,7 +231,7 @@ impl BlocksAccumulator {
                 Error::EraMismatch(_err) => {
                     // TODO: Log?
                     // this block acceptor is borked; get rid of it
-                    self.block_gossip_acceptors.remove(&block_hash);
+                    self.block_acceptors.remove(&block_hash);
                 }
                 Error::DuplicatedEraValidatorWeights { .. } => {
                     // this should be unreachable; definitely a programmer error
@@ -279,34 +286,34 @@ impl BlocksAccumulator {
 
     pub(crate) fn register_updated_validator_matrix(&mut self, validator_matrix: ValidatorMatrix) {
         self.validator_matrix = validator_matrix;
-        let block_hashes = self.block_gossip_acceptors.keys().copied().collect_vec();
+        let block_hashes = self.block_acceptors.keys().copied().collect_vec();
         for block_hash in block_hashes {
-            if let Some(mut acceptor) = self.block_gossip_acceptors.remove(&block_hash) {
+            if let Some(mut acceptor) = self.block_acceptors.remove(&block_hash) {
                 if let Some(era_id) = acceptor.era_id() {
                     if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
                         acceptor = acceptor.refresh(evw);
                     }
                 }
-                self.block_gossip_acceptors.insert(block_hash, acceptor);
+                self.block_acceptors.insert(block_hash, acceptor);
             }
         }
     }
 
     pub(crate) fn register_new_local_tip(&mut self, block_header: &BlockHeader) {
         for block_hash in self
-            .block_gossip_acceptors
+            .block_acceptors
             .iter()
             .filter(|(_, v)| v.block_height().unwrap_or_default() <= block_header.height())
             .map(|(k, _)| *k)
             .collect_vec()
         {
-            self.block_gossip_acceptors.remove(&block_hash);
-            self.filter.push(block_hash);
+            self.block_acceptors.remove(&block_hash);
+            self.already_handled.push(block_hash);
         }
     }
 
     pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<ExecutedBlock> {
-        if let Some(acceptor) = self.block_gossip_acceptors.get(&block_hash) {
+        if let Some(acceptor) = self.block_acceptors.get(&block_hash) {
             acceptor.block_added()
         } else {
             None
@@ -315,8 +322,8 @@ impl BlocksAccumulator {
 
     fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {
         let mut ret: Option<(BlockHash, u64, EraId)> = None;
-        for (k, v) in &self.block_gossip_acceptors {
-            if self.filter.contains(k) {
+        for (k, v) in &self.block_acceptors {
+            if self.already_handled.contains(k) {
                 // should be unreachable
                 continue;
             }
@@ -345,27 +352,26 @@ impl BlocksAccumulator {
         block_hash: BlockHash,
         era_id: EraId,
         peers: Vec<NodeId>,
-    ) -> Option<&mut BlockGossipAcceptor> {
-        if let Entry::Occupied(mut entry) = self.block_gossip_acceptors.entry(block_hash) {
-            if self.filter.contains(&block_hash) {
+    ) -> Option<&mut BlockAcceptor> {
+        if let Entry::Occupied(mut entry) = self.block_acceptors.entry(block_hash) {
+            if self.already_handled.contains(&block_hash) {
                 return None;
             }
             if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                let acceptor =
-                    BlockGossipAcceptor::new_with_validator_weights(block_hash, evw, peers);
+                let acceptor = BlockAcceptor::new_with_validator_weights(block_hash, evw, peers);
                 entry.insert(acceptor);
             } else {
-                entry.insert(BlockGossipAcceptor::new(block_hash, peers));
+                entry.insert(BlockAcceptor::new(block_hash, peers));
             }
         }
 
-        self.block_gossip_acceptors.get_mut(&block_hash)
+        self.block_acceptors.get_mut(&block_hash)
     }
 
     fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
-        self.block_gossip_acceptors
+        self.block_acceptors
             .get(&block_hash)
-            .map(BlockGossipAcceptor::peers)
+            .map(BlockAcceptor::peers)
     }
 }
 

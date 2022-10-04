@@ -143,11 +143,13 @@ impl BlockSynchronizer {
         &mut self,
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
+        requires_strict_finality: bool,
         max_simultaneous_peers: u32,
     ) {
         let builder = BlockBuilder::new(
             block_hash,
             should_fetch_execution_state,
+            requires_strict_finality,
             max_simultaneous_peers,
         );
         if should_fetch_execution_state {

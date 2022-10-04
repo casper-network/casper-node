@@ -93,34 +93,30 @@ pub(crate) use event::MainEvent;
 pub(crate) struct MainReactor {
     // components
     //   i/o bound components
-    storage: Storage,
-    contract_runtime: ContractRuntime, // TODO: handle the `set_initial_state`
+    storage: Storage, // todo! - get_highest_block_header must return only COMPLETE block's header
+    contract_runtime: ContractRuntime,
     upgrade_watcher: UpgradeWatcher,
     rpc_server: RpcServer,
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
-    small_network: SmallNetwork<MainEvent, Message>, /* TODO: handle setting the
-                                                      * `is_syncing_peer` - needs
-                                                      * internal init state */
-    //  non-io based components
-    consensus: EraSupervisor, /* TODO: Update constructor (provide less state) and extend
-                               * handler for the "executed block" ann. */
+    // todo! - check we prefer to fetch tries from non-validators
+    // todo! - is_syncing_peer behavior of small network no longer required
+    small_network: SmallNetwork<MainEvent, Message>,
+    consensus: EraSupervisor,
 
     // block handling
-    linear_chain: LinearChainComponent, // TODO: Maybe redundant.
-    block_validator: BlockValidator,    // TODO: Maybe redundant.
+    linear_chain: LinearChainComponent, // todo! is redundant - remove.
+    block_validator: BlockValidator,
     blocks_accumulator: BlocksAccumulator,
     block_synchronizer: BlockSynchronizer,
 
     // deploy handling
-    deploy_acceptor: DeployAcceptor, /* TODO: should use
-                                      * `get_highest_COMPLETE_block_header_from_storage()` */
+    deploy_acceptor: DeployAcceptor,
     deploy_buffer: DeployBuffer,
 
-    //   gossiping components
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>, /* TODO - has its own timing belt -
-                                                             * should it? */
+    // gossiping components
+    address_gossiper: Gossiper<GossipedAddress, MainEvent>,
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
     executed_block_gossiper: Gossiper<ExecutedBlock, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
@@ -138,7 +134,8 @@ pub(crate) struct MainReactor {
     event_queue_metrics: EventQueueMetrics,
 
     //   ambient settings / data / load-bearing config
-    validator_matrix: ValidatorMatrix, // TODO: fill from: sync_leap, block execution, block_added
+    validator_matrix: ValidatorMatrix, /* todo! fill from: sync_leap, block execution (step),
+                                        * executed_block (switch) */
     trusted_hash: Option<BlockHash>,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
@@ -660,19 +657,14 @@ impl reactor::Reactor for MainReactor {
                 GossiperAnnouncement::FinishedGossiping(_gossiped_block_added_id),
             ) => Effects::new(),
 
+            MainEvent::FinalitySignatureIncoming(incoming) => {
+                todo!("get rid of this event variant and handle as per other net requests");
+            }
             MainEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
                 MainEvent::FinalitySignatureGossiper,
                 self.finality_signature_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::FinalitySignatureIncoming(incoming) => {
-                todo!(); // route it to both the LinearChain and BlocksAccumulator
-                reactor::wrap_effects(
-                    MainEvent::LinearChain,
-                    self.linear_chain
-                        .handle_event(effect_builder, rng, incoming.into()),
-                )
-            }
             MainEvent::FinalitySignatureGossiperIncoming(incoming) => reactor::wrap_effects(
                 MainEvent::FinalitySignatureGossiper,
                 self.finality_signature_gossiper

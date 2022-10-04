@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[derive(DataSize, Debug)]
-pub(super) struct BlockGossipAcceptor {
+pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     block_added: Option<ExecutedBlock>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
@@ -25,7 +25,7 @@ pub(super) struct BlockGossipAcceptor {
     peers: Vec<NodeId>,
 }
 
-impl BlockGossipAcceptor {
+impl BlockAcceptor {
     pub(super) fn new(block_hash: BlockHash, peers: Vec<NodeId>) -> Self {
         Self {
             block_hash,

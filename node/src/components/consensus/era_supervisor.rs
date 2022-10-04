@@ -154,7 +154,7 @@ impl EraSupervisor {
         let unit_files_folder = storage_dir.join("unit_files");
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
-        let next_height = 0; // TODO: latest_block_header.height() + 1;
+        let next_height = 0; // todo! latest_block_header.height() + 1;
 
         let era_supervisor = Self {
             open_eras: Default::default(),

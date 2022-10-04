@@ -216,7 +216,7 @@ pub(crate) trait ItemFetcher<T: FetcherItem + 'static> {
     where
         REv: From<StorageRequest> + Send,
     {
-        todo!()
+        todo!("turn into an unimplemented function once deprecated fetchers have been deleted as all retained fetchers will implement this")
     }
 
     /// Handles signalling responders with the item or an error.

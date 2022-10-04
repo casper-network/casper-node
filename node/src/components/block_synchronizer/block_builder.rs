@@ -50,6 +50,7 @@ pub(super) struct BlockBuilder {
     // imputed
     block_hash: BlockHash,
     should_fetch_execution_state: bool,
+    requires_strict_finality: bool,
     peer_list: PeerList,
 
     era_id: Option<EraId>,
@@ -68,6 +69,7 @@ impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
+        requires_strict_finality: bool,
         max_simultaneous_peers: u32,
     ) -> Self {
         BlockBuilder {
@@ -80,6 +82,7 @@ impl BlockBuilder {
             ),
             peer_list: PeerList::new(max_simultaneous_peers),
             should_fetch_execution_state,
+            requires_strict_finality: false,
             started: None,
             last_progress: None,
         }
@@ -117,6 +120,7 @@ impl BlockBuilder {
             acquisition_state,
             peer_list,
             should_fetch_execution_state,
+            requires_strict_finality: true,
             started: None,
             last_progress: Some(Timestamp::now()),
         }
