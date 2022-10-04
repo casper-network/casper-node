@@ -14,7 +14,6 @@ mod tests;
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     fmt::Debug,
-    hash::Hash,
     sync::Arc,
 };
 
@@ -36,8 +35,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
+        appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
+        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
     },
     NodeRng,
 };
@@ -45,79 +44,35 @@ use keyed_counter::KeyedCounter;
 
 use crate::components::fetcher::FetchedData;
 
-#[derive(DataSize, Debug, Display, Clone, Hash, Eq, PartialEq)]
-pub(crate) enum ValidatingBlock {
-    #[display(fmt = "{}", _0.display())]
-    Block(Box<Block>),
-    #[display(fmt = "{}", _0.display())]
-    ProposedBlock(Box<ProposedBlock<ClContext>>),
-}
-
-impl From<Block> for ValidatingBlock {
-    fn from(block: Block) -> ValidatingBlock {
-        ValidatingBlock::Block(Box::new(block))
-    }
-}
-
-impl From<ProposedBlock<ClContext>> for ValidatingBlock {
-    fn from(proposed_block: ProposedBlock<ClContext>) -> ValidatingBlock {
-        ValidatingBlock::ProposedBlock(Box::new(proposed_block))
-    }
-}
-
-impl ValidatingBlock {
+impl ProposedBlock<ClContext> {
     fn timestamp(&self) -> Timestamp {
-        match self {
-            ValidatingBlock::Block(block) => block.timestamp(),
-            ValidatingBlock::ProposedBlock(pb) => pb.context().timestamp(),
-        }
+        self.context().timestamp()
     }
 
-    fn deploy_hashes(&self) -> Box<dyn Iterator<Item = &DeployHash> + '_> {
-        match self {
-            ValidatingBlock::Block(block) => Box::new(block.deploy_hashes().iter()),
-            ValidatingBlock::ProposedBlock(pb) => Box::new(pb.value().deploy_hashes()),
-        }
+    fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
+        self.value().deploy_hashes()
     }
 
-    fn transfer_hashes(&self) -> Box<dyn Iterator<Item = &DeployHash> + '_> {
-        match self {
-            ValidatingBlock::Block(block) => Box::new(block.transfer_hashes().iter()),
-            ValidatingBlock::ProposedBlock(pb) => Box::new(pb.value().transfer_hashes()),
-        }
+    fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
+        self.value().transfer_hashes()
     }
 
     fn deploys_and_transfers_iter(
         &self,
-    ) -> Box<dyn Iterator<Item = (DeployOrTransferHash, Option<BTreeSet<Approval>>)> + '_> {
-        match self {
-            ValidatingBlock::Block(block) => {
-                let deploys = block
-                    .deploy_hashes()
-                    .iter()
-                    .map(|hash| (DeployOrTransferHash::Deploy(*hash), None));
-                let transfers = block
-                    .transfer_hashes()
-                    .iter()
-                    .map(|hash| (DeployOrTransferHash::Transfer(*hash), None));
-                Box::new(deploys.chain(transfers))
-            }
-            ValidatingBlock::ProposedBlock(pb) => {
-                let deploys = pb.value().deploys().iter().map(|dwa| {
-                    (
-                        DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
-                        Some(dwa.approvals().clone()),
-                    )
-                });
-                let transfers = pb.value().transfers().iter().map(|dwa| {
-                    (
-                        DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
-                        Some(dwa.approvals().clone()),
-                    )
-                });
-                Box::new(deploys.chain(transfers))
-            }
-        }
+    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<Approval>)> + '_ {
+        let deploys = self.value().deploys().iter().map(|dwa| {
+            (
+                DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
+                dwa.approvals().clone(),
+            )
+        });
+        let transfers = self.value().transfers().iter().map(|dwa| {
+            (
+                DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
+                dwa.approvals().clone(),
+            )
+        });
+        deploys.chain(transfers)
     }
 }
 
@@ -132,7 +87,6 @@ pub(crate) enum Event {
     #[display(fmt = "{} found", dt_hash)]
     DeployFound {
         dt_hash: DeployOrTransferHash,
-        approvals: BTreeSet<Approval>,
         deploy_info: Box<DeployFootprint>,
     },
 
@@ -153,9 +107,9 @@ pub(crate) struct BlockValidationState {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
-    /// The set of approvals is `Some` if the deploy was included in a block received via
-    /// consensus, with a set of approvals that would be finalized with the block.
-    missing_deploys: HashMap<DeployOrTransferHash, Option<BTreeSet<Approval>>>,
+    /// The set of approvals contains approvals from deploys that would be finalized with the
+    /// block.
+    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<Approval>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
     /// Peers that should have the data.
@@ -193,7 +147,7 @@ pub(crate) struct BlockValidator {
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     /// State of validation of a specific block.
-    validation_states: HashMap<ValidatingBlock, BlockValidationState>,
+    validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
 }
@@ -209,7 +163,7 @@ impl BlockValidator {
     }
 
     /// Prints a log message about an invalid block with duplicated deploys.
-    fn log_block_with_replay(&self, sender: NodeId, block: &ValidatingBlock) {
+    fn log_block_with_replay(&self, sender: NodeId, block: &ProposedBlock<ClContext>) {
         let mut deploy_counts = BTreeMap::new();
         for (dt_hash, _) in block.deploys_and_transfers_iter() {
             *deploy_counts.entry(dt_hash).or_default() += 1;
@@ -231,7 +185,7 @@ impl<REv> Component<REv> for BlockValidator
 where
     REv: From<Event>
         + From<BlockValidationRequest>
-        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<LegacyDeploy>>
         + From<StorageRequest>
         + Send,
 {
@@ -314,7 +268,6 @@ where
             }
             Event::DeployFound {
                 dt_hash,
-                approvals,
                 deploy_info,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
@@ -326,10 +279,7 @@ where
 
                 // Our first pass updates all validation states, crossing off the found deploy.
                 for (key, state) in self.validation_states.iter_mut() {
-                    if let Some(maybe_approvals) = state.missing_deploys.remove(&dt_hash) {
-                        // If we had approvals from a proposed block stored here, they should take
-                        // precedence over the ones returned in the response.
-                        let approvals = maybe_approvals.unwrap_or_else(|| approvals.clone());
+                    if let Some(approvals) = state.missing_deploys.remove(&dt_hash) {
                         // If the deploy is of the wrong type or would be invalid for this block,
                         // notify everyone still waiting on it that all is lost.
                         let add_result = match dt_hash {
@@ -446,53 +396,49 @@ fn fetch_deploy<REv>(
     sender: NodeId,
 ) -> Effects<Event>
 where
-    REv: From<Event>
-        + From<BlockValidationRequest>
-        + From<StorageRequest>
-        + From<FetcherRequest<Deploy>>
-        + Send,
+    REv: From<Event> + From<FetcherRequest<LegacyDeploy>> + Send,
 {
     async move {
         let deploy_hash: DeployHash = dt_hash.into();
-        todo!();
-        // let deploy = match effect_builder
-        //     .fetch::<Deploy>(deploy_hash, sender, ())
-        //     .await
-        // {
-        //     Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) =>
-        // item,     Err(fetcher_error) => {
-        //         warn!(
-        //             "Could not fetch deploy with deploy hash {}: {}",
-        //             deploy_hash, fetcher_error
-        //         );
-        //         return Event::DeployMissing(dt_hash);
-        //     }
-        // };
-        // if deploy.deploy_or_transfer_hash() != dt_hash {
-        //     warn!(
-        //         deploy = ?deploy,
-        //         expected_deploy_or_transfer_hash = ?dt_hash,
-        //         actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
-        //         "Deploy has incorrect transfer hash"
-        //     );
-        //     return Event::CannotConvertDeploy(dt_hash);
-        // }
-        // match deploy.footprint() {
-        //     Ok(deploy_info) => Event::DeployFound {
-        //         dt_hash,
-        //         approvals: deploy.approvals().clone(),
-        //         deploy_info: Box::new(deploy_info),
-        //     },
-        //     Err(error) => {
-        //         warn!(
-        //             deploy = ?deploy,
-        //             deploy_or_transfer_hash = ?dt_hash,
-        //             ?error,
-        //             "Could not convert deploy",
-        //         );
-        //         Event::CannotConvertDeploy(dt_hash)
-        //     }
-        // }
+        let deploy = match effect_builder
+            .fetch::<LegacyDeploy>(deploy_hash, sender, ())
+            .await
+        {
+            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+                Deploy::from(*item)
+            }
+            Err(fetcher_error) => {
+                warn!(
+                    "Could not fetch deploy with deploy hash {}: {}",
+                    deploy_hash, fetcher_error
+                );
+                return Event::DeployMissing(dt_hash);
+            }
+        };
+        if deploy.deploy_or_transfer_hash() != dt_hash {
+            warn!(
+                deploy = ?deploy,
+                expected_deploy_or_transfer_hash = ?dt_hash,
+                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
+                "Deploy has incorrect transfer hash"
+            );
+            return Event::CannotConvertDeploy(dt_hash);
+        }
+        match deploy.footprint() {
+            Ok(deploy_info) => Event::DeployFound {
+                dt_hash,
+                deploy_info: Box::new(deploy_info),
+            },
+            Err(error) => {
+                warn!(
+                    deploy = ?deploy,
+                    deploy_or_transfer_hash = ?dt_hash,
+                    ?error,
+                    "Could not convert deploy",
+                );
+                Event::CannotConvertDeploy(dt_hash)
+            }
+        }
     }
     .event(std::convert::identity)
 }

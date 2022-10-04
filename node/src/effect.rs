@@ -136,9 +136,8 @@ use crate::{
     components::{
         block_synchronizer,
         block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
-        block_validator::ValidatingBlock,
         blocks_accumulator::BlocksAccumulator,
-        consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
+        consensus::{BlockContext, ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
             EraValidatorsRequest, ExecutionPreState,
@@ -1771,14 +1770,17 @@ impl<REv> EffectBuilder<REv> {
 
     /// Checks whether the deploys included in the block exist on the network and the block is
     /// valid.
-    pub(crate) async fn validate_block<T>(self, sender: NodeId, block: T) -> bool
+    pub(crate) async fn validate_block(
+        self,
+        sender: NodeId,
+        block: ProposedBlock<ClContext>,
+    ) -> bool
     where
         REv: From<BlockValidationRequest>,
-        T: Into<ValidatingBlock>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block: block.into(),
+                block,
                 sender,
                 responder,
             },

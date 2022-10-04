@@ -36,8 +36,7 @@ use casper_types::{
 use crate::{
     components::{
         block_synchronizer::{GlobalStateSynchronizerError, NeedNext, TrieAccumulatorError},
-        block_validator::ValidatingBlock,
-        consensus::{BlockContext, ClContext, ValidatorChange},
+        consensus::{BlockContext, ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
             EraValidatorsRequest, ExecutionPreState,
@@ -1309,7 +1308,7 @@ impl Display for SyncGlobalStateRequest {
 #[must_use]
 pub(crate) struct BlockValidationRequest {
     /// The block to be validated.
-    pub(crate) block: ValidatingBlock,
+    pub(crate) block: ProposedBlock<ClContext>,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: NodeId,
     /// Responder to call with the result.

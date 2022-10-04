@@ -11,6 +11,13 @@ use crate::types::{FetcherItem, Item, Tag};
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Debug)]
 pub(crate) struct LegacyDeploy(Deploy);
 
+impl LegacyDeploy {
+    #[cfg(test)]
+    pub(crate) fn inner(&self) -> &Deploy {
+        &self.0
+    }
+}
+
 impl Item for LegacyDeploy {
     type Id = DeployHash;
 

@@ -11,7 +11,7 @@ use itertools::Itertools;
 use crate::{
     components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals, Item},
+    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals},
     utils::{self, Loadable},
 };
 
@@ -22,7 +22,7 @@ enum ReactorEvent {
     #[from]
     BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<Deploy>),
+    Fetcher(FetcherRequest<LegacyDeploy>),
     #[from]
     Storage(StorageRequest),
 }
@@ -55,7 +55,7 @@ impl MockReactor {
 
     async fn expect_fetch_deploy<T>(&self, deploy: T)
     where
-        T: Into<Option<Deploy>>,
+        T: Into<Option<LegacyDeploy>>,
     {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         if let ReactorEvent::Fetcher(FetcherRequest {
@@ -72,7 +72,7 @@ impl MockReactor {
                         .await
                 }
                 Some(deploy) => {
-                    assert_eq!(id, deploy.id());
+                    assert_eq!(id, deploy.inner().hash().clone());
                     let response = FetchedData::FromPeer {
                         item: Box::new(deploy),
                         peer,
@@ -197,7 +197,7 @@ async fn validate_block(
 
     // We make our mock reactor answer with the expected deploys and transfers:
     for deploy in deploys.into_iter().chain(transfers) {
-        reactor.expect_fetch_deploy(deploy).await;
+        reactor.expect_fetch_deploy(Some(deploy.into())).await;
     }
 
     // The resulting `FetchResult`s are passed back into the component. When any deploy turns out
