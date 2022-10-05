@@ -606,7 +606,7 @@ impl MainReactor {
                     let initial_pre_state = ExecutionPreState::new(
                         next_block_height,
                         post_state_hash,
-                        previous_block_header.hash(),
+                        previous_block_header.block_hash(),
                         previous_block_header.accumulated_seed(),
                     );
                     self.contract_runtime.set_initial_state(initial_pre_state);

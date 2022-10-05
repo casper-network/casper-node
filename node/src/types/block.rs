@@ -888,7 +888,7 @@ impl BlockHeader {
     }
 
     /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
+    pub fn block_hash(&self) -> BlockHash {
         let serialized_header = Self::serialize(self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(Digest::hash(&serialized_header))
@@ -1070,7 +1070,7 @@ impl BlockHeadersBatch {
         }
 
         // Check first header first b/c it's cheaper than verifying continuity.
-        let highest_hash = highest_header.hash();
+        let highest_hash = highest_header.block_hash();
         if &highest_hash != earliest_known.parent_hash() {
             return Err(BlockHeadersBatchValidationError::HighestBlockHashMismatch {
                 expected: *earliest_known.parent_hash(),
@@ -1151,7 +1151,7 @@ impl BlockHeadersBatch {
                 &[l, r] => Some((l, r)),
                 _ => None,
             })
-            .all(|(l, r)| l.height() == r.height() + 1 && l.parent_hash() == &r.hash())
+            .all(|(l, r)| l.height() == r.height() + 1 && l.parent_hash() == &r.block_hash())
     }
 
     #[cfg(test)]
@@ -1474,7 +1474,7 @@ impl Block {
         };
 
         Ok(Block {
-            hash: header.hash(),
+            hash: header.block_hash(),
             header,
             body,
         })
@@ -1484,7 +1484,7 @@ impl Block {
         header: BlockHeader,
         body: BlockBody,
     ) -> Result<Self, BlockValidationError> {
-        let hash = header.hash();
+        let hash = header.block_hash();
         let block = Block { hash, header, body };
         block.verify()?;
         Ok(block)
@@ -1558,7 +1558,7 @@ impl Block {
 
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_block_header_hash = self.header().hash();
+        let actual_block_header_hash = self.header().block_hash();
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
                 block: Box::new(self.to_owned()),
@@ -1581,7 +1581,7 @@ impl Block {
     #[cfg(any(feature = "testing", test))]
     pub fn disable_switch_block(&mut self) -> &mut Self {
         let _ = self.header.era_end.take();
-        self.hash = self.header.hash();
+        self.hash = self.header.block_hash();
         self
     }
 
@@ -1783,10 +1783,10 @@ fn validate_block_header_and_signature_hash(
     block_header: &BlockHeader,
     finality_signatures: &BlockSignatures,
 ) -> Result<(), BlockHeaderWithMetadataValidationError> {
-    if block_header.hash() != finality_signatures.block_hash {
+    if block_header.block_hash() != finality_signatures.block_hash {
         return Err(
             BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedBlockHash {
-                expected_block_hash: block_header.hash(),
+                expected_block_hash: block_header.block_hash(),
                 finality_signatures_block_hash: finality_signatures.block_hash,
             },
         );
@@ -1875,6 +1875,17 @@ impl FetcherItem for BlockAndDeploys {
         Ok(())
     }
 }
+
+// TODO: Fraser, why a 2-variant enum w/ identical data points instead of a struct such as:
+// /// Execution results for all deploys in a block; potentially chunked if too large.
+// pub struct BlockExecutionResultsOrChunk {
+//     /// Block to which this value or chunk refers to.
+//     block_hash: BlockHash,
+//     /// Complete execution results for the block or a chunk of the complete data.
+//     value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+//     /// Can be verified via merkle root (post 1.5.0 can be, legacy cannot be).
+//     verifiable: bool
+// }
 
 /// Represents execution results for all deploys in a single block or a chunk of this complete
 /// value.
@@ -2794,7 +2805,7 @@ mod tests {
         let mut random_block = Block::random(&mut rng);
         let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
         random_block.header.body_hash = bogus_block_body_hash;
-        random_block.hash = random_block.header.hash();
+        random_block.hash = random_block.header.block_hash();
         let bogus_block_hash = random_block.hash;
 
         match random_block.verify() {
@@ -2822,7 +2833,7 @@ mod tests {
                 block,
                 actual_block_header_hash,
             }) if block.hash == bogus_block_hash
-                && block.header.hash() == actual_block_header_hash => {}
+                && block.header.block_hash() == actual_block_header_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }

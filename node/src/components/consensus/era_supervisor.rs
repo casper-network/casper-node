@@ -398,7 +398,7 @@ impl EraSupervisor {
         let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
-                booking_block.hash()
+                booking_block.block_hash()
             } else {
                 // If there's no booking block for the `era_id`
                 // (b/c it would have been from before Genesis, upgrade or emergency restart),
@@ -426,7 +426,7 @@ impl EraSupervisor {
             .collect();
 
         let chainspec_hash = self.chainspec.hash();
-        let key_block_hash = key_block.hash();
+        let key_block_hash = key_block.block_hash();
         let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
         let now = Timestamp::now();
 
@@ -702,7 +702,7 @@ impl EraSupervisor {
         let mut effects = if self.is_validator_in(&our_public_key, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::create(
-                    block_header.hash(),
+                    block_header.block_hash(),
                     era_id,
                     // approvals_checksum,
                     // execution_results_checksum,
