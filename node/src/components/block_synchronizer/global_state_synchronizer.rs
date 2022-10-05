@@ -31,6 +31,8 @@ pub(crate) enum Error {
     TrieAccumulator(TrieAccumulatorError),
     #[error("ContractRuntime failed to put a trie into global state: {0}")]
     PutTrie(engine_state::Error),
+    #[error("request to fetch cancelled")]
+    Cancelled,
 }
 
 #[derive(Debug, From, Serialize)]
@@ -228,7 +230,7 @@ impl GlobalStateSynchronizer {
             })
     }
 
-    fn cancel_request(&mut self, block_hash: BlockHash, error: Error) -> Effects<Event> {
+    pub(super) fn cancel_request(&mut self, block_hash: BlockHash, error: Error) -> Effects<Event> {
         match self.request_states.remove(&block_hash) {
             Some(request_state) => request_state.respond(Err(error)),
             None => Effects::new(),

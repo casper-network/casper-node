@@ -84,6 +84,7 @@ use crate::{
 };
 
 use crate::components::block_accumulator;
+use crate::effect::requests::BlockSynchronizerRequest;
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -522,22 +523,28 @@ impl reactor::Reactor for MainReactor {
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
             MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
-                block_added,
+                executed_block,
             )) => {
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(block_added.block().header().clone()),
-                    header_hash: *block_added.block().hash(),
+                    header: Box::new(executed_block.block().header().clone()),
+                    header_hash: *executed_block.block().hash(),
                 });
                 // TODO - only gossip once we have enough finality signatures (and only if we're
                 //        a validator?)
                 let reactor_block_added_gossiper_event =
                     MainEvent::ExecutedBlockGossiper(gossiper::Event::ItemReceived {
-                        item_id: *block_added.block().hash(),
+                        item_id: *executed_block.block().hash(),
                         source: Source::Ourself,
                     });
-                let reactor_event_es = MainEvent::EventStreamServer(
-                    event_stream_server::Event::BlockAdded(Box::new(block_added.block().clone())),
-                );
+                let reactor_event_es =
+                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(Box::new(
+                        executed_block.block().clone(),
+                    )));
+                let block_sync_event =
+                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
+                        block_hash: *executed_block.block().hash(),
+                        height: executed_block.block().height(),
+                    });
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects.extend(self.dispatch_event(
@@ -545,6 +552,7 @@ impl reactor::Reactor for MainReactor {
                     rng,
                     reactor_block_added_gossiper_event,
                 ));
+                effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
 
                 effects
             }

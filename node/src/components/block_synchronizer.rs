@@ -286,7 +286,7 @@ impl BlockSynchronizer {
     }
 
     // NOT WIRED OR EVENTED
-    pub(crate) fn flush_dishonest_peers(&mut self) {
+    fn flush_dishonest_peers(&mut self) {
         if let Some(builder) = &mut self.forward {
             builder.flush_dishonest_peers();
         }
@@ -702,6 +702,26 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
+    fn executed_block_notification(&mut self, block_hash: BlockHash, height: u64) {
+        let finished_with_forward = if let Some(builder) = self.forward.as_ref() {
+            builder
+                .block_height()
+                .map_or(false, |forward_height| forward_height <= height)
+                || builder.block_hash() == block_hash
+        } else {
+            false
+        };
+
+        if finished_with_forward {
+            let mut builder = self
+                .forward
+                .take()
+                .expect("must be Some due to check above");
+            let forward_hash = builder.block_hash();
+            self.global_sync
+                .cancel_request(forward_hash, global_state_synchronizer::Error::Cancelled);
+        }
+    }
     // // NOT WIRED OR EVENTED
     // fn stop(&mut self, block_hash: &BlockHash) {
     //     if let Some(builder) = &mut self.fwd {
@@ -773,6 +793,13 @@ where
             }
             (ComponentStatus::Initialized, Event::Request(BlockSynchronizerRequest::NeedNext)) => {
                 self.need_next(effect_builder, rng)
+            }
+            (
+                ComponentStatus::Initialized,
+                Event::Request(BlockSynchronizerRequest::BlockExecuted { block_hash, height }),
+            ) => {
+                self.executed_block_notification(block_hash, height);
+                Effects::new()
             }
             (
                 ComponentStatus::Initialized,

@@ -1416,6 +1416,7 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
+    BlockExecuted { block_hash: BlockHash, height: u64 },
 }
 
 impl Display for BlockSynchronizerRequest {
@@ -1426,6 +1427,13 @@ impl Display for BlockSynchronizerRequest {
             }
             BlockSynchronizerRequest::DishonestPeers => {
                 write!(f, "block synchronizer request: dishonest peers")
+            }
+            BlockSynchronizerRequest::BlockExecuted { block_hash, height } => {
+                write!(
+                    f,
+                    "block synchronizer request: executed block {} at height {}",
+                    block_hash, height
+                )
             }
         }
     }
