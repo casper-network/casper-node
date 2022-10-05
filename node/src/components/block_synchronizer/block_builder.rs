@@ -3,11 +3,8 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use casper_execution_engine::core::engine_state::execution_result::ExecutionResults;
 use datasize::DataSize;
 use either::Either;
-use itertools::Itertools;
-use num_rational::Ratio;
 use tracing::{error, warn};
 
 use crate::components::block_synchronizer::{
@@ -19,10 +16,7 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::block_synchronizer::{
-        deploy_acquisition::DeployAcquisition,
-        execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsChecksum},
-        need_next::NeedNext,
-        peer_list::PeerList,
+        execution_results_acquisition::ExecutionResultsChecksum, peer_list::PeerList,
         signature_acquisition::SignatureAcquisition,
     },
     types::{

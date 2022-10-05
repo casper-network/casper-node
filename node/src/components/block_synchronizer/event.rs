@@ -7,7 +7,6 @@ use casper_hashing::Digest;
 use derive_more::From;
 use either::Either;
 use serde::Serialize;
-use tracing::event;
 
 use casper_execution_engine::core::engine_state;
 use casper_types::{EraId, PublicKey, U512};

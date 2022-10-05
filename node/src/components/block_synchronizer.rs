@@ -10,15 +10,10 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    iter,
-    time::Duration,
-};
+use std::{collections::BTreeMap, time::Duration};
 
 use datasize::DataSize;
 use either::Either;
-use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::core::engine_state;
@@ -27,7 +22,6 @@ use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
-        fetcher,
         fetcher::{Error, FetchResult, FetchedData},
         Component,
     },
@@ -42,9 +36,9 @@ use crate::{
     reactor,
     storage::StorageRequest,
     types::{
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, Deploy, DeployHash, ExecutedBlock, FinalitySignature, FinalitySignatureId,
-        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Deploy,
+        ExecutedBlock, FinalitySignature, FinalitySignatureId, Item, LegacyDeploy, NodeId,
+        SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -747,6 +741,15 @@ where
             Event::Request(BlockSynchronizerRequest::NeedNext) => {
                 self.need_next(effect_builder, rng)
             }
+            Event::Request(BlockSynchronizerRequest::DishonestPeers) => self
+                .dishonest_peers()
+                .into_iter()
+                .flat_map(|node_id| {
+                    effect_builder
+                        .announce_disconnect_from_peer(node_id)
+                        .ignore()
+                })
+                .collect(),
             // triggered indirectly via need next effects, and they perpetuate
             // another need next to keep it going
             Event::BlockHeaderFetched(result) => {

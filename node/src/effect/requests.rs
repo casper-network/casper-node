@@ -1415,10 +1415,18 @@ impl Display for BlockAccumulatorRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
+    DishonestPeers,
 }
 
 impl Display for BlockSynchronizerRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block synchronizer request")
+        match self {
+            BlockSynchronizerRequest::NeedNext => {
+                write!(f, "block synchronizer request: need next")
+            }
+            BlockSynchronizerRequest::DishonestPeers => {
+                write!(f, "block synchronizer request: dishonest peers")
+            }
+        }
     }
 }

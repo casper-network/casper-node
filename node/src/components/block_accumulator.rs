@@ -18,10 +18,7 @@ use crate::{
     NodeRng,
 };
 
-use crate::{
-    effect::requests::BlockAccumulatorRequest,
-    types::{BlockHeader, BlockPayload, DeployHash, FinalizedBlock},
-};
+use crate::{effect::requests::BlockAccumulatorRequest, types::BlockHeader};
 use block_acceptor::BlockAcceptor;
 pub(crate) use config::Config;
 use error::Error;
@@ -91,6 +88,7 @@ impl BlockAccumulator {
         }
     }
 
+    #[allow(unused)] // todo!: Flush less aggressively.
     pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
         Self {
             already_handled: Default::default(),
@@ -101,16 +99,10 @@ impl BlockAccumulator {
         }
     }
 
+    #[allow(unused)] // todo!
     pub(crate) fn flush_filter(&mut self) {
         self.already_handled.clear();
     }
-
-    // pub(crate) fn foo(&self) -> bool / Option<something> {
-    //     todo!()
-    //     // for acceptor in self.block_acceptors {
-    //     //     // if acceptor can gossip, return true
-    //     // }
-    // }
 
     pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
         // BEFORE the f-seq cant help you, LEAP

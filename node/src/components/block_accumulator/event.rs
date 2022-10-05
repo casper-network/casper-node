@@ -36,9 +36,6 @@ impl Display for Event {
                     block_hash
                 )
             }
-            Event::Request(_) => {
-                write!(f, "block accumulator request from effect builder")
-            }
             Event::ReceivedBlock { block, sender } => {
                 write!(f, "received {} from {}", block, sender)
             }
