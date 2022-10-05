@@ -819,13 +819,6 @@ impl EraSupervisor {
                     consensus.resolve_validity(proposed_block.clone(), valid, Timestamp::now())
                 }),
             );
-            if valid {
-                effects.extend(
-                    effect_builder
-                        .announce_proposed_block(proposed_block)
-                        .ignore(),
-                );
-            }
         }
         effects
     }
@@ -1067,6 +1060,9 @@ impl EraSupervisor {
                 );
                 effects
             }
+            ProtocolOutcome::HandledProposedBlock(proposed_block) => effect_builder
+                .announce_proposed_block(proposed_block)
+                .ignore(),
             ProtocolOutcome::NewEvidence(pub_key) => {
                 info!(%pub_key, era = era_id.value(), "validator equivocated");
                 let mut effects = effect_builder

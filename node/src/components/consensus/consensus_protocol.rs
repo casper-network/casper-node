@@ -227,6 +227,8 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     FttExceeded,
     /// We want to disconnect from a sender of invalid data.
     Disconnect(NodeId),
+    /// We added a proposed block to the protocol state.
+    HandledProposedBlock(ProposedBlock<C>),
 }
 
 /// An API for a single instance of the consensus.

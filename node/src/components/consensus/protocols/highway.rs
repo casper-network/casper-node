@@ -397,12 +397,20 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         if self.highway.has_vertex(vv.inner()) {
             return vec![];
         }
-        if !vv.inner().is_proposal() {
-            if let Some(hash) = vv.inner().unit_hash() {
-                trace!(?hash, "adding unit to the protocol state");
-            } else {
-                trace!(vertex=?vv.inner(), "adding vertex to the protocol state");
-            }
+        let mut outcomes = ProtocolOutcomes::new();
+        if let (Some(value), Some(unit)) = (vv.inner().value(), vv.inner().unit()) {
+            // We are adding a proposed block to the protocol state, so we might use it as an
+            // ancestor in the future. Notify the reactor so we don't re-propose those deploys.
+            let panorama = &unit.wire_unit().panorama;
+            let fork_choice = self.highway.state().fork_choice(panorama);
+            let ancestor_values = self.ancestors(fork_choice).cloned().collect();
+            let block_context = BlockContext::new(unit.wire_unit().timestamp, ancestor_values);
+            let proposed_block = ProposedBlock::new(value.clone(), block_context);
+            outcomes.push(ProtocolOutcome::HandledProposedBlock(proposed_block));
+        } else if let Some(hash) = vv.inner().unit_hash() {
+            trace!(?hash, "adding unit to the protocol state");
+        } else {
+            trace!(vertex=?vv.inner(), "adding vertex to the protocol state");
         }
         self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
@@ -415,7 +423,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let av_effects = self.highway.add_valid_vertex(vv, now);
         // Once vertex is added to the state, we can remove it from the cache.
         self.pvv_cache.remove(&vertex_id);
-        self.process_av_effects(av_effects, now)
+        outcomes.extend(self.process_av_effects(av_effects, now));
+        outcomes
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
