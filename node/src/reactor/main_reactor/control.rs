@@ -217,7 +217,7 @@ impl MainReactor {
                     None => StartingWith::Nothing,
                 };
 
-                match self.blocks_accumulator.sync_instruction(starting_with) {
+                match self.block_accumulator.sync_instruction(starting_with) {
                     SyncInstruction::Leap => {
                         // we've fallen behind, go back to catch up mode
                         self.state = ReactorState::CatchUp;
@@ -278,7 +278,7 @@ impl MainReactor {
             }
             ReactorState::Validate => {
                 // todo!
-                // if self.blocks_accumulator.foo() {
+                // if self.block_accumulator.foo() {
                 // we have a block with sufficient finality sigs to start gossiping
                 // enqueue it (add event or direct gossiper call)
                 // }
@@ -397,7 +397,7 @@ impl MainReactor {
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip
         let trusted_hash = starting_with.block_hash();
-        match self.blocks_accumulator.sync_instruction(starting_with) {
+        match self.block_accumulator.sync_instruction(starting_with) {
             SyncInstruction::Leap => match self.sync_leaper.leap_status() {
                 LeapStatus::Inactive | LeapStatus::Failed { .. } => {
                     let peers_to_ask = self.small_network.peers_random_vec(
@@ -449,7 +449,7 @@ impl MainReactor {
                         self.chainspec.highway_config.finality_threshold_fraction,
                     );
                     validator_matrix.register_validator_weights(era_id, validator_weights.clone());
-                    self.blocks_accumulator
+                    self.block_accumulator
                         .register_updated_validator_matrix(validator_matrix);
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
@@ -636,7 +636,7 @@ impl MainReactor {
         let mut effects = Effects::new();
         // TODO - try to avoid repeating executing the same blocks.
         if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
-            if let Some(block_added) = self.blocks_accumulator.block_added(block_hash) {
+            if let Some(block_added) = self.block_accumulator.block_added(block_hash) {
                 match self.storage.make_executable_block(block_added) {
                     Ok(Some((finalized_block, deploys, transfers))) => {
                         effects.extend(

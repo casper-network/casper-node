@@ -31,8 +31,8 @@ use crate::{
             TrieResponseIncoming,
         },
         requests::{
-            AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
-            BlockSynchronizerRequest, BlockValidationRequest, BlocksAccumulatorRequest,
+            AppStateRequest, BeginGossipRequest, BlockAccumulatorRequest,
+            BlockCompleteConfirmationRequest, BlockSynchronizerRequest, BlockValidationRequest,
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
             NetworkRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
@@ -129,9 +129,9 @@ pub(crate) enum MainEvent {
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
     #[from]
-    BlocksAccumulator(#[serde(skip_serializing)] block_accumulator::Event),
+    BlockAccumulator(#[serde(skip_serializing)] block_accumulator::Event),
     #[from]
-    BlocksAccumulatorRequest(#[serde(skip_serializing)] BlocksAccumulatorRequest),
+    BlockAccumulatorRequest(#[serde(skip_serializing)] BlockAccumulatorRequest),
     #[from]
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
     #[from]
@@ -319,8 +319,8 @@ impl ReactorEvent for MainEvent {
             MainEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
             }
-            MainEvent::BlocksAccumulator(_) => "BlocksAccumulator",
-            MainEvent::BlocksAccumulatorRequest(_) => "BlocksAccumulatorRequest",
+            MainEvent::BlockAccumulator(_) => "BlockAccumulator",
+            MainEvent::BlockAccumulatorRequest(_) => "BlockAccumulatorRequest",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
             MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
         }
@@ -453,17 +453,17 @@ impl Display for MainEvent {
             MainEvent::ExecutedBlockFetcher(event) => {
                 write!(f, "executed block fetcher: {}", event)
             }
-            MainEvent::BlocksAccumulator(event) => {
-                write!(f, "blocks accumulator: {}", event)
+            MainEvent::BlockAccumulator(event) => {
+                write!(f, "block accumulator: {}", event)
             }
-            MainEvent::BlocksAccumulatorRequest(req) => {
-                write!(f, "blocks accumulator request: {}", req)
+            MainEvent::BlockAccumulatorRequest(req) => {
+                write!(f, "block accumulator request: {}", req)
             }
             MainEvent::BlockSynchronizer(event) => {
                 write!(f, "block synchronizer: {}", event)
             }
             MainEvent::BlockSynchronizerRequest(req) => {
-                write!(f, "blocks synchronizer request: {}", req)
+                write!(f, "block synchronizer request: {}", req)
             }
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),

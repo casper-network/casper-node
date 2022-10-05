@@ -34,7 +34,7 @@ use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
-            BlockSynchronizerRequest, BlocksAccumulatorRequest, ContractRuntimeRequest,
+            BlockAccumulatorRequest, BlockSynchronizerRequest, ContractRuntimeRequest,
             FetcherRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, Effects,
@@ -68,7 +68,7 @@ pub(crate) trait ReactorEvent:
     + From<FetcherRequest<FinalitySignature>>
     + From<FetcherRequest<TrieOrChunk>>
     + From<FetcherRequest<BlockExecutionResultsOrChunk>>
-    + From<BlocksAccumulatorRequest>
+    + From<BlockAccumulatorRequest>
     + From<PeerBehaviorAnnouncement>
     + From<StorageRequest>
     + From<TrieAccumulatorRequest>
@@ -87,7 +87,7 @@ impl<REv> ReactorEvent for REv where
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockExecutionResultsOrChunk>>
-        + From<BlocksAccumulatorRequest>
+        + From<BlockAccumulatorRequest>
         + From<PeerBehaviorAnnouncement>
         + From<StorageRequest>
         + From<TrieAccumulatorRequest>
@@ -415,7 +415,7 @@ impl BlockSynchronizer {
                 ),
                 NeedNext::Peers(block_hash) => results.extend(
                     effect_builder
-                        .get_blocks_accumulated_peers(block_hash)
+                        .get_block_accumulated_peers(block_hash)
                         .event(move |maybe_peers| Event::AccumulatedPeers(block_hash, maybe_peers)),
                 ),
             }

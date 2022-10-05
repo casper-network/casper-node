@@ -19,7 +19,7 @@ use crate::{
 };
 
 use crate::{
-    effect::requests::BlocksAccumulatorRequest,
+    effect::requests::BlockAccumulatorRequest,
     types::{BlockHeader, BlockPayload, DeployHash, FinalizedBlock},
 };
 use block_acceptor::BlockAcceptor;
@@ -390,7 +390,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(BlocksAccumulatorRequest::GetPeersForBlock {
+            Event::Request(BlockAccumulatorRequest::GetPeersForBlock {
                 block_hash,
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),

@@ -148,7 +148,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::requests::{BlockSynchronizerRequest, BlocksAccumulatorRequest},
+    effect::requests::{BlockAccumulatorRequest, BlockSynchronizerRequest},
     reactor::{EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys,
@@ -162,7 +162,7 @@ use crate::{
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlocksAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement, UpgradeWatcherAnnouncement,
@@ -847,29 +847,29 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that the blocks accumulator has received and stored a new block.
+    /// Announces that the block accumulator has received and stored a new block.
     pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
     where
-        REv: From<BlocksAccumulatorAnnouncement>,
+        REv: From<BlockAccumulatorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlocksAccumulatorAnnouncement::AcceptedNewBlock { block },
+                BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
                 QueueKind::Regular,
             )
             .await;
     }
 
-    /// Announces that the blocks accumulator has received and stored a new finality signature.
+    /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
         finality_signature: FinalitySignature,
     ) where
-        REv: From<BlocksAccumulatorAnnouncement>,
+        REv: From<BlockAccumulatorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlocksAccumulatorAnnouncement::AcceptedNewFinalitySignature {
+                BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
                     finality_signature: Box::new(finality_signature),
                 },
                 QueueKind::Regular,
@@ -2448,16 +2448,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets peers for a given block from the blocks accumulator.
-    pub(crate) async fn get_blocks_accumulated_peers(
+    /// Gets peers for a given block from the block accumulator.
+    pub(crate) async fn get_block_accumulated_peers(
         self,
         block_hash: BlockHash,
     ) -> Option<Vec<NodeId>>
     where
-        REv: From<BlocksAccumulatorRequest>,
+        REv: From<BlockAccumulatorRequest>,
     {
         self.make_request(
-            |responder| BlocksAccumulatorRequest::GetPeersForBlock {
+            |responder| BlockAccumulatorRequest::GetPeersForBlock {
                 block_hash,
                 responder,
             },
