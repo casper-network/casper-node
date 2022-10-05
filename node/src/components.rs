@@ -52,7 +52,6 @@ pub(crate) mod block_validator;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
-#[allow(unused)] // TODO
 pub(crate) mod deploy_buffer;
 pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;

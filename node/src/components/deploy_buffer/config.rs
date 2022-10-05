@@ -19,9 +19,10 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    pub(crate) fn deploy_delay(&self) -> TimeDiff {
-        self.deploy_delay
-    }
+    // todo! - use this
+    // pub(crate) fn deploy_delay(&self) -> TimeDiff {
+    //     self.deploy_delay
+    // }
 
     pub(crate) fn expiry_check_interval(&self) -> TimeDiff {
         self.expiry_check_interval

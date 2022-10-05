@@ -1790,6 +1790,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Announces that a block has been proposed.
+    pub(crate) async fn announce_proposed_block(self, proposed_block: ProposedBlock<ClContext>)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ConsensusAnnouncement::Proposed(Box::new(proposed_block)),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Announces that a block has been finalized.
     pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
     where

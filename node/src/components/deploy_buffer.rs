@@ -23,7 +23,7 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Block, Deploy, DeployHash, DeployHashWithApprovals, FinalizedBlock,
+        Deploy, DeployHash, DeployHashWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };
@@ -149,43 +149,18 @@ impl DeployBuffer {
         }
     }
 
-    fn register_block(&mut self, block: &Block) {
-        self.interment(
-            block.height(),
-            block.timestamp(),
-            block
-                .deploy_hashes()
-                .iter()
-                .chain(block.transfer_hashes())
-                .copied(),
-        );
-    }
-
     fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
-        self.interment(
-            finalized_block.height(),
-            finalized_block.timestamp(),
-            finalized_block
-                .deploy_hashes()
-                .iter()
-                .chain(finalized_block.transfer_hashes())
-                .copied(),
-        );
-    }
-
-    fn interment(
-        &mut self,
-        block_height: u64,
-        block_time: Timestamp,
-        combined_deploy_hashes: impl Iterator<Item = DeployHash>,
-    ) {
-        self.chain_index.insert(block_height, block_time);
+        self.chain_index
+            .insert(finalized_block.height(), finalized_block.timestamp());
         // all deploys in the finalized block must not be included in future proposals
-        self.dead.extend(combined_deploy_hashes);
+        self.dead
+            .extend(finalized_block.deploy_hashes().iter().copied());
+        self.dead
+            .extend(finalized_block.transfer_hashes().iter().copied());
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
-            .partition(|(timestamp, _)| *timestamp > block_time);
+            .partition(|(timestamp, _)| *timestamp > finalized_block.timestamp());
         self.hold = hold;
     }
 
@@ -309,7 +284,7 @@ where
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Block(block)) => {
-                self.register_block(&*block);
+                self.register_block_finalized(&FinalizedBlock::from(*block));
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::BlockProposed(proposed)) => {

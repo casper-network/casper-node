@@ -20,7 +20,10 @@ use casper_types::{
 
 use crate::{
     components::{
-        deploy_acceptor::Error, diagnostics_port::FileSerializer, upgrade_watcher::NextUpgrade,
+        consensus::{ClContext, ProposedBlock},
+        deploy_acceptor::Error,
+        diagnostics_port::FileSerializer,
+        upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     types::{
@@ -235,6 +238,8 @@ impl Display for DeployBufferAnnouncement {
 /// A consensus announcement.
 #[derive(Debug)]
 pub(crate) enum ConsensusAnnouncement {
+    /// A block was proposed.
+    Proposed(Box<ProposedBlock<ClContext>>),
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
     /// A finality signature was created.
@@ -253,6 +258,9 @@ pub(crate) enum ConsensusAnnouncement {
 impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ConsensusAnnouncement::Proposed(block) => {
+                write!(formatter, "proposed block payload {}", block)
+            }
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized block payload {}", block)
             }

@@ -816,9 +816,16 @@ impl EraSupervisor {
         {
             effects.extend(
                 self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
-                    consensus.resolve_validity(proposed_block, valid, Timestamp::now())
+                    consensus.resolve_validity(proposed_block.clone(), valid, Timestamp::now())
                 }),
             );
+            if valid {
+                effects.extend(
+                    effect_builder
+                        .announce_proposed_block(proposed_block)
+                        .ignore(),
+                );
+            }
         }
         effects
     }

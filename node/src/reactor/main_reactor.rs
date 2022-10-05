@@ -83,8 +83,7 @@ use crate::{
     NodeRng,
 };
 
-use crate::components::block_accumulator;
-use crate::effect::requests::BlockSynchronizerRequest;
+use crate::{components::block_accumulator, effect::requests::BlockSynchronizerRequest};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -545,6 +544,9 @@ impl reactor::Reactor for MainReactor {
                         block_hash: *executed_block.block().hash(),
                         height: executed_block.block().height(),
                     });
+                let deploy_buffer_event = MainEvent::DeployBuffer(deploy_buffer::Event::Block(
+                    Box::new(executed_block.block().clone()),
+                ));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects.extend(self.dispatch_event(
@@ -553,6 +555,7 @@ impl reactor::Reactor for MainReactor {
                     reactor_block_added_gossiper_event,
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
+                effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
 
                 effects
             }
@@ -574,6 +577,11 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::ConsensusAnnouncement(consensus_announcement) => {
                 match consensus_announcement {
+                    ConsensusAnnouncement::Proposed(block) => {
+                        let reactor_event =
+                            MainEvent::DeployBuffer(deploy_buffer::Event::BlockProposed(block));
+                        self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
                     ConsensusAnnouncement::Finalized(block) => {
                         let reactor_event =
                             MainEvent::DeployBuffer(deploy_buffer::Event::BlockFinalized(block));
