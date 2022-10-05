@@ -46,7 +46,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, NodeId},
+    types::{BlockHash, BlockHeader, BlockPayload, NodeId},
     NodeRng,
 };
 
@@ -122,13 +122,6 @@ pub(crate) enum Event {
         faulty_num: usize,
         delay: Duration,
     },
-    /// Event raised when a new era should be created because a new switch block is available.
-    CreateRequiredEras {
-        /// The most recent switch block headers
-        switch_blocks: Vec<BlockHeader>,
-    },
-    /// Got the result of checking for an upgrade activation point.
-    GotUpgradeActivationPoint(ActivationPoint),
     /// Dump state for debugging purposes.
     #[from]
     DumpState(DumpConsensusStateRequest),
@@ -224,14 +217,6 @@ impl Display for Event {
                 "Deactivate old {} unless additional faults are observed; faults so far: {}",
                 era_id, faulty_num
             ),
-            Event::CreateRequiredEras { switch_blocks } => write!(
-                f,
-                "New eras should be created; switch blocks: {:?}",
-                switch_blocks
-            ),
-            Event::GotUpgradeActivationPoint(activation_point) => {
-                write!(f, "new upgrade activation point: {:?}", activation_point)
-            }
             Event::DumpState(req) => Display::fmt(req, f),
         }
     }
@@ -310,12 +295,6 @@ where
                 faulty_num,
                 delay,
             } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
-            Event::CreateRequiredEras { switch_blocks } => {
-                self.create_required_eras(effect_builder, rng, &switch_blocks)
-            }
-            Event::GotUpgradeActivationPoint(activation_point) => {
-                self.got_upgrade_activation_point(activation_point)
-            }
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => self.status(responder),
             Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 let validator_changes = self.get_validator_changes();

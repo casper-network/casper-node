@@ -20,6 +20,7 @@ use crate::{
         upgrade_watcher,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
+    reactor,
     reactor::main_reactor::{
         utils::{enqueue_shutdown, initialize_component},
         MainEvent, MainReactor,
@@ -265,14 +266,22 @@ impl MainReactor {
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
                         // to run, switch to validate mode
-                        // TODO: is storage the right place to get this from
-                        if let Some(from_height) = self.storage.read_highest_block_height() {
-                            if self.deploy_buffer.have_full_ttl_of_deploys(from_height)
-                                && self.consensus.is_active_validator()
-                            {
-                                // TODO: push era_supervisor event onto queue
+                        match self.should_we_validate(effect_builder, rng) {
+                            Ok(Some(mut effects)) => {
                                 self.state = ReactorState::Validate;
                                 self.block_synchronizer.turn_off();
+                                effects.extend(
+                                    effect_builder
+                                        .immediately()
+                                        .event(|_| MainEvent::ReactorCrank),
+                                );
+                                return effects;
+                            }
+                            Ok(None) => {}
+                            Err(error_msg) => {
+                                return effect_builder
+                                    .immediately()
+                                    .event(move |_| MainEvent::Shutdown(error_msg))
                             }
                         }
                         match self.enqueue_executable_block(effect_builder) {
@@ -299,21 +308,32 @@ impl MainReactor {
                 // we have a block with sufficient finality sigs to start gossiping
                 // enqueue it (add event or direct gossiper call)
                 // }
-                if self.consensus.is_active_validator() == false {
-                    // either consensus doesn't have enough protocol data
-                    // or this node has been evicted or has naturally
-                    // fallen out of the validator set in a new era.
-                    // regardless, go back to keep up mode;
-                    // the keep up logic will handle putting them back
-                    // to catch up if necessary, or back to validate
-                    // if they become able to validate again
-                    self.state = ReactorState::KeepUp;
-                    self.block_synchronizer.turn_on();
+                match self.should_we_validate(effect_builder, rng) {
+                    Ok(Some(mut effects)) => {
+                        effects.extend(
+                            effect_builder
+                                .immediately()
+                                .event(|_| MainEvent::ReactorCrank),
+                        );
+                        return effects;
+                    }
+                    Ok(None) => {
+                        // either consensus doesn't have enough protocol data
+                        // or this node has been evicted or has naturally
+                        // fallen out of the validator set in a new era.
+                        // regardless, go back to keep up mode;
+                        // the keep up logic will handle putting them back
+                        // to catch up if necessary, or back to validate
+                        // if they become able to validate again
+                        self.state = ReactorState::KeepUp;
+                        self.block_synchronizer.turn_on();
+                    }
+                    Err(error_msg) => {
+                        return effect_builder
+                            .immediately()
+                            .event(move |_| MainEvent::Shutdown(error_msg))
+                    }
                 }
-                // TODO: it is unclear to me if era_supervisor should be cranked here
-                // (either imperatively or via putting something on the event-q)
-                // or if event-q would naturally handle it based upon consensus
-                // messages...must consult with Andreas / Bart
 
                 if self.consensus.last_progress().elapsed() <= self.idle_tolerances {
                     // TODO: Reset counter?
@@ -544,7 +564,50 @@ impl MainReactor {
         CatchUpInstruction::CaughtUp
     }
 
-    pub(crate) fn commit_genesis(
+    fn should_we_validate(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+    ) -> Result<Option<Effects<MainEvent>>, String> {
+        let highest_switch_block_header = match self.recent_switch_block_headers.last() {
+            None => return Ok(None),
+            Some(header) => header,
+        };
+
+        if !self
+            .deploy_buffer
+            .have_full_ttl_of_deploys(highest_switch_block_header.height())
+        {
+            return Ok(None);
+        }
+
+        if self
+            .upgrade_watcher
+            .should_upgrade_after(highest_switch_block_header.era_id())
+        {
+            return Ok(None);
+        }
+
+        let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
+            None => {
+                return Err(format!(
+                    "highest switch block has no era end: {}",
+                    highest_switch_block_header
+                ))
+            }
+            Some(weights) => weights,
+        };
+        if !highest_era_weights.contains_key(self.consensus.public_key()) {
+            return Ok(None);
+        }
+
+        Ok(self
+            .consensus
+            .create_required_eras(effect_builder, rng, &self.recent_switch_block_headers)
+            .map(|effects| reactor::wrap_effects(MainEvent::Consensus, effects)))
+    }
+
+    fn commit_genesis(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {

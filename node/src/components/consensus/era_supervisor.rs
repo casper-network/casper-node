@@ -48,12 +48,12 @@ use crate::{
     effect::{
         announcements::ControlAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, NodeId,
+        BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployOrTransferHash,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, NodeId,
     },
     NodeRng,
 };
@@ -124,10 +124,6 @@ pub struct EraSupervisor {
     metrics: Metrics,
     /// The path to the folder where unit files will be stored.
     unit_files_folder: PathBuf,
-    /// The next upgrade activation point. When the era immediately before the activation point is
-    /// deactivated, the era supervisor indicates that the node should stop running to allow an
-    /// upgrade.
-    next_upgrade_activation_point: Option<ActivationPoint>,
     last_progress: Timestamp,
 }
 
@@ -147,7 +143,6 @@ impl EraSupervisor {
         public_signing_key: PublicKey,
         config: Config,
         chainspec: Arc<Chainspec>,
-        next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor>,
     ) -> Result<Self, Error> {
@@ -165,7 +160,6 @@ impl EraSupervisor {
             next_block_height: 0,
             metrics,
             unit_files_folder,
-            next_upgrade_activation_point,
             next_executed_height: 0,
             last_progress: Timestamp::now(),
         };
@@ -188,9 +182,16 @@ impl EraSupervisor {
         self.open_eras.keys().last().copied()
     }
 
-    /// Returns the earliest (inclusive) and latest (exclusive) era IDs of switch blocks required
-    /// to initialize the required eras up to `current_era`.
-    fn get_switch_block_era_range(&self, current_era: EraId) -> (EraId, EraId) {
+    pub(crate) fn create_required_eras<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        recent_switch_block_headers: &[BlockHeader],
+    ) -> Option<Effects<Event>> {
+        let highest_switch_block_header = recent_switch_block_headers.last()?;
+
+        let new_era_id = highest_switch_block_header.era_id().successor();
+
         // We need to initialize current_era and (evidence-only) current_era - 1.
         // To initialize an era, all switch blocks between its booking block and its key block are
         // required. The booking block for era N is in N - auction_delay - 1, and the key block in
@@ -201,23 +202,18 @@ impl EraSupervisor {
         // Example: If auction_delay is 1, to initialize era N we need the switch blocks from era N
         // and N - 1. If current_era is 10, we will initialize eras 10 and 9. So we need the switch
         // blocks from eras 9, 8, and 7.
-        let earliest_open_era = self.chainspec.earliest_relevant_era(current_era);
+        let earliest_open_era = self.chainspec.earliest_relevant_era(new_era_id);
         let earliest_era = self
             .chainspec
             .earliest_switch_block_needed(earliest_open_era);
+        debug_assert!(earliest_era <= new_era_id);
 
-        debug_assert!(earliest_era <= current_era);
+        let earliest_index = recent_switch_block_headers
+            .iter()
+            .position(|block_header| block_header.era_id() == earliest_era)?;
+        let relevant_switch_block_headers = &recent_switch_block_headers[earliest_index..];
 
-        (earliest_era, current_era)
-    }
-
-    pub(super) fn create_required_eras<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
-        switch_blocks: &[BlockHeader],
-    ) -> Effects<Event> {
-        // The create_new_era method initializes the era that the slice's last block is the key
+        // We initialize the era that `relevant_switch_block_headers` last block is the key
         // block for. We want to initialize the two latest eras, so we have to pass in the whole
         // slice for the current era, and omit one element for the other one. We never initialize
         // the activation era or an earlier era, however.
@@ -226,15 +222,18 @@ impl EraSupervisor {
         // 8 and 9 (to initialize 10) and then 7 and 8 (for era 9).
         // (We don't truncate the slice at the start since unneeded blocks are ignored.)
         let mut effects = Effects::new();
-        let from = switch_blocks
+        let from = relevant_switch_block_headers
             .len()
             .saturating_sub(PAST_EVIDENCE_ERAS as usize)
             .max(1);
-        for i in (from..=switch_blocks.len()).rev() {
-            effects.extend(self.create_new_era_effects(effect_builder, rng, &switch_blocks[..i]));
+        for i in (from..=relevant_switch_block_headers.len()).rev() {
+            effects.extend(self.create_new_era_effects(
+                effect_builder,
+                rng,
+                &relevant_switch_block_headers[..i],
+            ));
         }
-
-        effects
+        Some(effects)
     }
 
     /// Returns a list of status changes of active validators.
@@ -703,8 +702,6 @@ impl EraSupervisor {
                 .announce_created_finality_signature(FinalitySignature::create(
                     block_header.block_hash(),
                     era_id,
-                    // approvals_checksum,
-                    // execution_results_checksum,
                     &our_secret_key,
                     our_public_key,
                 ))
@@ -722,7 +719,7 @@ impl EraSupervisor {
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
         }
-        if let Some(validator_weights) = block_header.next_era_validator_weights() {
+        if block_header.next_era_validator_weights().is_some() {
             if let Some(era) = self.open_eras.get_mut(&era_id) {
                 // This was the era's last block. Schedule deactivating this era.
                 let delay = Timestamp::now()
@@ -735,25 +732,6 @@ impl EraSupervisor {
                     delay,
                 };
                 effects.extend(effect_builder.set_timeout(delay).event(deactivate_era));
-            }
-            // If it's not the last block before an upgrade, and if we're a validator in the next
-            // era, initialize it.
-            if !self.should_upgrade_after(&era_id)
-                && validator_weights.contains_key(&self.public_signing_key)
-            {
-                let new_era_id = era_id.successor();
-                let (earliest_era, latest_era) = self.get_switch_block_era_range(new_era_id);
-
-                // TODO: maybe don't request the switch blocks that are only needed for eras that
-                // already exist? (shouldn't be much of a problem, though)
-                let effect = get_switch_blocks_if_enough_data_for_validating(
-                    effect_builder,
-                    block_header,
-                    earliest_era,
-                    latest_era,
-                )
-                .map_some(move |switch_blocks| Event::CreateRequiredEras { switch_blocks });
-                effects.extend(effect);
             }
         }
         effects
@@ -1104,16 +1082,6 @@ impl EraSupervisor {
         }
     }
 
-    /// Handles registering an upgrade activation point.
-    pub(super) fn got_upgrade_activation_point(
-        &mut self,
-        activation_point: ActivationPoint,
-    ) -> Effects<Event> {
-        debug!("got {}", activation_point);
-        self.next_upgrade_activation_point = Some(activation_point);
-        Effects::new()
-    }
-
     pub(super) fn status(
         &self,
         responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
@@ -1137,64 +1105,14 @@ impl EraSupervisor {
             .ignore()
     }
 
-    pub(super) fn should_upgrade_after(&self, era_id: &EraId) -> bool {
-        match self.next_upgrade_activation_point {
-            None => false,
-            Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
-        }
-    }
-
     /// Get a reference to the era supervisor's open eras.
     pub(crate) fn open_eras(&self) -> &BTreeMap<EraId, Era> {
         &self.open_eras
     }
-}
 
-#[cfg(test)]
-impl EraSupervisor {
-    /// Returns this node's validator key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key
     }
-}
-
-/// Returns all switch blocks from eras between `from` (inclusive) and `to` (exclusive).
-// TODO: Refactor so that we don't need an async function for that?
-async fn get_switch_blocks_if_enough_data_for_validating<REv>(
-    effect_builder: EffectBuilder<REv>,
-    switch_block_header: BlockHeader,
-    from: EraId,
-    to: EraId,
-) -> Option<Vec<BlockHeader>>
-where
-    REv: From<StorageRequest>,
-{
-    // Check if storage has all the deploys necessary for replay attack protection.
-    if !effect_builder
-        .has_data_needed_for_proposing_blocks(switch_block_header)
-        .await
-    {
-        return None;
-    }
-    let mut switch_blocks = Vec::new();
-    for switch_block_era_id in (from.value()..to.value()).map(EraId::from) {
-        match effect_builder
-            .get_switch_block_header_at_era_id_from_storage(switch_block_era_id)
-            .await
-        {
-            Some(switch_block) => switch_blocks.push(switch_block),
-            None => {
-                info!(
-                    ?from,
-                    ?to,
-                    ?switch_block_era_id,
-                    "switch block header era must exist to initialize era"
-                );
-                return None;
-            }
-        }
-    }
-    Some(switch_blocks)
 }
 
 async fn get_deploys_or_transfers<REv>(

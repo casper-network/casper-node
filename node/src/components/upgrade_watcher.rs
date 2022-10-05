@@ -28,7 +28,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     file_utils::{self, ReadFileError},
-    ProtocolVersion,
+    EraId, ProtocolVersion,
 };
 
 #[cfg(test)]
@@ -183,6 +183,12 @@ impl UpgradeWatcher {
         self.next_upgrade
             .as_ref()
             .map(|next_upgrade| next_upgrade.activation_point())
+    }
+
+    pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {
+        self.next_upgrade.as_ref().map_or(false, |upgrade| {
+            upgrade.activation_point.should_upgrade(&era_id)
+        })
     }
 
     fn new_with_chainspec_and_path<P: AsRef<Path>>(

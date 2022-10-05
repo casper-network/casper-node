@@ -83,7 +83,10 @@ use crate::{
     NodeRng,
 };
 
-use crate::{components::block_accumulator, effect::requests::BlockSynchronizerRequest};
+use crate::{
+    components::{block_accumulator, consensus::ChainspecConsensusExt},
+    effect::requests::BlockSynchronizerRequest,
+};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -145,6 +148,7 @@ pub(crate) struct MainReactor {
     max_attempts: usize,
     attempts: usize,
     idle_tolerances: TimeDiff,
+    recent_switch_block_headers: Vec<BlockHeader>,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -261,19 +265,18 @@ impl reactor::Reactor for MainReactor {
         let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
 
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
-        let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
         let consensus = EraSupervisor::new(
             storage.root_path(),
             our_secret_key,
             our_public_key,
             config.consensus,
             chainspec.clone(),
-            next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
         )?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
         let linear_chain = LinearChainComponent::new(
             registry,
             protocol_version,
@@ -291,6 +294,9 @@ impl reactor::Reactor for MainReactor {
 
         let diagnostics_port =
             DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
+
+        let era_count = chainspec.number_of_past_switch_blocks_needed();
+        let recent_switch_block_headers = storage.read_highest_switch_block_headers(era_count)?;
 
         let reactor = MainReactor {
             chainspec,
@@ -325,6 +331,7 @@ impl reactor::Reactor for MainReactor {
             idle_tolerances: TimeDiff::from_seconds(1200),
             trusted_hash,
             validator_matrix,
+            recent_switch_block_headers,
         };
 
         let effects = effect_builder
@@ -396,10 +403,6 @@ impl reactor::Reactor for MainReactor {
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                let reactor_event = MainEvent::Consensus(
-                    consensus::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 let reactor_event = MainEvent::LinearChain(
                     linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
                 );

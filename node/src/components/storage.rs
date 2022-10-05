@@ -1487,6 +1487,33 @@ impl Storage {
         Ok(true)
     }
 
+    pub(crate) fn read_highest_switch_block_headers(
+        &self,
+        count: u64,
+    ) -> Result<Vec<BlockHeader>, FatalStorageError> {
+        let mut result = vec![];
+        let mut txn = self.env.begin_ro_txn()?;
+        let last_era = self
+            .switch_block_era_id_index
+            .keys()
+            .last()
+            .copied()
+            .unwrap_or(EraId::new(0));
+        for era_id in (0..=last_era.value())
+            .into_iter()
+            .rev()
+            .take(count as usize)
+            .map(EraId::new)
+        {
+            match self.get_switch_block_header_by_era_id(&mut txn, era_id)? {
+                None => break,
+                Some(header) => result.push(header),
+            }
+        }
+        result.reverse();
+        Ok(result)
+    }
+
     /// Get the switch block header for a specified [`EraID`].
     #[allow(unused)] // TODO: Remove?
     pub(crate) fn read_switch_block_header_by_era_id(

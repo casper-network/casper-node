@@ -61,6 +61,9 @@ pub trait ChainspecConsensusExt {
     /// N that will usually be N - A - 1, where A is the auction delay, except that switch block
     /// from before the most recent activation point are never used.
     fn earliest_switch_block_needed(&self, era_id: EraId) -> EraId;
+
+    /// Returns the number of switch blocks needed for initializing an era.
+    fn number_of_past_switch_blocks_needed(&self) -> u64;
 }
 
 impl ChainspecConsensusExt for Chainspec {
@@ -80,5 +83,12 @@ impl ChainspecConsensusExt for Chainspec {
                 .saturating_sub(1)
                 .saturating_sub(self.core_config.auction_delay),
         )
+    }
+
+    fn number_of_past_switch_blocks_needed(&self) -> u64 {
+        self.core_config
+            .auction_delay
+            .saturating_add(PAST_EVIDENCE_ERAS)
+            .saturating_add(1)
     }
 }
