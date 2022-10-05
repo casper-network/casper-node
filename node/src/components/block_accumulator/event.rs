@@ -5,14 +5,14 @@ use derive_more::From;
 use casper_types::EraId;
 
 use crate::{
-    effect::requests::BlocksAccumulatorRequest,
+    effect::requests::BlockAccumulatorRequest,
     types::{ExecutedBlock, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
 pub(crate) enum Event {
     #[from]
-    Request(BlocksAccumulatorRequest),
+    Request(BlockAccumulatorRequest),
     ReceivedBlock {
         block: Box<ExecutedBlock>,
         sender: NodeId,
@@ -29,15 +29,12 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(BlocksAccumulatorRequest::GetPeersForBlock { block_hash, .. }) => {
+            Event::Request(BlockAccumulatorRequest::GetPeersForBlock { block_hash, .. }) => {
                 write!(
                     f,
-                    "blocks accumulator peers request for block: {}",
+                    "block accumulator peers request for block: {}",
                     block_hash
                 )
-            }
-            Event::Request(_) => {
-                write!(f, "blocks accumulator request from effect builder")
             }
             Event::ReceivedBlock { block, sender } => {
                 write!(f, "received {} from {}", block, sender)

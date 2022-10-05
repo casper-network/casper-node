@@ -1,13 +1,10 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::{Display, Formatter},
-    hash::Hash,
 };
 
 use datasize::DataSize;
 use either::Either;
-use futures::future::err;
-use itertools::Itertools;
 use tracing::debug;
 
 use casper_hashing::Digest;
@@ -407,7 +404,6 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveBlockHeader(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Fatal => {
                 return Err(Error::InvalidAttemptToApplyExecutionResultsChecksum);
@@ -485,7 +481,6 @@ impl BlockAcquisitionState {
                 deploys.clone(),
             ),
             BlockAcquisitionState::HaveGlobalState(..)
-            | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::Initialized(..)

@@ -10,15 +10,10 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    iter,
-    time::Duration,
-};
+use std::{collections::BTreeMap, time::Duration};
 
 use datasize::DataSize;
 use either::Either;
-use num_rational::Ratio;
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::core::engine_state;
@@ -27,14 +22,13 @@ use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
-        fetcher,
         fetcher::{Error, FetchResult, FetchedData},
-        Component,
+        Component, ComponentStatus, InitializedComponent,
     },
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
-            BlockSynchronizerRequest, BlocksAccumulatorRequest, ContractRuntimeRequest,
+            BlockAccumulatorRequest, BlockSynchronizerRequest, ContractRuntimeRequest,
             FetcherRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, Effects,
@@ -42,9 +36,9 @@ use crate::{
     reactor,
     storage::StorageRequest,
     types::{
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, Deploy, DeployHash, ExecutedBlock, FinalitySignature, FinalitySignatureId,
-        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Deploy,
+        ExecutedBlock, FinalitySignature, FinalitySignatureId, Item, LegacyDeploy, NodeId,
+        SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -68,7 +62,7 @@ pub(crate) trait ReactorEvent:
     + From<FetcherRequest<FinalitySignature>>
     + From<FetcherRequest<TrieOrChunk>>
     + From<FetcherRequest<BlockExecutionResultsOrChunk>>
-    + From<BlocksAccumulatorRequest>
+    + From<BlockAccumulatorRequest>
     + From<PeerBehaviorAnnouncement>
     + From<StorageRequest>
     + From<TrieAccumulatorRequest>
@@ -87,7 +81,7 @@ impl<REv> ReactorEvent for REv where
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockExecutionResultsOrChunk>>
-        + From<BlocksAccumulatorRequest>
+        + From<BlockAccumulatorRequest>
         + From<PeerBehaviorAnnouncement>
         + From<StorageRequest>
         + From<TrieAccumulatorRequest>
@@ -100,6 +94,7 @@ impl<REv> ReactorEvent for REv where
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
+    status: ComponentStatus,
     timeout: TimeDiff,
     forward: Option<BlockBuilder>,
     historical: Option<BlockBuilder>,
@@ -112,6 +107,7 @@ pub(crate) struct BlockSynchronizer {
 impl BlockSynchronizer {
     pub(crate) fn new(config: Config) -> Self {
         BlockSynchronizer {
+            status: ComponentStatus::Uninitialized,
             timeout: config.timeout(),
             forward: None,
             historical: None,
@@ -277,7 +273,7 @@ impl BlockSynchronizer {
         }
     }
 
-    // NOT WIRED OR EVENTED
+    // WIRED AND EVENTED
     fn dishonest_peers(&self) -> Vec<NodeId> {
         let mut ret = vec![];
         if let Some(builder) = &self.forward {
@@ -415,7 +411,7 @@ impl BlockSynchronizer {
                 ),
                 NeedNext::Peers(block_hash) => results.extend(
                     effect_builder
-                        .get_blocks_accumulated_peers(block_hash)
+                        .get_block_accumulated_peers(block_hash)
                         .event(move |maybe_peers| Event::AccumulatedPeers(block_hash, maybe_peers)),
                 ),
             }
@@ -725,6 +721,15 @@ impl BlockSynchronizer {
 
 const NEED_NEXT_INTERVAL_MILLIS: u64 = 30;
 
+impl<REv> InitializedComponent<REv> for BlockSynchronizer
+where
+    REv: ReactorEvent,
+{
+    fn status(&self) -> ComponentStatus {
+        self.status.clone()
+    }
+}
+
 impl<REv> Component<REv> for BlockSynchronizer
 where
     REv: ReactorEvent,
@@ -743,33 +748,78 @@ where
         }
 
         // MISSING EVENT: ANNOUNCEMENT OF BAD PEERS
-        match event {
-            Event::Request(BlockSynchronizerRequest::NeedNext) => {
+        match (&self.status, event) {
+            (ComponentStatus::Fatal(msg), _) => {
+                error!(
+                    msg,
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
+            (ComponentStatus::Uninitialized, Event::Initialize) => {
+                self.status = ComponentStatus::Initialized;
+                // start dishonest peer management on initialization
+                effect_builder
+                    .set_timeout(Duration::from_secs(10))
+                    .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
+            }
+            (ComponentStatus::Uninitialized, _) => {
+                warn!("should not handle this event when component is uninitialized");
+                Effects::new()
+            }
+            (ComponentStatus::Initialized, Event::Initialize) => {
+                // noop
+                Effects::new()
+            }
+            (ComponentStatus::Initialized, Event::Request(BlockSynchronizerRequest::NeedNext)) => {
                 self.need_next(effect_builder, rng)
+            }
+            (
+                ComponentStatus::Initialized,
+                Event::Request(BlockSynchronizerRequest::DishonestPeers),
+            ) => {
+                let mut effects: Effects<Self::Event> = self
+                    .dishonest_peers()
+                    .into_iter()
+                    .flat_map(|node_id| {
+                        effect_builder
+                            .announce_disconnect_from_peer(node_id)
+                            .ignore()
+                    })
+                    .collect();
+                effects.extend(
+                    effect_builder
+                        .set_timeout(Duration::from_secs(10))
+                        .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers)),
+                );
+                effects
             }
             // triggered indirectly via need next effects, and they perpetuate
             // another need next to keep it going
-            Event::BlockHeaderFetched(result) => {
+            (ComponentStatus::Initialized, Event::BlockHeaderFetched(result)) => {
                 let effects = self.block_header_fetched(result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::BlockAddedFetched(result) => {
+            (ComponentStatus::Initialized, Event::BlockAddedFetched(result)) => {
                 let effects = self.block_added_fetched(result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::FinalitySignatureFetched(result) => {
+            (ComponentStatus::Initialized, Event::FinalitySignatureFetched(result)) => {
                 let effects = self.finality_signature_fetched(result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::GlobalStateSynced { block_hash, result } => {
+            (ComponentStatus::Initialized, Event::GlobalStateSynced { block_hash, result }) => {
                 let effects = self.global_state_synced(block_hash, result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::GotExecutionResultsRootHash { block_hash, result } => {
+            (
+                ComponentStatus::Initialized,
+                Event::GotExecutionResultsRootHash { block_hash, result },
+            ) => {
                 let effects = self.got_execution_results_root_hash(block_hash, result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::DeployFetched { block_hash, result } => {
+            (ComponentStatus::Initialized, Event::DeployFetched { block_hash, result }) => {
                 let effects = match result {
                     Either::Left(Ok(fetched_legacy_deploy)) => {
                         self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
@@ -788,45 +838,57 @@ where
                 };
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::ExecutionResultsFetched { block_hash, result } => {
+            (
+                ComponentStatus::Initialized,
+                Event::ExecutionResultsFetched { block_hash, result },
+            ) => {
                 let effects = self.execution_results_fetched(effect_builder, block_hash, result);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::ExecutionResultsStored(block_hash) => {
+            (ComponentStatus::Initialized, Event::ExecutionResultsStored(block_hash)) => {
                 let effects = self.execution_results_stored_notification(block_hash);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::AccumulatedPeers(block_hash, Some(peers)) => {
+            (ComponentStatus::Initialized, Event::AccumulatedPeers(block_hash, Some(peers))) => {
                 let effects = self.register_peers(block_hash, peers);
                 self.hook_need_next(effect_builder, effects)
             }
-            Event::AccumulatedPeers(_, None) => self.hook_need_next(effect_builder, Effects::new()),
+            (ComponentStatus::Initialized, Event::AccumulatedPeers(_, None)) => {
+                self.hook_need_next(effect_builder, Effects::new())
+            }
             // this is an explicit ask via need_next for validators if they are
             // missing for a given era
-            Event::MaybeEraValidators(era_id, Some(era_validators)) => {
+            (
+                ComponentStatus::Initialized,
+                Event::MaybeEraValidators(era_id, Some(era_validators)),
+            ) => {
                 self.register_needed_era_validators(era_id, era_validators);
                 self.hook_need_next(effect_builder, Effects::new())
             }
-            Event::MaybeEraValidators(_, None) => {
+            (ComponentStatus::Initialized, Event::MaybeEraValidators(_, None)) => {
                 self.hook_need_next(effect_builder, Effects::new())
             }
-
             // CURRENTLY NOT TRIGGERED -- should get this from step announcement
-            Event::EraValidators {
-                era_validator_weights: validators,
-            } => {
+            (
+                ComponentStatus::Initialized,
+                Event::EraValidators {
+                    era_validator_weights: validators,
+                },
+            ) => {
                 self.validator_matrix
                     .register_era_validator_weights(validators);
                 Effects::new()
             }
-
-            Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
-                Event::GlobalStateSynchronizer,
-                self.global_sync.handle_event(effect_builder, rng, event),
-            ),
-
+            (ComponentStatus::Initialized, Event::GlobalStateSynchronizer(event)) => {
+                reactor::wrap_effects(
+                    Event::GlobalStateSynchronizer,
+                    self.global_sync.handle_event(effect_builder, rng, event),
+                )
+            }
             // TRIGGERED VIA ANNOUNCEMENT
-            Event::DisconnectFromPeer(node_id) => self.disconnect_from_peer(node_id),
+            (ComponentStatus::Initialized, Event::DisconnectFromPeer(node_id)) => {
+                self.disconnect_from_peer(node_id)
+            }
         }
     }
 }

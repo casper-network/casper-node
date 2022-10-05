@@ -1399,26 +1399,34 @@ impl Display for SyncLeapRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) enum BlocksAccumulatorRequest {
+pub(crate) enum BlockAccumulatorRequest {
     GetPeersForBlock {
         block_hash: BlockHash,
         responder: Responder<Option<Vec<NodeId>>>,
     },
 }
 
-impl Display for BlocksAccumulatorRequest {
+impl Display for BlockAccumulatorRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "blocks accumulator request")
+        write!(f, "block accumulator request")
     }
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
+    DishonestPeers,
 }
 
 impl Display for BlockSynchronizerRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block synchronizer request")
+        match self {
+            BlockSynchronizerRequest::NeedNext => {
+                write!(f, "block synchronizer request: need next")
+            }
+            BlockSynchronizerRequest::DishonestPeers => {
+                write!(f, "block synchronizer request: dishonest peers")
+            }
+        }
     }
 }

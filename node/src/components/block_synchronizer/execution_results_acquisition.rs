@@ -1,30 +1,17 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    collections::HashMap,
+    fmt::{Debug, Display, Formatter},
 };
 
 use datasize::DataSize;
-use derive_more::From;
-use serde::Serialize;
-use tracing::{debug, error, warn};
+use tracing::error;
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::bytesrepr::{self};
 
-use crate::{
-    components::{
-        fetcher::{FetchResult, FetchedData},
-        Component,
-    },
-    effect::{
-        announcements::PeerBehaviorAnnouncement, requests::FetcherRequest, EffectBuilder,
-        EffectExt, Effects, Responder,
-    },
-    types::{
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, DeployHash, Item,
-        NodeId, ValueOrChunk,
-    },
-    NodeRng,
+use crate::types::{
+    BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, DeployHash,
+    ValueOrChunk,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
@@ -245,7 +232,7 @@ impl ExecutionResultsAcquisition {
     }
 
     pub(super) fn apply_block_execution_results_or_chunk(
-        mut self,
+        self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<Self, Error> {
         let (block_hash, value) = match block_execution_results_or_chunk {
@@ -300,10 +287,7 @@ impl ExecutionResultsAcquisition {
         }
     }
 
-    pub(super) fn apply_deploy_hashes(
-        mut self,
-        deploy_hashes: Vec<DeployHash>,
-    ) -> Result<Self, Error> {
+    pub(super) fn apply_deploy_hashes(self, deploy_hashes: Vec<DeployHash>) -> Result<Self, Error> {
         match self {
             ExecutionResultsAcquisition::Unneeded { block_hash, .. }
             | ExecutionResultsAcquisition::Needed { block_hash, .. }

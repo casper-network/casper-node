@@ -404,7 +404,7 @@ impl Display for ContractRuntimeAnnouncement {
 
 /// A `BlockAccumulator` announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlocksAccumulatorAnnouncement {
+pub(crate) enum BlockAccumulatorAnnouncement {
     /// A block which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewBlock { block: Box<Block> },
     /// A finality signature which wasn't previously stored on this node has been accepted and
@@ -415,13 +415,13 @@ pub(crate) enum BlocksAccumulatorAnnouncement {
     },
 }
 
-impl Display for BlocksAccumulatorAnnouncement {
+impl Display for BlockAccumulatorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlocksAccumulatorAnnouncement::AcceptedNewBlock { block } => {
+            BlockAccumulatorAnnouncement::AcceptedNewBlock { block } => {
                 write!(f, "block {} accepted", block.hash())
             }
-            BlocksAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
+            BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
                 write!(f, "finality signature {} accepted", finality_signature)
             }
         }

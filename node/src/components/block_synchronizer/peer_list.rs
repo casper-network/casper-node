@@ -60,7 +60,7 @@ impl PeerList {
     }
 
     pub(super) fn flush_dishonest_peers(&mut self) {
-        self.peer_list.retain(|k, v| *v != PeerQuality::Dishonest);
+        self.peer_list.retain(|_, v| *v != PeerQuality::Dishonest);
         self.latch = Timestamp::now();
     }
 
@@ -138,8 +138,7 @@ impl PeerList {
         self.peer_list
             .iter()
             .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
-            .collect_vec()
-            .len()
+            .count()
             < reliability_goal
     }
 

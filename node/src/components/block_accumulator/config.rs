@@ -6,7 +6,7 @@ use casper_types::TimeDiff;
 const DEFAULT_ATTEMPT_EXECUTION_THRESHOLD: u64 = 3;
 const DEFAULT_DEAD_AIR_INTERVAL_SECS: u32 = 180;
 
-/// Configuration options for fetching.
+/// Configuration options for the block accumulator.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     attempt_execution_threshold: u64,

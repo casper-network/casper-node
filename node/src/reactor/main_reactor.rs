@@ -108,7 +108,7 @@ pub(crate) struct MainReactor {
     // block handling
     linear_chain: LinearChainComponent, // todo! is redundant - remove.
     block_validator: BlockValidator,
-    blocks_accumulator: BlockAccumulator,
+    block_accumulator: BlockAccumulator,
     block_synchronizer: BlockSynchronizer,
 
     // deploy handling
@@ -285,7 +285,7 @@ impl reactor::Reactor for MainReactor {
 
         let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
-        let blocks_accumulator =
+        let block_accumulator =
             BlockAccumulator::new(config.block_accumulator, validator_matrix.clone());
         let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
 
@@ -313,7 +313,7 @@ impl reactor::Reactor for MainReactor {
             consensus,
             block_validator,
             linear_chain,
-            blocks_accumulator,
+            block_accumulator,
             block_synchronizer,
             diagnostics_port,
             metrics,
@@ -618,14 +618,14 @@ impl reactor::Reactor for MainReactor {
                 rng,
                 MainEvent::BlockValidator(block_validator::Event::from(req)),
             ),
-            MainEvent::BlocksAccumulator(event) => reactor::wrap_effects(
-                MainEvent::BlocksAccumulator,
-                self.blocks_accumulator
+            MainEvent::BlockAccumulator(event) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlocksAccumulatorRequest(request) => reactor::wrap_effects(
-                MainEvent::BlocksAccumulator,
-                self.blocks_accumulator
+            MainEvent::BlockAccumulatorRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator
                     .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::BlockSynchronizer(event) => reactor::wrap_effects(

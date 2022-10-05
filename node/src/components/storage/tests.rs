@@ -1445,7 +1445,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 fn should_get_sync_leap() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
-    let requested_block_hash = blocks.get(5).unwrap().header().hash();
+    let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
     let allowed_era_diff = 100;
     let sync_leap_result = storage
         .get_sync_leap(requested_block_hash, allowed_era_diff)
@@ -1473,7 +1473,7 @@ fn should_get_sync_leap() {
 fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
-    let requested_block_hash = blocks.get(11).unwrap().header().hash();
+    let requested_block_hash = blocks.get(11).unwrap().header().block_hash();
     let allowed_era_diff = 100;
     let sync_leap_result = storage
         .get_sync_leap(requested_block_hash, allowed_era_diff)
@@ -1498,7 +1498,7 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
 fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], true);
 
-    let requested_block_hash = blocks.get(12).unwrap().header().hash();
+    let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
     let allowed_era_diff = 100;
     let sync_leap_result = storage
         .get_sync_leap(requested_block_hash, allowed_era_diff)
@@ -1523,7 +1523,7 @@ fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block()
 fn should_respect_allowed_era_diff_in_get_sync_leap() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
-    let requested_block_hash = blocks.get(5).unwrap().header().hash();
+    let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
     let allowed_era_diff = 1;
     let sync_leap_result = storage
         .get_sync_leap(requested_block_hash, allowed_era_diff)
