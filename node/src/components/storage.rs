@@ -385,7 +385,7 @@ impl Storage {
                 if block_header.era_id() >= invalid_era
                     && block_header.protocol_version() < protocol_version
                 {
-                    let _ = deleted_block_hashes.insert(block_header.hash());
+                    let _ = deleted_block_hashes.insert(block_header.block_hash());
 
                     if let Some(block_body) = maybe_block_body? {
                         deleted_deploy_hashes.extend(block_body.deploy_hashes());
@@ -408,7 +408,7 @@ impl Storage {
             if let Some(block_body) = maybe_block_body? {
                 insert_to_deploy_index(
                     &mut deploy_hash_index,
-                    block_header.hash(),
+                    block_header.block_hash(),
                     &block_body,
                     block_header.height(),
                 )?;
@@ -1093,7 +1093,7 @@ impl Storage {
                     }
                 };
 
-                let hash = block_header.hash();
+                let hash = block_header.block_hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, &hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(hash, block_header.era_id()),
@@ -1204,7 +1204,7 @@ impl Storage {
                 block_header,
                 responder,
             } => {
-                let block_header_hash = block_header.hash();
+                let block_header_hash = block_header.block_hash();
                 match self.put_block_headers(vec![*block_header]) {
                     Ok(result) => responder.respond(result).ignore(),
                     Err(err) => {
@@ -1570,7 +1570,7 @@ impl Storage {
                 return Ok(None);
             };
         let block_signatures = if let Some(block_signatures) =
-            self.get_block_signatures(&mut txn, &block_header.hash())?
+            self.get_block_signatures(&mut txn, &block_header.block_hash())?
         {
             block_signatures
         } else {
@@ -1847,7 +1847,9 @@ impl Storage {
         highest_signed_block_header: &BlockHeaderWithMetadata,
         mut switch_block: BlockHeader,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
-        if trusted_block_header.hash() == highest_signed_block_header.block_header.hash() {
+        if trusted_block_header.block_hash()
+            == highest_signed_block_header.block_header.block_hash()
+        {
             return Ok(Some(vec![]));
         }
 
@@ -1928,7 +1930,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let block_header_hash = block_header.hash();
+        let block_header_hash = block_header.block_hash();
 
         let block_signatures = match self.get_block_signatures(txn, &block_header_hash)? {
             Some(signatures) => signatures,
@@ -1947,7 +1949,7 @@ impl Storage {
         block_header: &BlockHeader,
         block_hash: &BlockHash,
     ) -> Result<(), FatalStorageError> {
-        let found_block_header_hash = block_header.hash();
+        let found_block_header_hash = block_header.block_hash();
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash_bytes: block_hash.as_ref().to_vec(),
@@ -1976,7 +1978,7 @@ impl Storage {
         let mut result = false;
 
         for block_header in &block_headers {
-            let block_header_hash = block_header.hash();
+            let block_header_hash = block_header.block_hash();
             match txn.put_value(
                 self.block_header_db,
                 &block_header_hash,
@@ -2554,7 +2556,7 @@ fn insert_to_block_header_indices(
     switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
     block_header: &BlockHeader,
 ) -> Result<(), FatalStorageError> {
-    let block_hash = block_header.hash();
+    let block_hash = block_header.block_hash();
     if let Some(first) = block_height_index.get(&block_header.height()) {
         if *first != block_hash {
             return Err(FatalStorageError::DuplicateBlockIndex {

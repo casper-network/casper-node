@@ -114,7 +114,7 @@ impl Display for SyncLeap {
         write!(
             f,
             "sync leap message for trusted hash {}",
-            self.trusted_block_header.hash()
+            self.trusted_block_header.block_hash()
         )
     }
 }
@@ -125,7 +125,7 @@ impl Item for SyncLeap {
     const TAG: Tag = Tag::SyncLeap;
 
     fn id(&self) -> Self::Id {
-        self.trusted_block_header.hash()
+        self.trusted_block_header.block_hash()
     }
 }
 
@@ -156,7 +156,7 @@ impl FetcherItem for SyncLeap {
 
         let mut headers: BTreeMap<BlockHash, &BlockHeader> = self
             .headers()
-            .map(|header| (header.hash(), header))
+            .map(|header| (header.block_hash(), header))
             .collect();
         let mut signatures: BTreeMap<EraId, Vec<&BlockSignatures>> = BTreeMap::new();
         for signed_header in &self.signed_block_headers {
@@ -173,7 +173,7 @@ impl FetcherItem for SyncLeap {
             return Err(SyncLeapValidationError::MultipleProtocolVersions);
         }
 
-        let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.hash()];
+        let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.block_hash()];
 
         while let Some(hash) = verified.pop() {
             if let Some(header) = headers.remove(&hash) {
@@ -262,7 +262,10 @@ mod tests {
 
     fn into_header_with_metadata(block_header: BlockHeader) -> BlockHeaderWithMetadata {
         BlockHeaderWithMetadata {
-            block_signatures: BlockSignatures::new(block_header.hash(), block_header.era_id()),
+            block_signatures: BlockSignatures::new(
+                block_header.block_hash(),
+                block_header.era_id(),
+            ),
             block_header,
         }
     }

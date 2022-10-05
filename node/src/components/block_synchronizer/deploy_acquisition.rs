@@ -2,6 +2,7 @@ use std::{cmp::Ord, collections::BTreeMap};
 
 use datasize::DataSize;
 use either::Either;
+use itertools::Itertools;
 
 use crate::types::{DeployHash, DeployId};
 
@@ -33,6 +34,13 @@ impl DeployAcquisition {
         match self {
             DeployAcquisition::ByHash(acquisition) => acquisition.needs_deploy().map(Either::Left),
             DeployAcquisition::ById(acquisition) => acquisition.needs_deploy().map(Either::Right),
+        }
+    }
+
+    pub(super) fn deploy_hashes(&self) -> Vec<DeployHash> {
+        match self {
+            DeployAcquisition::ByHash(x) => x.inner.keys().copied().collect(),
+            DeployAcquisition::ById(y) => y.inner.keys().map(|x| *x.deploy_hash()).collect_vec(),
         }
     }
 }

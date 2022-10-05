@@ -1,5 +1,9 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
+use casper_execution_engine::core::engine_state::execution_result::ExecutionResults;
 use datasize::DataSize;
 use either::Either;
 use itertools::Itertools;
@@ -16,7 +20,7 @@ use casper_types::{EraId, Timestamp};
 use crate::{
     components::block_synchronizer::{
         deploy_acquisition::DeployAcquisition,
-        execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash},
+        execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsChecksum},
         need_next::NeedNext,
         peer_list::PeerList,
         signature_acquisition::SignatureAcquisition,
@@ -53,15 +57,14 @@ pub(super) struct BlockBuilder {
     requires_strict_finality: bool,
     peer_list: PeerList,
 
-    era_id: Option<EraId>,
-    validator_weights: Option<EraValidatorWeights>,
-
     // progress tracking
     started: Option<Timestamp>,
     last_progress: Option<Timestamp>,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
+    era_id: Option<EraId>,
+    validator_weights: Option<EraValidatorWeights>,
 }
 
 impl BlockBuilder {
@@ -82,7 +85,7 @@ impl BlockBuilder {
             ),
             peer_list: PeerList::new(max_simultaneous_peers),
             should_fetch_execution_state,
-            requires_strict_finality: false,
+            requires_strict_finality,
             started: None,
             last_progress: None,
         }
@@ -97,7 +100,7 @@ impl BlockBuilder {
         max_simultaneous_peers: u32,
     ) -> Self {
         let (block_header, maybe_sigs) = sync_leap.highest_block_header();
-        let block_hash = block_header.hash();
+        let block_hash = block_header.block_hash();
         let era_id = Some(block_header.era_id());
         let mut signature_acquisition =
             SignatureAcquisition::new(validator_weights.validator_public_keys().cloned().collect());
@@ -106,12 +109,16 @@ impl BlockBuilder {
                 signature_acquisition.apply_signature(finality_signature);
             }
         }
-        let acquisition_state = BlockAcquisitionState::HaveSufficientFinalitySignatures(
+        let acquisition_state = BlockAcquisitionState::HaveWeakFinalitySignatures(
             Box::new(block_header.clone()),
             signature_acquisition,
         );
         let mut peer_list = PeerList::new(max_simultaneous_peers);
         peers.iter().for_each(|p| peer_list.register_peer(*p));
+
+        // we always require strict finality when synchronizing a block
+        // via a sync leap response
+        let requires_strict_finality = true;
 
         BlockBuilder {
             block_hash,
@@ -120,7 +127,7 @@ impl BlockBuilder {
             acquisition_state,
             peer_list,
             should_fetch_execution_state,
-            requires_strict_finality: true,
+            requires_strict_finality,
             started: None,
             last_progress: Some(Timestamp::now()),
         }
@@ -271,7 +278,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_body(Either::Left(block), self.should_fetch_execution_state)
+            .with_block(Either::Left(block), self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -281,13 +288,13 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // NOT WIRED
+    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_block_added(
         &mut self,
         block_added: &ExecutedBlock,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Err(error) = self.acquisition_state.with_body(
+        if let Err(error) = self.acquisition_state.with_block(
             Either::Right(block_added),
             self.should_fetch_execution_state,
         ) {
@@ -306,11 +313,10 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Some(validator_weights) = self.validator_weights.to_owned() {
-            match self.acquisition_state.with_signature(
-                finality_signature,
-                validator_weights,
-                self.should_fetch_execution_state,
-            ) {
+            match self
+                .acquisition_state
+                .with_signature(finality_signature, validator_weights)
+            {
                 Err(error) => {
                     self.disqualify_peer(maybe_peer);
                     return Err(Error::BlockAcquisition(error));
@@ -347,12 +353,49 @@ impl BlockBuilder {
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_execution_results_root_hash(
         &mut self,
-        execution_results_root_hash: ExecutionResultsRootHash,
+        execution_results_root_hash: ExecutionResultsChecksum,
     ) -> Result<(), Error> {
         if let Err(err) = self.acquisition_state.with_execution_results_root_hash(
             execution_results_root_hash,
             self.should_fetch_execution_state,
         ) {
+            return Err(Error::BlockAcquisition(err));
+        }
+        self.touch();
+        Ok(())
+    }
+
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(super) fn register_fetched_execution_results(
+        &mut self,
+        maybe_peer: Option<NodeId>,
+        block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
+    ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
+        match self.acquisition_state.with_execution_results_or_chunk(
+            block_execution_results_or_chunk,
+            self.should_fetch_execution_state,
+        ) {
+            Ok(maybe) => {
+                self.touch();
+                self.promote_peer(maybe_peer);
+                Ok(maybe)
+            }
+            Err(error) => {
+                self.disqualify_peer(maybe_peer);
+                Err(Error::BlockAcquisition(error))
+            }
+        }
+    }
+
+    // WIRED IN BLOCK SYNCHRONIZER
+    pub(super) fn register_execution_results_stored_notification(&mut self) -> Result<(), Error> {
+        if let Err(err) = self
+            .acquisition_state
+            .with_execution_results_stored_notification(self.should_fetch_execution_state)
+        {
+            // todo!() - Fraser, I think that this cannot be recovered from and am
+            // marking it fatal...if you disagree just delete the line below and this comment
+            self.acquisition_state = BlockAcquisitionState::Fatal;
             return Err(Error::BlockAcquisition(err));
         }
         self.touch();
@@ -374,40 +417,6 @@ impl BlockBuilder {
         }
         self.touch();
         self.promote_peer(maybe_peer);
-        Ok(())
-    }
-
-    // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn register_fetched_execution_results(
-        &mut self,
-        maybe_peer: Option<NodeId>,
-        block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
-    ) -> Result<Option<Vec<casper_types::ExecutionResult>>, Error> {
-        match self.acquisition_state.with_execution_results_or_chunk(
-            block_execution_results_or_chunk,
-            self.should_fetch_execution_state,
-        ) {
-            Ok(maybe_results) => {
-                self.touch();
-                self.promote_peer(maybe_peer);
-                Ok(maybe_results)
-            }
-            Err(error) => {
-                self.disqualify_peer(maybe_peer);
-                Err(Error::BlockAcquisition(error))
-            }
-        }
-    }
-
-    // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn register_stored_execution_results(&mut self) -> Result<(), Error> {
-        if let Err(err) = self
-            .acquisition_state
-            .with_stored_execution_results(self.should_fetch_execution_state)
-        {
-            return Err(Error::BlockAcquisition(err));
-        }
-        self.touch();
         Ok(())
     }
 

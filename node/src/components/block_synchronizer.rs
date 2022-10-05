@@ -51,7 +51,7 @@ use crate::{
 use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsRootHash};
+use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsChecksum};
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
@@ -205,7 +205,7 @@ impl BlockSynchronizer {
         let (block_header, maybe_sigs) = sync_leap.highest_block_header();
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))
-                if builder.block_hash() == block_header.hash() =>
+                if builder.block_hash() == block_header.block_hash() =>
             {
                 apply_sigs(builder, maybe_sigs);
             }
@@ -227,7 +227,7 @@ impl BlockSynchronizer {
                     }
                 } else {
                     warn!(
-                        block_hash = %block_header.hash(),
+                        block_hash = %block_header.block_hash(),
                         "unable to create block builder",
                     );
                 }
@@ -360,9 +360,9 @@ impl BlockSynchronizer {
                         .event(move |result| Event::GlobalStateSynced { block_hash, result }),
                 ),
                 NeedNext::ExecutionResultsRootHash {
+                    block_hash,
                     global_state_root_hash,
                 } => {
-                    let block_hash = builder.block_hash();
                     results.extend(
                         effect_builder
                             .get_execution_results_root_hash(global_state_root_hash)
@@ -596,18 +596,18 @@ impl BlockSynchronizer {
         result: Result<Option<Digest>, engine_state::Error>,
     ) -> Effects<Event> {
         let execution_results_root_hash = match result {
-            Ok(Some(digest)) => ExecutionResultsRootHash::Some(digest),
+            Ok(Some(digest)) => ExecutionResultsChecksum::Checkable(digest),
             Ok(None) => {
                 error!("the checksum registry should contain the execution results checksum");
-                ExecutionResultsRootHash::Legacy
+                ExecutionResultsChecksum::Uncheckable
             }
             Err(engine_state::Error::MissingChecksumRegistry) => {
                 // The registry will not exist for legacy blocks.
-                ExecutionResultsRootHash::Legacy
+                ExecutionResultsChecksum::Uncheckable
             }
             Err(error) => {
                 error!(%error, "unexpected error getting checksum registry");
-                ExecutionResultsRootHash::Legacy
+                ExecutionResultsChecksum::Uncheckable
             }
         };
 
@@ -671,16 +671,13 @@ impl BlockSynchronizer {
                 debug!(%block_hash, "not currently synchronizing block");
                 return Effects::new();
             }
+
+            // do to reasons, the stiched back together execution effects need to be saved to disk
+            // here, when the last chunk is collected.
+            // we expect a response back, which will crank the block builder for this block to the
+            // next state.
             match builder.register_fetched_execution_results(maybe_peer, *value_or_chunk) {
                 Ok(Some(execution_results)) => {
-                    let execution_results = execution_results
-                            .into_iter()
-                            .map(|execution_result|
-                                {
-                                    todo!("map this to the correct deploy hash - results should be in same order as the deploys for the block");
-                                    (DeployHash::default(), execution_result)
-                                })
-                            .collect();
                     return effect_builder
                         .put_execution_results_to_storage(block_hash, execution_results)
                         .event(move |()| Event::ExecutionResultsStored(block_hash));
@@ -694,11 +691,11 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn execution_results_stored(&mut self, block_hash: BlockHash) -> Effects<Event> {
+    fn execution_results_stored_notification(&mut self, block_hash: BlockHash) -> Effects<Event> {
         if let Some(builder) = &mut self.historical {
             if builder.block_hash() != block_hash {
                 debug!(%block_hash, "not currently synchronizing block");
-            } else if let Err(error) = builder.register_stored_execution_results() {
+            } else if let Err(error) = builder.register_execution_results_stored_notification() {
                 error!(%block_hash, %error, "failed to apply stored execution results");
             }
         }
@@ -792,7 +789,7 @@ where
                 self.hook_need_next(effect_builder, effects)
             }
             Event::ExecutionResultsStored(block_hash) => {
-                let effects = self.execution_results_stored(block_hash);
+                let effects = self.execution_results_stored_notification(block_hash);
                 self.hook_need_next(effect_builder, effects)
             }
             Event::AccumulatedPeers(block_hash, Some(peers)) => {

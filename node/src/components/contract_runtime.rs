@@ -154,7 +154,7 @@ impl ExecutionPreState {
         ExecutionPreState {
             pre_state_root_hash: *block_header.state_root_hash(),
             next_block_height: block_header.height() + 1,
-            parent_hash: block_header.hash(),
+            parent_hash: block_header.block_hash(),
             parent_seed: block_header.accumulated_seed(),
         }
     }

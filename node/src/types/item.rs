@@ -135,7 +135,7 @@ impl Item for BlockHeader {
     const TAG: Tag = Tag::BlockHeaderByHash;
 
     fn id(&self) -> Self::Id {
-        self.hash()
+        self.block_hash()
     }
 }
 
