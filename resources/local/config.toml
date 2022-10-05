@@ -388,6 +388,16 @@ gossip_request_timeout = '10sec'
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout = '5sec'
 
+# ================================================
+# Configuration options for the block accumulator
+# ================================================
+[block_accumulator]
+
+# Block height difference threshold for starting to execute the blocks.
+attempt_execution_threshold = 3
+
+# Accepted time interval for inactivity in block accumulator.
+dead_air_interval = '180sec'
 
 # ================================================
 # Configuration options for the block synchronizer
@@ -398,6 +408,9 @@ timeout = '10min'
 
 # Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
 max_parallel_trie_fetches = 5000
+
+# Time interval for the node to ask for refreshed peers.
+peer_refresh_interval = '90sec'
 
 # =================================
 # Configuration options for fetcher

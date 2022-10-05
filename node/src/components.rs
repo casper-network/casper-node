@@ -45,10 +45,10 @@
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
 #[allow(unused)] // TODO
+pub(crate) mod block_accumulator;
+#[allow(unused)] // TODO
 pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
-#[allow(unused)] // TODO
-pub(crate) mod blocks_accumulator;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;

@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 use casper_types::{EraId, PublicKey};
 
 use crate::{
-    components::blocks_accumulator::error::{
+    components::block_accumulator::error::{
         EraMismatchError, Error as AcceptorError, InvalidGossipError,
     },
     types::{

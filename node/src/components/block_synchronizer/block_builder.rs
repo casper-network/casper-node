@@ -15,7 +15,7 @@ use crate::components::block_synchronizer::{
     block_acquisition::{BlockAcquisitionAction, BlockAcquisitionState},
 };
 use casper_hashing::Digest;
-use casper_types::{EraId, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::block_synchronizer::{
@@ -74,6 +74,7 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         requires_strict_finality: bool,
         max_simultaneous_peers: u32,
+        peer_refresh_interval: TimeDiff,
     ) -> Self {
         BlockBuilder {
             block_hash,
@@ -83,7 +84,7 @@ impl BlockBuilder {
                 block_hash,
                 SignatureAcquisition::new(vec![]),
             ),
-            peer_list: PeerList::new(max_simultaneous_peers),
+            peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
             requires_strict_finality,
             started: None,
@@ -98,6 +99,7 @@ impl BlockBuilder {
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
+        peer_refresh_interval: TimeDiff,
     ) -> Self {
         let (block_header, maybe_sigs) = sync_leap.highest_block_header();
         let block_hash = block_header.block_hash();
@@ -113,7 +115,7 @@ impl BlockBuilder {
             Box::new(block_header.clone()),
             signature_acquisition,
         );
-        let mut peer_list = PeerList::new(max_simultaneous_peers);
+        let mut peer_list = PeerList::new(max_simultaneous_peers, peer_refresh_interval);
         peers.iter().for_each(|p| peer_list.register_peer(*p));
 
         // we always require strict finality when synchronizing a block
