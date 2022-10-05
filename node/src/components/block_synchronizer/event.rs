@@ -23,6 +23,8 @@ use crate::{
 
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
+    Initialize,
+
     #[from]
     Request(BlockSynchronizerRequest),
     /// Received announcement about era validators.
@@ -72,6 +74,9 @@ impl Display for Event {
             }
             Event::Request(_) => {
                 write!(f, "block synchronizer request from effect builder")
+            }
+            Event::Initialize => {
+                write!(f, "initialize this component")
             }
             Event::EraValidators { .. } => {
                 write!(f, "new era validators")

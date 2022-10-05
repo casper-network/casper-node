@@ -138,8 +138,7 @@ impl PeerList {
         self.peer_list
             .iter()
             .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
-            .collect_vec()
-            .len()
+            .count()
             < reliability_goal
     }
 

@@ -31,6 +31,7 @@ use crate::{
     NodeRng,
 };
 
+use crate::components::block_synchronizer;
 use casper_execution_engine::core::{
     engine_state,
     engine_state::{GenesisSuccess, UpgradeSuccess},
@@ -116,6 +117,14 @@ impl MainReactor {
                     &mut self.rpc_server,
                     "rpc_server",
                     MainEvent::RpcServer(rpc_server::Event::Initialize),
+                ) {
+                    return effects;
+                }
+                if let Some(effects) = initialize_component(
+                    effect_builder,
+                    &mut self.block_synchronizer,
+                    "block_synchronizer",
+                    MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
                 ) {
                     return effects;
                 }
