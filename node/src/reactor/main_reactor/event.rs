@@ -9,10 +9,11 @@ use serde::Serialize;
 
 use crate::{
     components::{
+        block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
-        block_validator, blocks_accumulator, consensus, contract_runtime, deploy_acceptor,
-        deploy_buffer, diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain,
-        rest_server, rpc_server,
+        block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
+        diagnostics_port, event_stream_server, fetcher, gossiper, linear_chain, rest_server,
+        rpc_server,
         small_network::{self, GossipedAddress},
         storage, sync_leaper, upgrade_watcher,
     },
@@ -128,7 +129,7 @@ pub(crate) enum MainEvent {
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
     #[from]
-    BlocksAccumulator(#[serde(skip_serializing)] blocks_accumulator::Event),
+    BlocksAccumulator(#[serde(skip_serializing)] block_accumulator::Event),
     #[from]
     BlocksAccumulatorRequest(#[serde(skip_serializing)] BlocksAccumulatorRequest),
     #[from]

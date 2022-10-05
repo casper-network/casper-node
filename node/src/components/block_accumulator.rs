@@ -1,4 +1,5 @@
 mod block_acceptor;
+mod config;
 mod error;
 mod event;
 
@@ -22,6 +23,7 @@ use crate::{
     types::{BlockHeader, BlockPayload, DeployHash, FinalizedBlock},
 };
 use block_acceptor::BlockAcceptor;
+pub(crate) use config::Config;
 use error::Error;
 pub(crate) use event::Event;
 
@@ -66,20 +68,24 @@ impl StartingWith {
 ///
 /// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
-pub(crate) struct BlocksAccumulator {
+pub(crate) struct BlockAccumulator {
     already_handled: Vec<BlockHash>,
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
+    attempt_execution_threshold: u64,
+    dead_air_interval: TimeDiff,
     validator_matrix: ValidatorMatrix,
     last_progress: Timestamp,
 }
 
-impl BlocksAccumulator {
-    pub(crate) fn new(validator_matrix: ValidatorMatrix) -> Self {
+impl BlockAccumulator {
+    pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
         Self {
             already_handled: Default::default(),
             block_acceptors: Default::default(),
             block_children: Default::default(),
+            attempt_execution_threshold: config.attempt_execution_threshold(),
+            dead_air_interval: config.dead_air_interval(),
             validator_matrix,
             last_progress: Timestamp::now(),
         }
@@ -115,10 +121,6 @@ impl BlocksAccumulator {
         // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
         // AFTER the f-seq cant help you, SYNC-all-state
         // |------------- future chain ------------------------> ?
-
-        const ATTEMPT_EXECUTION_THRESHOLD: u64 = 3; // TODO: make chainspec or cfg setting
-        const BLOCKS_ACCUMULATOR_DEAD_AIR_INTERVAL_SECS: u32 = 180; // TODO: make chain / cfg
-
         let should_fetch_execution_state = starting_with.have_block() == false;
         let block_hash = starting_with.block_hash();
         if let Some((_highest_block_hash, highest_block_height, _highest_era_id)) =
@@ -160,13 +162,12 @@ impl BlocksAccumulator {
                 // either the network is hung / skipping a lot of blocks
                 // or this node is partitioned. In such a case, attempt a leap
                 // to see where other nodes think the tip is
-                let max_age = TimeDiff::from_seconds(BLOCKS_ACCUMULATOR_DEAD_AIR_INTERVAL_SECS);
-                if self.last_progress.elapsed() > max_age {
+                if self.last_progress.elapsed() < self.dead_air_interval {
                     return SyncInstruction::CaughtUp;
                 }
                 return SyncInstruction::Leap;
             }
-            if height_diff <= ATTEMPT_EXECUTION_THRESHOLD {
+            if height_diff <= self.attempt_execution_threshold {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
                     self.last_progress = Timestamp::now();
 
@@ -376,7 +377,7 @@ impl BlocksAccumulator {
 }
 
 // TODO: is this even really a component?
-impl<REv> Component<REv> for BlocksAccumulator
+impl<REv> Component<REv> for BlockAccumulator
 where
     REv: Send + From<PeerBehaviorAnnouncement>,
 {

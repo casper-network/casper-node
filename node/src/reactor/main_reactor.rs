@@ -32,9 +32,9 @@ use casper_types::{EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp};
 
 use crate::{
     components::{
+        block_accumulator::{BlockAccumulator, StartingWith, SyncInstruction},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        blocks_accumulator::{BlocksAccumulator, StartingWith, SyncInstruction},
         consensus::{self, EraReport, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
@@ -83,7 +83,7 @@ use crate::{
     NodeRng,
 };
 
-use crate::components::blocks_accumulator;
+use crate::components::block_accumulator;
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -108,7 +108,7 @@ pub(crate) struct MainReactor {
     // block handling
     linear_chain: LinearChainComponent, // todo! is redundant - remove.
     block_validator: BlockValidator,
-    blocks_accumulator: BlocksAccumulator,
+    blocks_accumulator: BlockAccumulator,
     block_synchronizer: BlockSynchronizer,
 
     // deploy handling
@@ -285,7 +285,8 @@ impl reactor::Reactor for MainReactor {
 
         let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
 
-        let blocks_accumulator = BlocksAccumulator::new(validator_matrix.clone());
+        let blocks_accumulator =
+            BlockAccumulator::new(config.block_accumulator, validator_matrix.clone());
         let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
 
         let diagnostics_port =

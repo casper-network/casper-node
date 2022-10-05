@@ -22,14 +22,16 @@ pub(super) struct PeerList {
     peer_list: BTreeMap<NodeId, PeerQuality>,
     latch: Timestamp,
     max_simultaneous_peers: u32,
+    peer_refresh_interval: TimeDiff,
 }
 
 impl PeerList {
-    pub(super) fn new(max_simultaneous_peers: u32) -> Self {
+    pub(super) fn new(max_simultaneous_peers: u32, peer_refresh_interval: TimeDiff) -> Self {
         PeerList {
             peer_list: BTreeMap::new(),
             latch: Timestamp::now(),
             max_simultaneous_peers,
+            peer_refresh_interval,
         }
     }
     pub(super) fn register_peer(&mut self, peer: NodeId) {
@@ -121,17 +123,14 @@ impl PeerList {
             }
         }
     }
-    // TODO: add config for PEER_REFRESH_INTERVAL
-    const PEER_REFRESH_INTERVAL: u32 = 90;
+
     pub(super) fn need_peers(&self) -> bool {
         if self.peer_list.is_empty() {
             return true;
         }
         // periodically ask for refreshed peers
         // NOTE: if we decide to do this imperatively from the reactor, this can likely be removed
-        if Timestamp::now().saturating_diff(self.latch)
-            > TimeDiff::from_seconds(PeerList::PEER_REFRESH_INTERVAL)
-        {
+        if Timestamp::now().saturating_diff(self.latch) > self.peer_refresh_interval {
             return true;
         }
         // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers

@@ -8,7 +8,7 @@ use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
-        blocks_accumulator::{StartingWith, SyncInstruction},
+        block_accumulator::{StartingWith, SyncInstruction},
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
         diagnostics_port, event_stream_server,

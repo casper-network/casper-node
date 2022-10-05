@@ -134,9 +134,9 @@ use casper_types::{
 
 use crate::{
     components::{
+        block_accumulator::BlockAccumulator,
         block_synchronizer,
         block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
-        blocks_accumulator::BlocksAccumulator,
         consensus::{BlockContext, ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,

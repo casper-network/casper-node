@@ -105,6 +105,7 @@ pub(crate) struct BlockSynchronizer {
     historical: Option<BlockBuilder>,
     validator_matrix: ValidatorMatrix,
     global_sync: GlobalStateSynchronizer,
+    peer_refresh_interval: TimeDiff,
     disabled: bool,
 }
 
@@ -116,6 +117,7 @@ impl BlockSynchronizer {
             historical: None,
             validator_matrix: Default::default(),
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
+            peer_refresh_interval: config.peer_refresh_interval(),
             disabled: false,
         }
     }
@@ -151,6 +153,7 @@ impl BlockSynchronizer {
             should_fetch_execution_state,
             requires_strict_finality,
             max_simultaneous_peers,
+            self.peer_refresh_interval,
         );
         if should_fetch_execution_state {
             if let Some(historical) = self.historical.replace(builder) {
@@ -218,6 +221,7 @@ impl BlockSynchronizer {
                         peers,
                         should_fetch_execution_state,
                         max_simultaneous_peers,
+                        self.peer_refresh_interval,
                     );
                     apply_sigs(&mut builder, maybe_sigs);
                     if should_fetch_execution_state {

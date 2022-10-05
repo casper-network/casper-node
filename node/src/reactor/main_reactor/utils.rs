@@ -1,5 +1,5 @@
 use crate::{
-    components::{blocks_accumulator::SyncInstruction, sync_leaper, InitializedComponent},
+    components::{block_accumulator::SyncInstruction, sync_leaper, InitializedComponent},
     effect::{EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
     types::{ActivationPoint, Block, BlockHash, Chainspec, ChainspecRawBytes, NodeId},
