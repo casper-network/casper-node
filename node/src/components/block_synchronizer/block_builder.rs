@@ -234,7 +234,7 @@ impl BlockBuilder {
             None => {
                 return BlockAcquisitionAction::era_validators(era_id);
             }
-            Some(vm) => vm,
+            Some(validator_weights) => validator_weights,
         };
         match self.acquisition_state.next_action(
             &self.peer_list,

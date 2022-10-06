@@ -63,29 +63,6 @@ impl BlockAcceptor {
 
     pub(super) fn refresh(self, era_validator_weights: EraValidatorWeights) -> Self {
         let block_hash = self.block_hash;
-
-        let approvals_hashes = match self.approvals_hashes {
-            None => None,
-            Some(approvals_hashes) => {
-                if *approvals_hashes.era_id() != era_validator_weights.era_id() {
-                    None
-                } else {
-                    Some(approvals_hashes)
-                }
-            }
-        };
-
-        let block = match self.block {
-            None => None,
-            Some(block) => {
-                if block.header().era_id() != era_validator_weights.era_id() {
-                    None
-                } else {
-                    Some(block)
-                }
-            }
-        };
-
         let signatures = if self.signatures.is_empty() {
             self.signatures
         } else {
@@ -107,8 +84,8 @@ impl BlockAcceptor {
         Self {
             block_hash,
             era_validator_weights: Some(era_validator_weights),
-            block,
-            approvals_hashes,
+            block: self.block,
+            approvals_hashes: self.approvals_hashes,
             signatures,
             peers,
         }

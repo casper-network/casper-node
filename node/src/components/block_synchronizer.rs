@@ -29,12 +29,11 @@ use crate::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
             BlockAccumulatorRequest, BlockSynchronizerRequest, ContractRuntimeRequest,
-            FetcherRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            FetcherRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor,
-    storage::StorageRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, FinalitySignature, FinalitySignatureId, Item, LegacyDeploy,

@@ -123,10 +123,6 @@ impl ApprovalsHashes {
     pub(crate) fn block_hash(&self) -> &BlockHash {
         &self.block_hash
     }
-
-    pub(crate) fn era_id(&self) -> &EraId {
-        &self.era_id
-    }
 }
 
 impl Item for ApprovalsHashes {

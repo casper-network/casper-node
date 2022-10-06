@@ -121,7 +121,8 @@ pub(crate) struct MainReactor {
     // gossiping components
     address_gossiper: Gossiper<GossipedAddress, MainEvent>,
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    executed_block_gossiper: Gossiper<ApprovalsHashes, MainEvent>,
+    block_gossiper: Gossiper<Block, MainEvent>,
+    approvals_hashes_gossiper: Gossiper<ApprovalsHashes, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
 
     // record retrieval
@@ -312,7 +313,7 @@ impl reactor::Reactor for MainReactor {
             deploy_acceptor,
             fetchers,
             deploy_gossiper,
-            executed_block_gossiper,
+            approvals_hashes_gossiper: executed_block_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,
@@ -655,24 +656,42 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::BlockGossiper(event) => reactor::wrap_effects(
+                MainEvent::BlockGossiper,
+                self.block_gossiper.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::BlockGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::BlockGossiper,
+                self.block_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_block_id,
+            )) => {
+                error!(%gossiped_block_id, "gossiper should not announce new block");
+                Effects::new()
+            }
+            MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_block_id,
+            )) => Effects::new(),
             MainEvent::ApprovalsHashesGossiper(event) => reactor::wrap_effects(
                 MainEvent::ApprovalsHashesGossiper,
-                self.executed_block_gossiper
+                self.approvals_hashes_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
             MainEvent::ApprovalsHashesGossiperIncoming(incoming) => reactor::wrap_effects(
                 MainEvent::ApprovalsHashesGossiper,
-                self.executed_block_gossiper
+                self.approvals_hashes_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             MainEvent::ApprovalsHashesGossiperAnnouncement(
-                GossiperAnnouncement::NewCompleteItem(gossiped_block_added_id),
+                GossiperAnnouncement::NewCompleteItem(gossiped_approvals_hashes_id),
             ) => {
-                error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
+                error!(%gossiped_approvals_hashes_id, "gossiper should not announce new approvals hashes");
                 Effects::new()
             }
             MainEvent::ApprovalsHashesGossiperAnnouncement(
-                GossiperAnnouncement::FinishedGossiping(_gossiped_block_added_id),
+                GossiperAnnouncement::FinishedGossiping(_gossiped_approvals_hashes_id),
             ) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {

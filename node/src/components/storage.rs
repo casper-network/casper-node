@@ -64,28 +64,24 @@ use smallvec::SmallVec;
 use tempfile::TempDir;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff, Transfer,
-    Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
 };
 
-// The reactor! macro needs this in the fetcher tests
-pub(crate) use crate::effect::requests::StorageRequest;
-
 use crate::{
-    components::{fetcher::FetchResponse, Component},
+    components::{fetcher::FetchResponse, linear_chain, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
-        requests::{AppStateRequest, BlockCompleteConfirmationRequest, NetworkRequest},
+        requests::{
+            AppStateRequest, BlockCompleteConfirmationRequest, NetworkRequest, StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
     protocol::Message,
     reactor::ReactorEvent,
-    storage::lmdb_ext::BytesreprError,
     types::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
@@ -101,10 +97,9 @@ use crate::{
 use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
 use error::GetRequestError;
+use lmdb_ext::BytesreprError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
-
-use super::linear_chain::{self};
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -765,9 +760,13 @@ impl Storage {
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
-            } => responder
-                .respond(self.write_approvals_hashes(&*approvals_hashes)?)
-                .ignore(),
+            } => {
+                let env = Rc::clone(&self.env);
+                let mut txn = env.begin_rw_txn()?;
+                let result = self.write_approvals_hashes(&mut txn, &*approvals_hashes)?;
+                txn.commit()?;
+                responder.respond(result).ignore()
+            }
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
@@ -884,57 +883,9 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
-
-                let mut transfers: Vec<Transfer> = vec![];
-
-                for (deploy_hash, execution_result) in execution_results {
-                    let mut metadata = self
-                        .get_deploy_metadata(&mut txn, &deploy_hash)?
-                        .unwrap_or_default();
-
-                    // If we have a previous execution result, we can continue if it is the same.
-                    if let Some(prev) = metadata.execution_results.get(&block_hash) {
-                        if prev == &execution_result {
-                            continue;
-                        } else {
-                            debug!(%deploy_hash, %block_hash, "different execution result");
-                        }
-                    }
-
-                    if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
-                        for transform_entry in effect.transforms {
-                            if let Transform::WriteTransfer(transfer) = transform_entry.transform {
-                                transfers.push(transfer);
-                            }
-                        }
-                    }
-
-                    // TODO: this is currently done like this because rpc get_deploy returns the
-                    // data, but the organization of deploy, block_hash, and
-                    // execution_result is incorrectly represented. it should be
-                    // inverted; for a given block_hash 0n deploys and each deploy has exactly 1
-                    // result (aka deploy_metadata in this context).
-
-                    // Update metadata and write back to db.
-                    metadata
-                        .execution_results
-                        .insert(*block_hash, execution_result);
-                    let was_written =
-                        txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
-                    if !was_written {
-                        error!(?block_hash, ?deploy_hash, "failed to write deploy metadata");
-                        debug_assert!(was_written);
-                    }
-                }
-
-                let was_written =
-                    txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
-                if !was_written {
-                    error!(?block_hash, "failed to write transfers");
-                    debug_assert!(was_written);
-                }
-
+                let env = Rc::clone(&self.env);
+                let mut txn = env.begin_rw_txn()?;
+                self.write_execution_results(&mut txn, &*block_hash, execution_results)?;
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
@@ -1344,8 +1295,8 @@ impl Storage {
             return Err(FatalStorageError::FailedToOverwriteBlock);
         }
 
-        let _ = self.write_approvals_hashes(approvals_hashes)?;
-        let _ = self.write_execution_results(&mut txn, execution_results, block.hash())?;
+        let _ = self.write_approvals_hashes(&mut txn, approvals_hashes)?;
+        let _ = self.write_execution_results(&mut txn, block.hash(), execution_results)?;
         txn.commit()?;
 
         Ok(true)
@@ -1376,7 +1327,7 @@ impl Storage {
     pub(crate) fn make_executable_block(
         &self,
         block: &Block,
-        approvals_hashes: &ApprovalsHashes,
+        _approvals_hashes: &ApprovalsHashes,
     ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
         // check all approvals in block_added against stored approvals,
         // deal with any discrepancies
@@ -1415,8 +1366,8 @@ impl Storage {
     fn write_execution_results(
         &mut self,
         txn: &mut RwTransaction,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
         block_hash: &BlockHash,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut transfers: Vec<Transfer> = vec![];
         for (deploy_hash, execution_result) in execution_results {
@@ -1470,11 +1421,9 @@ impl Storage {
     /// Writes an executed block to storage, updating indices as necessary.
     fn write_approvals_hashes(
         &mut self,
+        txn: &mut RwTransaction,
         approvals_hashes: &ApprovalsHashes,
     ) -> Result<bool, FatalStorageError> {
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-
         let overwrite = true;
         if !txn.put_value(
             self.approvals_hashes_db,
