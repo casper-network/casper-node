@@ -164,7 +164,7 @@ impl NetRequest {
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
             NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
-            NetRequest::ExecutedBlock(_) => Tag::ExecutedBlock,
+            NetRequest::ExecutedBlock(_) => Tag::ApprovalsHashes,
         }
     }
 }

@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{BlockHash, ExecutedBlockValidationError, NodeId};
+use crate::types::{ApprovalsHashesValidationError, BlockHash, BlockValidationError, NodeId};
 
 #[derive(Error, Debug)]
 pub(super) enum EraMismatchError {
@@ -38,11 +38,17 @@ impl EraMismatchError {
 
 #[derive(Error, Debug)]
 pub(super) enum InvalidGossipError {
-    #[error("received cryptographically invalid block_added for: {block_hash} from: {peer} with error: {validation_error}")]
-    BlockAdded {
+    #[error("received cryptographically invalid approvals hashes for: {block_hash} from: {peer} with error: {validation_error}")]
+    ApprovalsHashes {
         block_hash: BlockHash,
         peer: NodeId,
-        validation_error: ExecutedBlockValidationError,
+        validation_error: ApprovalsHashesValidationError,
+    },
+    #[error("received cryptographically invalid block for: {block_hash} from: {peer} with error: {validation_error}")]
+    Block {
+        block_hash: BlockHash,
+        peer: NodeId,
+        validation_error: BlockValidationError,
     },
     #[error("received cryptographically invalid finality_signature for: {block_hash} from: {peer} with error: {validation_error}")]
     FinalitySignature {
@@ -55,8 +61,9 @@ pub(super) enum InvalidGossipError {
 impl InvalidGossipError {
     pub(super) fn peer(&self) -> NodeId {
         match self {
-            InvalidGossipError::BlockAdded { peer, .. }
-            | InvalidGossipError::FinalitySignature { peer, .. } => *peer,
+            InvalidGossipError::ApprovalsHashes { peer, .. }
+            | InvalidGossipError::FinalitySignature { peer, .. }
+            | InvalidGossipError::Block { peer, .. } => *peer,
         }
     }
 }
@@ -67,6 +74,12 @@ pub(super) enum Error {
     InvalidGossip(Box<InvalidGossipError>),
     #[error("mismatched eras detected")]
     EraMismatch(EraMismatchError),
+    #[error("mismatched block hash from peer {peer}: expected={expected}, actual={actual}")]
+    BlockHashMismatch {
+        expected: BlockHash,
+        actual: BlockHash,
+        peer: NodeId,
+    },
     #[error("attempt to register weights for an era that already has registered weights")]
     DuplicatedEraValidatorWeights { era_id: EraId },
 }

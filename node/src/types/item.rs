@@ -60,7 +60,7 @@ pub enum Tag {
     /// to the sender.
     SyncLeap,
     /// A `ExecutedBlock`: a block which has been created by validators.
-    ExecutedBlock,
+    ApprovalsHashes,
     /// Block execution results fetched during syncing.
     BlockExecutionResults,
 }

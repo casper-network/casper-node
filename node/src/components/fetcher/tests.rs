@@ -40,7 +40,7 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, ExecutedBlock,
+        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, ApprovalsHashes,
         FinalitySignature, Item, NodeId,
     },
     utils::WithDir,
@@ -116,7 +116,7 @@ enum Event {
     #[from]
     GossiperIncomingDeploy(GossiperIncoming<Deploy>),
     #[from]
-    GossiperIncomingExecutedBlock(GossiperIncoming<ExecutedBlock>),
+    GossiperIncomingExecutedBlock(GossiperIncoming<ApprovalsHashes>),
     #[from]
     GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
     #[from]

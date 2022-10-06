@@ -27,8 +27,8 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, DeployHeader, ExecutedBlock, FinalitySignature, FinalizedBlock,
-        GossiperItem, NodeId,
+        ApprovalsHashes, Block, Deploy, DeployHash, DeployHeader, FinalitySignature,
+        FinalizedBlock, GossiperItem, NodeId,
     },
     utils::Source,
 };
@@ -322,7 +322,10 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
 #[derive(Debug)]
 pub(crate) enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
-    BlockAdded(Box<ExecutedBlock>),
+    BlockAdded {
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
+    },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -330,8 +333,11 @@ pub(crate) enum LinearChainAnnouncement {
 impl Display for LinearChainAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinearChainAnnouncement::BlockAdded(block_added) => {
-                write!(f, "block added {}", block_added.block().hash())
+            LinearChainAnnouncement::BlockAdded {
+                block,
+                approvals_hashes,
+            } => {
+                write!(f, "block added {}", block.hash())
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)
@@ -363,7 +369,9 @@ pub(crate) enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
     LinearChainBlock {
         /// The block.
-        block_added: Box<ExecutedBlock>,
+        block: Box<Block>,
+        /// Approval hashes.
+        approvals_hashes: Box<ApprovalsHashes>,
         /// The results of executing the deploys in this block.
         // #[serde(skip_serializing)]
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
@@ -387,12 +395,8 @@ pub(crate) enum ContractRuntimeAnnouncement {
 impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeAnnouncement::LinearChainBlock { block_added, .. } => {
-                write!(
-                    f,
-                    "created linear chain block {}",
-                    block_added.block().hash()
-                )
+            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
+                write!(f, "created linear chain block {}", block.hash())
             }
             ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
                 write!(f, "commit step completed for {}", era_id)

@@ -36,9 +36,9 @@ use crate::{
     reactor,
     storage::StorageRequest,
     types::{
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Deploy,
-        ExecutedBlock, FinalitySignature, FinalitySignatureId, Item, LegacyDeploy, NodeId,
-        SyncLeap, TrieOrChunk, ValidatorMatrix,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
+        BlockSignatures, Deploy, FinalitySignature, FinalitySignatureId, Item, LegacyDeploy,
+        NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -55,7 +55,7 @@ use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
 pub(crate) trait ReactorEvent:
-    From<FetcherRequest<ExecutedBlock>>
+    From<FetcherRequest<ApprovalsHashes>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
     + From<FetcherRequest<Deploy>>
@@ -74,7 +74,7 @@ pub(crate) trait ReactorEvent:
 }
 
 impl<REv> ReactorEvent for REv where
-    REv: From<FetcherRequest<ExecutedBlock>>
+    REv: From<FetcherRequest<ApprovalsHashes>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<Deploy>>
@@ -314,7 +314,7 @@ impl BlockSynchronizer {
         rng: &mut NodeRng,
     ) -> Effects<Event>
     where
-        REv: ReactorEvent,
+        REv: ReactorEvent + From<FetcherRequest<Block>>,
     {
         let mut results = Effects::new();
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
@@ -332,10 +332,20 @@ impl BlockSynchronizer {
                 NeedNext::BlockBody(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<ExecutedBlock>(block_hash, node_id, ())
-                            .event(Event::BlockAddedFetched)
+                            .fetch::<Block>(block_hash, node_id, ())
+                            .event(Event::BlockFetched)
                     }))
                 }
+                NeedNext::ApprovalsHashes(block_hash, era_id, global_state_root_hash) => results
+                    .extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<ApprovalsHashes>(
+                                block_hash,
+                                node_id,
+                                (global_state_root_hash, era_id),
+                            )
+                            .event(Event::ApprovalsHashesFetched)
+                    })),
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         validators.iter().flat_map(move |public_key| {
@@ -480,19 +490,19 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn block_added_fetched(
+    fn block_fetched(
         &mut self,
-        result: Result<FetchedData<ExecutedBlock>, Error<ExecutedBlock>>,
+        result: Result<FetchedData<Block>, Error<Block>>,
     ) -> Effects<Event> {
-        let (block_hash, maybe_block_added, maybe_peer_id): (
+        let (block_hash, maybe_block, maybe_peer_id): (
             BlockHash,
-            Option<Box<ExecutedBlock>>,
+            Option<Box<Block>>,
             Option<NodeId>,
         ) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (item.block().id(), Some(item), Some(peer)),
-            Ok(FetchedData::FromStorage { item }) => (item.block().id(), Some(item), None),
+            Ok(FetchedData::FromPeer { item, peer }) => (*item.hash(), Some(item), Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (*item.hash(), Some(item), None),
             Err(err) => {
-                debug!(%err, "failed to fetch block-added");
+                debug!(%err, "failed to fetch block");
                 match err {
                     Error::Absent { id, peer }
                     | Error::Rejected { id, peer }
@@ -504,15 +514,59 @@ impl BlockSynchronizer {
 
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
-                match maybe_block_added {
+                match maybe_block {
                     None => {
                         builder.demote_peer(maybe_peer_id);
                     }
-                    Some(block_added) => {
+                    Some(block) => {
+                        if let Err(error) = builder.register_block(&block, maybe_peer_id) {
+                            error!(%error, "failed to apply block");
+                        }
+                    }
+                }
+            }
+            _ => {
+                debug!(%block_hash, "not currently synchronizing block");
+            }
+        }
+        Effects::new()
+    }
+
+    fn approvals_hashes_fetched(
+        &mut self,
+        result: Result<FetchedData<ApprovalsHashes>, Error<ApprovalsHashes>>,
+    ) -> Effects<Event> {
+        let (block_hash, maybe_approvals_hashes, maybe_peer_id): (
+            BlockHash,
+            Option<Box<ApprovalsHashes>>,
+            Option<NodeId>,
+        ) = match result {
+            Ok(FetchedData::FromPeer { item, peer }) => {
+                (*item.block_hash(), Some(item), Some(peer))
+            }
+            Ok(FetchedData::FromStorage { item }) => (*item.block_hash(), Some(item), None),
+            Err(err) => {
+                debug!(%err, "failed to fetch block");
+                match err {
+                    Error::Absent { id, peer }
+                    | Error::Rejected { id, peer }
+                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
+                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                }
+            }
+        };
+
+        match (&mut self.forward, &mut self.historical) {
+            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
+                match maybe_approvals_hashes {
+                    None => {
+                        builder.demote_peer(maybe_peer_id);
+                    }
+                    Some(approvals_hashes) => {
                         if let Err(error) =
-                            builder.register_block_added(&block_added, maybe_peer_id)
+                            builder.register_approvals_hashes(&approvals_hashes, maybe_peer_id)
                         {
-                            error!(%error, "failed to apply block-added");
+                            error!(%error, "failed to apply approvals hashes");
                         }
                     }
                 }
@@ -743,7 +797,7 @@ const NEED_NEXT_INTERVAL_MILLIS: u64 = 30;
 
 impl<REv> InitializedComponent<REv> for BlockSynchronizer
 where
-    REv: ReactorEvent,
+    REv: ReactorEvent + From<FetcherRequest<Block>>,
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
@@ -752,7 +806,7 @@ where
 
 impl<REv> Component<REv> for BlockSynchronizer
 where
-    REv: ReactorEvent,
+    REv: ReactorEvent + From<FetcherRequest<Block>>,
 {
     type Event = Event;
 
@@ -827,8 +881,12 @@ where
                 let effects = self.block_header_fetched(result);
                 self.hook_need_next(effect_builder, effects)
             }
-            (ComponentStatus::Initialized, Event::BlockAddedFetched(result)) => {
-                let effects = self.block_added_fetched(result);
+            (ComponentStatus::Initialized, Event::ApprovalsHashesFetched(result)) => {
+                let effects = self.approvals_hashes_fetched(result);
+                self.hook_need_next(effect_builder, effects)
+            }
+            (ComponentStatus::Initialized, Event::BlockFetched(result)) => {
+                let effects = self.block_fetched(result);
                 self.hook_need_next(effect_builder, effects)
             }
             (ComponentStatus::Initialized, Event::FinalitySignatureFetched(result)) => {

@@ -82,7 +82,7 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    ExecutedBlockGossiper(super::Event<ExecutedBlock>),
+    ExecutedBlockGossiper(super::Event<ApprovalsHashes>),
     #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
@@ -98,7 +98,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    BlockAddedGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<ExecutedBlock>),
+    BlockAddedGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<ApprovalsHashes>),
     #[from]
     FinalitySignatureGossiperAnnouncement(
         #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
@@ -112,7 +112,7 @@ enum Event {
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
-    ExecutedBlockGossiperIncoming(GossiperIncoming<ExecutedBlock>),
+    ExecutedBlockGossiperIncoming(GossiperIncoming<ApprovalsHashes>),
     #[from]
     FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
@@ -155,8 +155,8 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
     }
 }
 
-impl From<NetworkRequest<Message<ExecutedBlock>>> for Event {
-    fn from(request: NetworkRequest<Message<ExecutedBlock>>) -> Self {
+impl From<NetworkRequest<Message<ApprovalsHashes>>> for Event {
+    fn from(request: NetworkRequest<Message<ApprovalsHashes>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }
@@ -239,7 +239,7 @@ struct Reactor {
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
-    executed_block_gossiper: Gossiper<ExecutedBlock, Event>,
+    executed_block_gossiper: Gossiper<ApprovalsHashes, Event>,
     contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
@@ -305,7 +305,7 @@ impl reactor::Reactor for Reactor {
         let executed_block_gossiper = Gossiper::new_for_partial_items(
             "block_added_gossiper",
             config,
-            get_executed_block_from_storage::<ExecutedBlock, Event>,
+            get_executed_block_from_storage::<ApprovalsHashes, Event>,
             registry,
         )?;
 

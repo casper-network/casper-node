@@ -19,9 +19,9 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, DeployHash, DeployId, EraValidatorWeights, ExecutedBlock, FinalitySignature,
-        Item, NodeId, SignatureWeight,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockHash, BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, Item,
+        NodeId, SignatureWeight,
     },
     NodeRng,
 };
@@ -176,9 +176,13 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
+    pub(super) fn with_approvals_hashes() {
+        todo!();
+    }
+
     pub(super) fn with_block(
         &mut self,
-        block_or_block_added: Either<&Block, &ExecutedBlock>,
+        block: &Block,
         need_execution_state: bool,
     ) -> Result<(), Error> {
         let new_state = match self {

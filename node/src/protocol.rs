@@ -26,7 +26,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Deploy, ExecutedBlock, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
+    types::{Deploy, ApprovalsHashes, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
 };
 
 /// Reactor message.
@@ -40,7 +40,7 @@ pub(crate) enum Message {
     DeployGossiper(gossiper::Message<Deploy>),
     /// `ExecutedBlock` gossiper component message.
     #[from]
-    ExecutedBlockGossiper(gossiper::Message<ExecutedBlock>),
+    ExecutedBlockGossiper(gossiper::Message<ApprovalsHashes>),
     #[from]
     FinalitySignatureGossiper(gossiper::Message<FinalitySignature>),
     /// Address gossiper component message.
@@ -85,7 +85,7 @@ impl Payload for Message {
                     Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                     Tag::SyncLeap => MessageKind::BlockTransfer,
-                    Tag::ExecutedBlock => MessageKind::BlockTransfer,
+                    Tag::ApprovalsHashes => MessageKind::BlockTransfer,
                     Tag::BlockExecutionResults => MessageKind::BlockTransfer,
 
                     // The following tags should be unreachable.
@@ -133,7 +133,7 @@ impl Payload for Message {
                 Tag::BlockHeaderBatch => weights.block_requests,
                 Tag::FinalitySignaturesByHash => weights.block_requests,
                 Tag::SyncLeap => weights.block_requests,
-                Tag::ExecutedBlock => weights.block_requests,
+                Tag::ApprovalsHashes => weights.block_requests,
                 Tag::BlockExecutionResults => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
@@ -148,7 +148,7 @@ impl Payload for Message {
                 Tag::BlockHeaderBatch => weights.block_responses,
                 Tag::FinalitySignaturesByHash => weights.block_responses,
                 Tag::SyncLeap => weights.block_responses,
-                Tag::ExecutedBlock => weights.block_responses,
+                Tag::ApprovalsHashes => weights.block_responses,
                 Tag::BlockExecutionResults => weights.block_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
@@ -307,7 +307,7 @@ impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
         + From<GossiperIncoming<Deploy>>
-        + From<GossiperIncoming<ExecutedBlock>>
+        + From<GossiperIncoming<ApprovalsHashes>>
         + From<GossiperIncoming<FinalitySignature>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
@@ -387,7 +387,7 @@ where
                     message: NetRequest::SyncLeap(serialized_id),
                 }
                 .into(),
-                Tag::ExecutedBlock => NetRequestIncoming {
+                Tag::ApprovalsHashes => NetRequestIncoming {
                     sender,
                     message: NetRequest::ExecutedBlock(serialized_id),
                 }
@@ -462,7 +462,7 @@ where
                     message: NetResponse::SyncLeap(serialized_item),
                 }
                 .into(),
-                Tag::ExecutedBlock => NetResponseIncoming {
+                Tag::ApprovalsHashes => NetResponseIncoming {
                     sender,
                     message: NetResponse::ExecutedBlock(serialized_item),
                 }

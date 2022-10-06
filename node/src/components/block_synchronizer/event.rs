@@ -16,8 +16,8 @@ use crate::{
     components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
     effect::requests::BlockSynchronizerRequest,
     types::{
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy, EraValidatorWeights,
-        ExecutedBlock, FinalitySignature, LegacyDeploy, NodeId,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
+        EraValidatorWeights, FinalitySignature, LegacyDeploy, NodeId,
     },
 };
 
@@ -39,7 +39,9 @@ pub(crate) enum Event {
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
-    BlockAddedFetched(FetchResult<ExecutedBlock>),
+    BlockFetched(FetchResult<Block>),
+    #[from]
+    ApprovalsHashesFetched(FetchResult<ApprovalsHashes>),
     #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
     GlobalStateSynced {
@@ -93,10 +95,10 @@ impl Display for Event {
             Event::BlockHeaderFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
-            Event::BlockAddedFetched(Ok(fetched_item)) => {
+            Event::BlockFetched(Ok(fetched_item)) => {
                 write!(f, "{}", fetched_item)
             }
-            Event::BlockAddedFetched(Err(fetcher_error)) => {
+            Event::ApprovalsHashesFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
             Event::FinalitySignatureFetched(Ok(fetched_item)) => {

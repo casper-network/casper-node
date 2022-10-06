@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, EraId, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
@@ -24,9 +24,11 @@ use crate::{
 
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ExecutedBlock {
-    /// The block without the associated deploy approvals.
-    block: Block,
+pub(crate) struct ApprovalsHashes {
+    // Hash of the block that contains deploys that are relevant to the approvals.
+    block_hash: BlockHash,
+    // Era id of the block that contains deploys that are relevant to the approvals.
+    era_id: EraId,
     /// The set of all deploys' finalized approvals' hashes.
     approvals_hashes: Vec<ApprovalsHash>,
     /// The Merkle proof of the checksum registry containing the checksum of
@@ -35,39 +37,50 @@ pub(crate) struct ExecutedBlock {
     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
-    is_verified: OnceCell<Result<(), ExecutedBlockValidationError>>,
+    is_verified: OnceCell<Result<(), ApprovalsHashesValidationError>>,
 }
 
-impl ExecutedBlock {
+impl ApprovalsHashes {
     pub(crate) fn new(
-        block: Block,
+        block_hash: &BlockHash,
+        era_id: EraId,
         approvals_hashes: Vec<ApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
-            block,
+            block_hash: *block_hash,
+            era_id,
             approvals_hashes,
             merkle_proof_approvals,
             is_verified: OnceCell::new(),
         }
     }
 
-    fn verify(&self) -> Result<(), ExecutedBlockValidationError> {
+    fn verify(
+        &self,
+        state_root_hash: &Digest,
+        era_id: EraId,
+    ) -> Result<(), ApprovalsHashesValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
-            return Err(ExecutedBlockValidationError::InvalidKeyType);
+            return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
 
-        self.block.validate(&())?;
+        if *self.era_id() != era_id {
+            return Err(ApprovalsHashesValidationError::EraMismatch {
+                block_era_id: era_id,
+                approvals_era_id: *self.era_id(),
+            });
+        }
 
         let proof_state_root_hash = self
             .merkle_proof_approvals
             .compute_state_hash()
-            .map_err(ExecutedBlockValidationError::TrieMerkleProof)?;
+            .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
-        if proof_state_root_hash != *self.block.state_root_hash() {
-            return Err(ExecutedBlockValidationError::StateRootHashMismatch {
+        if proof_state_root_hash != *state_root_hash {
+            return Err(ApprovalsHashesValidationError::StateRootHashMismatch {
                 proof_state_root_hash,
-                block_state_root_hash: *self.block.state_root_hash(),
+                block_state_root_hash: *state_root_hash,
             });
         }
 
@@ -79,14 +92,14 @@ impl ExecutedBlock {
             .and_then(|registry: BTreeMap<String, Digest>| {
                 registry.get(APPROVALS_CHECKSUM_NAME).copied()
             })
-            .ok_or(ExecutedBlockValidationError::InvalidChecksumRegistry)?;
+            .ok_or(ApprovalsHashesValidationError::InvalidChecksumRegistry)?;
 
         let computed_approvals_root_hash =
             types::compute_approvals_checksum(self.deploy_ids().collect())
-                .map_err(ExecutedBlockValidationError::ApprovalsRootHash)?;
+                .map_err(ApprovalsHashesValidationError::ApprovalsRootHash)?;
 
         if value_in_proof != computed_approvals_root_hash {
-            return Err(ExecutedBlockValidationError::ApprovalsRootHashMismatch {
+            return Err(ApprovalsHashesValidationError::ApprovalsRootHashMismatch {
                 computed_approvals_root_hash,
                 value_in_proof,
             });
@@ -102,14 +115,6 @@ impl ExecutedBlock {
             .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
     }
 
-    pub(crate) fn block(&self) -> &Block {
-        &self.block
-    }
-
-    pub(crate) fn take_block(self) -> Block {
-        self.block
-    }
-
     pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
         self.approvals_hashes.as_ref()
     }
@@ -117,51 +122,60 @@ impl ExecutedBlock {
     pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
         &self.merkle_proof_approvals
     }
+
+    pub(crate) fn block_hash(&self) -> &BlockHash {
+        &self.block_hash
+    }
+
+    pub(crate) fn era_id(&self) -> &EraId {
+        &self.era_id
+    }
 }
 
-impl Item for ExecutedBlock {
+impl Item for ApprovalsHashes {
     type Id = BlockHash;
-    const TAG: Tag = Tag::ExecutedBlock;
+    const TAG: Tag = Tag::ApprovalsHashes;
 
     fn id(&self) -> Self::Id {
-        *self.block.hash()
+        self.block_hash
     }
 }
 
-impl FetcherItem for ExecutedBlock {
-    type ValidationError = ExecutedBlockValidationError;
-    type ValidationMetadata = ();
+impl FetcherItem for ApprovalsHashes {
+    type ValidationError = ApprovalsHashesValidationError;
+    type ValidationMetadata = (Digest, EraId);
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
-        self.is_verified.get_or_init(|| self.verify()).clone()
+    fn validate(
+        &self,
+        (state_root_hash, era_id): &(Digest, EraId),
+    ) -> Result<(), Self::ValidationError> {
+        self.is_verified
+            .get_or_init(|| self.verify(state_root_hash, *era_id))
+            .clone()
     }
 }
 
-impl GossiperItem for ExecutedBlock {
+impl GossiperItem for ApprovalsHashes {
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn target(&self) -> GossipTarget {
-        GossipTarget::NonValidators(self.block.header.era_id)
+        GossipTarget::NonValidators(self.era_id)
     }
 }
 
-impl Display for ExecutedBlock {
+impl Display for ApprovalsHashes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "executed block: {}", self.block.hash())
+        write!(f, "approvals hashes for block: {}", self.block_hash)
     }
 }
 
 /// An error that can arise when validating a `ExecutedBlock`.
 #[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
 #[non_exhaustive]
-pub(crate) enum ExecutedBlockValidationError {
+pub(crate) enum ApprovalsHashesValidationError {
     /// The key provided in the proof is not a `Key::ChecksumRegistry`.
     #[error("key provided in proof is not a Key::ChecksumRegistry")]
     InvalidKeyType,
-
-    /// An error while validating the `block` field.
-    #[error(transparent)]
-    BlockValidationError(#[from] BlockValidationError),
 
     /// An error while computing the state root hash implied by the Merkle proof.
     #[error("failed to compute state root hash implied by proof")]
@@ -181,6 +195,12 @@ pub(crate) enum ExecutedBlockValidationError {
     /// An error while computing the root hash of the approvals.
     #[error("failed to compute root hash of the approvals")]
     ApprovalsRootHash(bytesrepr::Error),
+
+    #[error("approvals hashes era mismatch: block_era_id={block_era_id} approvals_era_id={approvals_era_id}")]
+    EraMismatch {
+        block_era_id: EraId,
+        approvals_era_id: EraId,
+    },
 
     /// The approvals root hash implied by the Merkle proof doesn't match the approvals.
     #[error("approvals root hash implied by the Merkle proof doesn't match the approvals")]

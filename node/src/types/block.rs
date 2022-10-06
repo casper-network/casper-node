@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-mod executed_block;
+mod approvals_hashes;
 
 use std::{
     array::TryFromSliceError,
@@ -34,7 +34,7 @@ use casper_types::{
     crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
 };
 
-pub(crate) use executed_block::{ExecutedBlock, ExecutedBlockValidationError};
+pub(crate) use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
 
 use crate::{
     components::consensus,

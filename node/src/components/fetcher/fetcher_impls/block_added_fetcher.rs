@@ -1,22 +1,25 @@
 use std::{collections::HashMap, time::Duration};
 
+use casper_hashing::Digest;
+use casper_types::EraId;
+
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockHash, ExecutedBlock, NodeId},
+    types::{ApprovalsHashes, BlockHash, NodeId},
 };
 
-impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
+impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<ExecutedBlock>>>> {
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<ApprovalsHashes>>>> {
         &mut self.responders
     }
 
-    fn validation_metadata(&self) -> &() {
-        &()
+    fn validation_metadata(&self) -> &(Digest, EraId) {
+        &self.validation_metadata
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -32,9 +35,9 @@ impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
         peer: NodeId,
-        _validation_metadata: (),
-        responder: FetchResponder<ExecutedBlock>,
-    ) -> Effects<Event<ExecutedBlock>>
+        validation_metadata: (Digest, EraId),
+        responder: FetchResponder<ApprovalsHashes>,
+    ) -> Effects<Event<ApprovalsHashes>>
     where
         REv: From<StorageRequest> + Send,
     {
@@ -43,7 +46,7 @@ impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
-                validation_metadata: (),
+                validation_metadata,
                 maybe_item: Box::new(result),
                 responder,
             })
@@ -51,17 +54,17 @@ impl ItemFetcher<ExecutedBlock> for Fetcher<ExecutedBlock> {
 
     fn put_to_storage<REv>(
         &self,
-        item: ExecutedBlock,
+        item: ApprovalsHashes,
         peer: NodeId,
         effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<ExecutedBlock>>>
+    ) -> Option<Effects<Event<ApprovalsHashes>>>
     where
         REv: From<StorageRequest> + Send,
     {
         let item = Box::new(item);
         Some(
             effect_builder
-                .put_executed_block_to_storage(item.clone())
+                .put_approvals_hashes_to_storage(item.clone())
                 .event(move |_| Event::PutToStorage { item, peer }),
         )
     }

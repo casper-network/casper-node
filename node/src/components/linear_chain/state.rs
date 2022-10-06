@@ -18,8 +18,8 @@ use super::{
 use crate::{
     components::linear_chain,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash, ExecutedBlock,
-        FinalitySignature,
+        ActivationPoint, ApprovalsHashes, Block, BlockHash, BlockHeader, BlockSignatures,
+        DeployHash, FinalitySignature,
     },
 };
 
@@ -102,9 +102,10 @@ pub(super) enum Outcome {
     // Store block signatures to storage. If the flag is `true` this completes the signatures for
     // the last block before an upgrade.
     StoreBlockSignatures(BlockSignatures, bool),
-    // Store block and execution results.
+    // Store block, approvals hashes and execution results.
     StoreBlock {
-        executed_block: Box<ExecutedBlock>,
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     // Read finality signatures for the block from storage.
@@ -113,8 +114,11 @@ pub(super) enum Outcome {
     Gossip(Box<FinalitySignature>),
     // Create a reactor announcement about new (valid) finality signatures.
     AnnounceSignature(Box<FinalitySignature>),
-    // Create a reactor announcement about new (valid) block.
-    AnnounceBlock(Box<ExecutedBlock>),
+    // Create a reactor announcement about new (valid) block and approvals hashes.
+    AnnounceBlock {
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
+    },
     // Check if creator of `new_fs` is known trusted validator.
     // Carries additional context necessary to create the corresponding event.
     VerifyIfBonded {
@@ -174,12 +178,9 @@ impl LinearChain {
 
     // New linear chain block received. Collect any pending finality signatures that
     // were waiting for that block.
-    fn new_block(&mut self, block_added: &ExecutedBlock) -> Vec<Signature> {
-        let signatures = self.collect_pending_finality_signatures(block_added.block().hash());
-        let mut block_signatures = BlockSignatures::new(
-            *block_added.block().hash(),
-            block_added.block().header().era_id(),
-        );
+    fn new_block(&mut self, block: &Block) -> Vec<Signature> {
+        let signatures = self.collect_pending_finality_signatures(block.hash());
+        let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
         for sig in signatures.iter() {
             block_signatures.insert_proof(sig.public_key(), sig.signature());
         }
@@ -297,22 +298,26 @@ impl LinearChain {
 
     pub(super) fn handle_new_block(
         &mut self,
-        executed_block: Box<ExecutedBlock>,
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Outcomes {
         vec![Outcome::StoreBlock {
-            executed_block,
+            block,
+            approvals_hashes,
             execution_results,
         }]
     }
 
-    pub(super) fn handle_put_block(&mut self, block_added: Box<ExecutedBlock>) -> Outcomes {
+    pub(super) fn handle_put_block(
+        &mut self,
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
+    ) -> Outcomes {
         let mut outcomes = Vec::new();
-        let signatures = self.new_block(&*block_added);
-        self.latest_block = Some(block_added.block().clone());
-        if let Some(key_block_info) =
-            KeyBlockInfo::maybe_from_block_header(block_added.block().header())
-        {
+        let signatures = self.new_block(&*block);
+        self.latest_block = Some(*block.clone());
+        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(block.header()) {
             let current_era = key_block_info.era_id();
             self.key_block_info.insert(current_era, key_block_info);
             if let Some(old_era_id) = self.lowest_acceptable_era_id(current_era).checked_sub(1) {
@@ -320,10 +325,7 @@ impl LinearChain {
             }
         }
         if !signatures.is_empty() {
-            let mut block_signatures = BlockSignatures::new(
-                *block_added.block().hash(),
-                block_added.block().header().era_id(),
-            );
+            let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
             for sig in signatures.iter() {
                 block_signatures.insert_proof(sig.public_key(), sig.signature());
             }
@@ -339,7 +341,10 @@ impl LinearChain {
                 outcomes.push(Outcome::AnnounceSignature(signature.take()));
             }
         };
-        outcomes.push(Outcome::AnnounceBlock(block_added));
+        outcomes.push(Outcome::AnnounceBlock {
+            block,
+            approvals_hashes,
+        });
         outcomes
     }
 
@@ -528,24 +533,39 @@ mod tests {
             Default::default(),
         );
         let execution_results = HashMap::new();
-        let block_added = ExecutedBlock::new(block.clone(), vec![], proof_of_checksum_registry);
-        let new_block_outcomes =
-            lc.handle_new_block(Box::new(block_added.clone()), execution_results.clone());
+        let approvals_hashes = ApprovalsHashes::new(
+            block.hash(),
+            block.header().era_id(),
+            vec![],
+            proof_of_checksum_registry,
+        );
+        let new_block_outcomes = lc.handle_new_block(
+            Box::new(block.clone()),
+            Box::new(approvals_hashes),
+            execution_results.clone(),
+        );
         match &*new_block_outcomes {
             [Outcome::StoreBlock {
-                executed_block: outcome_block_added,
+                block: outcome_block,
+                approvals_hashes: outcome_approvals_hashes,
                 execution_results: outcome_execution_results,
             }] => {
-                assert_eq!(&**outcome_block_added, &block_added);
+                assert_eq!(&**outcome_block, &block);
+                assert_eq!(**outcome_approvals_hashes, approvals_hashes);
                 assert_eq!(outcome_execution_results, &execution_results);
             }
             others => panic!("unexpected outcome: {:?}", others),
         }
 
-        let block_stored_outcomes = lc.handle_put_block(Box::new(block_added.clone()));
+        let block_stored_outcomes =
+            lc.handle_put_block(Box::new(block.clone()), Box::new(approvals_hashes.clone()));
         match &*block_stored_outcomes {
-            [Outcome::AnnounceBlock(announced_block_added)] => {
-                assert_eq!(&**announced_block_added, &block_added);
+            [Outcome::AnnounceBlock {
+                block: announced_block,
+                approvals_hashes: announced_approvals_hashes,
+            }] => {
+                assert_eq!(&**announced_block, &block);
+                assert_eq!(**announced_approvals_hashes, approvals_hashes);
             }
             others => panic!("unexpected outcome: {:?}", others),
         }

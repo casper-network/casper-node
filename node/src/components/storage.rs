@@ -87,13 +87,13 @@ use crate::{
     reactor::ReactorEvent,
     storage::lmdb_ext::BytesreprError,
     types::{
-        ApprovalsHash, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
+        ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
         BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployId,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
-        ExecutedBlock, FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
-        LegacyDeploy, NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
+        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy,
+        NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -170,9 +170,9 @@ pub struct Storage {
     /// The block body database.
     #[data_size(skip)]
     block_body_db: Database,
-    /// The executed blocks database.
+    /// The approvals hashes database.
     #[data_size(skip)]
-    executed_blocks_db: Database,
+    approvals_hashes_db: Database,
     /// The block metadata db.
     #[data_size(skip)]
     block_metadata_db: Database,
@@ -357,7 +357,8 @@ impl Storage {
         let finalized_approvals_db =
             env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
         let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
-        let executed_blocks_db = env.create_db(Some("executed_blocks"), DatabaseFlags::empty())?;
+        let approvals_hashes_db =
+            env.create_db(Some("approvals_hashes"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
@@ -439,7 +440,7 @@ impl Storage {
             block_header_db,
             block_body_db,
             block_metadata_db,
-            executed_blocks_db,
+            approvals_hashes_db,
             deploy_db,
             deploy_metadata_db,
             transfer_db,
@@ -761,11 +762,11 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&*block)?).ignore()
             }
-            StorageRequest::PutExecutedBlock {
-                executed_block,
+            StorageRequest::PutApprovalsHashes {
+                approvals_hashes,
                 responder,
             } => responder
-                .respond(self.write_executed_block(&*executed_block)?)
+                .respond(self.write_approvals_hashes(&*approvals_hashes)?)
                 .ignore(),
             StorageRequest::GetBlock {
                 block_hash,
@@ -775,7 +776,7 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder
-                .respond(self.read_executed_block(&block_hash)?)
+                .respond(self.read_approvals_hashes(&block_hash)?)
                 .ignore(),
             StorageRequest::GetHighestBlock { responder } => {
                 responder.respond(self.read_highest_block()?).ignore()
@@ -1327,28 +1328,14 @@ impl Storage {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
-    /// Retrieves a executed block by hash.
-    fn read_executed_block(
+    /// Retrieves a approvals hashes by block hash.
+    fn read_approvals_hashes(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<ExecutedBlock>, FatalStorageError> {
+    ) -> Result<Option<ApprovalsHashes>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block = self.get_single_block(&mut txn, block_hash)?;
-        if let Some(block) = maybe_block {
-            let (approvals_hashes, merkle_proof_approvals): (
-                Vec<ApprovalsHash>,
-                TrieMerkleProof<Key, StoredValue>,
-            ) = match txn.get_value(self.executed_blocks_db, &block_hash)? {
-                Some(data) => data,
-                None => return Ok(None),
-            };
-            return Ok(Some(ExecutedBlock::new(
-                block,
-                approvals_hashes,
-                merkle_proof_approvals,
-            )));
-        };
-        Ok(None)
+        let maybe_approvals_hashes = txn.get_value(self.approvals_hashes_db, &block_hash)?;
+        return Ok(maybe_approvals_hashes);
     }
 
     /// Gets the highest block.
@@ -1360,7 +1347,7 @@ impl Storage {
     /// Make a finalized block from a executed block, respecting Deploy Approvals.
     pub(crate) fn make_executable_block(
         &self,
-        executed_block: ExecutedBlock,
+        executed_block: ApprovalsHashes,
     ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
         // check all approvals in block_added against stored approvals,
         // deal with any discrepancies
@@ -1397,28 +1384,21 @@ impl Storage {
     }
 
     /// Writes an executed block to storage, updating indices as necessary.
-    fn write_executed_block(
+    fn write_approvals_hashes(
         &mut self,
-        executed_block: &ExecutedBlock,
+        approvals_hashes: &ApprovalsHashes,
     ) -> Result<bool, FatalStorageError> {
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
-        let _ = self.write_validated_block(&mut txn, executed_block.block())?;
 
         let overwrite = true;
         if !txn.put_value(
-            self.executed_blocks_db,
-            executed_block.block().hash(),
-            &(
-                executed_block.approvals_hashes().to_vec(),
-                executed_block.merkle_proof_approvals().clone(),
-            ),
+            self.approvals_hashes_db,
+            approvals_hashes.block_hash(),
+            approvals_hashes,
             overwrite,
         )? {
-            error!(
-                "could not insert approvals' hashes for executed block: {}",
-                executed_block
-            );
+            error!("could not insert approvals' hashes: {}", approvals_hashes);
             return Ok(false);
         }
         Ok(true)

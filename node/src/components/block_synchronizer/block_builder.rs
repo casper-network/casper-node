@@ -20,8 +20,8 @@ use crate::{
         signature_acquisition::SignatureAcquisition,
     },
     types::{
-        Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash, DeployId,
-        EraValidatorWeights, ExecutedBlock, FinalitySignature, NodeId, SyncLeap,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
+        DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
     },
     NodeRng,
 };
@@ -285,9 +285,9 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn register_block_added(
+    pub(super) fn register_approvals_hashes(
         &mut self,
-        block_added: &ExecutedBlock,
+        block_added: &ApprovalsHashes,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Err(error) = self.acquisition_state.with_block(

@@ -102,19 +102,18 @@ where
                 .put_signatures_to_storage(block_signatures)
                 .events(move |_| should_upgrade.then(|| Event::Upgrade).into_iter()),
             Outcome::StoreBlock {
-                executed_block,
+                block,
+                approvals_hashes,
                 execution_results,
-            } => async move {
-                let block_hash = *executed_block.block().hash();
+            } => {
+                let block_hash = *block.hash();
                 effect_builder
-                    .put_executed_block_to_storage(executed_block.clone())
-                    .await;
-                effect_builder
-                    .put_execution_results_to_storage(block_hash, execution_results)
-                    .await;
-                executed_block
+                    .put_executed_block_to_storage(block, approvals_hashes, execution_results)
+                    .event(move |_| Event::PutBlockResult {
+                        block,
+                        approvals_hashes,
+                    })
             }
-            .event(Event::PutBlockResult),
             Outcome::Gossip(fs) => {
                 let era_id = fs.era_id;
                 let message = Message::FinalitySignature(fs);
@@ -125,9 +124,12 @@ where
             Outcome::AnnounceSignature(fs) => {
                 effect_builder.announce_finality_signature(fs).ignore()
             }
-            Outcome::AnnounceBlock(block_added) => {
-                effect_builder.announce_block_added(block_added).ignore()
-            }
+            Outcome::AnnounceBlock {
+                block,
+                approvals_hashes,
+            } => effect_builder
+                .announce_block_and_approvals_hashes(block, approvals_hashes)
+                .ignore(),
             Outcome::LoadSignatures(fs) => effect_builder
                 .get_signatures_from_storage(fs.block_hash)
                 .event(move |maybe_signatures| {
@@ -176,21 +178,28 @@ where
         match event {
             Event::NewLinearChainBlock {
                 // executed
-                block_added,
+                block,
+                approvals_hashes,
                 execution_results,
             } => {
-                let outcomes = self
-                    .linear_chain_state
-                    .handle_new_block(block_added, execution_results);
+                let outcomes = self.linear_chain_state.handle_new_block(
+                    block,
+                    approvals_hashes,
+                    execution_results,
+                );
                 outcomes_to_effects(effect_builder, outcomes)
             }
-            Event::PutBlockResult(block_added) => {
-                let completion_duration =
-                    block_added.block().header().timestamp().elapsed().millis();
+            Event::PutBlockResult {
+                block,
+                approvals_hashes,
+            } => {
+                let completion_duration = block.header().timestamp().elapsed().millis();
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
-                let outcomes = self.linear_chain_state.handle_put_block(block_added);
+                let outcomes = self
+                    .linear_chain_state
+                    .handle_put_block(block, approvals_hashes);
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
@@ -222,6 +231,7 @@ where
                     .got_upgrade_activation_point(activation_point);
                 Effects::new()
             }
+            Event::PutApprovalsHashesResult(approvals_hashes) => todo!(),
         }
     }
 }

@@ -27,8 +27,8 @@ use rand_chacha::ChaCha20Rng;
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
     compute_approvals_checksum, BlockDeployApprovals, BlockHashAndHeight, BlockHeaderWithMetadata,
-    BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockWithMetadata, ExecutedBlock,
-    ExecutedBlockValidationError, FinalitySignatureId,
+    BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockWithMetadata, ApprovalsHashes,
+    ApprovalsHashesValidationError, FinalitySignatureId,
 };
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},

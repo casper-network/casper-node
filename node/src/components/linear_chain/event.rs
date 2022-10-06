@@ -10,7 +10,7 @@ use casper_types::{ExecutionResult, Key, StoredValue};
 use crate::{
     effect::incoming::FinalitySignatureIncoming,
     types::{
-        ActivationPoint, Block, BlockSignatures, DeployHash, ExecutedBlock, FinalitySignature,
+        ActivationPoint, ApprovalsHashes, Block, BlockSignatures, DeployHash, FinalitySignature,
     },
 };
 
@@ -19,7 +19,9 @@ pub(crate) enum Event {
     /// New linear chain block has been produced.
     NewLinearChainBlock {
         /// The block.
-        block_added: Box<ExecutedBlock>,
+        block: Box<Block>,
+        /// Approval hashes.
+        approvals_hashes: Box<ApprovalsHashes>,
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
@@ -27,7 +29,14 @@ pub(crate) enum Event {
     /// Not necessarily _new_ finality signature.
     FinalitySignatureReceived(Box<FinalitySignature>, bool),
     /// The result of putting a block to storage.
-    PutBlockResult(Box<ExecutedBlock>),
+    PutBlockResult {
+        /// The block.
+        block: Box<Block>,
+        /// Approval hashes.
+        approvals_hashes: Box<ApprovalsHashes>,
+    },
+    /// The result of putting approvals hashes to storage.
+    PutApprovalsHashesResult(Box<ApprovalsHashes>),
     /// The result of requesting finality signatures from storage to add pending signatures.
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
     /// Result of testing if creator of the finality signature is bonded validator.

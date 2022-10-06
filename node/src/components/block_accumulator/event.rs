@@ -6,7 +6,7 @@ use casper_types::EraId;
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{ExecutedBlock, FinalitySignature, NodeId},
+    types::{ApprovalsHashes, Block, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -14,7 +14,11 @@ pub(crate) enum Event {
     #[from]
     Request(BlockAccumulatorRequest),
     ReceivedBlock {
-        block: Box<ExecutedBlock>,
+        block: Box<Block>,
+        sender: NodeId,
+    },
+    ReceivedApprovalsHashes {
+        approvals_hashes: Box<ApprovalsHashes>,
         sender: NodeId,
     },
     ReceivedFinalitySignature {
@@ -47,6 +51,12 @@ impl Display for Event {
             }
             Event::UpdatedValidatorMatrix { era_id } => {
                 write!(f, "validator matrix update for era {}", era_id)
+            }
+            Event::ReceivedApprovalsHashes {
+                approvals_hashes: _,
+                sender,
+            } => {
+                write!(f, "approvals hashes update from {}", sender)
             }
         }
     }

@@ -50,13 +50,13 @@ use crate::{
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
+        BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, ExecutedBlock,
-        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item,
-        LegacyDeploy, NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
+        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -298,9 +298,19 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
-    /// Store the executed block.
+    /// Store the approvals hashes.
+    PutApprovalsHashes {
+        /// Approvals hashes to store.
+        approvals_hashes: Box<ApprovalsHashes>,
+        responder: Responder<bool>,
+    },
+    /// Store the block and approvals hashes.
     PutExecutedBlock {
-        executed_block: Box<ExecutedBlock>,
+        /// Block to be stored.
+        block: Box<Block>,
+        /// Approvals hashes to store.
+        approvals_hashes: Box<ApprovalsHashes>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
         responder: Responder<bool>,
     },
     /// Store given block and its deploys.
@@ -324,7 +334,7 @@ pub(crate) enum StorageRequest {
         block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` is the executed block doesn't exist
         /// in local storage.
-        responder: Responder<Option<ExecutedBlock>>,
+        responder: Responder<Option<ApprovalsHashes>>,
     },
     /// Retrieve block and deploys with given hash.
     GetBlockAndDeploys {
@@ -587,7 +597,10 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            StorageRequest::PutExecutedBlock { executed_block, .. } => {
+            StorageRequest::PutApprovalsHashes {
+                approvals_hashes: executed_block,
+                ..
+            } => {
                 write!(formatter, "put {}", executed_block)
             }
             StorageRequest::PutBlockAndDeploys {

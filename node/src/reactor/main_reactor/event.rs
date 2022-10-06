@@ -42,9 +42,10 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        Block, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy,
-        ExecutedBlock, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        ApprovalsHashes, Block, BlockAndDeploys, BlockDeployApprovals,
+        BlockExecutionResultsOrChunk, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockSignatures, BlockWithMetadata, Deploy, FinalitySignature, LegacyDeploy, SyncLeap,
+        TrieOrChunk,
     },
 };
 
@@ -136,18 +137,33 @@ pub(crate) enum MainEvent {
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
     #[from]
     BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSynchronizerRequest),
+
+    // todo!() - needed?
     #[from]
-    ExecutedBlockGossiper(#[serde(skip_serializing)] gossiper::Event<ExecutedBlock>),
+    ApprovalsHashesGossiper(#[serde(skip_serializing)] gossiper::Event<ApprovalsHashes>),
     #[from]
-    ExecutedBlockGossiperIncoming(GossiperIncoming<ExecutedBlock>),
+    ApprovalsHashesGossiperIncoming(GossiperIncoming<ApprovalsHashes>),
     #[from]
-    ExecutedBlockGossiperAnnouncement(
-        #[serde(skip_serializing)] GossiperAnnouncement<ExecutedBlock>,
+    ApprovalsHashesGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<ApprovalsHashes>,
     ),
     #[from]
-    ExecutedBlockFetcher(#[serde(skip_serializing)] fetcher::Event<ExecutedBlock>),
+    ApprovalsHashesFetcher(#[serde(skip_serializing)] fetcher::Event<ApprovalsHashes>),
     #[from]
-    ExecutedBlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<ExecutedBlock>),
+    ApprovalsHashesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<ApprovalsHashes>),
+
+    // todo!() - needed?
+    #[from]
+    BlockGossiper(#[serde(skip_serializing)] gossiper::Event<Block>),
+    #[from]
+    BlockGossiperIncoming(GossiperIncoming<Block>),
+    #[from]
+    BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
+    #[from]
+    BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
+    #[from]
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
+
     #[from]
     BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
     #[from]
@@ -255,7 +271,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::DeployFetcher(_) => "DeployFetcher",
             MainEvent::DeployGossiper(_) => "DeployGossiper",
-            MainEvent::ExecutedBlockGossiper(_) => "BlockGossiper",
+            MainEvent::ApprovalsHashesGossiper(_) => "ApprovalsHashesGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
             MainEvent::BlockValidator(_) => "BlockValidator",
@@ -268,7 +284,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
             MainEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
-            MainEvent::ExecutedBlockFetcher(_) => "ExecutedBlockFetcher",
+            MainEvent::ApprovalsHashesFetcher(_) => "ExecutedBlockFetcher",
             MainEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             MainEvent::NetworkRequest(_) => "NetworkRequest",
             MainEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -281,7 +297,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
-            MainEvent::ExecutedBlockFetcherRequest(_) => "ExecutedBlockFetcherRequest",
+            MainEvent::ApprovalsHashesFetcherRequest(_) => "ExecutedBlockFetcherRequest",
             MainEvent::DeployBufferRequest(_) => "DeployBufferRequest",
             MainEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             MainEvent::MetricsRequest(_) => "MetricsRequest",
@@ -305,7 +321,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
-            MainEvent::ExecutedBlockGossiperIncoming(_) => "BlockGossiperIncoming",
+            MainEvent::ApprovalsHashesGossiperIncoming(_) => "ApprovalsHashesGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
@@ -315,7 +331,9 @@ impl ReactorEvent for MainEvent {
             MainEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             MainEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             MainEvent::ContractRuntime(_) => "ContractRuntime",
-            MainEvent::ExecutedBlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
+            MainEvent::ApprovalsHashesGossiperAnnouncement(_) => {
+                "ApprovalsHashesGossiperAnnouncement"
+            }
             MainEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
             }
@@ -323,6 +341,11 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockAccumulatorRequest(_) => "BlockAccumulatorRequest",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
             MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
+            MainEvent::BlockGossiper(_) => "BlockGossiper",
+            MainEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
+            MainEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
+            MainEvent::BlockFetcher(_) => "BlockFetcher",
+            MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
         }
     }
 }
@@ -381,8 +404,8 @@ impl From<NetworkRequest<gossiper::Message<Deploy>>> for MainEvent {
     }
 }
 
-impl From<NetworkRequest<gossiper::Message<ExecutedBlock>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<ExecutedBlock>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<ApprovalsHashes>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<ApprovalsHashes>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -425,7 +448,7 @@ impl Display for MainEvent {
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             MainEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
-            MainEvent::ExecutedBlockGossiper(event) => write!(f, "block gossiper: {}", event),
+            MainEvent::ApprovalsHashesGossiper(event) => write!(f, "block gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -450,7 +473,7 @@ impl Display for MainEvent {
             MainEvent::SyncLeapFetcher(event) => {
                 write!(f, "sync leap fetcher: {}", event)
             }
-            MainEvent::ExecutedBlockFetcher(event) => {
+            MainEvent::ApprovalsHashesFetcher(event) => {
                 write!(f, "executed block fetcher: {}", event)
             }
             MainEvent::BlockAccumulator(event) => {
@@ -506,7 +529,7 @@ impl Display for MainEvent {
             MainEvent::SyncLeapFetcherRequest(request) => {
                 write!(f, "sync leap fetcher request: {}", request)
             }
-            MainEvent::ExecutedBlockFetcherRequest(request) => {
+            MainEvent::ApprovalsHashesFetcherRequest(request) => {
                 write!(f, "executed block fetcher request: {}", request)
             }
             MainEvent::AddressGossiperCrank(request) => {
@@ -538,7 +561,7 @@ impl Display for MainEvent {
             MainEvent::DeployGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
             }
-            MainEvent::ExecutedBlockGossiperAnnouncement(ann) => {
+            MainEvent::ApprovalsHashesGossiperAnnouncement(ann) => {
                 write!(f, "block gossiper announcement: {}", ann)
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
@@ -561,7 +584,7 @@ impl Display for MainEvent {
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::ExecutedBlockGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::ApprovalsHashesGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
@@ -571,6 +594,11 @@ impl Display for MainEvent {
             MainEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ContractRuntime(inner) => Display::fmt(inner, f),
+            MainEvent::BlockGossiper(inner) => Display::fmt(inner, f),
+            MainEvent::BlockGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::BlockGossiperAnnouncement(inner) => Display::fmt(inner, f),
+            MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
+            MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
         }
     }
 }

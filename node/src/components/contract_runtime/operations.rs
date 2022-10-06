@@ -31,7 +31,7 @@ use crate::{
     },
     contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
-        self, error::BlockCreationError, Block, Chunkable, Deploy, DeployHeader, ExecutedBlock,
+        self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, Deploy, DeployHeader,
         FinalizedBlock, Item,
     },
 };
@@ -203,27 +203,29 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
-    let block = Block::new(
+    let block = Box::new(Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
         protocol_version,
-    )?;
+    )?);
 
     let approvals_hashes = deploy_ids
         .into_iter()
         .map(|id| id.destructure().1)
         .collect();
-    let block_added = Box::new(ExecutedBlock::new(
-        block,
+    let approvals_hashes = Box::new(ApprovalsHashes::new(
+        block.hash(),
+        block.header().era_id(),
         approvals_hashes,
         proof_of_checksum_registry,
     ));
 
     Ok(BlockAndExecutionResults {
-        block_added,
+        block,
+        approvals_hashes,
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })

@@ -8,7 +8,7 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
-use crate::types::{Block, BlockHeader, DeployHash, DeployHeader, ExecutedBlock};
+use crate::types::{ApprovalsHashes, Block, BlockHeader, DeployHash, DeployHeader};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,8 +97,10 @@ pub(crate) struct StepEffectAndUpcomingEraValidators {
 /// effects it may have.
 #[derive(Clone, Debug, DataSize)]
 pub struct BlockAndExecutionResults {
-    /// The [`BlockAdded`] the contract runtime executed.
-    pub(crate) block_added: Box<ExecutedBlock>,
+    /// The [`Block`] the contract runtime executed.
+    pub(crate) block: Box<Block>,
+    /// The [`ApprovalsHashes`] for the deploys in this block.
+    pub(crate) approvals_hashes: Box<ApprovalsHashes>,
     /// The results from executing the deploys in the block.
     pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
@@ -109,12 +111,12 @@ pub struct BlockAndExecutionResults {
 impl BlockAndExecutionResults {
     #[doc(hidden)]
     pub fn block_header(&self) -> &BlockHeader {
-        self.block_added.block().header()
+        self.block.header()
     }
 }
 
 impl From<BlockAndExecutionResults> for Block {
     fn from(block_and_execution_results: BlockAndExecutionResults) -> Self {
-        block_and_execution_results.block_added.take_block()
+        *block_and_execution_results.block
     }
 }

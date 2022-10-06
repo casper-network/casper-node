@@ -27,7 +27,7 @@ use crate::{
     },
     types::{
         ActivationPoint, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes, DeployHash,
-        EraValidatorWeights, ExecutedBlock, FinalizedBlock, Item, ValidatorMatrix,
+        EraValidatorWeights, ApprovalsHashes, FinalizedBlock, Item, ValidatorMatrix,
     },
     NodeRng,
 };

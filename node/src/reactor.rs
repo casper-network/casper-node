@@ -71,7 +71,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader, BlockHeaderWithMetadata,
         BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
-        Deploy, DeployHash, DeployId, ExecutedBlock, ExitCode, FetcherItem, FinalitySignature,
+        Deploy, DeployHash, DeployId, ApprovalsHashes, ExitCode, FetcherItem, FinalitySignature,
         Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
@@ -994,7 +994,7 @@ where
         + From<fetcher::Event<Deploy>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
-        + From<fetcher::Event<ExecutedBlock>>
+        + From<fetcher::Event<ApprovalsHashes>>
         + From<PeerBehaviorAnnouncement>,
 {
     match message {
@@ -1177,7 +1177,7 @@ where
             )
         }
         NetResponse::ExecutedBlock(ref serialized_item) => {
-            handle_fetch_response::<R, ExecutedBlock>(
+            handle_fetch_response::<R, ApprovalsHashes>(
                 reactor,
                 effect_builder,
                 rng,

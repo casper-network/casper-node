@@ -14,7 +14,7 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, ExecutedBlock, FinalitySignature, Item, NodeId, ValidatorMatrix},
+    types::{ApprovalsHashes, Block, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -192,29 +192,26 @@ impl BlockAccumulator {
         self.block_acceptors.insert(block_hash, acceptor);
     }
 
-    pub(crate) fn register_block_added<REv>(
+    pub(crate) fn register_approvals_hashes<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block_added: ExecutedBlock,
+        approvals_hashes: ApprovalsHashes,
         sender: NodeId,
     ) -> Effects<Event>
     where
         REv: Send + From<PeerBehaviorAnnouncement>,
     {
-        let block_hash = *block_added.block().hash();
-        let era_id = block_added.block().header().era_id();
-        if let Some(parent_hash) = block_added.block().parent() {
-            self.block_children.insert(*parent_hash, block_hash);
-        }
-        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
+        let block_hash = *approvals_hashes.block_hash();
+        let era_id = approvals_hashes.era_id();
+        let acceptor = match self.get_or_register_acceptor_mut(block_hash, *era_id, vec![sender]) {
             Some(block_gossip_acceptor) => block_gossip_acceptor,
             None => {
                 return Effects::new();
             }
         };
 
-        if let Err(err) = acceptor.register_block_added(block_added, sender) {
-            warn!(%err, "received invalid block_added");
+        if let Err(err) = acceptor.register_approvals_hashes(&approvals_hashes, sender) {
+            warn!(%err, "received invalid approvals hashes");
             match err {
                 Error::InvalidGossip(err) => {
                     return effect_builder
@@ -228,7 +225,66 @@ impl BlockAccumulator {
                 }
                 Error::DuplicatedEraValidatorWeights { .. } => {
                     // this should be unreachable; definitely a programmer error
-                    debug!(%err, "unexpected error registering executed block");
+                    debug!(%err, "unexpected error registering approvals hashes");
+                }
+                Error::BlockHashMismatch {
+                    expected: _,
+                    actual: _,
+                    peer,
+                } => {
+                    return effect_builder.announce_disconnect_from_peer(peer).ignore();
+                }
+            }
+        }
+        Effects::new()
+    }
+
+    pub(crate) fn register_block<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block: &Block,
+        sender: NodeId,
+    ) -> Effects<Event>
+    where
+        REv: Send + From<PeerBehaviorAnnouncement>,
+    {
+        let block_hash = block.hash();
+        let era_id = block.header().era_id();
+
+        if let Some(parent_hash) = block.parent() {
+            self.block_children.insert(*parent_hash, *block_hash);
+        }
+
+        let acceptor = match self.get_or_register_acceptor_mut(*block_hash, era_id, vec![sender]) {
+            Some(block_gossip_acceptor) => block_gossip_acceptor,
+            None => {
+                return Effects::new();
+            }
+        };
+
+        if let Err(err) = acceptor.register_block(&block, sender) {
+            warn!(%err, block_hash=%block.hash(), "received invalid block");
+            match err {
+                Error::InvalidGossip(err) => {
+                    return effect_builder
+                        .announce_disconnect_from_peer(err.peer())
+                        .ignore();
+                }
+                Error::EraMismatch(_err) => {
+                    // TODO: Log?
+                    // this block acceptor is borked; get rid of it
+                    self.block_acceptors.remove(&block.hash());
+                }
+                Error::DuplicatedEraValidatorWeights { .. } => {
+                    // this should be unreachable; definitely a programmer error
+                    debug!(%err, "unexpected error registering block");
+                }
+                Error::BlockHashMismatch {
+                    expected: _,
+                    actual: _,
+                    peer,
+                } => {
+                    return effect_builder.announce_disconnect_from_peer(peer).ignore();
                 }
             }
         }
@@ -272,6 +328,13 @@ impl BlockAccumulator {
                     // this should be unreachable; definitely a programmer error
                     debug!(%err, "unexpected error registering a finality signature");
                 }
+                Error::BlockHashMismatch {
+                    expected: _,
+                    actual: _,
+                    peer,
+                } => {
+                    return effect_builder.announce_disconnect_from_peer(peer).ignore();
+                }
             }
         }
         Effects::new()
@@ -305,9 +368,9 @@ impl BlockAccumulator {
         }
     }
 
-    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<ExecutedBlock> {
+    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<ApprovalsHashes> {
         if let Some(acceptor) = self.block_acceptors.get(&block_hash) {
-            acceptor.block_added()
+            acceptor.approvals_hashes()
         } else {
             None
         }
@@ -387,7 +450,7 @@ where
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
             Event::ReceivedBlock { block, sender } => {
-                self.register_block_added(effect_builder, *block, sender)
+                self.register_block(effect_builder, &*block, sender)
             }
             Event::ReceivedFinalitySignature {
                 finality_signature,
@@ -397,6 +460,10 @@ where
                 //self.handle_updated_validator_matrix(effect_builder, era_id)
                 Effects::new()
             }
+            Event::ReceivedApprovalsHashes {
+                approvals_hashes,
+                sender,
+            } => self.register_approvals_hashes(effect_builder, *approvals_hashes, sender),
         }
     }
 }

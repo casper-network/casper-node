@@ -9,7 +9,7 @@ use crate::{
     types::{
         Block, BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockHeader,
         BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
-        Deploy, ExecutedBlock, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        Deploy, ApprovalsHashes, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
     FetcherConfig, NodeRng,
 };
@@ -18,7 +18,7 @@ use crate::{
 pub(super) struct Fetchers {
     sync_leap_fetcher: Fetcher<SyncLeap>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
-    executed_block_fetcher: Fetcher<ExecutedBlock>,
+    executed_block_fetcher: Fetcher<ApprovalsHashes>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,
     legacy_deploy_fetcher: Fetcher<LegacyDeploy>,
     deploy_fetcher: Fetcher<Deploy>,
@@ -84,13 +84,13 @@ impl Fetchers {
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            MainEvent::ExecutedBlockFetcher(event) => reactor::wrap_effects(
-                MainEvent::ExecutedBlockFetcher,
+            MainEvent::ApprovalsHashesFetcher(event) => reactor::wrap_effects(
+                MainEvent::ApprovalsHashesFetcher,
                 self.executed_block_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::ExecutedBlockFetcherRequest(request) => reactor::wrap_effects(
-                MainEvent::ExecutedBlockFetcher,
+            MainEvent::ApprovalsHashesFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::ApprovalsHashesFetcher,
                 self.executed_block_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),

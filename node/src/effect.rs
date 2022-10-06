@@ -151,13 +151,13 @@ use crate::{
     effect::requests::{BlockAccumulatorRequest, BlockSynchronizerRequest},
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, AvailableBlockRange, Block, BlockAndDeploys,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
+        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
+        BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, ExecutedBlock,
-        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem,
-        LegacyDeploy, NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
+        DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy, NodeId,
+        NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -991,7 +991,8 @@ impl<REv> EffectBuilder<REv> {
     /// Announces a new block has been created.
     pub(crate) async fn announce_new_linear_chain_block(
         self,
-        block_added: Box<ExecutedBlock>,
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     ) where
         REv: From<ContractRuntimeAnnouncement>,
@@ -999,7 +1000,8 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeAnnouncement::LinearChainBlock {
-                    block_added,
+                    block,
+                    approvals_hashes,
                     execution_results,
                 },
                 QueueKind::Regular,
@@ -1055,17 +1057,39 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given ExecutedBlock into the linear block store.
+    /// Puts the given approvals hashes into the linear block store.
+    pub(crate) async fn put_approvals_hashes_to_storage(
+        self,
+        approvals_hashes: Box<ApprovalsHashes>,
+    ) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutApprovalsHashes {
+                approvals_hashes,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the given block and approvals hashes into the linear block store.
     pub(crate) async fn put_executed_block_to_storage(
         self,
-        executed_block: Box<ExecutedBlock>,
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutExecutedBlock {
-                executed_block,
+                block,
+                approvals_hashes,
+                execution_results,
                 responder,
             },
             QueueKind::Regular,
@@ -1104,7 +1128,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_executed_block_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<ExecutedBlock>
+    ) -> Option<ApprovalsHashes>
     where
         REv: From<StorageRequest>,
     {
@@ -1866,13 +1890,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_added: Box<ExecutedBlock>)
-    where
+    pub(crate) async fn announce_block_and_approvals_hashes(
+        self,
+        block: Box<Block>,
+        approvals_hashes: Box<ApprovalsHashes>,
+    ) where
         REv: From<LinearChainAnnouncement>,
     {
         self.event_queue
             .schedule(
-                LinearChainAnnouncement::BlockAdded(block_added),
+                LinearChainAnnouncement::BlockAdded {
+                    block,
+                    approvals_hashes,
+                },
                 QueueKind::Regular,
             )
             .await

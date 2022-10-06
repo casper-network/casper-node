@@ -75,9 +75,9 @@ use crate::{
         EventQueueHandle, ReactorExit,
     },
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes,
-        Deploy, ExecutedBlock, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId, SyncLeap,
-        TrieOrChunk, ValidatorMatrix,
+        ActivationPoint, ApprovalsHashes, Block, BlockHash, BlockHeader, BlockPayload, Chainspec,
+        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId,
+        SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -121,7 +121,7 @@ pub(crate) struct MainReactor {
     // gossiping components
     address_gossiper: Gossiper<GossipedAddress, MainEvent>,
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    executed_block_gossiper: Gossiper<ExecutedBlock, MainEvent>,
+    executed_block_gossiper: Gossiper<ApprovalsHashes, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
 
     // record retrieval
@@ -251,7 +251,7 @@ impl reactor::Reactor for MainReactor {
         let executed_block_gossiper = Gossiper::new_for_partial_items(
             "executed_block_gossiper",
             config.gossip,
-            gossiper::get_executed_block_from_storage::<ExecutedBlock, MainEvent>,
+            gossiper::get_executed_block_from_storage::<ApprovalsHashes, MainEvent>,
             registry,
         )?;
         let finality_signature_gossiper = Gossiper::new_for_partial_items(
@@ -524,32 +524,30 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
-                executed_block,
-            )) => {
+            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
+                block,
+                approvals_hashes,
+            }) => {
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(executed_block.block().header().clone()),
-                    header_hash: *executed_block.block().hash(),
+                    header: Box::new(block.header().clone()),
+                    header_hash: *block.hash(),
                 });
                 // TODO - only gossip once we have enough finality signatures (and only if we're
                 //        a validator?)
                 let reactor_block_added_gossiper_event =
-                    MainEvent::ExecutedBlockGossiper(gossiper::Event::ItemReceived {
-                        item_id: *executed_block.block().hash(),
+                    MainEvent::ApprovalsHashesGossiper(gossiper::Event::ItemReceived {
+                        item_id: *block.hash(),
                         source: Source::Ourself,
                     });
                 let reactor_event_es =
-                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(Box::new(
-                        executed_block.block().clone(),
-                    )));
+                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(block));
                 let block_sync_event =
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
-                        block_hash: *executed_block.block().hash(),
-                        height: executed_block.block().height(),
+                        block_hash: *block.hash(),
+                        height: block.height(),
                     });
-                let deploy_buffer_event = MainEvent::DeployBuffer(deploy_buffer::Event::Block(
-                    Box::new(executed_block.block().clone()),
-                ));
+                let deploy_buffer_event =
+                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects.extend(self.dispatch_event(
@@ -657,23 +655,23 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::ExecutedBlockGossiper(event) => reactor::wrap_effects(
-                MainEvent::ExecutedBlockGossiper,
+            MainEvent::ApprovalsHashesGossiper(event) => reactor::wrap_effects(
+                MainEvent::ApprovalsHashesGossiper,
                 self.executed_block_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::ExecutedBlockGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::ExecutedBlockGossiper,
+            MainEvent::ApprovalsHashesGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::ApprovalsHashesGossiper,
                 self.executed_block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::ExecutedBlockGossiperAnnouncement(
+            MainEvent::ApprovalsHashesGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_block_added_id),
             ) => {
                 error!(%gossiped_block_added_id, "gossiper should not announce new block-added");
                 Effects::new()
             }
-            MainEvent::ExecutedBlockGossiperAnnouncement(
+            MainEvent::ApprovalsHashesGossiperAnnouncement(
                 GossiperAnnouncement::FinishedGossiping(_gossiped_block_added_id),
             ) => Effects::new(),
 
@@ -809,17 +807,19 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::LinearChainBlock {
-                    block_added,
+                    block,
+                    approvals_hashes: approval_hashes,
                     execution_results,
                 },
             ) => {
                 let mut effects = Effects::new();
-                let block_hash = *block_added.block().hash();
+                let block_hash = block.hash();
 
                 // send to linear chain
                 let reactor_event =
                     MainEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
-                        block_added,
+                        block,
+                        approvals_hashes: approval_hashes,
                         execution_results: execution_results
                             .iter()
                             .map(|(hash, _header, results)| (*hash, results.clone()))
@@ -833,7 +833,7 @@ impl reactor::Reactor for MainReactor {
                         MainEvent::EventStreamServer(event_stream_server::Event::DeployProcessed {
                             deploy_hash,
                             deploy_header: Box::new(deploy_header),
-                            block_hash,
+                            block_hash: *block_hash,
                             execution_result: Box::new(execution_result),
                         });
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
@@ -928,8 +928,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::TrieOrChunkFetcherRequest(..)
             | MainEvent::SyncLeapFetcher(..)
             | MainEvent::SyncLeapFetcherRequest(..)
-            | MainEvent::ExecutedBlockFetcher(..)
-            | MainEvent::ExecutedBlockFetcherRequest(..)
+            | MainEvent::ApprovalsHashesFetcher(..)
+            | MainEvent::ApprovalsHashesFetcherRequest(..)
             | MainEvent::FinalitySignatureFetcher(..)
             | MainEvent::FinalitySignatureFetcherRequest(..)
             | MainEvent::BlockExecutionResultsOrChunkFetcher(..)

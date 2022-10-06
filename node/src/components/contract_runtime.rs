@@ -754,7 +754,8 @@ impl ContractRuntime {
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
         let BlockAndExecutionResults {
-            block_added,
+            block,
+            approvals_hashes,
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
         } = match run_intensive_task(move || {
@@ -774,12 +775,11 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        let new_execution_pre_state =
-            ExecutionPreState::from_block_header(block_added.block().header());
+        let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
-        let current_era_id = block_added.block().header().era_id();
-        let block_height = block_added.block().height();
+        let current_era_id = block.header().era_id();
+        let block_height = block.height();
 
         // Make sure storage is able to do its work before we declare success.
         effect_builder.mark_block_completed(block_height).await;
@@ -799,7 +799,7 @@ impl ContractRuntime {
         }
 
         effect_builder
-            .announce_new_linear_chain_block(block_added, execution_results)
+            .announce_new_linear_chain_block(block, approvals_hashes, execution_results)
             .await;
 
         // If the child is already finalized, start execution.
