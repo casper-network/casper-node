@@ -182,7 +182,7 @@ impl BlockAcceptor {
             let state_root_hash = block.state_root_hash();
             let era_id = block.header().era_id();
 
-            if let Err(error) = approvals_hashes.validate(&(*state_root_hash, era_id)) {
+            if let Err(error) = approvals_hashes.validate(block) {
                 warn!(%error, "received invalid approvals hashes");
                 self.approvals_hashes = None;
                 return Err(AcceptorError::InvalidGossip(Box::new(
@@ -220,7 +220,7 @@ impl BlockAcceptor {
         if let Some(block) = self.block {
             let state_root_hash = block.state_root_hash();
             let era_id = block.header().era_id();
-            if let Err(error) = approvals_hashes.validate(&(*state_root_hash, era_id)) {
+            if let Err(error) = approvals_hashes.validate(&block) {
                 warn!(%error, "received invalid approvals hashes");
                 return Err(AcceptorError::InvalidGossip(Box::new(
                     InvalidGossipError::ApprovalsHashes {
@@ -343,12 +343,20 @@ impl BlockAcceptor {
         None
     }
 
+    pub(super) fn block_and_approvals_hashes(&self) -> Option<(&Block, &ApprovalsHashes)> {
+        if let (Some(ref block), Some(ref approvals_hashes)) = (&self.block, &self.approvals_hashes)
+        {
+            return Some((block, approvals_hashes));
+        }
+        None
+    }
+
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
 
-    pub(super) fn approvals_hashes(&self) -> Option<ApprovalsHashes> {
-        self.approvals_hashes.clone()
+    pub(super) fn approvals_hashes(&self) -> Option<&ApprovalsHashes> {
+        self.approvals_hashes.as_ref()
     }
 
     pub(super) fn has_era_validator_weights(&self) -> bool {

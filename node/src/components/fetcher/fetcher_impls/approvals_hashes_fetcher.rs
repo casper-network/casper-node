@@ -1,12 +1,9 @@
 use std::{collections::HashMap, time::Duration};
 
-use casper_hashing::Digest;
-use casper_types::EraId;
-
 use crate::{
     components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{ApprovalsHashes, BlockHash, NodeId},
+    types::{ApprovalsHashes, Block, BlockHash, NodeId},
 };
 
 impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
@@ -18,7 +15,7 @@ impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
         &mut self.responders
     }
 
-    fn validation_metadata(&self) -> &(Digest, EraId) {
+    fn validation_metadata(&self) -> &Block {
         &self.validation_metadata
     }
 
@@ -35,7 +32,7 @@ impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
         peer: NodeId,
-        validation_metadata: (Digest, EraId),
+        validation_metadata: Block,
         responder: FetchResponder<ApprovalsHashes>,
     ) -> Effects<Event<ApprovalsHashes>>
     where

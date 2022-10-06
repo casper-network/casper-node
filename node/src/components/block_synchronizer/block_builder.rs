@@ -274,7 +274,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_block(Either::Left(block), self.should_fetch_execution_state)
+            .with_block(block, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -287,13 +287,13 @@ impl BlockBuilder {
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_approvals_hashes(
         &mut self,
-        block_added: &ApprovalsHashes,
+        approvals_hashes: &ApprovalsHashes,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Err(error) = self.acquisition_state.with_block(
-            Either::Right(block_added),
-            self.should_fetch_execution_state,
-        ) {
+        if let Err(error) = self
+            .acquisition_state
+            .with_approvals_hashes(approvals_hashes, self.should_fetch_execution_state)
+        {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
         }

@@ -16,9 +16,7 @@ use super::{Block, BlockHash};
 use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
     effect::GossipTarget,
-    types::{
-        self, ApprovalsHash, BlockValidationError, DeployId, FetcherItem, GossiperItem, Item, Tag,
-    },
+    types::{self, ApprovalsHash, DeployId, FetcherItem, GossiperItem, Item, Tag},
     utils::ds,
 };
 
@@ -56,18 +54,14 @@ impl ApprovalsHashes {
         }
     }
 
-    fn verify(
-        &self,
-        state_root_hash: &Digest,
-        era_id: EraId,
-    ) -> Result<(), ApprovalsHashesValidationError> {
+    fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
 
-        if *self.era_id() != era_id {
+        if *self.era_id() != block.header().era_id() {
             return Err(ApprovalsHashesValidationError::EraMismatch {
-                block_era_id: era_id,
+                block_era_id: block.header().era_id(),
                 approvals_era_id: *self.era_id(),
             });
         }
@@ -77,10 +71,10 @@ impl ApprovalsHashes {
             .compute_state_hash()
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
-        if proof_state_root_hash != *state_root_hash {
+        if proof_state_root_hash != *block.header().state_root_hash() {
             return Err(ApprovalsHashesValidationError::StateRootHashMismatch {
                 proof_state_root_hash,
-                block_state_root_hash: *state_root_hash,
+                block_state_root_hash: *block.header().state_root_hash(),
             });
         }
 
@@ -95,7 +89,7 @@ impl ApprovalsHashes {
             .ok_or(ApprovalsHashesValidationError::InvalidChecksumRegistry)?;
 
         let computed_approvals_root_hash =
-            types::compute_approvals_checksum(self.deploy_ids().collect())
+            types::compute_approvals_checksum(self.deploy_ids(block).collect())
                 .map_err(ApprovalsHashesValidationError::ApprovalsRootHash)?;
 
         if value_in_proof != computed_approvals_root_hash {
@@ -108,8 +102,11 @@ impl ApprovalsHashes {
         Ok(())
     }
 
-    pub(crate) fn deploy_ids(&self) -> impl Iterator<Item = DeployId> + '_ {
-        self.block()
+    pub(crate) fn deploy_ids<'a>(
+        &'a self,
+        block: &'a Block,
+    ) -> impl Iterator<Item = DeployId> + 'a {
+        block
             .deploy_and_transfer_hashes()
             .zip(&self.approvals_hashes)
             .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
@@ -143,15 +140,10 @@ impl Item for ApprovalsHashes {
 
 impl FetcherItem for ApprovalsHashes {
     type ValidationError = ApprovalsHashesValidationError;
-    type ValidationMetadata = (Digest, EraId);
+    type ValidationMetadata = Block;
 
-    fn validate(
-        &self,
-        (state_root_hash, era_id): &(Digest, EraId),
-    ) -> Result<(), Self::ValidationError> {
-        self.is_verified
-            .get_or_init(|| self.verify(state_root_hash, *era_id))
-            .clone()
+    fn validate(&self, block: &Block) -> Result<(), Self::ValidationError> {
+        self.is_verified.get_or_init(|| self.verify(block)).clone()
     }
 }
 

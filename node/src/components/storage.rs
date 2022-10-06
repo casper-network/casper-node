@@ -41,7 +41,7 @@ mod tests;
 use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, mem,
@@ -1263,6 +1263,14 @@ impl Storage {
             } => responder
                 .respond(self.get_block_deploy_hashes(block_hash)?)
                 .ignore(),
+            StorageRequest::PutExecutedBlock {
+                block,
+                approvals_hashes,
+                execution_results,
+                responder,
+            } => responder
+                .respond(self.put_executed_block(&block, &approvals_hashes, execution_results)?)
+                .ignore(),
         })
     }
 
@@ -1323,6 +1331,26 @@ impl Storage {
         Ok(())
     }
 
+    fn put_executed_block(
+        &mut self,
+        block: &Block,
+        approvals_hashes: &ApprovalsHashes,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+    ) -> Result<bool, FatalStorageError> {
+        let env = Rc::clone(&self.env);
+        let mut txn = env.begin_rw_txn()?;
+        let wrote = self.write_validated_block(&mut txn, block)?;
+        if !wrote {
+            return Err(FatalStorageError::FailedToOverwriteBlock);
+        }
+
+        let _ = self.write_approvals_hashes(approvals_hashes)?;
+        let _ = self.write_execution_results(&mut txn, execution_results, block.hash())?;
+        txn.commit()?;
+
+        Ok(true)
+    }
+
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
@@ -1347,22 +1375,23 @@ impl Storage {
     /// Make a finalized block from a executed block, respecting Deploy Approvals.
     pub(crate) fn make_executable_block(
         &self,
-        executed_block: ApprovalsHashes,
+        block: &Block,
+        approvals_hashes: &ApprovalsHashes,
     ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
         // check all approvals in block_added against stored approvals,
         // deal with any discrepancies
-        // TODO: self.check_verified_approvals_or_sth_like_that()
-        let finalized_block = FinalizedBlock::from(executed_block.block().clone());
-        let deploy_hashes = executed_block.block().deploy_hashes().clone();
+        // todo!(): self.check_verified_approvals_or_sth_like_that()
+        let finalized_block = FinalizedBlock::from(block.clone());
+        let deploy_hashes = block.deploy_hashes().clone();
         let deploys = self
             .read_deploys(deploy_hashes.len(), deploy_hashes.iter())?
             .unwrap_or_default();
-        let transfer_hashes = executed_block.block().transfer_hashes().clone();
+        let transfer_hashes = block.transfer_hashes().clone();
         let transfers = self
             .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
             .unwrap_or_default();
 
-        // TODO - provide deploys with the FINALIZED approvals
+        // todo!() - provide deploys with the FINALIZED approvals
 
         Ok(Some((finalized_block, deploys, transfers)))
     }
@@ -1381,6 +1410,61 @@ impl Storage {
             txn.commit()?;
         }
         Ok(wrote)
+    }
+
+    fn write_execution_results(
+        &mut self,
+        txn: &mut RwTransaction,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+        block_hash: &BlockHash,
+    ) -> Result<bool, FatalStorageError> {
+        let mut transfers: Vec<Transfer> = vec![];
+        for (deploy_hash, execution_result) in execution_results {
+            let mut metadata = self
+                .get_deploy_metadata(txn, &deploy_hash)?
+                .unwrap_or_default();
+
+            // If we have a previous execution result, we can continue if it is the same.
+            if let Some(prev) = metadata.execution_results.get(&block_hash) {
+                if prev == &execution_result {
+                    continue;
+                } else {
+                    debug!(%deploy_hash, %block_hash, "different execution result");
+                }
+            }
+
+            if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
+                for transform_entry in effect.transforms {
+                    if let Transform::WriteTransfer(transfer) = transform_entry.transform {
+                        transfers.push(transfer);
+                    }
+                }
+            }
+
+            // TODO: this is currently done like this because rpc get_deploy returns the
+            // data, but the organization of deploy, block_hash, and
+            // execution_result is incorrectly represented. it should be
+            // inverted; for a given block_hash 0n deploys and each deploy has exactly 1
+            // result (aka deploy_metadata in this context).
+
+            // Update metadata and write back to db.
+            metadata
+                .execution_results
+                .insert(*block_hash, execution_result);
+            let was_written =
+                txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
+            if !was_written {
+                error!(?block_hash, ?deploy_hash, "failed to write deploy metadata");
+                debug_assert!(was_written);
+            }
+        }
+
+        let was_written = txn.put_value(self.transfer_db, block_hash, &transfers, true)?;
+        if !was_written {
+            error!(?block_hash, "failed to write transfers");
+            debug_assert!(was_written);
+        }
+        Ok(was_written)
     }
 
     /// Writes an executed block to storage, updating indices as necessary.

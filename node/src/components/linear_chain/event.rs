@@ -35,8 +35,6 @@ pub(crate) enum Event {
         /// Approval hashes.
         approvals_hashes: Box<ApprovalsHashes>,
     },
-    /// The result of putting approvals hashes to storage.
-    PutApprovalsHashesResult(Box<ApprovalsHashes>),
     /// The result of requesting finality signatures from storage to add pending signatures.
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
     /// Result of testing if creator of the finality signature is bonded validator.
@@ -56,8 +54,8 @@ impl From<FinalitySignatureIncoming> for Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::NewLinearChainBlock { block_added, .. } => {
-                write!(f, "linear chain new block: {}", block_added.block().hash())
+            Event::NewLinearChainBlock { block, .. } => {
+                write!(f, "linear chain new block: {}", block.hash())
             }
             Event::FinalitySignatureReceived(fs, gossiped) => write!(
                 f,

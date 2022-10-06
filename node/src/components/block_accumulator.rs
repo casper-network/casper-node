@@ -368,9 +368,21 @@ impl BlockAccumulator {
         }
     }
 
-    pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<ApprovalsHashes> {
+    // TODO: remove this.
+    // pub(crate) fn block_added(&self, block_hash: BlockHash) -> Option<ApprovalsHashes> {
+    //     if let Some(acceptor) = self.block_acceptors.get(&block_hash) {
+    //         acceptor.approvals_hashes()
+    //     } else {
+    //         None
+    //     }
+    // }
+
+    pub(crate) fn block_and_approvals_hashes(
+        &self,
+        block_hash: BlockHash,
+    ) -> Option<(&Block, &ApprovalsHashes)> {
         if let Some(acceptor) = self.block_acceptors.get(&block_hash) {
-            acceptor.approvals_hashes()
+            acceptor.block_and_approvals_hashes()
         } else {
             None
         }

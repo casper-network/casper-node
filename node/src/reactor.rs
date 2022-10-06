@@ -69,9 +69,9 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader, BlockHeaderWithMetadata,
-        BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
-        Deploy, DeployHash, DeployId, ApprovalsHashes, ExitCode, FetcherItem, FinalitySignature,
+        ApprovalsHashes, Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecRawBytes, Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature,
         Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,

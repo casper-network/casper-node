@@ -26,7 +26,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Deploy, ApprovalsHashes, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
+    types::{ApprovalsHashes, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
 };
 
 /// Reactor message.

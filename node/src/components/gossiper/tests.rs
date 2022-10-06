@@ -98,7 +98,9 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    BlockAddedGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<ApprovalsHashes>),
+    BlockAddedGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<ApprovalsHashes>,
+    ),
     #[from]
     FinalitySignatureGossiperAnnouncement(
         #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,

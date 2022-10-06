@@ -231,7 +231,6 @@ where
                     .got_upgrade_activation_point(activation_point);
                 Effects::new()
             }
-            Event::PutApprovalsHashesResult(approvals_hashes) => todo!(),
         }
     }
 }

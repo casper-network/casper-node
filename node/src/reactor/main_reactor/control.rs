@@ -26,8 +26,8 @@ use crate::{
         MainEvent, MainReactor,
     },
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes, DeployHash,
-        EraValidatorWeights, ApprovalsHashes, FinalizedBlock, Item, ValidatorMatrix,
+        ActivationPoint, ApprovalsHashes, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
+        DeployHash, EraValidatorWeights, FinalizedBlock, Item, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -716,8 +716,11 @@ impl MainReactor {
         let mut effects = Effects::new();
         // TODO - try to avoid repeating executing the same blocks.
         if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
-            if let Some(block_added) = self.block_accumulator.block_added(block_hash) {
-                match self.storage.make_executable_block(block_added) {
+            if let Some((block, approvals_hashes)) = self
+                .block_accumulator
+                .block_and_approvals_hashes(block_hash)
+            {
+                match self.storage.make_executable_block(block, approvals_hashes) {
                     Ok(Some((finalized_block, deploys, transfers))) => {
                         effects.extend(
                             effect_builder

@@ -598,10 +598,9 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::PutApprovalsHashes {
-                approvals_hashes: executed_block,
-                ..
+                approvals_hashes, ..
             } => {
-                write!(formatter, "put {}", executed_block)
+                write!(formatter, "put {}", approvals_hashes)
             }
             StorageRequest::PutBlockAndDeploys {
                 block: block_deploys,
@@ -747,6 +746,19 @@ impl Display for StorageRequest {
                     formatter,
                     "has data needed for proposing blocks: {}",
                     block_header
+                )
+            }
+            StorageRequest::PutExecutedBlock {
+                block,
+                approvals_hashes,
+                execution_results,
+                responder,
+            } => {
+                write!(
+                    formatter,
+                    "put executed block {} and approvals hashes {}",
+                    block.hash(),
+                    approvals_hashes
                 )
             }
         }

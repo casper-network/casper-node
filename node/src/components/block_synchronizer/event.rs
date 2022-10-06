@@ -98,6 +98,12 @@ impl Display for Event {
             Event::BlockFetched(Ok(fetched_item)) => {
                 write!(f, "{}", fetched_item)
             }
+            Event::BlockFetched(Err(fetcher_error)) => {
+                write!(f, "{}", fetcher_error)
+            }
+            Event::ApprovalsHashesFetched(Ok(fetched_item)) => {
+                write!(f, "{}", fetched_item)
+            }
             Event::ApprovalsHashesFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }

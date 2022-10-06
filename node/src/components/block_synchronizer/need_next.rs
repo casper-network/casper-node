@@ -4,14 +4,14 @@ use itertools::Either;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::types::{BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId};
+use crate::types::{Block, BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId};
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
     Nothing,
     BlockHeader(BlockHash),
     BlockBody(BlockHash),
-    ApprovalsHashes(BlockHash, EraId, Digest),
+    ApprovalsHashes(BlockHash, Block),
     FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     GlobalState(BlockHash, Digest),
     // TODO - don't skip
