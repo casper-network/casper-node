@@ -733,7 +733,7 @@ impl MainReactor {
                     }
                     Err(_) => {
                         return Err(format!(
-                            "failure to make block_added into executable block: {}",
+                            "failure to make block and approvals hashes into executable block: {}",
                             block_hash
                         ));
                     }

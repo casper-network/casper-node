@@ -545,7 +545,7 @@ impl reactor::Reactor for MainReactor {
                 });
                 // TODO - only gossip once we have enough finality signatures (and only if we're
                 //        a validator?)
-                let reactor_block_added_gossiper_event =
+                let reactor_approvals_hashes_gossiper_event =
                     MainEvent::ApprovalsHashesGossiper(gossiper::Event::ItemReceived {
                         item_id: *block.hash(),
                         source: Source::Ourself,
@@ -565,7 +565,7 @@ impl reactor::Reactor for MainReactor {
                 effects.extend(self.dispatch_event(
                     effect_builder,
                     rng,
-                    reactor_block_added_gossiper_event,
+                    reactor_approvals_hashes_gossiper_event,
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
@@ -838,7 +838,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::LinearChainBlock {
                     block,
-                    approvals_hashes: approval_hashes,
+                    approvals_hashes,
                     execution_results,
                 },
             ) => {
@@ -849,7 +849,7 @@ impl reactor::Reactor for MainReactor {
                 let reactor_event =
                     MainEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
                         block,
-                        approvals_hashes: approval_hashes,
+                        approvals_hashes,
                         execution_results: execution_results
                             .iter()
                             .map(|(hash, _header, results)| (*hash, results.clone()))

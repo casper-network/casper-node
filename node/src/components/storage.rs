@@ -1329,7 +1329,7 @@ impl Storage {
         block: &Block,
         _approvals_hashes: &ApprovalsHashes,
     ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
-        // check all approvals in block_added against stored approvals,
+        // check all approvals in `approvals hashes` against stored approvals,
         // deal with any discrepancies
         // todo!(): self.check_verified_approvals_or_sth_like_that()
         let finalized_block = FinalizedBlock::from(block.clone());
