@@ -2094,19 +2094,16 @@ where
         &self,
         correlation_id: CorrelationId,
         state_root_hash: Digest,
-    ) -> Result<ChecksumRegistry, Error> {
+    ) -> Result<Option<ChecksumRegistry>, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
-        let result = tracking_copy
+        let maybe_checksum_registry = tracking_copy
             .borrow_mut()
             .get_checksum_registry(correlation_id)
-            .map_err(|error| {
-                error!(%error, "Failed to retrieve checksum registry");
-                Error::MissingChecksumRegistry
-            });
-        result
+            .map_err(Error::Exec);
+        maybe_checksum_registry
     }
 
     /// Returns the Merkle proof for the checksum registry at the given state root hash.

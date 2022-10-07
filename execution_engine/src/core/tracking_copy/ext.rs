@@ -91,7 +91,7 @@ pub trait TrackingCopyExt<R> {
     fn get_checksum_registry(
         &mut self,
         correlation_id: CorrelationId,
-    ) -> Result<ChecksumRegistry, Self::Error>;
+    ) -> Result<Option<ChecksumRegistry>, Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -270,7 +270,7 @@ where
     fn get_checksum_registry(
         &mut self,
         correlation_id: CorrelationId,
-    ) -> Result<ChecksumRegistry, Self::Error> {
+    ) -> Result<Option<ChecksumRegistry>, Self::Error> {
         match self
             .get(correlation_id, &Key::ChecksumRegistry)
             .map_err(Into::into)?
@@ -278,7 +278,7 @@ where
             Some(StoredValue::CLValue(registry)) => {
                 let registry: ChecksumRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
-                Ok(registry)
+                Ok(Some(registry))
             }
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),

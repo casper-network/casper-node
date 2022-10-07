@@ -537,7 +537,10 @@ impl ContractRuntime {
                 let result = self
                     .engine_state
                     .get_checksum_registry(correlation_id, state_root_hash)
-                    .map(|registry| registry.get(APPROVALS_CHECKSUM_NAME).copied());
+                    .map(|maybe_registry| {
+                        maybe_registry
+                            .and_then(|registry| registry.get(APPROVALS_CHECKSUM_NAME).copied())
+                    });
                 responder.respond(result).ignore()
             }
             ContractRuntimeRequest::GetExecutionResultsRootHash {
@@ -548,7 +551,11 @@ impl ContractRuntime {
                 let result = self
                     .engine_state
                     .get_checksum_registry(correlation_id, state_root_hash)
-                    .map(|registry| registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied());
+                    .map(|maybe_registry| {
+                        maybe_registry.and_then(|registry| {
+                            registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
+                        })
+                    });
                 responder.respond(result).ignore()
             }
             ContractRuntimeRequest::FindMissingDescendantTrieKeys {

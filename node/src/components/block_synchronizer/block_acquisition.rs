@@ -587,30 +587,6 @@ impl BlockAcquisitionState {
                         *block.state_root_hash(),
                     ));
                 }
-                // if let Some(either) = deploy_state.needs_deploy() {
-                //     return Ok(BlockAcquisitionAction::deploy(
-                //         *block.hash(),
-                //         peer_list,
-                //         rng,
-                //         either,
-                //     ));
-                // }
-                // // TODO: this seems safe to remove as we do this check in `HaveBlockHeader` and
-                // the // weights don't seem to mutate.
-                // if validator_weights.is_empty() {
-                //     return Ok(BlockAcquisitionAction::era_validators(
-                //         validator_weights.era_id(),
-                //     ));
-                // }
-                // Ok(BlockAcquisitionAction::finality_signatures(
-                //     peer_list,
-                //     rng,
-                //     block.header(),
-                //     validator_weights
-                //         .missing_validators(signatures.have_signatures())
-                //         .cloned()
-                //         .collect(),
-                // ))
                 Ok(BlockAcquisitionAction::approvals_hashes(
                     block, peer_list, rng,
                 ))
