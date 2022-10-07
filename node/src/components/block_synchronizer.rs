@@ -378,28 +378,26 @@ impl BlockSynchronizer {
                             }),
                     );
                 }
-                NeedNext::Deploy(block_hash, deploy_hash_or_id) => match deploy_hash_or_id {
-                    Either::Left(deploy_hash) => {
-                        results.extend(peers.into_iter().flat_map(|node_id| {
-                            effect_builder
-                                .fetch::<LegacyDeploy>(deploy_hash, node_id, ())
-                                .event(move |result| Event::DeployFetched {
-                                    block_hash,
-                                    result: Either::Left(result),
-                                })
-                        }))
-                    }
-                    Either::Right(deploy_id) => {
-                        results.extend(peers.into_iter().flat_map(|node_id| {
-                            effect_builder
-                                .fetch::<Deploy>(deploy_id, node_id, ())
-                                .event(move |result| Event::DeployFetched {
-                                    block_hash,
-                                    result: Either::Right(result),
-                                })
-                        }))
-                    }
-                },
+                NeedNext::DeployByHash(block_hash, deploy_hash) => {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<LegacyDeploy>(deploy_hash, node_id, ())
+                            .event(move |result| Event::DeployFetched {
+                                block_hash,
+                                result: Either::Left(result),
+                            })
+                    }))
+                }
+                NeedNext::DeployById(block_hash, deploy_id) => {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<Deploy>(deploy_id, node_id, ())
+                            .event(move |result| Event::DeployFetched {
+                                block_hash,
+                                result: Either::Right(result),
+                            })
+                    }))
+                }
                 NeedNext::ExecutionResults(block_hash, id) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder

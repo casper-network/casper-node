@@ -14,9 +14,8 @@ pub(crate) enum NeedNext {
     ApprovalsHashes(BlockHash, Box<Block>),
     FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     GlobalState(BlockHash, Digest),
-    // TODO - don't skip
-    #[data_size(skip)]
-    Deploy(BlockHash, Either<DeployHash, DeployId>),
+    DeployByHash(BlockHash, DeployHash),
+    DeployById(BlockHash, DeployId),
     /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
     ExecutionResultsRootHash {
