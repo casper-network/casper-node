@@ -31,8 +31,6 @@ use casper_types::{
     EraId, ProtocolVersion,
 };
 
-#[cfg(test)]
-use crate::utils::RESOURCES_PATH;
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
@@ -41,7 +39,7 @@ use crate::{
     },
     types::{
         chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
-        ActivationPoint, BlockHeader, Chainspec,
+        ActivationPoint, Chainspec,
     },
     NodeRng,
 };
@@ -170,31 +168,6 @@ impl UpgradeWatcher {
         chainspec: &Chainspec,
         chainspec_dir: P,
     ) -> Result<Self, Error> {
-        Self::new_with_chainspec_and_path(chainspec, chainspec_dir)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn new_with_chainspec(chainspec: &Chainspec) -> Self {
-        Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"))
-            .expect("constructing upgrade watcher")
-    }
-
-    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
-        self.next_upgrade
-            .as_ref()
-            .map(|next_upgrade| next_upgrade.activation_point())
-    }
-
-    pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {
-        self.next_upgrade.as_ref().map_or(false, |upgrade| {
-            upgrade.activation_point.should_upgrade(&era_id)
-        })
-    }
-
-    fn new_with_chainspec_and_path<P: AsRef<Path>>(
-        chainspec: &Chainspec,
-        chainspec_dir: P,
-    ) -> Result<Self, Error> {
         let root_dir = chainspec_dir
             .as_ref()
             .parent()
@@ -214,28 +187,15 @@ impl UpgradeWatcher {
         Ok(upgrade_watcher)
     }
 
-    fn should_exit_for_upgrade(
-        maybe_highest_block_header: Option<&BlockHeader>,
-        maybe_next_upgrade_activation_point: Option<ActivationPoint>,
-    ) -> bool {
-        maybe_highest_block_header.map_or(false, |highest_block_header| {
-            maybe_next_upgrade_activation_point.map_or(false, |next_upgrade_activation_point| {
-                if highest_block_header.next_block_era_id()
-                    >= next_upgrade_activation_point.era_id()
-                {
-                    // This is an invalid run as the highest block era ID >= next activation
-                    // point, so we're running an outdated version.  Exit with success to
-                    // indicate we should upgrade.
-                    warn!(
-                        %next_upgrade_activation_point,
-                        %highest_block_header,
-                        "running outdated version: exit to upgrade"
-                    );
-                    true
-                } else {
-                    false
-                }
-            })
+    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
+        self.next_upgrade
+            .as_ref()
+            .map(|next_upgrade| next_upgrade.activation_point())
+    }
+
+    pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {
+        self.next_upgrade.as_ref().map_or(false, |upgrade| {
+            upgrade.activation_point.should_upgrade(&era_id)
         })
     }
 
@@ -448,105 +408,10 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{testing::TestRng, EraId};
+    use casper_types::testing::TestRng;
 
     use super::*;
-    use crate::types::{chainspec::CHAINSPEC_FILENAME, Block};
-
-    #[test]
-    fn correctly_detects_when_to_exit_for_upgrade() {
-        let mut rng = crate::new_rng();
-        const HEIGHT: u64 = 10;
-        const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
-        const IS_NOT_SWITCH: bool = false;
-        const IS_SWITCH: bool = true;
-
-        let highest_block_header = None;
-        let next_upgrade_activation_point = None;
-        assert!(!UpgradeWatcher::should_exit_for_upgrade(
-            highest_block_header,
-            next_upgrade_activation_point
-        ));
-
-        let highest_block_header = Some(Box::new(
-            Block::random_with_specifics(
-                &mut rng,
-                EraId::from(2),
-                HEIGHT,
-                PROTOCOL_VERSION,
-                IS_NOT_SWITCH,
-                None,
-            )
-            .header()
-            .clone(),
-        ));
-        let next_upgrade_activation_point = None;
-        assert!(!UpgradeWatcher::should_exit_for_upgrade(
-            highest_block_header.as_deref(),
-            next_upgrade_activation_point
-        ));
-
-        let highest_block_header = None;
-        let next_upgrade_activation_point = Some(ActivationPoint::EraId(10.into()));
-        assert!(!UpgradeWatcher::should_exit_for_upgrade(
-            highest_block_header,
-            next_upgrade_activation_point
-        ));
-
-        let highest_block_header = Some(Box::new(
-            Block::random_with_specifics(
-                &mut rng,
-                EraId::from(2),
-                HEIGHT,
-                PROTOCOL_VERSION,
-                IS_NOT_SWITCH,
-                None,
-            )
-            .header()
-            .clone(),
-        ));
-        let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
-        assert!(!UpgradeWatcher::should_exit_for_upgrade(
-            highest_block_header.as_deref(),
-            next_upgrade_activation_point
-        ));
-
-        let highest_block_header = Some(Box::new(
-            Block::random_with_specifics(
-                &mut rng,
-                EraId::from(2),
-                HEIGHT,
-                PROTOCOL_VERSION,
-                IS_NOT_SWITCH,
-                None,
-            )
-            .header()
-            .clone(),
-        ));
-        let next_upgrade_activation_point = Some(ActivationPoint::EraId(2.into()));
-        assert!(UpgradeWatcher::should_exit_for_upgrade(
-            highest_block_header.as_deref(),
-            next_upgrade_activation_point
-        ));
-
-        let highest_block_header = Some(Box::new(
-            Block::random_with_specifics(
-                &mut rng,
-                EraId::from(2),
-                HEIGHT,
-                PROTOCOL_VERSION,
-                IS_SWITCH,
-                None,
-            )
-            .header()
-            .clone(),
-        ));
-        let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
-        assert!(UpgradeWatcher::should_exit_for_upgrade(
-            highest_block_header.as_deref(),
-            next_upgrade_activation_point
-        ));
-    }
+    use crate::types::chainspec::CHAINSPEC_FILENAME;
 
     #[test]
     fn should_get_next_installed_version() {

@@ -10,7 +10,6 @@ use crate::types::{BlockHash, NodeId};
 pub(crate) enum LeapActivityError {
     TooOld(BlockHash, Vec<NodeId>),
     Unobtainable(BlockHash, Vec<NodeId>),
-    TooBusy(BlockHash),
     NoPeers(BlockHash),
 }
 
@@ -21,24 +20,9 @@ impl Display for LeapActivityError {
             LeapActivityError::Unobtainable(bh, ..) => {
                 write!(formatter, "unable to acquire data for block_hash: {}", bh)
             }
-            LeapActivityError::TooBusy(bh) => {
-                write!(
-                    formatter,
-                    "sync leaper is busy and unable to process block_hash: {}",
-                    bh
-                )
-            }
             LeapActivityError::NoPeers(bh) => {
                 write!(formatter, "sync leaper has no peers for block_hash: {}", bh)
             }
         }
     }
-}
-
-#[derive(Debug, Clone, DataSize)]
-pub(crate) enum ConstructSyncLeapError {
-    TooOld(BlockHash),
-    UnknownHash(BlockHash),
-    CouldntProve,
-    StorageError,
 }

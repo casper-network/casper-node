@@ -1,11 +1,9 @@
-use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_hashing::Digest;
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::{ExecutionResult, Key, StoredValue};
+use casper_types::ExecutionResult;
 
 use crate::{
     effect::incoming::FinalitySignatureIncoming,

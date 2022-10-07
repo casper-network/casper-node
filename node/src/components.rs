@@ -60,7 +60,6 @@ pub(crate) mod gossiper;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
-#[allow(unused)] // TODO
 pub(crate) mod linear_chain;
 pub(crate) mod metrics;
 pub(crate) mod rest_server;
@@ -68,9 +67,7 @@ pub mod rpc_server;
 #[allow(unused)] // TODO
 pub(crate) mod small_network;
 pub mod storage;
-#[allow(unused)] // TODO
 pub(crate) mod sync_leaper;
-#[allow(unused)] // TODO
 pub(crate) mod upgrade_watcher;
 
 use datasize::DataSize;

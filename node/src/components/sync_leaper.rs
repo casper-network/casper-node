@@ -17,7 +17,7 @@ use crate::{
     types::{BlockHash, NodeId, SyncLeap},
     NodeRng,
 };
-pub(crate) use error::{ConstructSyncLeapError, LeapActivityError};
+pub(crate) use error::LeapActivityError;
 pub(crate) use event::Event;
 
 #[derive(Debug, DataSize)]

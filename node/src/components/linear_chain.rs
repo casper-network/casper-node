@@ -105,19 +105,16 @@ where
                 block,
                 approvals_hashes,
                 execution_results,
-            } => {
-                let block_hash = *block.hash();
-                effect_builder
-                    .put_executed_block_to_storage(
-                        block.clone(),
-                        approvals_hashes.clone(),
-                        execution_results,
-                    )
-                    .event(move |_| Event::PutBlockResult {
-                        block,
-                        approvals_hashes,
-                    })
-            }
+            } => effect_builder
+                .put_executed_block_to_storage(
+                    block.clone(),
+                    approvals_hashes.clone(),
+                    execution_results,
+                )
+                .event(move |_| Event::PutBlockResult {
+                    block,
+                    approvals_hashes,
+                }),
             Outcome::Gossip(fs) => {
                 let era_id = fs.era_id;
                 let message = Message::FinalitySignature(fs);

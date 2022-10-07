@@ -36,7 +36,7 @@ use crate::{
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
             NetworkRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
-            SyncLeapRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,

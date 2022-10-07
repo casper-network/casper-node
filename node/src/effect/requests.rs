@@ -43,7 +43,6 @@ use crate::{
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
-        sync_leaper::ConstructSyncLeapError,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -1407,19 +1406,6 @@ pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "get next upgrade")
-    }
-}
-
-/// A request for a sync leap
-#[derive(Debug, Serialize)]
-pub(crate) struct SyncLeapRequest {
-    pub(crate) trusted_hash: BlockHash,
-    pub(crate) responder: Responder<Result<SyncLeap, ConstructSyncLeapError>>,
-}
-
-impl Display for SyncLeapRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "sync leap request")
     }
 }
 

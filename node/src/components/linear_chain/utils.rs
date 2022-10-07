@@ -7,29 +7,6 @@ use casper_types::{PublicKey, U512};
 use super::error::BlockSignatureError;
 use crate::types::BlockSignatures;
 
-/// Validates the signatures by checking if public keys in proofs matches the validators public key.
-pub(crate) fn validate_block_signatures(
-    signatures: &BlockSignatures,
-    validator_weights: &BTreeMap<PublicKey, U512>,
-) -> Result<(), BlockSignatureError> {
-    let mut bogus_validators = vec![];
-    for (public_key, _) in signatures.proofs.iter() {
-        if validator_weights.get(public_key).is_none() {
-            bogus_validators.push(public_key.clone());
-        }
-    }
-
-    if !bogus_validators.is_empty() {
-        return Err(BlockSignatureError::BogusValidators {
-            trusted_validator_weights: validator_weights.clone(),
-            block_signatures: Box::new(signatures.clone()),
-            bogus_validators,
-        });
-    }
-
-    Ok(())
-}
-
 /// Computes the quorum for the fraction of weight of signatures that will be considered
 /// sufficient. This is the lowest weight so that any two sets of validators with that weight have
 /// at least one honest validator in common.
@@ -177,27 +154,6 @@ mod tests {
         }
 
         sigs
-    }
-
-    #[test]
-    fn validates_block_signatures() {
-        let mut rng = TestRng::new();
-
-        let (keys, weights) = generate_validators(3);
-        let mut signatures = create_signatures(&mut rng, &keys, 3);
-        assert!(validate_block_signatures(&signatures, &weights).is_ok());
-
-        // Smuggle a bogus proof in.
-        let (_, pub_key) = crypto::generate_ed25519_keypair();
-        signatures.insert_proof(pub_key.clone(), *signatures.proofs.iter().next().unwrap().1);
-        assert!(matches!(
-            validate_block_signatures(&signatures, &weights),
-            Err(BlockSignatureError::BogusValidators {
-                trusted_validator_weights: _,
-                block_signatures,
-                bogus_validators
-            }) if bogus_validators[0] == pub_key && *block_signatures == signatures
-        ));
     }
 
     #[test]
