@@ -296,7 +296,7 @@ impl BlockAcquisitionState {
                 acquired.apply_deploy(deploy_id);
                 match acquired.needs_deploy() {
                     None => BlockAcquisitionState::HaveAllDeploys(
-                        Box::new(block.take_header()),
+                        Box::new(block.clone().take_header()),
                         signatures.clone(),
                     ),
                     Some(_) => {
@@ -348,7 +348,7 @@ impl BlockAcquisitionState {
             {
                 if block.state_root_hash() == &root_hash {
                     BlockAcquisitionState::HaveGlobalState(
-                        Box::new(block.take_header()),
+                        Box::new(block.clone().take_header()),
                         signatures.clone(),
                         deploys.clone(),
                         ExecutionResultsAcquisition::Needed {

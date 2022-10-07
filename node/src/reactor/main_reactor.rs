@@ -209,8 +209,6 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
-
         let node_key_pair = config.consensus.load_keys(&root_dir)?;
         let small_network = SmallNetwork::new(
             config.network.clone(),
@@ -241,15 +239,27 @@ impl reactor::Reactor for MainReactor {
             storage.root_path().to_path_buf(),
             protocol_version,
         );
+        let diagnostics_port =
+            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
 
-        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
+        // local / remote data management
+        let sync_leaper = SyncLeaper::new(chainspec.highway_config.finality_threshold_fraction);
+        let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
+
+        // gossipers
+        let block_gossiper = Gossiper::new_for_partial_items(
+            "block_gossiper",
+            config.gossip,
+            gossiper::get_block_from_storage::<Block, MainEvent>,
+            registry,
+        )?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let executed_block_gossiper = Gossiper::new_for_partial_items(
+        let approvals_hashes_gossiper = Gossiper::new_for_partial_items(
             "executed_block_gossiper",
             config.gossip,
             gossiper::get_executed_block_from_storage::<ApprovalsHashes, MainEvent>,
@@ -262,9 +272,7 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let sync_leaper = SyncLeaper::new(chainspec.highway_config.finality_threshold_fraction);
-        let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
-
+        // consensus
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let consensus = EraSupervisor::new(
             storage.root_path(),
@@ -276,7 +284,12 @@ impl reactor::Reactor for MainReactor {
             Box::new(HighwayProtocol::new_boxed),
         )?;
 
+        // chain / deploy management
+        let block_accumulator =
+            BlockAccumulator::new(config.block_accumulator, validator_matrix.clone());
+        let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
         let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
         let linear_chain = LinearChainComponent::new(
             registry,
@@ -286,16 +299,8 @@ impl reactor::Reactor for MainReactor {
             chainspec.highway_config.finality_threshold_fraction,
             next_upgrade_activation_point,
         )?;
-
-        let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
-
-        let block_accumulator =
-            BlockAccumulator::new(config.block_accumulator, validator_matrix.clone());
-        let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
-
-        let diagnostics_port =
-            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
-
+        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
+        let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
         let era_count = chainspec.number_of_past_switch_blocks_needed();
         let recent_switch_block_headers = storage.read_highest_switch_block_headers(era_count)?;
 
@@ -307,13 +312,16 @@ impl reactor::Reactor for MainReactor {
             upgrade_watcher,
             small_network,
             address_gossiper,
+
             rpc_server,
             rest_server,
             event_stream_server,
             deploy_acceptor,
             fetchers,
+
+            block_gossiper,
             deploy_gossiper,
-            approvals_hashes_gossiper: executed_block_gossiper,
+            approvals_hashes_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,
@@ -323,9 +331,11 @@ impl reactor::Reactor for MainReactor {
             block_accumulator,
             block_synchronizer,
             diagnostics_port,
+
             metrics,
             memory_metrics,
             event_queue_metrics,
+
             state: ReactorState::Initialize {},
             attempts: 0,
             max_attempts: 3,
@@ -540,8 +550,9 @@ impl reactor::Reactor for MainReactor {
                         item_id: *block.hash(),
                         source: Source::Ourself,
                     });
-                let reactor_event_es =
-                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                let reactor_event_es = MainEvent::EventStreamServer(
+                    event_stream_server::Event::BlockAdded(block.clone()),
+                );
                 let block_sync_event =
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
                         block_hash: *block.hash(),
@@ -832,7 +843,7 @@ impl reactor::Reactor for MainReactor {
                 },
             ) => {
                 let mut effects = Effects::new();
-                let block_hash = block.hash();
+                let block_hash = *block.hash();
 
                 // send to linear chain
                 let reactor_event =
@@ -852,7 +863,7 @@ impl reactor::Reactor for MainReactor {
                         MainEvent::EventStreamServer(event_stream_server::Event::DeployProcessed {
                             deploy_hash,
                             deploy_header: Box::new(deploy_header),
-                            block_hash: *block_hash,
+                            block_hash,
                             execution_result: Box::new(execution_result),
                         });
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
@@ -939,6 +950,8 @@ impl reactor::Reactor for MainReactor {
             // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::LegacyDeployFetcher(..)
             | MainEvent::LegacyDeployFetcherRequest(..)
+            | MainEvent::BlockFetcher(..)
+            | MainEvent::BlockFetcherRequest(..)
             | MainEvent::DeployFetcher(..)
             | MainEvent::DeployFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)

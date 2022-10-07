@@ -338,7 +338,7 @@ impl BlockSynchronizer {
                 NeedNext::ApprovalsHashes(block_hash, block) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<ApprovalsHashes>(block_hash, node_id, block)
+                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
                             .event(Event::ApprovalsHashesFetched)
                     }))
                 }

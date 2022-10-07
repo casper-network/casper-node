@@ -59,10 +59,10 @@ impl ApprovalsHashes {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
 
-        if *self.era_id() != block.header().era_id() {
+        if self.era_id != block.header().era_id {
             return Err(ApprovalsHashesValidationError::EraMismatch {
                 block_era_id: block.header().era_id(),
-                approvals_era_id: *self.era_id(),
+                approvals_era_id: self.era_id,
             });
         }
 
@@ -112,16 +112,22 @@ impl ApprovalsHashes {
             .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
         self.approvals_hashes.as_ref()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
         &self.merkle_proof_approvals
     }
 
     pub(crate) fn block_hash(&self) -> &BlockHash {
         &self.block_hash
+    }
+
+    pub(crate) fn era_id(&self) -> EraId {
+        self.era_id
     }
 }
 

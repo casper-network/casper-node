@@ -69,6 +69,10 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
 };
+use disjoint_sequences::{DisjointSequences, Sequence};
+use error::GetRequestError;
+use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt};
+use object_pool::ObjectPool;
 
 use crate::{
     components::{fetcher::FetchResponse, linear_chain, Component},
@@ -94,12 +98,8 @@ use crate::{
     utils::{display_error, WithDir},
     NodeRng,
 };
-use disjoint_sequences::{DisjointSequences, Sequence};
+
 pub use error::FatalStorageError;
-use error::GetRequestError;
-use lmdb_ext::BytesreprError;
-use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
-use object_pool::ObjectPool;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -1314,7 +1314,7 @@ impl Storage {
     ) -> Result<Option<ApprovalsHashes>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         let maybe_approvals_hashes = txn.get_value(self.approvals_hashes_db, &block_hash)?;
-        return Ok(maybe_approvals_hashes);
+        Ok(maybe_approvals_hashes)
     }
 
     /// Gets the highest block.
@@ -1376,7 +1376,7 @@ impl Storage {
                 .unwrap_or_default();
 
             // If we have a previous execution result, we can continue if it is the same.
-            if let Some(prev) = metadata.execution_results.get(&block_hash) {
+            if let Some(prev) = metadata.execution_results.get(block_hash) {
                 if prev == &execution_result {
                     continue;
                 } else {

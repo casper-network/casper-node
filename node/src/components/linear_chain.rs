@@ -108,7 +108,11 @@ where
             } => {
                 let block_hash = *block.hash();
                 effect_builder
-                    .put_executed_block_to_storage(block, approvals_hashes, execution_results)
+                    .put_executed_block_to_storage(
+                        block.clone(),
+                        approvals_hashes.clone(),
+                        execution_results,
+                    )
                     .event(move |_| Event::PutBlockResult {
                         block,
                         approvals_hashes,

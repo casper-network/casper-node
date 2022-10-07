@@ -350,84 +350,6 @@ impl ReactorEvent for MainEvent {
     }
 }
 
-impl From<SyncGlobalStateRequest> for MainEvent {
-    fn from(request: SyncGlobalStateRequest) -> Self {
-        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            request.into(),
-        ))
-    }
-}
-
-impl From<TrieAccumulatorRequest> for MainEvent {
-    fn from(request: TrieAccumulatorRequest) -> Self {
-        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            block_synchronizer::GlobalStateSynchronizerEvent::TrieAccumulatorEvent(request.into()),
-        ))
-    }
-}
-
-impl From<GlobalStateSynchronizerEvent> for MainEvent {
-    fn from(event: GlobalStateSynchronizerEvent) -> Self {
-        MainEvent::BlockSynchronizer(event.into())
-    }
-}
-
-impl From<TrieAccumulatorEvent> for MainEvent {
-    fn from(event: TrieAccumulatorEvent) -> Self {
-        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            event.into(),
-        ))
-    }
-}
-
-impl From<RpcRequest> for MainEvent {
-    fn from(request: RpcRequest) -> Self {
-        MainEvent::RpcServer(rpc_server::Event::RpcRequest(request))
-    }
-}
-
-impl From<RestRequest> for MainEvent {
-    fn from(request: RestRequest) -> Self {
-        MainEvent::RestServer(rest_server::Event::RestRequest(request))
-    }
-}
-
-impl From<NetworkRequest<consensus::ConsensusMessage>> for MainEvent {
-    fn from(request: NetworkRequest<consensus::ConsensusMessage>) -> Self {
-        MainEvent::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<NetworkRequest<gossiper::Message<Deploy>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
-        MainEvent::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<NetworkRequest<gossiper::Message<ApprovalsHashes>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<ApprovalsHashes>>) -> Self {
-        MainEvent::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<NetworkRequest<gossiper::Message<FinalitySignature>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<FinalitySignature>>) -> Self {
-        MainEvent::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
-        MainEvent::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<ConsensusRequest> for MainEvent {
-    fn from(request: ConsensusRequest) -> Self {
-        MainEvent::Consensus(consensus::Event::ConsensusRequest(request))
-    }
-}
-
 impl Display for MainEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -600,5 +522,89 @@ impl Display for MainEvent {
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
         }
+    }
+}
+
+impl From<SyncGlobalStateRequest> for MainEvent {
+    fn from(request: SyncGlobalStateRequest) -> Self {
+        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
+            request.into(),
+        ))
+    }
+}
+
+impl From<TrieAccumulatorRequest> for MainEvent {
+    fn from(request: TrieAccumulatorRequest) -> Self {
+        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
+            block_synchronizer::GlobalStateSynchronizerEvent::TrieAccumulatorEvent(request.into()),
+        ))
+    }
+}
+
+impl From<GlobalStateSynchronizerEvent> for MainEvent {
+    fn from(event: GlobalStateSynchronizerEvent) -> Self {
+        MainEvent::BlockSynchronizer(event.into())
+    }
+}
+
+impl From<TrieAccumulatorEvent> for MainEvent {
+    fn from(event: TrieAccumulatorEvent) -> Self {
+        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
+            event.into(),
+        ))
+    }
+}
+
+impl From<RpcRequest> for MainEvent {
+    fn from(request: RpcRequest) -> Self {
+        MainEvent::RpcServer(rpc_server::Event::RpcRequest(request))
+    }
+}
+
+impl From<RestRequest> for MainEvent {
+    fn from(request: RestRequest) -> Self {
+        MainEvent::RestServer(rest_server::Event::RestRequest(request))
+    }
+}
+
+impl From<NetworkRequest<consensus::ConsensusMessage>> for MainEvent {
+    fn from(request: NetworkRequest<consensus::ConsensusMessage>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<Deploy>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<Block>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Block>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<ApprovalsHashes>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<ApprovalsHashes>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<FinalitySignature>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<FinalitySignature>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<ConsensusRequest> for MainEvent {
+    fn from(request: ConsensusRequest) -> Self {
+        MainEvent::Consensus(consensus::Event::ConsensusRequest(request))
     }
 }

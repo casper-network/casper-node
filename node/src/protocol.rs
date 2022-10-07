@@ -26,7 +26,9 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{ApprovalsHashes, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
+    types::{
+        ApprovalsHashes, Block, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag,
+    },
 };
 
 /// Reactor message.
@@ -35,6 +37,9 @@ pub(crate) enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
+    /// Block gossiper component message.
+    #[from]
+    BlockGossiper(gossiper::Message<Block>),
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(gossiper::Message<Deploy>),
@@ -70,6 +75,7 @@ impl Payload for Message {
     fn message_kind(&self) -> MessageKind {
         match self {
             Message::Consensus(_) => MessageKind::Consensus,
+            Message::BlockGossiper(_) => MessageKind::BlockGossip,
             Message::DeployGossiper(_) => MessageKind::DeployGossip,
             Message::ExecutedBlockGossiper(_) => MessageKind::BlockGossip,
             Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
@@ -103,6 +109,7 @@ impl Payload for Message {
         match self {
             Message::Consensus(_) => false,
             Message::DeployGossiper(_) => false,
+            Message::BlockGossiper(_) => false,
             Message::ExecutedBlockGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
@@ -117,6 +124,7 @@ impl Payload for Message {
     fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Consensus(_) => weights.consensus,
+            Message::BlockGossiper(_) => weights.gossip,
             Message::DeployGossiper(_) => weights.gossip,
             Message::ExecutedBlockGossiper(_) => weights.gossip,
             Message::FinalitySignatureGossiper(_) => weights.gossip,
@@ -158,6 +166,7 @@ impl Payload for Message {
     fn is_unsafe_for_syncing_peers(&self) -> bool {
         match self {
             Message::Consensus(_) => false,
+            Message::BlockGossiper(_) => false,
             Message::DeployGossiper(_) => false,
             Message::ExecutedBlockGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
@@ -248,6 +257,7 @@ impl Debug for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
+            Message::BlockGossiper(dg) => f.debug_tuple("BlockGossiper").field(&dg).finish(),
             Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
             Message::ExecutedBlockGossiper(bg) => {
                 f.debug_tuple("BlockGossiper").field(&bg).finish()
@@ -281,6 +291,7 @@ impl Display for Message {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
+            Message::BlockGossiper(deploy) => write!(f, "BlockGossiper::{}", deploy),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
             Message::ExecutedBlockGossiper(block) => write!(f, "BlockGossiper::{}", block),
             Message::FinalitySignatureGossiper(sig) => {
@@ -306,6 +317,7 @@ impl Display for Message {
 impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
+        + From<GossiperIncoming<Block>>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<ApprovalsHashes>>
         + From<GossiperIncoming<FinalitySignature>>
@@ -320,6 +332,7 @@ where
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
+            Message::BlockGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::ExecutedBlockGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::FinalitySignatureGossiper(message) => {

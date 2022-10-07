@@ -105,11 +105,11 @@ impl BlockAcceptor {
 
         if let Some((era_id, block_hash)) = era_id_and_block_hash {
             let evw_era_id = era_validator_weights.era_id();
-            if evw_era_id != *era_id {
+            if evw_era_id != era_id {
                 return Err(AcceptorError::EraMismatch(
                     EraMismatchError::EraValidatorWeights {
-                        block_hash: *block_hash,
-                        expected: *era_id,
+                        block_hash,
+                        expected: era_id,
                         actual: evw_era_id,
                     },
                 ));
@@ -120,12 +120,15 @@ impl BlockAcceptor {
         Ok(())
     }
 
-    fn maybe_era_id_and_block_hash(&mut self) -> Option<(&EraId, &BlockHash)> {
-        match (self.approvals_hashes, self.block) {
+    fn maybe_era_id_and_block_hash(&self) -> Option<(EraId, BlockHash)> {
+        match (&self.approvals_hashes, &self.block) {
             (Some(approvals_hashes), Some(_)) | (Some(approvals_hashes), None) => {
-                Some((approvals_hashes.era_id(), approvals_hashes.block_hash()))
+                Some((approvals_hashes.era_id(), *approvals_hashes.block_hash()))
             }
-            (None, Some(block)) => Some((&block.header().era_id(), block.hash())),
+            (None, Some(block)) => {
+                let era_id = block.header().era_id();
+                Some((era_id, *block.hash()))
+            }
             (None, None) => None,
         }
     }
@@ -155,9 +158,9 @@ impl BlockAcceptor {
             )));
         }
 
-        if let Some(approvals_hashes) = self.approvals_hashes {
-            let state_root_hash = block.state_root_hash();
-            let era_id = block.header().era_id();
+        if let Some(approvals_hashes) = self.approvals_hashes.clone() {
+            // let state_root_hash = block.state_root_hash();
+            // let era_id = block.header().era_id();
 
             if let Err(error) = approvals_hashes.validate(block) {
                 warn!(%error, "received invalid approvals hashes");
@@ -175,7 +178,7 @@ impl BlockAcceptor {
         self.register_peer(peer);
 
         if self.block.is_none() {
-            self.block = Some(*block);
+            self.block = Some(block.clone());
             self.remove_bogus_validators();
         }
         Ok(())
@@ -194,10 +197,10 @@ impl BlockAcceptor {
             });
         }
 
-        if let Some(block) = self.block {
+        if let Some(block) = &self.block {
             let state_root_hash = block.state_root_hash();
             let era_id = block.header().era_id();
-            if let Err(error) = approvals_hashes.validate(&block) {
+            if let Err(error) = approvals_hashes.validate(block) {
                 warn!(%error, "received invalid approvals hashes");
                 return Err(AcceptorError::InvalidGossip(Box::new(
                     InvalidGossipError::ApprovalsHashes {
@@ -212,7 +215,7 @@ impl BlockAcceptor {
         self.register_peer(peer);
 
         if self.approvals_hashes.is_none() {
-            self.approvals_hashes = Some(*approvals_hashes);
+            self.approvals_hashes = Some(approvals_hashes.clone());
         }
         Ok(())
     }
@@ -243,7 +246,7 @@ impl BlockAcceptor {
                 ));
             }
         }
-        if let Some(era_validator_weights) = self.era_validator_weights {
+        if let Some(era_validator_weights) = &self.era_validator_weights {
             if finality_signature.era_id != era_validator_weights.era_id() {
                 return Err(AcceptorError::EraMismatch(
                     EraMismatchError::FinalitySignature {
@@ -282,7 +285,7 @@ impl BlockAcceptor {
     pub(super) fn era_id(&self) -> Option<EraId> {
         let era_id_and_block_hash = self.maybe_era_id_and_block_hash();
         if let Some((era_id, _)) = era_id_and_block_hash {
-            return Some(*era_id);
+            return Some(era_id);
         }
         if let Some(evw) = &self.era_validator_weights {
             return Some(evw.era_id());
@@ -310,7 +313,9 @@ impl BlockAcceptor {
             return None;
         }
 
-        if let (Some(block), Some(approvals_hashes)) = (self.block, self.approvals_hashes) {
+        if let (Some(block), Some(approvals_hashes)) =
+            (self.block.clone(), self.approvals_hashes.clone())
+        {
             return Some((
                 block,
                 approvals_hashes,

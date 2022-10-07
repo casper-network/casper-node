@@ -203,7 +203,7 @@ impl BlockAccumulator {
     {
         let block_hash = *approvals_hashes.block_hash();
         let era_id = approvals_hashes.era_id();
-        let acceptor = match self.get_or_register_acceptor_mut(block_hash, *era_id, vec![sender]) {
+        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
             Some(block_gossip_acceptor) => block_gossip_acceptor,
             None => {
                 return Effects::new();
@@ -262,7 +262,7 @@ impl BlockAccumulator {
             }
         };
 
-        if let Err(err) = acceptor.register_block(&block, sender) {
+        if let Err(err) = acceptor.register_block(block, sender) {
             warn!(%err, block_hash=%block.hash(), "received invalid block");
             match err {
                 Error::InvalidGossip(err) => {
@@ -273,7 +273,7 @@ impl BlockAccumulator {
                 Error::EraMismatch(_err) => {
                     // TODO: Log?
                     // this block acceptor is borked; get rid of it
-                    self.block_acceptors.remove(&block.hash());
+                    self.block_acceptors.remove(block.hash());
                 }
                 Error::DuplicatedEraValidatorWeights { .. } => {
                     // this should be unreachable; definitely a programmer error

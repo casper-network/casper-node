@@ -18,6 +18,7 @@ use crate::{
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
     sync_leap_fetcher: Fetcher<SyncLeap>,
+    block_fetcher: Fetcher<Block>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     approvals_hashes_fetcher: Fetcher<ApprovalsHashes>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,
@@ -48,6 +49,7 @@ impl Fetchers {
                 metrics_registry,
             )?,
             legacy_deploy_fetcher: Fetcher::new("legacy_deploy", config, metrics_registry)?,
+            block_fetcher: Fetcher::new("block", config, metrics_registry)?,
             deploy_fetcher: Fetcher::new("deploy", config, metrics_registry)?,
             trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
             block_execution_results_or_chunk_fetcher: Fetcher::new(
@@ -65,6 +67,15 @@ impl Fetchers {
         event: MainEvent,
     ) -> Effects<MainEvent> {
         match event {
+            MainEvent::BlockFetcher(event) => reactor::wrap_effects(
+                MainEvent::BlockFetcher,
+                self.block_fetcher.handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::BlockFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BlockFetcher,
+                self.block_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             MainEvent::SyncLeapFetcher(event) => reactor::wrap_effects(
                 MainEvent::SyncLeapFetcher,
                 self.sync_leap_fetcher

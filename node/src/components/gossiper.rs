@@ -27,8 +27,8 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        ApprovalsHashes, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId,
-        GossiperItem, Item, NodeId,
+        ApprovalsHashes, Block, BlockHash, Deploy, DeployId, FinalitySignature,
+        FinalitySignatureId, GossiperItem, Item, NodeId,
     },
     utils::Source,
     NodeRng,
@@ -95,7 +95,7 @@ pub(crate) fn get_finality_signature_from_storage<
     _fs_id: FinalitySignatureId,
     _sender: NodeId,
 ) -> Effects<Event<FinalitySignature>> {
-    // TODO: Needs proper implementation
+    // todo!(): Needs proper implementation
     Effects::new()
 }
 
@@ -112,6 +112,28 @@ pub(crate) fn get_executed_block_from_storage<T: GossiperItem + 'static, REv: Re
             let result = match results {
                 Some(executed_block) => Ok(executed_block),
                 None => Err(String::from("block-added not found")),
+            };
+            Event::GetFromHolderResult {
+                item_id: block_hash,
+                requester: sender,
+                result: Box::new(result),
+            }
+        })
+}
+
+/// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
+/// constructing a `Gossiper<Block>`.
+pub(crate) fn get_block_from_storage<T: GossiperItem + 'static, REv: ReactorEventT<T>>(
+    effect_builder: EffectBuilder<REv>,
+    block_hash: BlockHash,
+    sender: NodeId,
+) -> Effects<Event<Block>> {
+    effect_builder
+        .get_block_from_storage(block_hash)
+        .event(move |results| {
+            let result = match results {
+                Some(block) => Ok(block),
+                None => Err(String::from("block not found")),
             };
             Event::GetFromHolderResult {
                 item_id: block_hash,

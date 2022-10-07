@@ -11,7 +11,7 @@ pub(crate) enum NeedNext {
     Nothing,
     BlockHeader(BlockHash),
     BlockBody(BlockHash),
-    ApprovalsHashes(BlockHash, Block),
+    ApprovalsHashes(BlockHash, Box<Block>),
     FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     GlobalState(BlockHash, Digest),
     // TODO - don't skip
