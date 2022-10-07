@@ -283,7 +283,7 @@ where
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(Key::ChecksumRegistry)),
+            None => Ok(None),
         }
     }
 }
