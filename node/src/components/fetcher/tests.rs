@@ -40,8 +40,8 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        ApprovalsHashes, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        FinalitySignature, Item, NodeId, Block,
+        ApprovalsHashes, Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+        FinalitySignature, Item, NodeId,
     },
     utils::WithDir,
 };

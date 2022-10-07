@@ -213,7 +213,9 @@ impl Display for Event {
             }
             Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::ApprovalsHashesGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::ApprovalsHashesGossiperIncoming(inner) => {
+                write!(formatter, "incoming: {}", inner)
+            }
             Event::FinalitySignatureGossiperIncoming(inner) => {
                 write!(formatter, "incoming: {}", inner)
             }
