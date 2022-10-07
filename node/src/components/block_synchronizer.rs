@@ -335,13 +335,6 @@ impl BlockSynchronizer {
                             .event(Event::BlockFetched)
                     }))
                 }
-                NeedNext::ApprovalsHashes(block_hash, block) => {
-                    results.extend(peers.into_iter().flat_map(|node_id| {
-                        effect_builder
-                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
-                            .event(Event::ApprovalsHashesFetched)
-                    }))
-                }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         validators.iter().flat_map(move |public_key| {
@@ -365,6 +358,13 @@ impl BlockSynchronizer {
                         )
                         .event(move |result| Event::GlobalStateSynced { block_hash, result }),
                 ),
+                NeedNext::ApprovalsHashes(block_hash, block) => {
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
+                            .event(Event::ApprovalsHashesFetched)
+                    }))
+                }
                 NeedNext::ExecutionResultsRootHash {
                     block_hash,
                     global_state_root_hash,

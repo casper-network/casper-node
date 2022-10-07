@@ -41,7 +41,7 @@ use crate::{
     },
     types::{
         ApprovalsHashes, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        FinalitySignature, Item, NodeId,
+        FinalitySignature, Item, NodeId, Block,
     },
     utils::WithDir,
 };
@@ -116,7 +116,9 @@ enum Event {
     #[from]
     GossiperIncomingDeploy(GossiperIncoming<Deploy>),
     #[from]
-    GossiperIncomingExecutedBlock(GossiperIncoming<ApprovalsHashes>),
+    GossiperIncomingBlock(GossiperIncoming<Block>),
+    #[from]
+    GossiperIncomingApprovalsHashes(GossiperIncoming<ApprovalsHashes>),
     #[from]
     GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
     #[from]
@@ -242,7 +244,8 @@ impl ReactorTrait for Reactor {
             | Event::ContractRuntimeRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)
-            | Event::GossiperIncomingExecutedBlock(_)
+            | Event::GossiperIncomingBlock(_)
+            | Event::GossiperIncomingApprovalsHashes(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
             | Event::TrieRequestIncoming(_)

@@ -82,8 +82,6 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    ExecutedBlockGossiper(super::Event<ApprovalsHashes>),
-    #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
     StorageRequest(StorageRequest),
@@ -114,7 +112,9 @@ enum Event {
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
-    ExecutedBlockGossiperIncoming(GossiperIncoming<ApprovalsHashes>),
+    ApprovalsHashesGossiperIncoming(GossiperIncoming<ApprovalsHashes>),
+    #[from]
+    BlockGossiperIncoming(GossiperIncoming<Block>),
     #[from]
     FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
     #[from]
@@ -182,7 +182,6 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
-            Event::ExecutedBlockGossiper(event) => write!(formatter, "block gossiper: {}", event),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::MarkBlockCompletedRequest(req) => {
                 write!(formatter, "mark block completed: {}", req)
@@ -214,7 +213,7 @@ impl Display for Event {
             }
             Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::ExecutedBlockGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::ApprovalsHashesGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureGossiperIncoming(inner) => {
                 write!(formatter, "incoming: {}", inner)
             }
@@ -225,6 +224,7 @@ impl Display for Event {
             Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
             Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::BlockGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
     }
 }
@@ -241,7 +241,6 @@ struct Reactor {
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
-    executed_block_gossiper: Gossiper<ApprovalsHashes, Event>,
     contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
@@ -304,19 +303,12 @@ impl reactor::Reactor for Reactor {
             get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let executed_block_gossiper = Gossiper::new_for_partial_items(
-            "block_added_gossiper",
-            config,
-            get_executed_block_from_storage::<ApprovalsHashes, Event>,
-            registry,
-        )?;
 
         let reactor = Reactor {
             network,
             storage,
             fake_deploy_acceptor,
             deploy_gossiper,
-            executed_block_gossiper,
             contract_runtime,
             _storage_tempdir: storage_tempdir,
         };
@@ -345,11 +337,6 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
-                    .handle_event(effect_builder, rng, event),
-            ),
-            Event::ExecutedBlockGossiper(event) => reactor::wrap_effects(
-                Event::ExecutedBlockGossiper,
-                self.executed_block_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequest(request) => reactor::wrap_effects(
@@ -413,11 +400,6 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            Event::ExecutedBlockGossiperIncoming(incoming) => reactor::wrap_effects(
-                Event::ExecutedBlockGossiper,
-                self.executed_block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             Event::NetRequestIncoming(incoming) => reactor::wrap_effects(
@@ -493,7 +475,9 @@ impl reactor::Reactor for Reactor {
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)
-            | Event::TrieResponseIncoming(_)) => {
+            | Event::TrieResponseIncoming(_)
+            | Event::ApprovalsHashesGossiperIncoming(_)
+            | Event::BlockGossiperIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }
         }

@@ -296,7 +296,7 @@ impl BlockAcquisitionState {
                 acquired.apply_deploy(deploy_id);
                 match acquired.needs_deploy() {
                     None => BlockAcquisitionState::HaveAllDeploys(
-                        Box::new(block.clone().take_header()),
+                        Box::new(block.header().clone()),
                         signatures.clone(),
                     ),
                     Some(_) => {
@@ -348,7 +348,7 @@ impl BlockAcquisitionState {
             {
                 if block.state_root_hash() == &root_hash {
                     BlockAcquisitionState::HaveGlobalState(
-                        Box::new(block.clone().take_header()),
+                        Box::new(block.header().clone()),
                         signatures.clone(),
                         deploys.clone(),
                         ExecutionResultsAcquisition::Needed {
@@ -542,6 +542,8 @@ impl BlockAcquisitionState {
                         either,
                     ));
                 }
+                // TODO: this seems safe to remove as we do this check in `HaveBlockHeader` and the
+                // weights don't seem to mutate.
                 if validator_weights.is_empty() {
                     return Ok(BlockAcquisitionAction::era_validators(
                         validator_weights.era_id(),

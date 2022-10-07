@@ -131,10 +131,7 @@ pub(crate) fn get_block_from_storage<T: GossiperItem + 'static, REv: ReactorEven
     effect_builder
         .get_block_from_storage(block_hash)
         .event(move |results| {
-            let result = match results {
-                Some(block) => Ok(block),
-                None => Err(String::from("block not found")),
-            };
+            let result = results.ok_or_else(|| String::from("block not found"));
             Event::GetFromHolderResult {
                 item_id: block_hash,
                 requester: sender,

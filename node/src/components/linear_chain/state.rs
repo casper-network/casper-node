@@ -541,7 +541,7 @@ mod tests {
         );
         let new_block_outcomes = lc.handle_new_block(
             Box::new(block.clone()),
-            Box::new(approvals_hashes),
+            Box::new(approvals_hashes.clone()),
             execution_results.clone(),
         );
         match &*new_block_outcomes {
