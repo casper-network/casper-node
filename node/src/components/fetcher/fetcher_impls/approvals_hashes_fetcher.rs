@@ -1,22 +1,22 @@
 use std::{collections::HashMap, time::Duration};
 
+use async_trait::async_trait;
+use futures::FutureExt;
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{ApprovalsHashes, Block, BlockHash, NodeId},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    effect::{requests::StorageRequest, EffectBuilder},
+    types::{ApprovalsHashes, BlockHash, NodeId},
 };
 
+#[async_trait]
 impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn responders(
+    fn item_handles(
         &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<ApprovalsHashes>>>> {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &Block {
-        &self.validation_metadata
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<ApprovalsHashes>>> {
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -27,42 +27,22 @@ impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
-        peer: NodeId,
-        validation_metadata: Block,
-        responder: FetchResponder<ApprovalsHashes>,
-    ) -> Effects<Event<ApprovalsHashes>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        effect_builder
-            .get_executed_block_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                validation_metadata,
-                maybe_item: Box::new(result),
-                responder,
-            })
+    ) -> Option<ApprovalsHashes> {
+        effect_builder.get_executed_block_from_storage(id).await
     }
 
-    fn put_to_storage<REv>(
-        &self,
-        item: ApprovalsHashes,
-        peer: NodeId,
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<ApprovalsHashes>>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        let item = Box::new(item);
-        Some(
+        item: ApprovalsHashes,
+    ) -> StoringState<'a, ApprovalsHashes> {
+        StoringState::Enqueued(
             effect_builder
-                .put_approvals_hashes_to_storage(item.clone())
-                .event(move |_| Event::PutToStorage { item, peer }),
+                .put_approvals_hashes_to_storage(Box::new(item))
+                .map(|_| ())
+                .boxed(),
         )
     }
 }

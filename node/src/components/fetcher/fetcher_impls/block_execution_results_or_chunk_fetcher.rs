@@ -1,25 +1,24 @@
 use std::{collections::HashMap, time::Duration};
 
+use async_trait::async_trait;
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, NodeId},
 };
 
+#[async_trait]
 impl ItemFetcher<BlockExecutionResultsOrChunk> for Fetcher<BlockExecutionResultsOrChunk> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn responders(
+    fn item_handles(
         &mut self,
     ) -> &mut HashMap<
         BlockExecutionResultsOrChunkId,
-        HashMap<NodeId, Vec<FetchResponder<BlockExecutionResultsOrChunk>>>,
+        HashMap<NodeId, ItemHandle<BlockExecutionResultsOrChunk>>,
     > {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &() {
-        &()
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -30,25 +29,12 @@ impl ItemFetcher<BlockExecutionResultsOrChunk> for Fetcher<BlockExecutionResults
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockExecutionResultsOrChunkId,
-        peer: NodeId,
-        _validation_metadata: (),
-        responder: FetchResponder<BlockExecutionResultsOrChunk>,
-    ) -> Effects<Event<BlockExecutionResultsOrChunk>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
+    ) -> Option<BlockExecutionResultsOrChunk> {
         effect_builder
             .get_block_execution_results_or_chunk_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                validation_metadata: (),
-                maybe_item: Box::new(result),
-                responder,
-            })
+            .await
     }
 }

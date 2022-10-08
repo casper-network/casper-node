@@ -1,22 +1,19 @@
 use std::{collections::HashMap, time::Duration};
 
+use async_trait::async_trait;
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    effect::{requests::StorageRequest, EffectBuilder},
     types::{Block, BlockHash, NodeId},
 };
 
+#[async_trait]
 impl ItemFetcher<Block> for Fetcher<Block> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<Block>>>> {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &() {
-        &()
+    fn item_handles(&mut self) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<Block>>> {
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -27,25 +24,10 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
-        peer: NodeId,
-        _validation_metadata: (),
-        responder: FetchResponder<Block>,
-    ) -> Effects<Event<Block>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        effect_builder
-            .get_block_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                validation_metadata: (),
-                maybe_item: Box::new(result),
-                responder,
-            })
+    ) -> Option<Block> {
+        effect_builder.get_block_from_storage(id).await
     }
 }

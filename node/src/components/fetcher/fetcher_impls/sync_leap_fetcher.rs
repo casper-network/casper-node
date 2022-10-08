@@ -1,27 +1,22 @@
 use std::{collections::HashMap, time::Duration};
 
-use num_rational::Ratio;
+use async_trait::async_trait;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockHash, NodeId, SyncLeap},
 };
 
+#[async_trait]
 impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
     // We want the fetcher to ask all the peers we give to it separately, and return their
     // responses separately, not just respond with the first SyncLeap it successfully gets from a
     // single peer.
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn responders(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<SyncLeap>>>> {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &Ratio<u64> {
-        &self.validation_metadata
+    fn item_handles(&mut self) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<SyncLeap>>> {
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -32,37 +27,18 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        id: BlockHash,
-        peer: NodeId,
-        validation_metadata: Ratio<u64>,
-        responder: FetchResponder<SyncLeap>,
-    ) -> Effects<Event<SyncLeap>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        effect_builder
-            .immediately()
-            .event(move |()| Event::GetFromStorageResult {
-                id,
-                peer,
-                validation_metadata,
-                maybe_item: Box::new(None),
-                responder,
-            })
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _id: BlockHash,
+    ) -> Option<SyncLeap> {
+        // We never get a SyncLeap we requested from our own storage.
+        None
     }
 
-    fn put_to_storage<REv>(
-        &self,
-        _item: SyncLeap,
-        _peer: NodeId,
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
         _effect_builder: EffectBuilder<REv>,
-    ) -> Option<Effects<Event<SyncLeap>>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        None
+        item: SyncLeap,
+    ) -> StoringState<'a, SyncLeap> {
+        StoringState::WontStore(item)
     }
 }

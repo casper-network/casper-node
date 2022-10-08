@@ -216,7 +216,11 @@ impl SyncLeaper {
                 if false == leap_activity.peers.contains_key(&peer) {
                     effects.extend(
                         effect_builder
-                            .fetch::<SyncLeap>(block_hash, peer, self.finality_threshold_fraction)
+                            .fetch::<SyncLeap>(
+                                block_hash,
+                                peer,
+                                self.finality_threshold_fraction.into(),
+                            )
                             .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                                 trusted_hash: block_hash,
                                 fetch_result,
@@ -233,7 +237,11 @@ impl SyncLeaper {
             .map(|peer| {
                 effects.extend(
                     effect_builder
-                        .fetch::<SyncLeap>(block_hash, peer, self.finality_threshold_fraction)
+                        .fetch::<SyncLeap>(
+                            block_hash,
+                            peer,
+                            self.finality_threshold_fraction.into(),
+                        )
                         .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                             trusted_hash: block_hash,
                             fetch_result,

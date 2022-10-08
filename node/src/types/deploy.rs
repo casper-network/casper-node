@@ -51,7 +51,9 @@ use casper_types::{
 use crate::{
     effect::GossipTarget,
     rpcs::docs::DocExample,
-    types::{chainspec::DeployConfig, FetcherItem, GossiperItem, Item, Tag},
+    types::{
+        chainspec::DeployConfig, EmptyValidationMetadata, FetcherItem, GossiperItem, Item, Tag,
+    },
     utils::{ds, DisplayIter},
 };
 pub use approval::Approval;
@@ -556,9 +558,9 @@ impl Item for Deploy {
 
 impl FetcherItem for Deploy {
     type ValidationError = DeployConfigurationFailure;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!
         validate_deploy(self)
     }

@@ -7,6 +7,7 @@ use std::{
     array::TryFromSliceError,
     cmp::{Ord, Ordering, PartialOrd},
     collections::{BTreeMap, BTreeSet},
+    convert::Infallible,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
@@ -34,8 +35,6 @@ use casper_types::{
     crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
 };
 
-pub(crate) use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
-
 use crate::{
     components::consensus,
     effect::GossipTarget,
@@ -43,11 +42,12 @@ use crate::{
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
         Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployId,
-        DeployOrTransferHash, FetcherItem, FinalizedApprovals, GossiperItem, Item, JsonBlock,
-        JsonBlockHeader, Tag, ValueOrChunk,
+        DeployOrTransferHash, EmptyValidationMetadata, FetcherItem, FinalizedApprovals,
+        GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag, ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
+pub(crate) use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -984,6 +984,24 @@ impl FromBytes for BlockHeader {
     }
 }
 
+impl Item for BlockHeader {
+    type Id = BlockHash;
+    const TAG: Tag = Tag::BlockHeaderByHash;
+
+    fn id(&self) -> Self::Id {
+        self.block_hash()
+    }
+}
+
+impl FetcherItem for BlockHeader {
+    type ValidationError = Infallible;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, DataSize)]
 pub struct BlockHeaderWithMetadata {
     pub block_header: BlockHeader,
@@ -1193,9 +1211,9 @@ impl Item for BlockHeadersBatch {
 
 impl FetcherItem for BlockHeadersBatch {
     type ValidationError = BlockHeadersBatchValidationError;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         if self.inner().is_empty() {
             return Err(BlockHeadersBatchValidationError::BatchEmpty);
         }
@@ -1412,9 +1430,9 @@ impl Item for BlockSignatures {
 
 impl FetcherItem for BlockSignatures {
     type ValidationError = crypto::Error;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
@@ -1745,9 +1763,9 @@ impl Item for Block {
 
 impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
@@ -1829,9 +1847,9 @@ impl Item for BlockAndDeploys {
 
 impl FetcherItem for BlockAndDeploys {
     type ValidationError = BlockValidationError;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.block.verify()?;
         // Validate that we've got all of the deploys we should have gotten, and that their hashes
         // are valid.
@@ -1972,9 +1990,9 @@ impl Item for BlockExecutionResultsOrChunk {
 
 impl FetcherItem for BlockExecutionResultsOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         match self {
             BlockExecutionResultsOrChunk::Legacy {
                 block_hash: _,
@@ -2618,9 +2636,9 @@ impl GossiperItem for FinalitySignature {
 
 impl FetcherItem for FinalitySignature {
     type ValidationError = crypto::Error;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.is_verified()
     }
 }
@@ -2688,9 +2706,9 @@ impl Item for BlockDeployApprovals {
 
 impl FetcherItem for BlockDeployApprovals {
     type ValidationError = BlockDeployApprovalsVerificationError;
-    type ValidationMetadata = (); // TODO: Optional approvals root hash?
+    type ValidationMetadata = EmptyValidationMetadata; // TODO: Optional approvals root hash?
 
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         for (deploy_hash, approval_set) in &self.approvals {
             for approval in approval_set.inner() {
                 crypto::verify(deploy_hash, approval.signature(), approval.signer()).map_err(
@@ -2879,7 +2897,7 @@ mod tests {
         let block_and_deploys = BlockAndDeploys { block, deploys };
 
         block_and_deploys
-            .validate(&())
+            .validate(&EmptyValidationMetadata)
             .unwrap_or_else(|error| panic!("expected to be valid: {:?}", error));
     }
 
@@ -2913,7 +2931,10 @@ mod tests {
                 .collect(),
         };
 
-        match block_and_deploys.validate(&()).unwrap_err() {
+        match block_and_deploys
+            .validate(&EmptyValidationMetadata)
+            .unwrap_err()
+        {
             BlockValidationError::ExtraDeploys {
                 extra_deploys_count,
                 ..
@@ -2950,7 +2971,10 @@ mod tests {
             deploys: deploys1,
         };
 
-        match block_and_deploys.validate(&()).unwrap_err() {
+        match block_and_deploys
+            .validate(&EmptyValidationMetadata)
+            .unwrap_err()
+        {
             BlockValidationError::MissingDeploy { missing_deploy, .. } => {
                 assert!(deploys2
                     .iter()
@@ -2980,7 +3004,9 @@ mod tests {
         let block_and_deploys = BlockAndDeploys { block, deploys };
 
         assert!(matches!(
-            block_and_deploys.validate(&()).unwrap_err(),
+            block_and_deploys
+                .validate(&EmptyValidationMetadata)
+                .unwrap_err(),
             BlockValidationError::UnexpectedBlockHash { .. }
         ));
     }
@@ -3008,7 +3034,10 @@ mod tests {
 
         let block_and_deploys = BlockAndDeploys { block, deploys };
 
-        match block_and_deploys.validate(&()).unwrap_err() {
+        match block_and_deploys
+            .validate(&EmptyValidationMetadata)
+            .unwrap_err()
+        {
             BlockValidationError::UnexpectedDeployHash { invalid_deploy, .. } => {
                 assert_eq!(*invalid_deploy, bad_deploy);
             }
@@ -3297,7 +3326,7 @@ mod tests {
     fn block_headers_batch_item_validate() {
         let empty_batch = BlockHeadersBatch::new(vec![]);
         assert_eq!(
-            FetcherItem::validate(&empty_batch, &()),
+            FetcherItem::validate(&empty_batch, &EmptyValidationMetadata),
             Err(BlockHeadersBatchValidationError::BatchEmpty)
         );
 
@@ -3314,7 +3343,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            FetcherItem::validate(&BlockHeadersBatch::new(invalid_batch.clone()), &()),
+            FetcherItem::validate(
+                &BlockHeadersBatch::new(invalid_batch.clone()),
+                &EmptyValidationMetadata
+            ),
             Err(BlockHeadersBatchValidationError::BatchNotContinuous)
         );
 
@@ -3325,13 +3357,19 @@ mod tests {
         };
 
         assert_eq!(
-            FetcherItem::validate(&BlockHeadersBatch::new(valid_batch.clone()), &()),
+            FetcherItem::validate(
+                &BlockHeadersBatch::new(valid_batch.clone()),
+                &EmptyValidationMetadata
+            ),
             Ok(())
         );
 
         let single_el_valid = vec![valid_batch[0].clone()];
         assert_eq!(
-            FetcherItem::validate(&BlockHeadersBatch::new(single_el_valid), &()),
+            FetcherItem::validate(
+                &BlockHeadersBatch::new(single_el_valid),
+                &EmptyValidationMetadata
+            ),
             Ok(())
         );
     }

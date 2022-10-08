@@ -11,8 +11,8 @@ use crate::{
         EraMismatchError, Error as AcceptorError, InvalidGossipError,
     },
     types::{
-        ApprovalsHashes, Block, BlockHash, EraValidatorWeights, FetcherItem, FinalitySignature,
-        Item, NodeId, SignatureWeight,
+        ApprovalsHashes, Block, BlockHash, EmptyValidationMetadata, EraValidatorWeights,
+        FetcherItem, FinalitySignature, Item, NodeId, SignatureWeight,
     },
 };
 
@@ -146,7 +146,7 @@ impl BlockAcceptor {
             });
         }
 
-        if let Err(error) = block.validate(&()) {
+        if let Err(error) = block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
             return Err(AcceptorError::InvalidGossip(Box::new(

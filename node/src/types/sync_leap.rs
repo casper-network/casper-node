@@ -5,6 +5,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::Display;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -129,13 +130,30 @@ impl Item for SyncLeap {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Debug, Display)]
+pub(crate) struct FinalityThresholdFraction(Ratio<u64>);
+
+impl DataSize for FinalityThresholdFraction {
+    const IS_DYNAMIC: bool = false;
+    const STATIC_HEAP_SIZE: usize = 0;
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
+}
+
+impl From<Ratio<u64>> for FinalityThresholdFraction {
+    fn from(ratio: Ratio<u64>) -> Self {
+        FinalityThresholdFraction(ratio)
+    }
+}
+
 impl FetcherItem for SyncLeap {
     type ValidationError = SyncLeapValidationError;
-    type ValidationMetadata = Ratio<u64>;
+    type ValidationMetadata = FinalityThresholdFraction;
 
     fn validate(
         &self,
-        finality_threshold_fraction: &Ratio<u64>,
+        finality_threshold_fraction: &FinalityThresholdFraction,
     ) -> Result<(), Self::ValidationError> {
         // TODO: Possibly check the size of the collections.
         // TODO: Put protocol version in validation metadata; only check for latest block?
@@ -183,7 +201,7 @@ impl FetcherItem for SyncLeap {
                         for sigs in era_sigs {
                             if let Err(err) = linear_chain::check_sufficient_block_signatures(
                                 validator_weights,
-                                *finality_threshold_fraction,
+                                finality_threshold_fraction.0,
                                 Some(sigs),
                             ) {
                                 return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(

@@ -1,16 +1,13 @@
-use std::{error, io, net::SocketAddr, result, sync::Arc};
+use std::{error, io, net::SocketAddr, result};
 
 use casper_hashing::Digest;
-use casper_types::{crypto, ProtocolVersion, SecretKey};
+use casper_types::{crypto, ProtocolVersion};
 use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::{
-    tls::ValidationError,
-    utils::{LoadError, Loadable, ResolveAddressError},
-};
+use crate::{tls::ValidationError, utils::ResolveAddressError};
 
 pub(super) type Result<T> = result::Result<T, Error>;
 

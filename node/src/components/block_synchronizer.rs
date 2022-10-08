@@ -36,8 +36,8 @@ use crate::{
     reactor,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, Deploy, FinalitySignature, FinalitySignatureId, Item, LegacyDeploy,
-        NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
+        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -324,14 +324,14 @@ impl BlockSynchronizer {
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<BlockHeader>(block_hash, node_id, ())
+                            .fetch::<BlockHeader>(block_hash, node_id, EmptyValidationMetadata)
                             .event(Event::BlockHeaderFetched)
                     }))
                 }
                 NeedNext::BlockBody(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, node_id, ())
+                            .fetch::<Block>(block_hash, node_id, EmptyValidationMetadata)
                             .event(Event::BlockFetched)
                     }))
                 }
@@ -344,7 +344,7 @@ impl BlockSynchronizer {
                                 public_key: public_key.clone(),
                             };
                             effect_builder
-                                .fetch::<FinalitySignature>(id, node_id, ())
+                                .fetch::<FinalitySignature>(id, node_id, EmptyValidationMetadata)
                                 .event(Event::FinalitySignatureFetched)
                         })
                     }))
@@ -381,7 +381,7 @@ impl BlockSynchronizer {
                 NeedNext::DeployByHash(block_hash, deploy_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<LegacyDeploy>(deploy_hash, node_id, ())
+                            .fetch::<LegacyDeploy>(deploy_hash, node_id, EmptyValidationMetadata)
                             .event(move |result| Event::DeployFetched {
                                 block_hash,
                                 result: Either::Left(result),
@@ -391,7 +391,7 @@ impl BlockSynchronizer {
                 NeedNext::DeployById(block_hash, deploy_id) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Deploy>(deploy_id, node_id, ())
+                            .fetch::<Deploy>(deploy_id, node_id, EmptyValidationMetadata)
                             .event(move |result| Event::DeployFetched {
                                 block_hash,
                                 result: Either::Right(result),
@@ -401,7 +401,11 @@ impl BlockSynchronizer {
                 NeedNext::ExecutionResults(block_hash, id) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, ())
+                            .fetch::<BlockExecutionResultsOrChunk>(
+                                id,
+                                node_id,
+                                EmptyValidationMetadata,
+                            )
                             .event(move |result| Event::ExecutionResultsFetched {
                                 block_hash,
                                 result,
@@ -457,7 +461,8 @@ impl BlockSynchronizer {
                     Error::Absent { id, peer }
                     | Error::Rejected { id, peer }
                     | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                    Error::CouldNotConstructGetRequest { id, .. }
+                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
                 }
             }
         };
@@ -501,7 +506,8 @@ impl BlockSynchronizer {
                     Error::Absent { id, peer }
                     | Error::Rejected { id, peer }
                     | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                    Error::CouldNotConstructGetRequest { id, .. }
+                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
                 }
             }
         };
@@ -545,7 +551,8 @@ impl BlockSynchronizer {
                     Error::Absent { id, peer }
                     | Error::Rejected { id, peer }
                     | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                    Error::CouldNotConstructGetRequest { id, .. }
+                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
                 }
             }
         };
@@ -585,7 +592,8 @@ impl BlockSynchronizer {
                     Error::Absent { id, peer }
                     | Error::Rejected { id, peer }
                     | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. } => (id, None, None),
+                    Error::CouldNotConstructGetRequest { id, .. }
+                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
                 }
             }
         };

@@ -1,22 +1,21 @@
 use std::{collections::HashMap, time::Duration};
 
+use async_trait::async_trait;
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, Effects},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockHash, BlockSignatures, NodeId},
 };
 
+#[async_trait]
 impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn responders(
+    fn item_handles(
         &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockSignatures>>>> {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &() {
-        &()
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<BlockSignatures>>> {
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -27,37 +26,22 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
         _effect_builder: EffectBuilder<REv>,
         _id: BlockHash,
-        _peer: NodeId,
-        _validation_metadata: (),
-        _responder: FetchResponder<BlockSignatures>,
-    ) -> Effects<Event<BlockSignatures>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        todo!()
+    ) -> Option<BlockSignatures> {
+        todo!();
         // let fault_tolerance_fraction = self.fault_tolerance_fraction;
-        // async move {
-        //     let block_header_with_metadata = effect_builder
-        //         .get_block_header_with_metadata_from_storage(id, false)
-        //         .await?;
-        //     has_enough_block_signatures(
-        //         effect_builder,
-        //         &block_header_with_metadata.block_header,
-        //         &block_header_with_metadata.block_signatures,
-        //         fault_tolerance_fraction,
-        //     )
-        //     .await
-        //     .then_some(block_header_with_metadata.block_signatures)
-        // }
-        // .event(move |result| Event::GetFromStorageResult {
-        //     id,
-        //     peer,
-        //     maybe_item: Box::new(result),
-        //     responder,
-        // })
+        // let block_header_with_metadata = effect_builder
+        //     .get_block_header_with_metadata_from_storage(id, false)
+        //     .await?;
+        // has_enough_block_signatures(
+        //     effect_builder,
+        //     &block_header_with_metadata.block_header,
+        //     &block_header_with_metadata.block_signatures,
+        //     fault_tolerance_fraction,
+        // )
+        // .await
+        // .then_some(block_header_with_metadata.block_signatures)
     }
 }

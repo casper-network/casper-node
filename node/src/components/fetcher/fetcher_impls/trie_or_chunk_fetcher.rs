@@ -1,24 +1,22 @@
 use std::{collections::HashMap, time::Duration};
 
+use async_trait::async_trait;
 use tracing::error;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    effect::{requests::ContractRuntimeRequest, EffectBuilder},
     types::{NodeId, TrieOrChunk, TrieOrChunkId},
 };
 
+#[async_trait]
 impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn responders(
+    fn item_handles(
         &mut self,
-    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, Vec<FetchResponder<TrieOrChunk>>>> {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &() {
-        &()
+    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, ItemHandle<TrieOrChunk>>> {
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -29,33 +27,13 @@ impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
+    async fn get_from_storage<REv: From<ContractRuntimeRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: TrieOrChunkId,
-        peer: NodeId,
-        _validation_metadata: (),
-        responder: FetchResponder<TrieOrChunk>,
-    ) -> Effects<Event<TrieOrChunk>>
-    where
-        REv: From<ContractRuntimeRequest> + Send,
-    {
-        async move {
-            let maybe_trie = match effect_builder.get_trie(id).await {
-                Ok(maybe_trie) => maybe_trie,
-                Err(error) => {
-                    error!(?error, "get_trie_request");
-                    None
-                }
-            };
-            Event::GetFromStorageResult {
-                id,
-                peer,
-                validation_metadata: (),
-                maybe_item: Box::new(maybe_trie),
-                responder,
-            }
-        }
-        .event(std::convert::identity)
+    ) -> Option<TrieOrChunk> {
+        effect_builder.get_trie(id).await.unwrap_or_else(|error| {
+            error!(?error, "get_trie_request");
+            None
+        })
     }
 }

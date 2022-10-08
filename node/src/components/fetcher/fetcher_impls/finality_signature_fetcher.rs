@@ -1,23 +1,21 @@
 use std::{collections::HashMap, time::Duration};
 
+use async_trait::async_trait;
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Event, FetchResponder, Fetcher, ItemFetcher},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    effect::{requests::StorageRequest, EffectBuilder},
     types::{FinalitySignature, FinalitySignatureId, NodeId},
 };
 
+#[async_trait]
 impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn responders(
+    fn item_handles(
         &mut self,
-    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, Vec<FetchResponder<FinalitySignature>>>>
-    {
-        &mut self.responders
-    }
-
-    fn validation_metadata(&self) -> &() {
-        &()
+    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, ItemHandle<FinalitySignature>>> {
+        &mut self.item_handles
     }
 
     fn metrics(&mut self) -> &Metrics {
@@ -28,27 +26,12 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv>(
-        &mut self,
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: FinalitySignatureId,
-        peer: NodeId,
-        _validation_metadata: (),
-        responder: FetchResponder<FinalitySignature>,
-    ) -> Effects<Event<FinalitySignature>>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        let block_hash = id.block_hash;
-        let public_key = id.public_key.clone();
+    ) -> Option<FinalitySignature> {
         effect_builder
-            .get_signature_from_storage(block_hash, public_key)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                validation_metadata: (),
-                maybe_item: Box::new(result),
-                responder,
-            })
+            .get_signature_from_storage(id.block_hash, id.public_key.clone())
+            .await
     }
 }

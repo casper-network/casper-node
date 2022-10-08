@@ -35,14 +35,9 @@ impl Fetchers {
         metrics_registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetchers {
-            sync_leap_fetcher: Fetcher::new_with_metadata(
-                "sync_leap_fetcher",
-                config,
-                metrics_registry,
-                chainspec.highway_config.finality_threshold_fraction,
-            )?,
+            sync_leap_fetcher: Fetcher::new("sync_leap_fetcher", config, metrics_registry)?,
             block_header_by_hash_fetcher: Fetcher::new("block_header", config, metrics_registry)?,
-            approvals_hashes_fetcher: todo!("sort out the default thing"),
+            approvals_hashes_fetcher: Fetcher::new("approvals_hashes", config, metrics_registry)?,
             finality_signature_fetcher: Fetcher::new(
                 "finality_signature_fetcher",
                 config,

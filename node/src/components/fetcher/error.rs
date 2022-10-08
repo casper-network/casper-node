@@ -18,6 +18,17 @@ pub(crate) enum Error<T: FetcherItem> {
 
     #[error("could not construct get request for item with id {id:?} for peer {peer:?}")]
     CouldNotConstructGetRequest { id: T::Id, peer: NodeId },
+
+    #[error(
+        "ongoing fetch for {id} from {peer} has different validation metadata ({current}) to that \
+        given in new fetch attempt ({new})"
+    )]
+    ValidationMetadataMismatch {
+        id: T::Id,
+        peer: NodeId,
+        current: Box<T::ValidationMetadata>,
+        new: Box<T::ValidationMetadata>,
+    },
 }
 
 impl<T: FetcherItem> Error<T> {
@@ -26,7 +37,8 @@ impl<T: FetcherItem> Error<T> {
             Error::Absent { peer, .. }
             | Error::Rejected { peer, .. }
             | Error::TimedOut { peer, .. }
-            | Error::CouldNotConstructGetRequest { peer, .. } => peer,
+            | Error::CouldNotConstructGetRequest { peer, .. }
+            | Error::ValidationMetadataMismatch { peer, .. } => peer,
         }
     }
 }
@@ -45,6 +57,9 @@ where
             | Error::Rejected { id, .. }
             | Error::TimedOut { id, .. }
             | Error::CouldNotConstructGetRequest { id, .. } => id.estimate_heap_size(),
+            Error::ValidationMetadataMismatch {
+                id, current, new, ..
+            } => id.estimate_heap_size() + current.estimate_heap_size() + new.estimate_heap_size(),
         }
     }
 }

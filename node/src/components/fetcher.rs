@@ -5,6 +5,7 @@ mod fetch_response;
 mod fetched_data;
 mod fetcher_impls;
 mod item_fetcher;
+mod item_handle;
 mod metrics;
 mod tests;
 
@@ -32,7 +33,8 @@ pub(crate) use error::Error;
 pub(crate) use event::Event;
 pub(crate) use fetch_response::FetchResponse;
 pub(crate) use fetched_data::FetchedData;
-pub(crate) use item_fetcher::ItemFetcher;
+use item_fetcher::{ItemFetcher, StoringState};
+use item_handle::ItemHandle;
 use metrics::Metrics;
 
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
@@ -45,17 +47,12 @@ where
     T: FetcherItem,
 {
     get_from_peer_timeout: Duration,
-    responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
+    item_handles: HashMap<T::Id, HashMap<NodeId, ItemHandle<T>>>,
     #[data_size(skip)]
     metrics: Metrics,
-    #[data_size(skip)]
-    validation_metadata: T::ValidationMetadata,
 }
 
-impl<T: FetcherItem> Fetcher<T>
-where
-    T::ValidationMetadata: Default,
-{
+impl<T: FetcherItem> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: &Config,
@@ -63,25 +60,8 @@ where
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            responders: HashMap::new(),
+            item_handles: HashMap::new(),
             metrics: Metrics::new(name, registry)?,
-            validation_metadata: Default::default(),
-        })
-    }
-}
-
-impl<T: FetcherItem> Fetcher<T> {
-    pub(crate) fn new_with_metadata(
-        name: &str,
-        config: &Config,
-        registry: &Registry,
-        validation_metadata: T::ValidationMetadata,
-    ) -> Result<Self, prometheus::Error> {
-        Ok(Fetcher {
-            get_from_peer_timeout: config.get_from_peer_timeout().into(),
-            responders: HashMap::new(),
-            metrics: Metrics::new(name, registry)?,
-            validation_metadata,
         })
     }
 }
@@ -134,7 +114,7 @@ where
                 ),
             },
             Event::GotRemotely { item, source } => match source {
-                Source::Peer(peer) => self.got_from_peer(peer, item, effect_builder),
+                Source::Peer(peer) => self.got_from_peer(effect_builder, peer, item),
                 Source::Client | Source::Ourself => Effects::new(),
             },
             Event::GotInvalidRemotely { .. } => Effects::new(),

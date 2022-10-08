@@ -1,20 +1,14 @@
 use std::{
-    convert::Infallible,
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display, Formatter},
     hash::Hash,
 };
 
+use datasize::DataSize;
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use thiserror::Error;
 
-use casper_hashing::{ChunkWithProofVerificationError, Digest};
-
-use crate::{
-    effect::GossipTarget,
-    types::{BlockHash, BlockHeader, TrieOrChunk, TrieOrChunkId},
-};
+use crate::effect::GossipTarget;
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -79,11 +73,20 @@ pub(crate) trait Item:
     fn id(&self) -> Self::Id;
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Debug, DataSize)]
+pub(crate) struct EmptyValidationMetadata;
+
+impl Display for EmptyValidationMetadata {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(formatter, "no validation metadata")
+    }
+}
+
 /// A trait which allows an implementing type to be used by a fetcher component.
 pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
-    type ValidationError: std::error::Error + Debug;
-    type ValidationMetadata: Clone + Serialize + Debug;
+    type ValidationError: std::error::Error + Debug + Display;
+    type ValidationMetadata: Eq + Clone + Serialize + Debug + Display + DataSize + Send;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;
@@ -96,54 +99,4 @@ pub(crate) trait GossiperItem: Item {
 
     /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
     fn target(&self) -> GossipTarget;
-}
-
-/// Error type simply conveying that chunk validation failed.
-#[derive(Debug, Error)]
-#[error("Chunk validation failed")]
-pub(crate) struct ChunkValidationError;
-
-impl Item for TrieOrChunk {
-    type Id = TrieOrChunkId;
-    const TAG: Tag = Tag::TrieOrChunk;
-
-    fn id(&self) -> Self::Id {
-        match self {
-            TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, Digest::hash(&trie_raw.inner())),
-            TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
-                chunked_data.proof().index(),
-                chunked_data.proof().root_hash(),
-            ),
-        }
-    }
-}
-
-impl FetcherItem for TrieOrChunk {
-    type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = ();
-
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
-        match self {
-            TrieOrChunk::Value(_) => Ok(()),
-            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
-        }
-    }
-}
-
-impl Item for BlockHeader {
-    type Id = BlockHash;
-    const TAG: Tag = Tag::BlockHeaderByHash;
-
-    fn id(&self) -> Self::Id {
-        self.block_hash()
-    }
-}
-
-impl FetcherItem for BlockHeader {
-    type ValidationError = Infallible;
-    type ValidationMetadata = ();
-
-    fn validate(&self, _metadata: &()) -> Result<(), Self::ValidationError> {
-        Ok(())
-    }
 }

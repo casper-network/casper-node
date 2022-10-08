@@ -1,13 +1,16 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use casper_execution_engine::storage::trie::TrieRaw;
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
-use datasize::DataSize;
+use casper_hashing::{
+    ChunkWithProof, ChunkWithProofVerificationError, Digest, MerkleConstructionError,
+};
 
 use super::Chunkable;
+use crate::types::{EmptyValidationMetadata, FetcherItem, Item, Tag};
 
 /// Represents a value or a chunk of data with attached proof.
 ///
@@ -70,9 +73,6 @@ impl<V> ValueOrChunk<V> {
     }
 }
 
-/// Represents an enum that can contain either a whole trie or a chunk of it.
-pub type TrieOrChunk = ValueOrChunk<TrieRaw>;
-
 impl<V: Debug> Display for ValueOrChunk<V> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
@@ -82,6 +82,41 @@ impl<V: Debug> Display for ValueOrChunk<V> {
                 .field("index", &chunk.proof().index())
                 .field("hash", &chunk.proof().root_hash())
                 .finish(),
+        }
+    }
+}
+
+/// Error type simply conveying that chunk validation failed.
+#[derive(Debug, Error)]
+#[error("Chunk validation failed")]
+pub(crate) struct ChunkValidationError;
+
+/// Represents an enum that can contain either a whole trie or a chunk of it.
+pub type TrieOrChunk = ValueOrChunk<TrieRaw>;
+
+impl Item for TrieOrChunk {
+    type Id = TrieOrChunkId;
+    const TAG: Tag = Tag::TrieOrChunk;
+
+    fn id(&self) -> Self::Id {
+        match self {
+            TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, Digest::hash(&trie_raw.inner())),
+            TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
+                chunked_data.proof().index(),
+                chunked_data.proof().root_hash(),
+            ),
+        }
+    }
+}
+
+impl FetcherItem for TrieOrChunk {
+    type ValidationError = ChunkWithProofVerificationError;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        match self {
+            TrieOrChunk::Value(_) => Ok(()),
+            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
         }
     }
 }

@@ -36,7 +36,8 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
+        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, EmptyValidationMetadata,
+        LegacyDeploy, NodeId,
     },
     NodeRng,
 };
@@ -401,7 +402,7 @@ where
     async move {
         let deploy_hash: DeployHash = dt_hash.into();
         let deploy = match effect_builder
-            .fetch::<LegacyDeploy>(deploy_hash, sender, ())
+            .fetch::<LegacyDeploy>(deploy_hash, sender, EmptyValidationMetadata)
             .await
         {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {

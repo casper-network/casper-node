@@ -223,7 +223,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::Fatal => {
-                return todo!();
+                todo!()
             }
         };
         *self = new_state;

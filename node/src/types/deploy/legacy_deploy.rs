@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Deploy, DeployConfigurationFailure, DeployHash};
-use crate::types::{FetcherItem, Item, Tag};
+use crate::types::{EmptyValidationMetadata, FetcherItem, Item, Tag};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Debug)]
 pub(crate) struct LegacyDeploy(Deploy);
@@ -30,9 +30,9 @@ impl Item for LegacyDeploy {
 
 impl FetcherItem for LegacyDeploy {
     type ValidationError = DeployConfigurationFailure;
-    type ValidationMetadata = ();
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn validate(&self, metadata: &()) -> Result<(), Self::ValidationError> {
+    fn validate(&self, metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.0.validate(metadata)
     }
 }

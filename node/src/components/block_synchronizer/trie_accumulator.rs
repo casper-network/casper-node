@@ -23,7 +23,7 @@ use crate::{
         requests::{FetcherRequest, TrieAccumulatorRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{Item, NodeId, TrieOrChunk, TrieOrChunkId},
+    types::{EmptyValidationMetadata, Item, NodeId, TrieOrChunk, TrieOrChunkId},
     NodeRng,
 };
 
@@ -206,7 +206,7 @@ impl TrieAccumulator {
                 .merge(old_partial_chunks);
         }
         effect_builder
-            .fetch::<TrieOrChunk>(id, peer, ())
+            .fetch::<TrieOrChunk>(id, peer, EmptyValidationMetadata)
             .event(move |fetch_result| Event::TrieOrChunkFetched { id, fetch_result })
     }
 }
