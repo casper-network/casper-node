@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tracing::error;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::ContractRuntimeRequest, EffectBuilder},
     types::{NodeId, TrieOrChunk, TrieOrChunkId},
 };
@@ -35,5 +35,13 @@ impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
             error!(?error, "get_trie_request");
             None
         })
+    }
+
+    fn put_to_storage<'a, REv>(
+        _effect_builder: EffectBuilder<REv>,
+        item: TrieOrChunk,
+    ) -> StoringState<'a, TrieOrChunk> {
+        // Stored by the GlobalStateSynchronizer once all chunks are fetched.
+        StoringState::WontStore(item)
     }
 }

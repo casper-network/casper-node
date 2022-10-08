@@ -1304,6 +1304,23 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn put_finality_signature_to_storage(
+        self,
+        signature: FinalitySignature,
+    ) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutFinalitySignature {
+                signature: Box::new(signature),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block's transfers from storage.
     pub(crate) async fn get_block_transfers_from_storage(
         self,

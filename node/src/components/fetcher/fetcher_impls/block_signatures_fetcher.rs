@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockHash, BlockSignatures, NodeId},
 };
@@ -30,7 +30,7 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         _effect_builder: EffectBuilder<REv>,
         _id: BlockHash,
     ) -> Option<BlockSignatures> {
-        todo!();
+        todo!()
         // let fault_tolerance_fraction = self.fault_tolerance_fraction;
         // let block_header_with_metadata = effect_builder
         //     .get_block_header_with_metadata_from_storage(id, false)
@@ -43,5 +43,12 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         // )
         // .await
         // .then_some(block_header_with_metadata.block_signatures)
+    }
+
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: BlockSignatures,
+    ) -> StoringState<'a, BlockSignatures> {
+        todo!()
     }
 }

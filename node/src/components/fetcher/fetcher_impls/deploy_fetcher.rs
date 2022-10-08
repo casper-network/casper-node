@@ -31,7 +31,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         effect_builder.get_stored_deploy(id).await
     }
 
-    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+    fn put_to_storage<'a, REv>(
         _effect_builder: EffectBuilder<REv>,
         item: Deploy,
     ) -> StoringState<'a, Deploy> {

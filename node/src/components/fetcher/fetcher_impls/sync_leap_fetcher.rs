@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
-    effect::{requests::StorageRequest, EffectBuilder},
+    effect::EffectBuilder,
     types::{BlockHash, NodeId, SyncLeap},
 };
 
@@ -27,7 +27,7 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+    async fn get_from_storage<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
         _id: BlockHash,
     ) -> Option<SyncLeap> {
@@ -35,7 +35,7 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         None
     }
 
-    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+    fn put_to_storage<'a, REv>(
         _effect_builder: EffectBuilder<REv>,
         item: SyncLeap,
     ) -> StoringState<'a, SyncLeap> {

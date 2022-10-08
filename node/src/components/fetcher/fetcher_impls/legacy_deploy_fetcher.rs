@@ -1,11 +1,12 @@
 use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
+use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{DeployHash, LegacyDeploy, NodeId},
+    types::{Deploy, DeployHash, LegacyDeploy, NodeId},
 };
 
 #[async_trait]
@@ -34,10 +35,14 @@ impl ItemFetcher<LegacyDeploy> for Fetcher<LegacyDeploy> {
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         item: LegacyDeploy,
     ) -> StoringState<'a, LegacyDeploy> {
-        // Incoming deploys are routed to the deploy acceptor for validation before being stored.
-        StoringState::WontStore(item)
+        StoringState::Enqueued(
+            effect_builder
+                .put_deploy_to_storage(Box::new(Deploy::from(item)))
+                .map(|_| ())
+                .boxed(),
+        )
     }
 }

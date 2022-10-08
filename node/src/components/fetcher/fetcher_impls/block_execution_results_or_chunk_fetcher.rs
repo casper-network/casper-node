@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, NodeId},
 };
@@ -36,5 +36,13 @@ impl ItemFetcher<BlockExecutionResultsOrChunk> for Fetcher<BlockExecutionResults
         effect_builder
             .get_block_execution_results_or_chunk_from_storage(id)
             .await
+    }
+
+    fn put_to_storage<'a, REv>(
+        _effect_builder: EffectBuilder<REv>,
+        item: BlockExecutionResultsOrChunk,
+    ) -> StoringState<'a, BlockExecutionResultsOrChunk> {
+        // Stored by the BlockSynchronizer once all chunks are fetched.
+        StoringState::WontStore(item)
     }
 }

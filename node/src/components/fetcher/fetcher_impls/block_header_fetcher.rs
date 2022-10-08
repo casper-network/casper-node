@@ -1,9 +1,10 @@
 use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
+use futures::FutureExt;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockHash, BlockHeader, NodeId},
 };
@@ -35,5 +36,17 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
         effect_builder
             .get_block_header_from_storage(id, only_from_available_block_range)
             .await
+    }
+
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+        effect_builder: EffectBuilder<REv>,
+        item: BlockHeader,
+    ) -> StoringState<'a, BlockHeader> {
+        StoringState::Enqueued(
+            effect_builder
+                .put_block_header_to_storage(Box::new(item))
+                .map(|_| ())
+                .boxed(),
+        )
     }
 }

@@ -1117,6 +1117,26 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(outcome).ignore()
             }
+            StorageRequest::PutFinalitySignature {
+                signature,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                let mut block_signatures = txn
+                    .get_value(self.block_metadata_db, &signature.block_hash)?
+                    .unwrap_or_else(|| {
+                        BlockSignatures::new(signature.block_hash, signature.era_id)
+                    });
+                block_signatures.insert_proof(signature.public_key, signature.signature);
+                let outcome = txn.put_value(
+                    self.block_metadata_db,
+                    &block_signatures.block_hash,
+                    &block_signatures,
+                    true,
+                )?;
+                txn.commit()?;
+                responder.respond(outcome).ignore()
+            }
             StorageRequest::GetBlockSignatures {
                 block_hash,
                 responder,

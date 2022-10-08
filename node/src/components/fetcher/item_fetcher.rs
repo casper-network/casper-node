@@ -240,12 +240,12 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         effects
     }
 
-    fn put_to_storage<'a, REv>(_effect_builder: EffectBuilder<REv>, _item: T) -> StoringState<'a, T>
+    fn put_to_storage<'a, REv>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: T,
+    ) -> StoringState<'a, T>
     where
-        REv: From<StorageRequest> + Send,
-    {
-        todo!("turn into an unimplemented function once deprecated fetchers have been deleted as all retained fetchers will implement this")
-    }
+        REv: From<StorageRequest> + Send;
 
     /// Handles signalling responders with the item or an error.
     fn signal(

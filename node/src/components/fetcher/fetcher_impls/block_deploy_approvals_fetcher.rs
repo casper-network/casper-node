@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle},
+    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockDeployApprovals, BlockHash, FinalizedApprovals, NodeId},
 };
@@ -40,5 +40,12 @@ impl ItemFetcher<BlockDeployApprovals> for Fetcher<BlockDeployApprovals> {
             });
             BlockDeployApprovals::new(id, approvals.collect())
         })
+    }
+
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: BlockDeployApprovals,
+    ) -> StoringState<'a, BlockDeployApprovals> {
+        todo!()
     }
 }

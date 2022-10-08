@@ -546,6 +546,10 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    PutFinalitySignature {
+        signature: Box<FinalitySignature>,
+        responder: Responder<bool>,
+    },
     /// Store a block header.
     PutBlockHeader {
         /// Block header that is to be stored.
@@ -716,6 +720,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
+            }
+            StorageRequest::PutFinalitySignature { .. } => {
+                write!(formatter, "put finality signature")
             }
             StorageRequest::GetFinalizedBlocks { .. } => {
                 write!(formatter, "get finalized blocks")
