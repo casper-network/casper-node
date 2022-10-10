@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use casper_types::{EraId, PublicKey};
 
@@ -12,7 +12,7 @@ use crate::{
     },
     types::{
         ApprovalsHashes, Block, BlockHash, EmptyValidationMetadata, EraValidatorWeights,
-        FetcherItem, FinalitySignature, Item, NodeId, SignatureWeight,
+        FetcherItem, FinalitySignature, NodeId, SignatureWeight,
     },
 };
 
@@ -214,8 +214,6 @@ impl BlockAcceptor {
         }
 
         if let Some(block) = &self.block {
-            let state_root_hash = block.state_root_hash();
-            let era_id = block.header().era_id();
             if let Err(error) = approvals_hashes.validate(block) {
                 warn!(%error, "received invalid approvals hashes");
                 return Err(AcceptorError::InvalidGossip(Box::new(
@@ -356,14 +354,6 @@ impl BlockAcceptor {
 
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
-    }
-
-    pub(super) fn approvals_hashes(&self) -> Option<&ApprovalsHashes> {
-        self.approvals_hashes.as_ref()
-    }
-
-    pub(super) fn has_era_validator_weights(&self) -> bool {
-        self.era_validator_weights.is_some()
     }
 
     fn remove_bogus_validators(&mut self) {
