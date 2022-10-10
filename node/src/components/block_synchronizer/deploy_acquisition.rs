@@ -1,4 +1,8 @@
-use std::{cmp::Ord, collections::BTreeMap};
+use std::{
+    cmp::Ord,
+    collections::BTreeMap,
+    fmt::{Display, Formatter},
+};
 
 use datasize::DataSize;
 use either::Either;
@@ -6,10 +10,27 @@ use itertools::Itertools;
 
 use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 
+#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
+pub(crate) enum Error {
+    AcquisitionByIdNotPossible,
+    EncounteredNonVacantDeployState,
+}
+
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum DeployAcquisition {
     ByHash(Acquisition<DeployHash>),
     ById(Acquisition<DeployId>),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::AcquisitionByIdNotPossible => write!(f, "acquisition by id is not possible"),
+            Error::EncounteredNonVacantDeployState => {
+                write!(f, "encountered non vacant deploy state")
+            }
+        }
+    }
 }
 
 impl DeployAcquisition {
@@ -30,34 +51,37 @@ impl DeployAcquisition {
         }
     }
 
-    pub(super) fn apply_approvals_hashes(&mut self, approvals_hashes: &ApprovalsHashes) {
+    pub(super) fn apply_approvals_hashes(
+        &mut self,
+        approvals_hashes: &ApprovalsHashes,
+    ) -> Result<(), Error> {
         let new_acquisition = match self {
             DeployAcquisition::ByHash(acquisition) => {
-                let new_deploy_ids: Vec<_> = acquisition
+                let mut new_deploy_ids = vec![];
+                for ((deploy_hash, deploy_state), approvals_hash) in acquisition
                     .inner
                     .drain(..)
                     .zip(approvals_hashes.approvals_hashes())
-                    .map(|((deploy_hash, deploy_state), approvals_hash)| {
-                        if !matches!(deploy_state, DeployState::Vacant) {
-                            todo!("should be an error");
-                        };
-
-                        (
-                            DeployId::new(deploy_hash, *approvals_hash),
-                            DeployState::Vacant,
-                        )
-                    })
-                    .collect();
+                {
+                    if !matches!(deploy_state, DeployState::Vacant) {
+                        return Err(Error::EncounteredNonVacantDeployState);
+                    };
+                    new_deploy_ids.push((
+                        DeployId::new(deploy_hash, *approvals_hash),
+                        DeployState::Vacant,
+                    ));
+                }
 
                 DeployAcquisition::ById(Acquisition {
                     inner: new_deploy_ids,
                     need_execution_result: acquisition.need_execution_result,
                 })
             }
-            DeployAcquisition::ById(_) => todo!("should be an error"),
+            DeployAcquisition::ById(_) => return Err(Error::AcquisitionByIdNotPossible),
         };
 
         *self = new_acquisition;
+        Ok(())
     }
 
     pub(super) fn needs_deploy(&self) -> Option<Either<DeployHash, DeployId>> {

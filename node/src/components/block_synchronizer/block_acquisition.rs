@@ -4,11 +4,14 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use either::Either;
 use tracing::debug;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
+
+use super::deploy_acquisition;
 
 use crate::{
     components::block_synchronizer::{
@@ -26,7 +29,7 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
+#[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {
     InvalidStateTransition,
     BlockHashMismatch {
@@ -38,6 +41,8 @@ pub(crate) enum Error {
         actual: Digest,
     },
     InvalidAttemptToApplySignatures,
+    #[from]
+    InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
     InvalidAttemptToApplyGlobalState {
         root_hash: Digest,
     },
@@ -100,6 +105,11 @@ impl Display for Error {
                 write!(f, "unexpected execution results state")
             }
             Error::ExecutionResults(error) => write!(f, "execution results error: {}", error),
+            Error::InvalidAttemptToApplyApprovalsHashes(error) => write!(
+                f,
+                "invalid attempt to apply approvals hashes results: {}",
+                error
+            ),
         }
     }
 }
@@ -188,7 +198,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveBlock(block, signatures, acquired)
                 if !need_execution_state =>
             {
-                acquired.apply_approvals_hashes(approvals_hashes);
+                acquired.apply_approvals_hashes(approvals_hashes)?;
                 BlockAcquisitionState::HaveApprovalsHashes(
                     block.clone(),
                     signatures.clone(),
