@@ -93,6 +93,7 @@ pub(crate) use self::{
 use self::{
     chain_info::ChainInfo,
     config::IdentityConfig,
+    error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,
@@ -1207,18 +1208,14 @@ impl SmallNetworkIdentity {
         }
     }
 
-    pub(crate) fn from_config(
-        config: WithDir<Config>,
-    ) -> result::Result<Self, SmallNetworkIdentityError> {
+    pub(crate) fn from_config(config: WithDir<Config>) -> Result<Self, SmallNetworkIdentityError> {
         match &config.value().identity {
             Some(identity) => Self::from_identity_config(identity),
             None => Self::with_generated_certs(),
         }
     }
 
-    fn from_identity_config(
-        identity: &IdentityConfig,
-    ) -> result::Result<Self, SmallNetworkIdentityError> {
+    fn from_identity_config(identity: &IdentityConfig) -> Result<Self, SmallNetworkIdentityError> {
         let not_yet_validated_x509_cert = tls::load_cert(&identity.tls_certificate)?;
         let secret_key = tls::load_secret_key(&identity.secret_key)?;
         let x509_cert = tls::tls_cert_from_x509(not_yet_validated_x509_cert)?;
@@ -1226,7 +1223,7 @@ impl SmallNetworkIdentity {
         Ok(SmallNetworkIdentity::new(secret_key, x509_cert))
     }
 
-    pub(crate) fn with_generated_certs() -> result::Result<Self, SmallNetworkIdentityError> {
+    pub(crate) fn with_generated_certs() -> Result<Self, SmallNetworkIdentityError> {
         let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
             .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
         let tls_certificate = tls::validate_self_signed_cert(not_yet_validated_x509_cert)?;
