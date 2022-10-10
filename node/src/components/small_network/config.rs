@@ -37,6 +37,7 @@ impl Default for Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
+            keylog_path: None,
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
             initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
             max_addr_pending_time: DEFAULT_MAX_ADDR_PENDING_TIME,
@@ -81,6 +82,8 @@ pub struct Config {
     pub public_address: String,
     /// Known address of a node on the network used for joining.
     pub known_addresses: Vec<String>,
+    /// If set, logs all TLS keys to this file.
+    pub keylog_path: Option<String>,
     /// Interval in milliseconds used for gossiping.
     pub gossip_interval: TimeDiff,
     /// Initial delay before the first round of gossip.

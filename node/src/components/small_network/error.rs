@@ -62,6 +62,14 @@ pub enum Error {
         #[source]
         ResolveAddressError,
     ),
+    /// Could not open the specified keylog file for appending.
+    #[error("could not open keylog for appending")]
+    CannotAppendToKeylog(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+
     /// Instantiating metrics failed.
     #[error(transparent)]
     Metrics(

@@ -44,6 +44,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
+    fs::OpenOptions,
     net::{SocketAddr, TcpListener},
     num::NonZeroUsize,
     sync::{
@@ -118,7 +119,7 @@ use crate::{
         ValidationError,
     },
     types::NodeId,
-    utils::{self, display_error, Source, WithDir},
+    utils::{self, display_error, LockedLineWriter, Source, WithDir},
     NodeRng,
 };
 
@@ -338,12 +339,28 @@ where
 
         let chain_info = chain_info_source.into();
         let protocol_version = chain_info.protocol_version;
+
+        let keylog = match cfg.keylog_path {
+            Some(ref path) => {
+                let keylog = OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .write(true)
+                    .open(path)
+                    .map_err(Error::CannotAppendToKeylog)?;
+                warn!(%path, "keylog enabled, if you are not debugging turn this off in your configuration (`network.keylog_path`)");
+                Some(LockedLineWriter::new(keylog))
+            }
+            None => None,
+        };
+
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
             our_cert: small_network_identity.tls_certificate,
             network_ca: ca_certificate.map(Arc::new),
             secret_key: small_network_identity.secret_key,
+            keylog,
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info,
             public_addr,

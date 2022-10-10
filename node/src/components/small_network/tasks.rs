@@ -51,7 +51,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::display_error,
+    utils::{display_error, LockedLineWriter},
 };
 
 /// An item on the internal outgoing message queue.
@@ -78,14 +78,18 @@ where
         .set_nodelay(true)
         .map_err(ConnectionError::TcpNoDelay)?;
 
-    let mut transport = tls::create_tls_connector(context.our_cert.as_x509(), &context.secret_key)
-        .and_then(|connector| connector.configure())
-        .and_then(|mut config| {
-            config.set_verify_hostname(false);
-            config.into_ssl("this-will-not-be-checked.example.com")
-        })
-        .and_then(|ssl| SslStream::new(ssl, stream))
-        .map_err(ConnectionError::TlsInitialization)?;
+    let mut transport = tls::create_tls_connector(
+        context.our_cert.as_x509(),
+        &context.secret_key,
+        context.keylog.clone(),
+    )
+    .and_then(|connector| connector.configure())
+    .and_then(|mut config| {
+        config.set_verify_hostname(false);
+        config.into_ssl("this-will-not-be-checked.example.com")
+    })
+    .and_then(|ssl| SslStream::new(ssl, stream))
+    .map_err(ConnectionError::TlsInitialization)?;
 
     SslStream::connect(Pin::new(&mut transport))
         .await
@@ -180,6 +184,8 @@ where
     pub(super) network_ca: Option<Arc<X509>>,
     /// Secret key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
+    /// Logfile to log TLS keys to. If given, automatically enables logging.
+    pub(super) keylog: Option<LockedLineWriter>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     pub(super) net_metrics: Weak<Metrics>,
     /// Chain info extract from chainspec.
@@ -283,6 +289,7 @@ pub(super) async fn server_setup_tls<REv>(
     let mut tls_stream = tls::create_tls_acceptor(
         context.our_cert.as_x509().as_ref(),
         context.secret_key.as_ref(),
+        context.keylog.clone(),
     )
     .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
     .and_then(|ssl| SslStream::new(ssl, stream))

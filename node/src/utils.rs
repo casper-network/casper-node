@@ -15,18 +15,20 @@ use std::{
     any,
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
-    io,
+    fs::File,
+    io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
 
 use datasize::DataSize;
+use fs2::FileExt;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 #[cfg(test)]
 use once_cell::sync::Lazy;
@@ -403,6 +405,47 @@ pub(crate) async fn wait_for_arc_drop<T>(
     );
 
     false
+}
+
+/// A thread-safe wrapper around a file that writes chunks.
+///
+/// A chunk can (but needn't) be a line. The writer guarantees it will be written to the wrapped
+/// file, even if other threads are attempting to write chunks at the same time.
+#[derive(Clone)]
+pub(crate) struct LockedLineWriter(Arc<Mutex<File>>);
+
+impl LockedLineWriter {
+    /// Creates a new `LockedLineWriter`.
+    ///
+    /// This function does not panic - if any error occurs, it will be logged and ignored.
+    pub(crate) fn new(file: File) -> Self {
+        LockedLineWriter(Arc::new(Mutex::new(file)))
+    }
+
+    /// Writes a chunk to the wrapped file.
+    pub(crate) fn write_line(&self, line: &str) {
+        match self.0.lock() {
+            Ok(mut guard) => {
+                // Acquire a lock on the file. This ensures we do not garble output when multiple
+                // nodes are writing to the same file.
+                if let Err(err) = guard.lock_exclusive() {
+                    warn!(%line, %err, "could not acquire file lock, not writing line");
+                    return;
+                }
+
+                if let Err(err) = guard.write_all(line.as_bytes()) {
+                    warn!(%line, %err, "could not finish writing line");
+                }
+
+                if let Err(err) = guard.unlock() {
+                    warn!(%err, "failed to release file lock in locked line writer, ignored");
+                }
+            }
+            Err(_) => {
+                error!(%line, "line writer lock poisoned, lost line");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
