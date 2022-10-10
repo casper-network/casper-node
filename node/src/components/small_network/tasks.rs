@@ -44,14 +44,14 @@ use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
 use super::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{ConnectionError, Error, IoError},
+    error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     full_transport,
     limiter::LimiterHandle,
     message::NodeKeyPair,
     message_pack_format::MessagePackFormat,
-    EstimatorWeights, Event, FramedTransport, FullTransport, Identity, IdentityConfig, Message,
-    Metrics, Payload, Transport,
+    EstimatorWeights, Event, FramedTransport, FullTransport, Identity, Message, Metrics, Payload,
+    Transport,
 };
 use crate::{
     components::small_network::{framed_transport, BincodeFormat, Config, FromIncoming},
@@ -305,69 +305,9 @@ impl<REv> NetworkContext<REv> {
         self.public_addr
     }
 
-    /// Event queue handle.
-    pub(super) fn event_queue(&self) -> Option<&EventQueueHandle<REv>> {
-        self.event_queue.as_ref()
-    }
-
-    /// TLS certificate associated with this node's identity.
-    pub(super) fn our_cert(&self) -> &Arc<TlsCert> {
-        &self.our_cert
-    }
-
-    /// Secret key associated with `our_cert`.
-    pub(super) fn secret_key(&self) -> &Arc<PKey<Private>> {
-        &self.secret_key
-    }
-
-    /// Weak reference to the networking metrics shared by all sender/receiver tasks.
-    pub(super) fn net_metrics(&self) -> &Weak<Metrics> {
-        &self.net_metrics
-    }
-
     /// Chain info extract from chainspec.
     pub(super) fn chain_info(&self) -> &ChainInfo {
         &self.chain_info
-    }
-
-    /// Optional set of consensus keys, to identify as a validator during handshake.
-    pub(super) fn consensus_keys(&self) -> Option<&NodeKeyPair> {
-        self.node_key_pair.as_ref()
-    }
-
-    /// Timeout for handshake completion.
-    pub(super) fn handshake_timeout(&self) -> TimeDiff {
-        self.handshake_timeout
-    }
-
-    /// Weights to estimate payloads with.
-    pub(super) fn payload_weights(&self) -> &EstimatorWeights {
-        &self.payload_weights
-    }
-
-    /// The protocol version at which (or under) tarpitting is enabled.
-    pub(super) fn tarpit_version_threshold(&self) -> Option<ProtocolVersion> {
-        self.tarpit_version_threshold
-    }
-
-    /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub(super) fn tarpit_duration(&self) -> TimeDiff {
-        self.tarpit_duration
-    }
-
-    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    pub(super) fn tarpit_chance(&self) -> f32 {
-        self.tarpit_chance
-    }
-
-    /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
-    pub(super) fn max_in_flight_demands(&self) -> usize {
-        self.max_in_flight_demands
-    }
-
-    /// Flag indicating whether this node is syncing.
-    pub(super) fn is_syncing(&self) -> &AtomicBool {
-        &self.is_syncing
     }
 }
 

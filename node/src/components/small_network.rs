@@ -46,15 +46,15 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
-    sync::{atomic::Ordering, Arc, Weak},
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use itertools::{max, Itertools};
+use itertools::Itertools;
 use prometheus::Registry;
-use rand::{prelude::SliceRandom, seq::IteratorRandom, Rng};
+use rand::{prelude::SliceRandom, seq::IteratorRandom};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -370,17 +370,6 @@ where
         self.channel_management
             .as_ref()
             .expect("component not initialized properly")
-    }
-
-    fn close_incoming_connections(&mut self) {
-        info!("disconnecting incoming connections");
-        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
-        let channel_management = self
-            .channel_management
-            .as_mut()
-            .expect("component not initialized properly");
-        channel_management.close_incoming_sender = Some(close_incoming_sender);
-        channel_management.close_incoming_receiver = close_incoming_receiver;
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
