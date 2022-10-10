@@ -14,7 +14,7 @@ use tracing::Span;
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
-        announcements::{ContractRuntimeAnnouncement, PeerBehaviorAnnouncement},
+        announcements::PeerBehaviorAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -97,10 +97,6 @@ pub(crate) enum Event<P> {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(PeerBehaviorAnnouncement),
-
-    /// Contract runtime announcement.
-    #[from]
-    ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -144,9 +140,6 @@ impl<P: Display> Display for Event<P> {
             }
             Event::BlocklistAnnouncement(ann) => {
                 write!(f, "handling blocklist announcement: {}", ann)
-            }
-            Event::ContractRuntimeAnnouncement(ann) => {
-                write!(f, "handling contract runtime announcement: {}", ann)
             }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")

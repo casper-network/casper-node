@@ -4,99 +4,21 @@
 //! by making each user request an allowance first.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
-use datasize::DataSize;
 use prometheus::Counter;
 use tokio::sync::Mutex;
-use tracing::{debug, error, trace};
+use tracing::{error, trace};
 
 use casper_types::{EraId, PublicKey};
 
-use crate::types::NodeId;
+use crate::types::{NodeId, ValidatorMatrix};
 
 /// Amount of resource allowed to buffer in `Limiter`.
 const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
-
-/// Sets of validators used to classify traffic.
-///
-/// Normally the validator map will contain 3 eras worth of entries: the era just completed, the
-/// currently-active era, and the era after that.
-#[derive(Clone, Debug, Default, DataSize)]
-pub(crate) struct ValidatorSets {
-    active_era: EraId,
-    validators: BTreeMap<EraId, HashSet<PublicKey>>,
-}
-
-impl ValidatorSets {
-    pub(super) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(super) fn insert(
-        &mut self,
-        mut upcoming_era_validators: BTreeMap<EraId, HashSet<PublicKey>>,
-    ) {
-        let lowest_era_id = self.active_era;
-
-        self.active_era = upcoming_era_validators
-            .keys()
-            .next()
-            .copied()
-            .unwrap_or_else(|| {
-                error!("upcoming era validators should not be empty");
-                EraId::new(0)
-            });
-
-        self.validators.retain(|era_id, _| *era_id == lowest_era_id);
-        self.validators.append(&mut upcoming_era_validators);
-    }
-
-    pub(crate) fn is_validator_in_era(&self, era: EraId, public_key: &PublicKey) -> Option<bool> {
-        self.validators
-            .get(&era)
-            .map(|validators| validators.contains(public_key))
-    }
-
-    pub(super) fn validators_for_era(&self, era: EraId) -> Option<&HashSet<PublicKey>> {
-        self.validators.get(&era)
-    }
-
-    // fn is_active_validator(&self, era_id: EraId, public_key: &PublicKey) -> Option<bool> {
-    //     if self.active_era != era_id {
-    //         return Some(false);
-    //     }
-    //     self.validators
-    //         .get(&era_id)
-    //         .map(|validators| validators.contains(public_key))
-    // }
-
-    fn is_validator(&self, public_key: &PublicKey) -> bool {
-        self.validators
-            .values()
-            .flatten()
-            .any(|validator| validator == public_key)
-    }
-
-    pub(super) fn is_initialized(&self) -> bool {
-        // TODO: genesis special case - handle the case of running within the first few eras
-        self.validators.len() >= 3
-    }
-
-    // fn active_validators(&self, era_id: EraId) -> Option<&HashSet<PublicKey>> {
-    //     if self.active_era != era_id {
-    //         return None;
-    //     }
-    //     self.validators.get(&era_id)
-    // }
-
-    pub(crate) fn validators(&self) -> &BTreeMap<EraId, HashSet<PublicKey>> {
-        &self.validators
-    }
-}
 
 /// A limiter dividing resources into two classes based on their validator status.
 ///
@@ -109,17 +31,21 @@ pub(super) struct Limiter {
     /// Shared data across all handles.
     data: Arc<LimiterData>,
     /// Set of active and upcoming validators shared across all handles.
-    validator_sets: Arc<RwLock<ValidatorSets>>,
+    validator_matrix: ValidatorMatrix,
 }
 
 impl Limiter {
     /// Creates a new class based limiter.
     ///
     /// Starts the background worker task as well.
-    pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+    pub(super) fn new(
+        resources_per_second: u32,
+        wait_time_sec: Counter,
+        validator_matrix: ValidatorMatrix,
+    ) -> Self {
         Limiter {
             data: Arc::new(LimiterData::new(resources_per_second, wait_time_sec)),
-            validator_sets: Default::default(),
+            validator_matrix,
         }
     }
 
@@ -143,7 +69,7 @@ impl Limiter {
         }
         LimiterHandle {
             data: self.data.clone(),
-            validator_sets: self.validator_sets.clone(),
+            validator_matrix: self.validator_matrix.clone(),
             consumer_id: ConsumerId {
                 peer_id,
                 validator_id,
@@ -173,26 +99,7 @@ impl Limiter {
             }
         };
 
-        match self.validator_sets.read() {
-            Ok(validator_sets) => validator_sets.is_validator_in_era(era, &public_key),
-            Err(_) => {
-                error!("could not read from validator_sets of limiter, lock poisoned");
-                None
-            }
-        }
-    }
-
-    /// Update the validator sets.
-    pub(super) fn update_validators(&self, new_validators: BTreeMap<EraId, HashSet<PublicKey>>) {
-        match self.validator_sets.write() {
-            Ok(mut validators) => {
-                debug!(?new_validators, "updating resources classes");
-                validators.insert(new_validators)
-            }
-            Err(_) => {
-                error!("could not update validator data set of limiter, lock poisoned");
-            }
-        }
+        self.validator_matrix.is_validator_in_era(era, &public_key)
     }
 }
 
@@ -252,7 +159,7 @@ pub(super) struct LimiterHandle {
     /// Data shared between handles and limiter.
     data: Arc<LimiterData>,
     /// Set of active and upcoming validators.
-    validator_sets: Arc<RwLock<ValidatorSets>>,
+    validator_matrix: ValidatorMatrix,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
 }
@@ -261,30 +168,26 @@ impl LimiterHandle {
     /// Waits until the requester is allocated `amount` additional resources.
     pub(super) async fn request_allowance(&self, amount: u32) {
         // As a first step, determine the peer class by checking if our id is in the validator set.
-        let peer_class = match self.validator_sets.read() {
-            Ok(validators) => {
-                if validators.validators.is_empty() {
-                    // It is likely that we have not been initialized, thus no node is getting the
-                    // reserved resources. In this case, do not limit at all.
-                    trace!("empty set of validators, not limiting resources at all");
 
-                    return;
-                }
+        if self.validator_matrix.is_empty() {
+            // It is likely that we have not been initialized, thus no node is getting the
+            // reserved resources. In this case, do not limit at all.
+            trace!("empty set of validators, not limiting resources at all");
 
-                if let Some(ref validator_id) = self.consumer_id.validator_id {
-                    if validators.is_validator(validator_id) {
-                        PeerClass::Validator
-                    } else {
-                        PeerClass::NonValidator
-                    }
-                } else {
-                    PeerClass::NonValidator
-                }
+            return;
+        }
+
+        let peer_class = if let Some(ref validator_id) = self.consumer_id.validator_id {
+            if self
+                .validator_matrix
+                .is_validator_in_any_of_latest_n_eras(3, validator_id)
+            {
+                PeerClass::Validator
+            } else {
+                PeerClass::NonValidator
             }
-            Err(_) => {
-                debug!("limiter lock poisoned, not limiting");
-                return;
-            }
+        } else {
+            PeerClass::NonValidator
         };
 
         match peer_class {
@@ -333,15 +236,11 @@ impl LimiterHandle {
                     }
 
                     // Subtract the amount. If available resources go negative as a result, it
-                    // is the next senders problem.
+                    // is the next sender's problem.
                     resources.available -= amount as i64;
                 }
             }
         }
-    }
-
-    pub(super) fn validator_sets(&self) -> Arc<RwLock<ValidatorSets>> {
-        Arc::clone(&self.validator_sets)
     }
 }
 
@@ -357,18 +256,14 @@ struct ConsumerId {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeMap, HashSet},
-        time::Duration,
-    };
+    use std::time::Duration;
 
+    use num_rational::Ratio;
     use prometheus::Counter;
     use tokio::time::Instant;
 
-    use casper_types::EraId;
-
     use super::{Limiter, NodeId, PublicKey};
-    use crate::testing::init_logging;
+    use crate::{testing::init_logging, types::ValidatorMatrix};
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
@@ -402,13 +297,10 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = Limiter::new(1_000, new_wait_time_sec());
-
-        let mut active_validators = HashSet::new();
-        active_validators.insert(validator_id.clone());
-        let mut validator_set = BTreeMap::new();
-        validator_set.insert(EraId::new(1), active_validators);
-        limiter.update_validators(validator_set);
+        // We insert one unrelated active validator to avoid triggering the automatic disabling of
+        // the limiter in case there are no active validators.
+        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
 
@@ -426,15 +318,10 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = Limiter::new(1_000, new_wait_time_sec());
-
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
-        let mut active_validators = HashSet::new();
-        active_validators.insert(PublicKey::random(&mut rng));
-        let mut validator_set = BTreeMap::new();
-        validator_set.insert(EraId::new(1), active_validators);
-        limiter.update_validators(validator_set);
+        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
@@ -466,17 +353,13 @@ mod tests {
 
         let validator_id = PublicKey::random(&mut rng);
         let wait_metric = new_wait_time_sec();
-        let limiter = Limiter::new(1_000, wait_metric.clone());
 
         let start = Instant::now();
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
-        let mut active_validators = HashSet::new();
-        active_validators.insert(PublicKey::random(&mut rng));
-        let mut validator_set = BTreeMap::new();
-        validator_set.insert(EraId::new(1), active_validators);
-        limiter.update_validators(validator_set);
+        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
@@ -523,9 +406,11 @@ mod tests {
 
         let validator_id = PublicKey::random(&mut rng);
         let wait_metric = new_wait_time_sec();
-        let limiter = Limiter::new(1_000, wait_metric.clone());
-
-        limiter.update_validators(BTreeMap::new());
+        let limiter = Limiter::new(
+            1_000,
+            wait_metric.clone(),
+            ValidatorMatrix::new(Ratio::new(1, 3)),
+        );
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
@@ -565,13 +450,8 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = Limiter::new(1_000, new_wait_time_sec());
-
-        let mut active_validators = HashSet::new();
-        active_validators.insert(validator_id.clone());
-        let mut validator_set = BTreeMap::new();
-        validator_set.insert(EraId::new(1), active_validators);
-        limiter.update_validators(validator_set);
+        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
         let validator_handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));

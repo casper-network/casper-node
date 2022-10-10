@@ -165,10 +165,6 @@ impl Payload for Message {
     fn is_unsafe_for_syncing_peers(&self) -> bool {
         false
     }
-
-    /*fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
-        Validity::Valid
-    }*/
 }
 
 /// Test reactor.
@@ -200,6 +196,7 @@ impl Reactor for TestReactor {
             None,
             registry,
             ChainInfo::create_for_testing(),
+            Default::default(),
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =

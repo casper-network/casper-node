@@ -216,6 +216,7 @@ impl reactor::Reactor for MainReactor {
             Some(node_key_pair),
             registry,
             chainspec.as_ref(),
+            validator_matrix.clone(),
         )?;
 
         let address_gossiper =
@@ -892,21 +893,8 @@ impl reactor::Reactor for MainReactor {
             ) => {
                 // the components that need to follow the era validators should have
                 // a handle on the validator matrix
-                self.validator_matrix
-                    .register_eras(upcoming_era_validators.clone());
-
-                // TODO: SmallNetwork should prolly be changed to use the validator matrix as well
-                self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::Network(
-                        ContractRuntimeAnnouncement::UpcomingEraValidators {
-                            era_that_is_ending,
-                            upcoming_era_validators,
-                        }
-                        .into(),
-                    ),
-                )
+                self.validator_matrix.register_eras(upcoming_era_validators);
+                Effects::new()
             }
 
             MainEvent::TrieRequestIncoming(req) => reactor::wrap_effects(

@@ -1,8 +1,10 @@
 #![allow(unused)] // TODO: To be removed
 
+#[cfg(test)]
+use std::iter;
 use std::{
     collections::{BTreeMap, HashSet},
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard},
 };
 
 use datasize::DataSize;
@@ -38,6 +40,22 @@ impl ValidatorMatrix {
         }
     }
 
+    /// Creates a new validator matrix with just a single validator.
+    #[cfg(test)]
+    pub(crate) fn new_with_validator(public_key: PublicKey) -> Self {
+        let finality_threshold_fraction = Ratio::new(1, 3);
+        let era_id = EraId::new(0);
+        let weights = EraValidatorWeights::new(
+            era_id,
+            iter::once((public_key, 100.into())).collect(),
+            finality_threshold_fraction,
+        );
+        ValidatorMatrix {
+            inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
+            finality_threshold_fraction,
+        }
+    }
+
     pub(crate) fn register_era_validator_weights(
         &mut self,
         validators: EraValidatorWeights,
@@ -55,7 +73,7 @@ impl ValidatorMatrix {
         era_id: EraId,
         validator_weights: BTreeMap<PublicKey, U512>,
     ) {
-        if self.inner.read().unwrap().contains_key(&era_id) == false {
+        if self.read_inner().contains_key(&era_id) == false {
             self.register_era_validator_weights(EraValidatorWeights::new(
                 era_id,
                 validator_weights,
@@ -90,14 +108,12 @@ impl ValidatorMatrix {
     }
 
     pub(crate) fn validator_weights(&self, era_id: EraId) -> Option<EraValidatorWeights> {
-        self.inner.read().unwrap().get(&era_id).cloned()
+        self.read_inner().get(&era_id).cloned()
     }
 
     pub(crate) fn validator_public_keys(&self, era_id: EraId) -> Option<Vec<PublicKey>> {
         Some(
-            self.inner
-                .read()
-                .unwrap()
+            self.read_inner()
                 .get(&era_id)?
                 .validator_public_keys()
                 .cloned()
@@ -111,9 +127,7 @@ impl ValidatorMatrix {
         validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> Option<Vec<PublicKey>> {
         Some(
-            self.inner
-                .read()
-                .unwrap()
+            self.read_inner()
                 .get(&era_id)?
                 .missing_validators(validator_keys)
                 .cloned()
@@ -122,14 +136,14 @@ impl ValidatorMatrix {
     }
 
     pub(crate) fn get_weight(&self, era_id: EraId, public_key: &PublicKey) -> U512 {
-        match self.inner.read().unwrap().get(&era_id) {
+        match self.read_inner().get(&era_id) {
             None => U512::zero(),
             Some(ev) => ev.get_weight(public_key),
         }
     }
 
     pub(crate) fn get_total_weight(&self, era_id: EraId) -> Option<U512> {
-        Some(self.inner.read().unwrap().get(&era_id)?.get_total_weight())
+        Some(self.read_inner().get(&era_id)?.get_total_weight())
     }
 
     pub(crate) fn has_sufficient_weight<'a>(
@@ -138,9 +152,7 @@ impl ValidatorMatrix {
         validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> Option<SignatureWeight> {
         Some(
-            self.inner
-                .read()
-                .unwrap()
+            self.read_inner()
                 .get(&era_id)?
                 .has_sufficient_weight(validator_keys),
         )
@@ -152,9 +164,7 @@ impl ValidatorMatrix {
         validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> Option<Vec<PublicKey>> {
         Some(
-            self.inner
-                .read()
-                .unwrap()
+            self.read_inner()
                 .get(&era_id)?
                 .bogus_validators(validator_keys),
         )
@@ -162,6 +172,38 @@ impl ValidatorMatrix {
 
     pub(crate) fn fault_tolerance_threshold(&self) -> Ratio<u64> {
         self.finality_threshold_fraction
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.read_inner().is_empty()
+    }
+
+    /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
+    /// information for that era is missing.
+    pub(crate) fn is_validator_in_era(
+        &self,
+        era_id: EraId,
+        public_key: &PublicKey,
+    ) -> Option<bool> {
+        self.read_inner()
+            .get(&era_id)
+            .map(|validator_weights| validator_weights.is_validator(public_key))
+    }
+
+    pub(crate) fn is_validator_in_any_of_latest_n_eras(
+        &self,
+        n: usize,
+        public_key: &PublicKey,
+    ) -> bool {
+        self.read_inner()
+            .values()
+            .rev()
+            .take(n)
+            .any(|validator_weights| validator_weights.is_validator(public_key))
+    }
+
+    fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
+        self.inner.read().unwrap()
     }
 }
 
@@ -231,6 +273,10 @@ impl EraValidatorWeights {
             None => U512::zero(),
             Some(w) => *w,
         }
+    }
+
+    pub(crate) fn is_validator(&self, public_key: &PublicKey) -> bool {
+        self.validator_weights.contains_key(public_key)
     }
 
     pub(crate) fn has_sufficient_weight<'a>(

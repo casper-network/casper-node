@@ -179,8 +179,9 @@ impl Payload for Message {
         }
     }
 
+    // TODO
     /*// Checks the validity of the message.
-    fn is_valid(&self, validator_sets: Arc<RwLock<ValidatorSets>>) -> Validity {
+    fn is_valid(&self, validator_matrix: ValidatorMatrix) -> Validity {
         match self {
             Message::Consensus(_) => Validity::Valid,
             Message::DeployGossiper(_) => Validity::Valid,
@@ -190,8 +191,8 @@ impl Payload for Message {
                 item_id,
                 ..
             }) => {
-                if let Ok(validator_sets) = validator_sets.read() {
-                    match validator_sets.is_validator_in_era(item_id.era_id, &item_id.public_key) {
+                if let Ok(validator_matrix) = validator_matrix.read() {
+                    match validator_matrix.is_validator_in_era(item_id.era_id, &item_id.public_key) {
                         Some(false) => Validity::Malicious,
                         Some(true) => Validity::Valid,
                         None => Validity::NotValid,

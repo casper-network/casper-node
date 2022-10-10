@@ -675,7 +675,7 @@ where
                     /*/ TODO: Handle correctly if we don't know any validator yet. We know validators only
                     // 1) after executing block (implemented)
                     // 2) after we "accumulated" switch block (to be possibly implemented)
-                    match msg.payload_is_valid(limiter.validator_sets()) {
+                    match msg.payload_is_valid(limiter.validator_matrix()) {
                         Validity::Valid => (),
                         Validity::NotValid => {
                             warn!(

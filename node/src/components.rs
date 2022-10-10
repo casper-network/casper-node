@@ -64,7 +64,6 @@ pub(crate) mod linear_chain;
 pub(crate) mod metrics;
 pub(crate) mod rest_server;
 pub mod rpc_server;
-#[allow(unused)] // TODO
 pub(crate) mod small_network;
 pub mod storage;
 pub(crate) mod sync_leaper;

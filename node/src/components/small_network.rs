@@ -94,13 +94,13 @@ use self::{
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, PeerBehaviorAnnouncement},
+        announcements::PeerBehaviorAnnouncement,
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     reactor::{Finalize, ReactorEvent},
     tls,
-    types::NodeId,
+    types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
     NodeRng,
 };
@@ -216,17 +216,20 @@ where
         node_key_pair: Option<(Arc<SecretKey>, PublicKey)>,
         registry: &Registry,
         chain_info_source: C,
+        validator_matrix: ValidatorMatrix,
     ) -> Result<SmallNetwork<REv, P>> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_limiter = Limiter::new(
             cfg.max_outgoing_byte_rate_non_validators,
             net_metrics.accumulated_outgoing_limiter_delay.clone(),
+            validator_matrix.clone(),
         );
 
         let incoming_limiter = Limiter::new(
             cfg.max_incoming_message_rate_non_validators,
             net_metrics.accumulated_incoming_limiter_delay.clone(),
+            validator_matrix,
         );
 
         let outgoing_manager = OutgoingManager::with_metrics(
@@ -1088,66 +1091,6 @@ where
                     // Peer got away with it, no longer an outgoing connection.
                     Effects::new()
                 }
-            }
-            (
-                ComponentStatus::Initialized,
-                Event::ContractRuntimeAnnouncement(
-                    ContractRuntimeAnnouncement::LinearChainBlock { .. }
-                    | ContractRuntimeAnnouncement::CommitStepSuccess { .. },
-                ),
-            ) => Effects::new(),
-            (
-                ComponentStatus::Initialized,
-                Event::ContractRuntimeAnnouncement(
-                    ContractRuntimeAnnouncement::UpcomingEraValidators {
-                        era_that_is_ending,
-                        mut upcoming_era_validators,
-                    },
-                ),
-            ) => {
-                if era_that_is_ending < self.active_era {
-                    debug!("ignoring past era end announcement");
-                } else {
-                    // We have a new `active_era`, even if we may have skipped some, as this one
-                    // is the highest seen.
-                    self.active_era = era_that_is_ending + 1;
-
-                    let active_validators: HashSet<PublicKey> = upcoming_era_validators
-                        .remove(&self.active_era)
-                        .unwrap_or_default()
-                        .into_keys()
-                        .collect();
-
-                    if active_validators.is_empty() {
-                        error!("received an empty set of active era validators");
-                    }
-
-                    let upcoming_validators: HashSet<PublicKey> = upcoming_era_validators
-                        .remove(&(self.active_era + 1))
-                        .unwrap_or_default()
-                        .into_keys()
-                        .collect();
-
-                    debug!(
-                        %era_that_is_ending,
-                        active = active_validators.len(),
-                        upcoming = upcoming_validators.len(),
-                        "updating active and upcoming validators"
-                    );
-
-                    let upcoming_era_validator_set: BTreeMap<EraId, HashSet<PublicKey>> =
-                        upcoming_era_validators
-                            .into_iter()
-                            .map(|(era_id, validator)| (era_id, validator.into_keys().collect()))
-                            .collect();
-
-                    self.incoming_limiter
-                        .update_validators(upcoming_era_validator_set.clone());
-                    self.outgoing_limiter
-                        .update_validators(upcoming_era_validator_set);
-                }
-
-                Effects::new()
             }
             (ComponentStatus::Initialized, Event::GossipOurAddress) => {
                 let our_address = GossipedAddress::new(
