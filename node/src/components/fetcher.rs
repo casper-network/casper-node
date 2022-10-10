@@ -6,16 +6,19 @@ mod tests;
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
+use num_rational::Ratio;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
-use casper_types::EraId;
-
 use crate::{
-    components::{fetcher::event::FetchResponder, Component},
+    components::{
+        fetcher::event::FetchResponder,
+        linear_chain::{self, BlockSignatureError},
+        Component,
+    },
     effect::{
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -270,8 +273,9 @@ where
     T: Item + 'static,
 {
     get_from_peer_timeout: Duration,
+    #[data_size(skip)]
+    fault_tolerance_fraction: Ratio<u64>,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
-    verifiable_chunked_hash_activation: EraId,
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -280,19 +284,15 @@ impl<T: Item> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: Config,
+        fault_tolerance_fraction: Ratio<u64>,
         registry: &Registry,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
+            fault_tolerance_fraction,
             responders: HashMap::new(),
-            verifiable_chunked_hash_activation,
             metrics: Metrics::new(name, registry)?,
         })
-    }
-
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
     }
 }
 
@@ -476,14 +476,26 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockWithMetadata>,
     ) -> Effects<Event<BlockWithMetadata>> {
-        effect_builder
-            .get_block_and_sufficient_finality_signatures_by_height_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
+        let fault_tolerance_fraction = self.fault_tolerance_fraction;
+        async move {
+            let block_with_metadata = effect_builder
+                .get_block_with_metadata_from_storage_by_height(id, false)
+                .await?;
+            has_enough_block_signatures(
+                effect_builder,
+                block_with_metadata.block.header(),
+                &block_with_metadata.block_signatures,
+                fault_tolerance_fraction,
+            )
+            .await
+            .then_some(block_with_metadata)
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
     }
 }
 
@@ -511,14 +523,26 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         peer: NodeId,
         responder: FetchResponder<BlockHeaderWithMetadata>,
     ) -> Effects<Event<BlockHeaderWithMetadata>> {
-        effect_builder
-            .get_block_header_and_sufficient_finality_signatures_by_height_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
+        let fault_tolerance_fraction = self.fault_tolerance_fraction;
+        async move {
+            let block_header_with_metadata = effect_builder
+                .get_block_header_with_metadata_from_storage_by_height(id, false)
+                .await?;
+            has_enough_block_signatures(
+                effect_builder,
+                &block_header_with_metadata.block_header,
+                &block_header_with_metadata.block_signatures,
+                fault_tolerance_fraction,
+            )
+            .await
+            .then_some(block_header_with_metadata)
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
     }
 }
 
@@ -546,14 +570,26 @@ impl ItemFetcher<BlockSignatures> for Fetcher<BlockSignatures> {
         peer: NodeId,
         responder: FetchResponder<BlockSignatures>,
     ) -> Effects<Event<BlockSignatures>> {
-        effect_builder
-            .get_sufficient_signatures_from_storage(id)
-            .event(move |result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(result),
-                responder,
-            })
+        let fault_tolerance_fraction = self.fault_tolerance_fraction;
+        async move {
+            let block_header_with_metadata = effect_builder
+                .get_block_header_with_metadata_from_storage(id, false)
+                .await?;
+            has_enough_block_signatures(
+                effect_builder,
+                &block_header_with_metadata.block_header,
+                &block_header_with_metadata.block_signatures,
+                fault_tolerance_fraction,
+            )
+            .await
+            .then_some(block_header_with_metadata.block_signatures)
+        }
+        .event(move |result| Event::GetFromStorageResult {
+            id,
+            peer,
+            maybe_item: Box::new(result),
+            responder,
+        })
     }
 }
 
@@ -710,23 +746,15 @@ where
                 }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer, responder),
             },
-            Event::GotRemotely {
-                verifiable_chunked_hash_activation: _,
-                item,
-                source,
-            } => {
+            Event::GotRemotely { item, source } => {
                 match source {
                     Source::Peer(peer) => {
                         self.metrics().found_on_peer.inc();
-                        if let Err(err) = item.validate(self.verifiable_chunked_hash_activation()) {
+                        if let Err(err) = item.validate() {
                             warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
                             effect_builder.announce_disconnect_from_peer(peer).ignore()
                         } else {
-                            self.signal(
-                                item.id(self.verifiable_chunked_hash_activation()),
-                                Ok(*item),
-                                peer,
-                            )
+                            self.signal(item.id(), Ok(*item), peer)
                         }
                     }
                     Source::Client | Source::Ourself => {
@@ -749,20 +777,20 @@ where
 
 pub(crate) struct FetcherBuilder<'a> {
     config: FetcherConfig,
+    fault_tolerance_fraction: Ratio<u64>,
     registry: &'a Registry,
-    verifiable_chunked_hash_activation: EraId,
 }
 
 impl<'a> FetcherBuilder<'a> {
     pub(crate) fn new(
         config: FetcherConfig,
+        fault_tolerance_fraction: Ratio<u64>,
         registry: &'a Registry,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Self {
         Self {
             config,
+            fault_tolerance_fraction,
             registry,
-            verifiable_chunked_hash_activation,
         }
     }
 
@@ -773,8 +801,57 @@ impl<'a> FetcherBuilder<'a> {
         Fetcher::new(
             name,
             self.config,
+            self.fault_tolerance_fraction,
             self.registry,
-            self.verifiable_chunked_hash_activation,
         )
+    }
+}
+
+/// Returns `true` if the cumulative weight of the given signatures is sufficient for the given
+/// block using the specified `fault_tolerance_fraction`.
+///
+/// Note that signatures are _not_ cryptographically verified in this function.
+async fn has_enough_block_signatures<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block_header: &BlockHeader,
+    block_signatures: &BlockSignatures,
+    fault_tolerance_fraction: Ratio<u64>,
+) -> bool
+where
+    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<BlocklistAnnouncement> + Send,
+{
+    let validator_weights =
+        match linear_chain::era_validator_weights_for_block(block_header, effect_builder).await {
+            Ok((_, validator_weights)) => validator_weights,
+            Err(error) => {
+                warn!(
+                    ?error,
+                    ?block_header,
+                    ?block_signatures,
+                    "failed to get validator weights for given block"
+                );
+                return false;
+            }
+        };
+
+    match linear_chain::check_sufficient_block_signatures(
+        &validator_weights,
+        fault_tolerance_fraction,
+        Some(block_signatures),
+    ) {
+        Err(error @ BlockSignatureError::InsufficientWeightForFinality { .. }) => {
+            info!(?error, "insufficient block signatures from storage");
+            false
+        }
+        Err(error @ BlockSignatureError::BogusValidator { .. }) => {
+            error!(?error, "bogus validator block signature from storage");
+            false
+        }
+        // TODO - make this an error condition once we start using `get_minimal_set_of_signatures`.
+        Err(BlockSignatureError::TooManySignatures { .. }) => {
+            debug!("too many block signatures from storage");
+            true
+        }
+        Ok(_) => true,
     }
 }

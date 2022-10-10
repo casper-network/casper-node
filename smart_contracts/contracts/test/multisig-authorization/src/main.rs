@@ -44,7 +44,7 @@ impl From<UserError> for ApiError {
 fn has_role_access_to(role_keys: &[AccountHash]) -> bool {
     let authorization_keys = runtime::list_authorization_keys();
     let role_b_keys: BTreeSet<AccountHash> = role_keys.iter().copied().collect();
-    (&authorization_keys).intersection(&role_b_keys).count() > 0
+    authorization_keys.intersection(&role_b_keys).count() > 0
 }
 
 #[no_mangle]

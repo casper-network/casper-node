@@ -81,6 +81,14 @@ impl Chainspec {
         }
 
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
+
+        if self.core_config.unbonding_delay <= self.core_config.auction_delay {
+            warn!(
+                "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
+                self.core_config.unbonding_delay, self.core_config.auction_delay);
+            return false;
+        }
+
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
         if self.core_config.era_duration.millis() > 0
@@ -100,6 +108,11 @@ impl Chainspec {
             vec![]
         });
         Digest::hash(&serialized_chainspec)
+    }
+
+    /// Returns true if this chainspec has an activation_point specifying era ID 0.
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.protocol_config.activation_point.is_genesis()
     }
 
     /// Returns the protocol version of the chainspec.
@@ -329,7 +342,6 @@ mod tests {
                     Motes::new(U512::from((index as u64 + 1) * 10))
                 );
             }
-            assert!(spec.protocol_config.last_emergency_restart.is_none());
         } else {
             assert_eq!(
                 spec.protocol_config.version,
@@ -344,10 +356,6 @@ mod tests {
             for value in spec.protocol_config.global_state_update.unwrap().0.values() {
                 assert!(StoredValue::from_bytes(value).is_ok());
             }
-            assert_eq!(
-                spec.protocol_config.last_emergency_restart,
-                Some(EraId::new(99))
-            );
         }
 
         assert_eq!(spec.network_config.name, "test-chain");

@@ -38,6 +38,7 @@ pub use chunk_with_proof::ChunkWithProof;
 pub use error::{
     ChunkWithProofVerificationError, Error, MerkleConstructionError, MerkleVerificationError,
 };
+pub use indexed_merkle_proof::IndexedMerkleProof;
 
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
@@ -220,6 +221,19 @@ impl Digest {
             .try_into()
             .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
         Ok(Digest(slice))
+    }
+
+    /// Hash bytes into chunks if necessary.
+    pub fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+        if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+            Digest::hash(bytes)
+        } else {
+            Digest::hash_merkle_tree(
+                bytes
+                    .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                    .map(Digest::hash),
+            )
+        }
     }
 }
 

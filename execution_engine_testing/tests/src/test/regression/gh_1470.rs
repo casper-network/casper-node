@@ -8,8 +8,11 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfig, Error,
-            SystemContractRegistry, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            engine_config::{
+                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+            },
+            EngineConfig, Error, SystemContractRegistry, DEFAULT_MAX_QUERY_DEPTH,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
         execution,
     },
@@ -77,6 +80,7 @@ fn setup() -> InMemoryWasmTestBuilder {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         strict_argument_checking,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         WasmConfig::default(),
         SystemConfig::default(),
     );

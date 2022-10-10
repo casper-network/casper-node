@@ -1,4 +1,5 @@
 mod balances;
+mod generic;
 mod system_contract_registry;
 mod utils;
 mod validators;
@@ -6,7 +7,7 @@ mod validators;
 use clap::{crate_version, App, Arg, SubCommand};
 
 use crate::{
-    balances::generate_balances_update,
+    balances::generate_balances_update, generic::generate_generic_update,
     system_contract_registry::generate_system_contract_registry,
     validators::generate_validators_update,
 };
@@ -95,15 +96,6 @@ fn main() {
                         .help("Amount to be transferred")
                         .takes_value(true)
                         .required(true),
-                )
-                .arg(
-                    Arg::with_name("proposer")
-                        .short("p")
-                        .long("proposer")
-                        .value_name("PUBLIC_KEY_STRING")
-                        .help("Hex-encoded public key of the proposer")
-                        .takes_value(true)
-                        .required(true),
                 ),
         )
         .subcommand(
@@ -128,6 +120,35 @@ fn main() {
                         .required(false),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("generic")
+                .about("Generates a generic update based on a config file")
+                .arg(
+                    Arg::with_name("data_dir")
+                        .short("d")
+                        .long("data-dir")
+                        .value_name("PATH")
+                        .help("Data storage directory containing the global state database file")
+                        .takes_value(true)
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("hash")
+                        .short("s")
+                        .long("state-hash")
+                        .value_name("HEX_STRING")
+                        .help("The global state hash to be used as the base")
+                        .takes_value(true)
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("config_file")
+                        .value_name("FILE")
+                        .index(1)
+                        .required(true)
+                        .help("The config file to be used for generating the update"),
+                ),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -136,8 +157,9 @@ fn main() {
         ("system-contract-registry", Some(sub_matches)) => {
             generate_system_contract_registry(sub_matches)
         }
-        _ => {
-            println!("Unknown subcommand.");
+        ("generic", Some(sub_matches)) => generate_generic_update(sub_matches),
+        (subcommand, _) => {
+            println!("Unknown subcommand: \"{}\"", subcommand);
         }
     }
 }

@@ -84,7 +84,7 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 }
 
 /// Effects from running step and the next era validators that are gathered when an era ends.
-#[derive(Debug, DataSize)]
+#[derive(Clone, Debug, DataSize)]
 pub struct StepEffectAndUpcomingEraValidators {
     /// Validator sets for all upcoming eras that have already been determined.
     pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
@@ -94,7 +94,7 @@ pub struct StepEffectAndUpcomingEraValidators {
 
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
 /// effects it may have.
-#[derive(Debug, DataSize)]
+#[derive(Clone, Debug, DataSize)]
 pub struct BlockAndExecutionEffects {
     /// The [`Block`] the contract runtime executed.
     pub block: Box<Block>,

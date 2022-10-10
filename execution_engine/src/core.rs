@@ -4,7 +4,7 @@ pub mod execution;
 pub mod resolvers;
 pub mod runtime;
 pub mod runtime_context;
-pub(crate) mod tracking_copy;
+pub mod tracking_copy;
 
 pub use tracking_copy::{validate_balance_proof, validate_query_proof, ValidationError};
 

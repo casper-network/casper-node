@@ -36,9 +36,9 @@ function main() {
     # wait 1 era, and then check they are still in sync.
     # This way we can verify that the node is up-to-date with the protocol state
     # after transitioning to an active validator.
-    check_network_sync
+    check_network_sync 1 5
     do_await_era_change
-    check_network_sync
+    check_network_sync 1 5
     # 9. Run Closing Health Checks
     # ... restarts=1: due to node being stopped and started
     source "$NCTL"/sh/scenarios/common/health_checks.sh \

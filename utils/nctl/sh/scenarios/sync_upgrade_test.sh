@@ -150,7 +150,7 @@ function do_send_transfers() {
 function do_await_deploy_inclusion() {
     # Should be enough to await for one era.
     log_step "awaiting one era…"
-    await_n_eras 1
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
 }
 
 function do_read_lfb_hash() {
@@ -182,7 +182,7 @@ function do_await_full_synchronization() {
     # Wait one more era and then test LFB again.
     # This way we can verify that the node is up-to-date with the protocol state
     # after transitioning to an active validator.
-    await_n_eras 1
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
     while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash 1)" ]; do
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to keep up with the protocol state"

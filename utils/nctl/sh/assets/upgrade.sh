@@ -134,7 +134,6 @@ function _emergency_upgrade_node() {
         "import toml;"
         "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
         "cfg['protocol']['hard_reset']=True;"
-        "cfg['protocol']['last_emergency_restart']=$ACTIVATE_ERA;"
         "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
@@ -165,7 +164,6 @@ function _generate_global_state_update_balances() {
     local SRC_ACC=${4}
     local TARGET_ACC=${5}
     local AMOUNT=${6}
-    local PROPOSER=${7}
 
     local PATH_TO_NET=$(get_path_to_net)
 
@@ -180,7 +178,7 @@ function _generate_global_state_update_balances() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash.
     local PARAMS
-    PARAMS="balances -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT} -p ${PROPOSER}"
+    PARAMS="balances -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT}"
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
@@ -222,7 +220,6 @@ function _emergency_upgrade_node_balances() {
         "import toml;"
         "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
         "cfg['protocol']['hard_reset']=True;"
-        "cfg['protocol']['last_emergency_restart']=$ACTIVATE_ERA;"
         "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"

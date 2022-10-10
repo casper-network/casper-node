@@ -29,13 +29,30 @@ make build-contract-rs/nctl-dictionary
 
 popd || exit
 
-# Build client utility.
-pushd "$NCTL_CASPER_CLIENT_HOME" || exit
+unset OPTIND #clean OPTIND envvar, otherwise getopts can break.
+COMPILE_MODE="release" #default compile mode to release.
 
-if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+# Build client utility.
+pushd "$NCTL_CASPER_CLIENT_HOME" || \
+    { echo "Could not find the casper-client-rs repo - have you cloned it into your working directory?"; exit; }
+
+while getopts 'd' opt; do 
+    case $opt in
+        d ) 
+            echo "-d client"
+            COMPILE_MODE="debug" ;;
+        * ) ;; #ignore other cl flags
+
+    esac
+done 
+
+if [ "$NCTL_COMPILE_TARGET" = "debug" ] || [ "$COMPILE_MODE" = "debug" ]; then
     cargo build
 else
     cargo build --release
 fi
+
+unset OPTIND
+unset COMPILE_MODE #clean all envvar garbage we may have produced. 
 
 popd || exit

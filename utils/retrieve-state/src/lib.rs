@@ -399,18 +399,15 @@ pub async fn download_trie_channels(
     for peer in peers {
         let base_send = base_send.clone();
         let peer_future = async move {
-            let maybe_peer =
-                match maybe_construct_peer(base_send.clone(), *peer, client, state_root_hash).await
-                {
-                    Ok(peer) => Some(peer),
-                    Err(_err) => {
-                        // just skip those that can't be communicated with
-                        // info!("error constructing peer with address {:?} {:?}", peer,
-                        // err);
-                        None
-                    }
-                };
-            maybe_peer
+            match maybe_construct_peer(base_send.clone(), *peer, client, state_root_hash).await {
+                Ok(peer) => Some(peer),
+                Err(_err) => {
+                    // just skip those that can't be communicated with
+                    // info!("error constructing peer with address {:?} {:?}", peer,
+                    // err);
+                    None
+                }
+            }
         };
         peer_futures.push(peer_future);
     }

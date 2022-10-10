@@ -74,6 +74,7 @@ pub fn builder_from_global_state_fixture(
     let lmdb_fixture_state: LmdbFixtureState =
         serde_json::from_reader(File::open(&path_to_state).unwrap()).unwrap();
     let path_to_gs = to.path().join(fixture_name);
+
     (
         LmdbWasmTestBuilder::open(
             &path_to_gs,
@@ -98,6 +99,12 @@ pub fn generate_fixture(
     let lmdb_fixtures_root = path_to_lmdb_fixtures();
     let fixture_root = lmdb_fixtures_root.join(name);
 
+    let path_to_data_lmdb = fixture_root.join("global_state").join("data.lmdb");
+    if path_to_data_lmdb.exists() {
+        eprintln!("Lmdb fixture located at {} already exists. If you need to re-generate a fixture to ensure a serialization changes are backwards compatible please make sure you are running a specific version, or a past commit. Skipping.", path_to_data_lmdb.display());
+        return Ok(());
+    }
+
     let engine_config = EngineConfig::default();
     let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
 
@@ -113,7 +120,10 @@ pub fn generate_fixture(
         post_state_hash,
     };
     let serialized_state = serde_json::to_string_pretty(&state)?;
-    let mut f = File::create(&fixture_root.join(STATE_JSON_FILE))?;
+
+    let path_to_state_file = fixture_root.join(STATE_JSON_FILE);
+
+    let mut f = File::create(&path_to_state_file)?;
     f.write_all(serialized_state.as_bytes())?;
     Ok(())
 }

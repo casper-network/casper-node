@@ -37,7 +37,6 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -340,22 +339,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<bool>,
     },
-    /// Retrieve block header with sufficient finality signatures by height.
-    GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-        /// Height of block to get header of.
-        block_height: u64,
-        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
-        /// local storage.
-        responder: Responder<Option<BlockHeaderWithMetadata>>,
-    },
-    /// Retrieves a block header with sufficient finality signatures by height.
-    GetBlockAndSufficientFinalitySignaturesByHeight {
-        /// Height of block to get header of.
-        block_height: u64,
-        /// Responder to call with the result.  Returns `None` if the block header doesn't exist or
-        /// does not have sufficient finality signatures by height.
-        responder: Responder<Option<BlockWithMetadata>>,
-    },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
         /// Hash of block to get transfers of.
@@ -419,6 +402,16 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
+    /// Retrieve block header and its metadata by its hash.
+    GetBlockHeaderAndMetadataByHash {
+        /// The hash of the block.
+        block_hash: BlockHash,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<BlockHeaderWithMetadata>>,
+    },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
         /// The height of the block.
@@ -429,6 +422,16 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
+    /// Retrieve block header and its metadata at a given height.
+    GetBlockHeaderAndMetadataByHeight {
+        /// The height of the block.
+        block_height: BlockHeight,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<BlockHeaderWithMetadata>>,
+    },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
         /// The responder to call the results with.
@@ -436,15 +439,6 @@ pub(crate) enum StorageRequest {
     },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
-        /// The hash for the request.
-        block_hash: BlockHash,
-        /// Responder to call with the result.
-        responder: Responder<Option<BlockSignatures>>,
-    },
-    /// Gets finality signatures for a block with a given block hash; returns `None` if they
-    /// are less than the fault tolerance threshold or if the block is from before the most recent
-    /// emergency upgrade.
-    GetSufficientBlockSignatures {
         /// The hash for the request.
         block_hash: BlockHash,
         /// Responder to call with the result.
@@ -553,10 +547,24 @@ impl Display for StorageRequest {
                     block_hash
                 )
             }
+            StorageRequest::GetBlockHeaderAndMetadataByHash { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get block header and metadata for block with hash: {}",
+                    block_hash
+                )
+            }
             StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
                 write!(
                     formatter,
                     "get block and metadata for block at height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get block header and metadata for block at height: {}",
                     block_height
                 )
             }
@@ -570,41 +578,14 @@ impl Display for StorageRequest {
                     block_hash
                 )
             }
-            StorageRequest::GetSufficientBlockSignatures { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get sufficient finality signatures for block hash {}",
-                    block_hash
-                )
-            }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
             StorageRequest::GetFinalizedBlocks { ttl, .. } => {
                 write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
             }
-            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get block and metadata for block by height: {}",
-                    block_height
-                )
-            }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)
-            }
-            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get block and sufficient finality signatures by height: {}",
-                    block_height
-                )
             }
             StorageRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range",)
@@ -1212,8 +1193,6 @@ pub(crate) enum ConsensusRequest {
 pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
-    /// Request for information about the current run.
-    GetCurrentRunInfo(Responder<CurrentRunInfo>),
     /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
     /// they are present.
     GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
@@ -1223,7 +1202,6 @@ impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
-            ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
             ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
     }

@@ -133,7 +133,7 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -152,7 +152,7 @@ use crate::{
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
-    utils::{SharedFlag, Source},
+    utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
@@ -275,18 +275,18 @@ impl<T: Debug> Responder<T> {
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                // If we cannot send a response down the channel, it means the original requestor is
+                // If we cannot send a response down the channel, it means the original requester is
                 // no longer interested in our response. This typically happens during shutdowns, or
                 // in cases where an originating external request has been cancelled.
 
                 debug!(
-                    ?data,
+                    data=?FmtLimit::new(1000, &data),
                     "ignored failure to send response to request down oneshot channel"
                 );
             }
         } else {
             error!(
-                ?data,
+                data=?FmtLimit::new(1000, &data),
                 "tried to send a value down a responder channel, but it was already used"
             );
         }
@@ -542,7 +542,7 @@ impl<REv> EffectBuilder<REv> {
     /// # Cancellation safety
     ///
     /// This future is cancellation safe: If it is dropped without being polled, it merely indicates
-    /// the original requestor is not longer interested in the result, which will be discarded.
+    /// the original requester is not longer interested in the result, which will be discarded.
     pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
@@ -1117,26 +1117,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves finality signatures for a block with a given block hash; returns `None` if they
-    /// are less than the fault tolerance threshold or if the block is from before the most recent
-    /// emergency upgrade.
-    pub(crate) async fn get_sufficient_signatures_from_storage(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<BlockSignatures>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSufficientBlockSignatures {
-                block_hash,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Puts a block header to storage.
     pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
     where
@@ -1152,7 +1132,10 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the requested finality signatures into storage.
+    /// Puts the requested block signatures into storage.
+    ///
+    /// If `signatures.proofs` is empty, no attempt to store will be made, an error will be logged,
+    /// and this function will return `false`.
     pub(crate) async fn put_signatures_to_storage(self, signatures: BlockSignatures) -> bool
     where
         REv: From<StorageRequest>,
@@ -1417,42 +1400,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets a block and sufficient finality signatures from storage.
-    pub(crate) async fn get_block_and_sufficient_finality_signatures_by_height_from_storage(
-        self,
-        block_height: u64,
-    ) -> Option<BlockWithMetadata>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested block and its associated metadata.
-    pub(crate) async fn get_block_header_and_sufficient_finality_signatures_by_height_from_storage(
-        self,
-        block_height: u64,
-    ) -> Option<BlockHeaderWithMetadata>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
-                block_height,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested block by hash with its associated metadata.
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
@@ -1465,6 +1412,66 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header by hash with its associated metadata.
+    pub(crate) async fn get_block_header_with_metadata_from_storage(
+        self,
+        block_hash: BlockHash,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHash {
+                block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block by height with its associated metadata.
+    pub(crate) async fn get_block_with_metadata_from_storage_by_height(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header by height with its associated metadata.
+    pub(crate) async fn get_block_header_with_metadata_from_storage_by_height(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
                 only_from_available_block_range,
                 responder,
             },
@@ -1749,18 +1756,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Gets the information about the current run of the node software.
-    pub(crate) async fn get_current_run_info(self) -> CurrentRunInfo
-    where
-        REv: From<ChainspecLoaderRequest>,
-    {
-        self.make_request(
-            ChainspecLoaderRequest::GetCurrentRunInfo,
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     pub(crate) async fn get_node_state(self) -> NodeState
     where
         REv: From<NodeStateRequest> + Send,
@@ -1984,20 +1979,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the correct era validators set for the given era.
-    /// Takes emergency restarts into account based on the information from the chainspec loader.
+    /// Takes emergency restarts into account based on the information in the immediate switch
+    /// block after a restart.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
         REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
-        let CurrentRunInfo {
-            last_emergency_restart,
-            ..
-        } = self.get_current_run_info().await;
-        let cutoff_era_id = last_emergency_restart.unwrap_or_else(|| EraId::new(0));
-        if era_id < cutoff_era_id {
-            // we don't support getting the validators from before the last emergency restart
-            return None;
-        }
+        // TODO (#3233): If there was an upgrade changing the validator set at `era_id`, the switch
+        // block at this era will be the immediate switch block created after the upgrade. We should
+        // check for such a case and return the validators from the switch block itself then.
+
         // Era 0 contains no blocks other than the genesis immediate switch block which can be used
         // to get the validators for era 0.  For any other era `n`, we need the switch block from
         // era `n-1` to get the validators for `n`.

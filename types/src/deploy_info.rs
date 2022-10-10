@@ -76,10 +76,10 @@ impl FromBytes for DeployInfo {
 impl ToBytes for DeployInfo {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        (&self.deploy_hash).write_bytes(&mut result)?;
+        self.deploy_hash.write_bytes(&mut result)?;
         self.transfers.write_bytes(&mut result)?;
-        (&self.from).write_bytes(&mut result)?;
-        (&self.source).write_bytes(&mut result)?;
+        self.from.write_bytes(&mut result)?;
+        self.source.write_bytes(&mut result)?;
         self.gas.write_bytes(&mut result)?;
         Ok(result)
     }
@@ -93,10 +93,10 @@ impl ToBytes for DeployInfo {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.deploy_hash).write_bytes(writer)?;
+        self.deploy_hash.write_bytes(writer)?;
         self.transfers.write_bytes(writer)?;
-        (&self.from).write_bytes(writer)?;
-        (&self.source).write_bytes(writer)?;
+        self.from.write_bytes(writer)?;
+        self.source.write_bytes(writer)?;
         self.gas.write_bytes(writer)?;
         Ok(())
     }

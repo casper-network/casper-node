@@ -19,7 +19,7 @@ use crate::{
 mod jsonrepr;
 
 /// Error while converting a [`CLValue`] into a given type.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct CLTypeMismatch {
     /// The [`CLType`] into which the `CLValue` was being converted.
@@ -40,7 +40,7 @@ impl Display for CLTypeMismatch {
 }
 
 /// Error relating to [`CLValue`] operations.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum CLValueError {
     /// An error while serializing or deserializing the underlying data.
@@ -156,7 +156,7 @@ impl ToBytes for CLValue {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (&self.bytes).write_bytes(writer)?;
+        self.bytes.write_bytes(writer)?;
         self.cl_type.append_bytes(writer)?;
         Ok(())
     }
