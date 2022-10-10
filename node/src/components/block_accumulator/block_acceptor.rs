@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_types::{EraId, PublicKey};
 
@@ -16,6 +16,18 @@ use crate::{
     },
 };
 
+/// The outcome of a call to `can_execute`, telling us whether a block has enough signatures and
+/// data to be executed, and whether it recently got into that state.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub(super) enum CanExecuteOutcome {
+    /// Cannot be executed yet.
+    No,
+    /// Can be executed, and this is the first call to `can_execute` where that is the case.
+    NewYes,
+    /// Can be executed, but this was already known.
+    Yes,
+}
+
 #[derive(DataSize, Debug)]
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
@@ -24,6 +36,7 @@ pub(super) struct BlockAcceptor {
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     era_validator_weights: Option<EraValidatorWeights>,
     peers: Vec<NodeId>,
+    can_execute: bool,
 }
 
 impl BlockAcceptor {
@@ -35,6 +48,7 @@ impl BlockAcceptor {
             approvals_hashes: None,
             signatures: BTreeMap::new(),
             peers,
+            can_execute: false,
         }
     }
 
@@ -50,6 +64,7 @@ impl BlockAcceptor {
             approvals_hashes: None,
             signatures: BTreeMap::new(),
             peers,
+            can_execute: false,
         }
     }
 
@@ -88,6 +103,7 @@ impl BlockAcceptor {
             approvals_hashes: self.approvals_hashes,
             signatures,
             peers,
+            can_execute: false,
         }
     }
 
@@ -264,22 +280,27 @@ impl BlockAcceptor {
         Ok(())
     }
 
-    pub(super) fn can_execute(&self) -> bool {
+    pub(super) fn can_execute(&mut self) -> CanExecuteOutcome {
+        if self.can_execute {
+            return CanExecuteOutcome::Yes;
+        }
+
         let missing_elements = self.block.is_none()
             || self.approvals_hashes.is_none()
             || self.era_validator_weights.is_none()
             || self.signatures.is_empty();
 
         if missing_elements {
-            return false;
+            return CanExecuteOutcome::No;
         }
 
         if let Some(evw) = &self.era_validator_weights {
             if SignatureWeight::Sufficient == evw.has_sufficient_weight(self.signatures.keys()) {
-                return true;
+                self.can_execute = true;
+                return CanExecuteOutcome::NewYes;
             }
         }
-        false
+        CanExecuteOutcome::No
     }
 
     pub(super) fn era_id(&self) -> Option<EraId> {
@@ -307,9 +328,9 @@ impl BlockAcceptor {
     }
 
     pub(super) fn executable_block_and_signatures(
-        &self,
+        &mut self,
     ) -> Option<(Block, ApprovalsHashes, Vec<FinalitySignature>)> {
-        if !self.can_execute() {
+        if self.can_execute() == CanExecuteOutcome::No {
             return None;
         }
 

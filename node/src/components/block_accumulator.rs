@@ -24,6 +24,8 @@ pub(crate) use config::Config;
 use error::Error;
 pub(crate) use event::Event;
 
+use self::block_acceptor::CanExecuteOutcome;
+
 pub(crate) enum SyncInstruction {
     Leap,
     CaughtUp,
@@ -388,14 +390,14 @@ impl BlockAccumulator {
         }
     }
 
-    fn highest_known_block(&self) -> Option<(BlockHash, u64, EraId)> {
+    fn highest_known_block(&mut self) -> Option<(BlockHash, u64, EraId)> {
         let mut ret: Option<(BlockHash, u64, EraId)> = None;
-        for (k, v) in &self.block_acceptors {
+        for (k, v) in &mut self.block_acceptors {
             if self.already_handled.contains(k) {
                 // should be unreachable
                 continue;
             }
-            if v.can_execute() == false {
+            if v.can_execute() == CanExecuteOutcome::No {
                 continue;
             }
             match v.block_era_and_height() {
