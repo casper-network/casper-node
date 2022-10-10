@@ -1,10 +1,11 @@
 use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
+use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
-    effect::EffectBuilder,
+    effect::{requests::StorageRequest, EffectBuilder},
     types::{BlockHash, NodeId, SyncLeap},
 };
 
@@ -35,10 +36,24 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         None
     }
 
-    fn put_to_storage<'a, REv>(
-        _effect_builder: EffectBuilder<REv>,
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+        effect_builder: EffectBuilder<REv>,
         item: SyncLeap,
     ) -> StoringState<'a, SyncLeap> {
-        StoringState::WontStore(item)
+        StoringState::Enqueued(
+            async move {
+                for header in item.headers() {
+                    effect_builder
+                        .put_block_header_to_storage(Box::new(header.clone()))
+                        .await;
+                }
+                for signed_header in item.signed_block_headers {
+                    effect_builder
+                        .put_signatures_to_storage(signed_header.block_signatures)
+                        .await;
+                }
+            }
+            .boxed(),
+        )
     }
 }

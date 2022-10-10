@@ -103,7 +103,7 @@ impl SyncLeap {
             .and_then(BlockHeader::next_era_validator_weights)
     }
 
-    fn headers(&self) -> impl Iterator<Item = &BlockHeader> {
+    pub(crate) fn headers(&self) -> impl Iterator<Item = &BlockHeader> {
         iter::once(&self.trusted_block_header)
             .chain(&self.trusted_ancestor_headers)
             .chain(self.signed_block_headers.iter().map(|sh| &sh.block_header))
