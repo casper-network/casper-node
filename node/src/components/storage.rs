@@ -1320,10 +1320,6 @@ impl Storage {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<FinalizedBlockAndDeploys>, FatalStorageError> {
-        // check all approvals in `approvals hashes` against stored approvals,
-        // deal with any discrepancies
-        // todo!(): self.check_verified_approvals_or_sth_like_that()
-
         let BlockAndDeploys { block, deploys } =
             match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
                 Some(block_and_finalized_deploys) => block_and_finalized_deploys,

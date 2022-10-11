@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: To be removed
+
 //! Weighted round-robin scheduling.
 //!
 //! This module implements a weighted round-robin scheduler that ensures no deadlocks occur, but

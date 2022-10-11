@@ -710,8 +710,6 @@ impl EraSupervisor {
             Effects::new()
         };
 
-        // TODO: What to do if we don't have any eras? Depends on how we wire this up in the control
-        // logic.
         if self
             .current_era()
             .map_or(true, |current_era| era_id < current_era)
