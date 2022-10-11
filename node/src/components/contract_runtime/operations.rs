@@ -45,7 +45,6 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
-    transfers: Vec<Deploy>,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -61,24 +60,19 @@ pub fn execute_finalized_block(
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
-        Vec::with_capacity(deploys.len() + transfers.len());
+        Vec::with_capacity(deploys.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    let deploy_ids = deploys
-        .iter()
-        .chain(transfers.iter())
-        .map(|deploy| deploy.id())
-        .collect_vec();
+    let deploy_ids = deploys.iter().map(|deploy| deploy.id()).collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockCreationError::BytesRepr)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
 
-    // WARNING: Do not change the order of `deploys` and `transfers` as it will result in a
-    // different root hash.
-    for deploy in deploys.into_iter().chain(transfers) {
+    // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
+    for deploy in deploys {
         let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(

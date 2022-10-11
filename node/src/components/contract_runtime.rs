@@ -160,7 +160,7 @@ impl ExecutionPreState {
     }
 }
 
-type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>)>>>;
 
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
@@ -478,7 +478,6 @@ impl ContractRuntime {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
-                transfers,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
@@ -500,15 +499,14 @@ impl ContractRuntime {
                             protocol_version,
                             finalized_block,
                             deploys,
-                            transfers,
                         )
                         .ignore(),
                     )
                 } else {
-                    exec_queue.lock().unwrap().insert(
-                        finalized_block.height(),
-                        (finalized_block, deploys, transfers),
-                    );
+                    exec_queue
+                        .lock()
+                        .unwrap()
+                        .insert(finalized_block.height(), (finalized_block, deploys));
                 }
                 effects
             }
@@ -751,7 +749,6 @@ impl ContractRuntime {
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -773,7 +770,6 @@ impl ContractRuntime {
                 current_execution_pre_state,
                 finalized_block,
                 deploys,
-                transfers,
             )
         })
         .await
@@ -815,9 +811,9 @@ impl ContractRuntime {
             let queue = &mut *exec_queue.lock().expect("mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
-        if let Some((finalized_block, deploys, transfers)) = next_block {
+        if let Some((finalized_block, deploys)) = next_block {
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                .enqueue_block_for_execution(finalized_block, deploys)
                 .await
         }
     }

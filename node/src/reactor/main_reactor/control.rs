@@ -655,7 +655,7 @@ impl MainReactor {
                     PublicKey::System,
                 );
                 Ok(effect_builder
-                    .enqueue_block_for_execution(finalized_block, vec![], vec![])
+                    .enqueue_block_for_execution(finalized_block, vec![])
                     .ignore())
             }
             Err(err) => Err(format!("failed to commit genesis: {:?}", err)),
@@ -700,7 +700,7 @@ impl MainReactor {
                         PublicKey::System,
                     );
                     Ok(effect_builder
-                        .enqueue_block_for_execution(finalized_block, vec![], vec![])
+                        .enqueue_block_for_execution(finalized_block, vec![])
                         .ignore())
                 }
                 Err(err) => Err(format!("failed to upgrade protocol: {:?}", err)),
@@ -718,10 +718,10 @@ impl MainReactor {
         if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
             // TODO: Why did we ask block accumulator here?
             match self.storage.make_executable_block(&block_hash) {
-                Ok(Some((finalized_block, deploys, transfers))) => {
+                Ok(Some((finalized_block, deploys))) => {
                     effects.extend(
                         effect_builder
-                            .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                            .enqueue_block_for_execution(finalized_block, deploys)
                             .ignore(),
                     );
                 }

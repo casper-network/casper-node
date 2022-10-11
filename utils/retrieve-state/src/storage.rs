@@ -28,12 +28,12 @@ use crate::DEFAULT_MAX_READERS;
 const RECENT_ERA_COUNT: u64 = 5;
 
 /// Gets many deploys by hash.
-pub fn get_many_deploys_by_hash(
+pub fn get_many_deploys_by_hash<'a>(
     storage: &Storage,
-    hashes: &[DeployHash],
+    hashes: impl IntoIterator<Item = &'a DeployHash>,
 ) -> Result<Vec<Deploy>, anyhow::Error> {
     let mut deploys = vec![];
-    for deploy_hash in hashes {
+    for deploy_hash in hashes.into_iter() {
         let deploy = match storage.read_deploy_by_hash(deploy_hash)? {
             None => {
                 return Err(anyhow::anyhow!(

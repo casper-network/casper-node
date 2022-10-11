@@ -118,9 +118,10 @@ async fn main() -> Result<(), anyhow::Error> {
         })?;
 
         let block_hash = *block.hash();
-        let transfers = get_many_deploys_by_hash(&storage, block.transfer_hashes())?;
-        let transfers_len = transfers.len();
-        let deploys = get_many_deploys_by_hash(&storage, block.deploy_hashes())?;
+        let deploys = get_many_deploys_by_hash(
+            &storage,
+            block.deploy_hashes().iter().chain(block.transfer_hashes()),
+        )?;
         let deploys_len = deploys.len();
         let protocol_version = block.protocol_version();
         let finalized_block = FinalizedBlock::from(block.clone());
@@ -133,7 +134,6 @@ async fn main() -> Result<(), anyhow::Error> {
             execution_pre_state,
             finalized_block,
             deploys,
-            transfers,
         )?;
         let elapsed_micros = start.elapsed().as_micros() as u64;
         execution_time_hist
@@ -151,10 +151,9 @@ async fn main() -> Result<(), anyhow::Error> {
         execute_count += 1;
         if opts.verbose {
             eprintln!(
-                "{}, {}, {}, {}, {}",
+                "{}, {}, {}, {}",
                 header.height(),
                 block_hash,
-                transfers_len,
                 deploys_len,
                 elapsed_micros,
             );

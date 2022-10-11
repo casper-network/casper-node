@@ -129,6 +129,7 @@ impl BlockSynchronizer {
 
     // CALLED FROM REACTOR
     pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
+        // todo!() - should only return blocks which are in `HaveStrictFinalitySignatures` state?
         if let Some(fwd) = &self.forward {
             return Some(fwd.block_hash());
         }

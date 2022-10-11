@@ -1097,8 +1097,6 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
-        /// The transfers for that `FinalizedBlock`
-        transfers: Vec<Deploy>,
     },
     /// Commit genesis chainspec.
     CommitGenesis {
@@ -1220,7 +1218,6 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
-                transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }

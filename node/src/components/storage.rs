@@ -136,7 +136,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 // const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
-type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>, Vec<Deploy>);
+type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>);
 
 #[test]
 fn size() {
@@ -1370,7 +1370,7 @@ impl Storage {
         // deal with any discrepancies
         // todo!(): self.check_verified_approvals_or_sth_like_that()
 
-        let BlockAndDeploys { block, mut deploys } =
+        let BlockAndDeploys { block, deploys } =
             match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
                 Some(block_and_finalized_deploys) => block_and_finalized_deploys,
                 None => return Ok(None),
@@ -1399,10 +1399,7 @@ impl Storage {
                         return Ok(None);
                     }
                 }
-                // todo!() - should be possible to merge deploys and transfers, as they are merged
-                // anyway in the contract runtime
-                let transfers = deploys.split_off(block.deploy_hashes().len());
-                Ok(Some((block.into(), deploys, transfers)))
+                Ok(Some((block.into(), deploys)))
             }
             None => Ok(None),
         }

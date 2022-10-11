@@ -1798,18 +1798,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Enqueues a finalized proto-block execution.
+    /// Enqueues a finalized block execution.
     ///
     /// # Arguments
     ///
-    /// * `finalized_block` - a finalized proto-block to add to the execution queue.
+    /// * `finalized_block` - a finalized block to add to the execution queue.
     /// * `deploys` - a vector of deploys and transactions that match the hashes in the finalized
     ///   block, in that order.
     pub(crate) async fn enqueue_block_for_execution(
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1818,7 +1817,6 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
-                    transfers,
                 },
                 QueueKind::Regular,
             )
