@@ -54,8 +54,8 @@ use crate::{
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
-        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem,
+        Item, LegacyDeploy, NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -497,6 +497,11 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockHeaderWithMetadata>>,
     },
+    /// Retrieve a finality signature by block hash and public key.
+    GetFinalitySignature {
+        id: FinalitySignatureId,
+        responder: Responder<Option<FinalitySignature>>,
+    },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
         /// The height of the block.
@@ -668,6 +673,9 @@ impl Display for StorageRequest {
 
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
+            }
+            StorageRequest::GetFinalitySignature { id, .. } => {
+                write!(formatter, "get finality signature {}", id)
             }
             StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
                 write!(

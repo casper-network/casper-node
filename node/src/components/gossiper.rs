@@ -91,12 +91,20 @@ pub(crate) fn get_finality_signature_from_storage<
     T: GossiperItem + 'static,
     REv: ReactorEventT<T>,
 >(
-    _effect_builder: EffectBuilder<REv>,
-    _fs_id: FinalitySignatureId,
-    _sender: NodeId,
+    effect_builder: EffectBuilder<REv>,
+    item_id: FinalitySignatureId,
+    requester: NodeId,
 ) -> Effects<Event<FinalitySignature>> {
-    // todo!(): Needs proper implementation
-    Effects::new()
+    effect_builder
+        .get_finality_signature_from_storage(item_id.clone())
+        .event(move |results| {
+            let result = results.ok_or_else(|| String::from("finality signature not found"));
+            Event::GetFromHolderResult {
+                item_id,
+                requester,
+                result: Box::new(result),
+            }
+        })
 }
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
@@ -114,7 +122,7 @@ pub(crate) fn get_approvals_hashes_from_storage<
         .event(move |results| {
             let result = match results {
                 Some(approvals_hashes) => Ok(approvals_hashes),
-                None => Err(String::from("block-added not found")),
+                None => Err(String::from("approvals hashes not found")),
             };
             Event::GetFromHolderResult {
                 item_id: block_hash,

@@ -993,6 +993,14 @@ impl Storage {
                     }))
                     .ignore()
             }
+            StorageRequest::GetFinalitySignature { id, responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let maybe_sig = self
+                    .get_block_signatures(&mut txn, &id.block_hash)?
+                    .and_then(|sigs| sigs.get_finality_signature(&id.public_key))
+                    .filter(|sig| sig.era_id == id.era_id);
+                responder.respond(maybe_sig).ignore()
+            }
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
                 only_from_available_block_range,

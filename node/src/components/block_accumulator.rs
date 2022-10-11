@@ -97,7 +97,7 @@ impl BlockAccumulator {
         }
     }
 
-    #[allow(unused)] // todo!: Flush less aggressively.
+    #[allow(unused)] // todo!: Flush less aggressively. Obsolete with highest_complete_block?
     pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
         Self {
             already_handled: Default::default(),

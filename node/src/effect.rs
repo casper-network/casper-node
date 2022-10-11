@@ -156,8 +156,8 @@ use crate::{
         BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
         DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy, NodeId,
-        NodeState, TrieOrChunk, TrieOrChunkId,
+        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem,
+        LegacyDeploy, NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1627,6 +1627,21 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested finality signature from storage.
+    pub(crate) async fn get_finality_signature_from_storage(
+        self,
+        id: FinalitySignatureId,
+    ) -> Option<FinalitySignature>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetFinalitySignature { id, responder },
             QueueKind::Regular,
         )
         .await
