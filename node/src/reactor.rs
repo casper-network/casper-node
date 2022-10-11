@@ -70,9 +70,9 @@ use crate::{
     },
     types::{
         ApprovalsHashes, Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
-        ChainspecRawBytes, Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature,
-        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes,
+        Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature, Item, LegacyDeploy,
+        NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -1129,16 +1129,6 @@ where
         }
         NetResponse::BlockAndDeploys(ref serialized_item) => {
             // handle_fetch_response::<R, BlockAndDeploys>(
-            //     reactor,
-            //     effect_builder,
-            //     rng,
-            //     sender,
-            //     serialized_item,
-            // )
-            Effects::new()
-        }
-        NetResponse::BlockHeadersBatch(ref serialized_item) => {
-            // handle_fetch_response::<R, BlockHeadersBatch>(
             //     reactor,
             //     effect_builder,
             //     rng,

@@ -463,7 +463,6 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
-                | NetResponse::BlockHeadersBatch(_)
                 | NetResponse::FinalitySignatures(_)
                 | NetResponse::SyncLeap(_)
                 | NetResponse::BlockExecutionResults(_)) => {

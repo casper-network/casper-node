@@ -87,7 +87,6 @@ impl Payload for Message {
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
                     Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
-                    Tag::BlockHeaderBatch => MessageKind::BlockTransfer,
                     Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                     Tag::SyncLeap => MessageKind::BlockTransfer,
                     Tag::ApprovalsHashes => MessageKind::BlockTransfer,
@@ -136,7 +135,6 @@ impl Payload for Message {
                 Tag::BlockHeaderByHash => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
-                Tag::BlockHeaderBatch => weights.block_requests,
                 Tag::FinalitySignaturesByHash => weights.block_requests,
                 Tag::SyncLeap => weights.block_requests,
                 Tag::ApprovalsHashes => weights.block_requests,
@@ -150,7 +148,6 @@ impl Payload for Message {
                 Tag::BlockHeaderByHash => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::BlockAndDeploysByHash => weights.block_requests,
-                Tag::BlockHeaderBatch => weights.block_responses,
                 Tag::FinalitySignaturesByHash => weights.block_responses,
                 Tag::SyncLeap => weights.block_responses,
                 Tag::ApprovalsHashes => weights.block_responses,
@@ -377,11 +374,6 @@ where
                     message: NetRequest::BlockAndDeploys(serialized_id),
                 }
                 .into(),
-                Tag::BlockHeaderBatch => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockHeadersBatch(serialized_id),
-                }
-                .into(),
                 Tag::FinalitySignature => NetRequestIncoming {
                     sender,
                     message: NetRequest::FinalitySignature(serialized_id),
@@ -450,11 +442,6 @@ where
                 Tag::BlockAndDeploysByHash => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockAndDeploys(serialized_item),
-                }
-                .into(),
-                Tag::BlockHeaderBatch => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::BlockHeadersBatch(serialized_item),
                 }
                 .into(),
                 Tag::FinalitySignaturesByHash => NetResponseIncoming {

@@ -43,8 +43,8 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         ApprovalsHashes, Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Deploy,
-        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, FinalitySignature,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 

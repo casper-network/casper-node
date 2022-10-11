@@ -51,11 +51,11 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem,
-        Item, LegacyDeploy, NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata,
+        Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
+        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -563,19 +563,6 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
-    /// Store a batch of block headers.
-    PutHeadersBatch {
-        /// Batch of block headers to be stored.
-        block_headers: Vec<BlockHeader>,
-        /// Responder to call with the result, if true then the block headers were successfully
-        /// stored.
-        responder: Responder<bool>,
-    },
-    /// Read batch of block headers by their heights.
-    GetHeadersBatch {
-        block_headers_id: BlockHeadersBatchId,
-        responder: Responder<Option<BlockHeadersBatch>>,
-    },
     /// Retrieve the height range of fully available blocks (not just block headers). Returns
     /// `[u64::MAX, u64::MAX]` when there are no sequences.
     GetAvailableBlockRange {
@@ -743,14 +730,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
-            }
-            StorageRequest::PutHeadersBatch { .. } => {
-                write!(formatter, "put block headers batch to storage")
-            }
-            StorageRequest::GetHeadersBatch {
-                block_headers_id, ..
-            } => {
-                write!(formatter, "get block headers batch: {}", block_headers_id)
             }
             StorageRequest::GetDeployHashesForBlock { block_hash, .. } => {
                 write!(formatter, "get deploy hashes for block {}", block_hash)

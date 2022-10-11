@@ -89,11 +89,11 @@ use crate::{
     types::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployId,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
-        FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy,
-        NodeId, SignatureWeight, SyncLeap, ValueOrChunk,
+        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
+        BlockWithMetadata, Deploy, DeployHash, DeployId, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
+        ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -671,18 +671,6 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::BlockHeadersBatch(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockHeadersBatch>(serialized_id)?;
-                let opt_item = self.read_block_headers_batch(&item_id)?;
-                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
             NetRequest::FinalitySignatures(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
                 let opt_item = self.read_block_signatures(&item_id)?;
@@ -1181,12 +1169,6 @@ impl Storage {
                     }
                 }
             }
-            StorageRequest::PutHeadersBatch {
-                block_headers,
-                responder,
-            } => responder
-                .respond(self.put_block_headers(block_headers)?)
-                .ignore(),
             StorageRequest::GetAvailableBlockRange { responder } => {
                 responder.respond(self.get_available_block_range()).ignore()
             }
@@ -1211,12 +1193,6 @@ impl Storage {
                 responder,
             } => responder
                 .respond(self.read_block_and_finalized_deploys_by_hash(block_hash)?)
-                .ignore(),
-            StorageRequest::GetHeadersBatch {
-                block_headers_id,
-                responder,
-            } => responder
-                .respond(self.read_block_headers_batch(&block_headers_id)?)
                 .ignore(),
             StorageRequest::HasDataNeededForProposingBlocks {
                 block_header,
@@ -2359,26 +2335,6 @@ impl Storage {
             },
             None => Ok(None),
         }
-    }
-
-    fn read_block_headers_batch(
-        &self,
-        block_header_ids: &BlockHeadersBatchId,
-    ) -> Result<Option<BlockHeadersBatch>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-
-        let mut headers = Vec::with_capacity(block_header_ids.len() as usize);
-        for block_height in block_header_ids.iter() {
-            match self.get_block_header_by_height_restricted(&mut txn, block_height, true)? {
-                Some(block_header) => headers.push(block_header),
-                None => {
-                    debug!(?block_height, "block header not found");
-                    // Short-circuit, we're all interested in the complete data.
-                    return Ok(None);
-                }
-            }
-        }
-        Ok(BlockHeadersBatch::from_vec(headers, block_header_ids))
     }
 
     pub(crate) fn get_sync_leap(

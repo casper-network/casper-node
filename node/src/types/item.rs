@@ -41,8 +41,6 @@ pub enum Tag {
     TrieOrChunk,
     /// A full block and its deploys.
     BlockAndDeploysByHash,
-    /// A batch of block headers requested by their lower and upper height indices.
-    BlockHeaderBatch,
     /// A single block signature for a block.
     FinalitySignature,
     /// Finality signatures for a block requested by the block's hash.
