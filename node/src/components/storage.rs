@@ -740,8 +740,18 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            // TODO
-            NetRequest::ApprovalsHashes(_) => todo!(),
+            NetRequest::ApprovalsHashes(ref serialized_id) => {
+                let item_id = decode_item_id::<ApprovalsHashes>(serialized_id)?;
+                let opt_item = self.read_approvals_hashes(&item_id)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    fetch_response,
+                )?)
+            }
         }
     }
 
