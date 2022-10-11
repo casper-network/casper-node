@@ -716,25 +716,23 @@ impl MainReactor {
         let mut effects = Effects::new();
         // TODO - try to avoid repeating executing the same blocks.
         if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
-            // TODO: Why not just get the block from storage? Why ask the accumulator?
-            if let Some(block) = self.block_accumulator.block(block_hash) {
-                match self.storage.make_executable_block(block) {
-                    Ok(Some((finalized_block, deploys, transfers))) => {
-                        effects.extend(
-                            effect_builder
-                                .enqueue_block_for_execution(finalized_block, deploys, transfers)
-                                .ignore(),
-                        );
-                    }
-                    Ok(None) => {
-                        // noop
-                    }
-                    Err(_) => {
-                        return Err(format!(
-                            "failure to make block and approvals hashes into executable block: {}",
-                            block_hash
-                        ));
-                    }
+            // TODO: Why did we ask block accumulator here?
+            match self.storage.make_executable_block(&block_hash) {
+                Ok(Some((finalized_block, deploys, transfers))) => {
+                    effects.extend(
+                        effect_builder
+                            .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                            .ignore(),
+                    );
+                }
+                Ok(None) => {
+                    // noop
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "failure to make block and approvals hashes into executable block: {}",
+                        block_hash
+                    ));
                 }
             }
         }

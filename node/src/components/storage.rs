@@ -136,7 +136,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 // const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
-type FinalizedBlockUple = (FinalizedBlock, Vec<Deploy>, Vec<Deploy>);
+type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>, Vec<Deploy>);
 
 #[test]
 fn size() {
@@ -1364,24 +1364,48 @@ impl Storage {
     /// Make a finalized block from a executed block, respecting Deploy Approvals.
     pub(crate) fn make_executable_block(
         &self,
-        block: &Block,
-    ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
+        block_hash: &BlockHash,
+    ) -> Result<Option<FinalizedBlockAndDeploys>, FatalStorageError> {
         // check all approvals in `approvals hashes` against stored approvals,
         // deal with any discrepancies
         // todo!(): self.check_verified_approvals_or_sth_like_that()
-        let finalized_block = FinalizedBlock::from(block.clone());
-        let deploy_hashes = block.deploy_hashes().clone();
-        let deploys = self
-            .read_deploys(deploy_hashes.len(), deploy_hashes.iter())?
-            .unwrap_or_default();
-        let transfer_hashes = block.transfer_hashes().clone();
-        let transfers = self
-            .read_deploys(transfer_hashes.len(), transfer_hashes.iter())?
-            .unwrap_or_default();
 
-        // todo!() - provide deploys with the FINALIZED approvals
+        let BlockAndDeploys { block, mut deploys } =
+            match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
+                Some(block_and_finalized_deploys) => block_and_finalized_deploys,
+                None => return Ok(None),
+            };
 
-        Ok(Some((finalized_block, deploys, transfers)))
+        match self.read_approvals_hashes(block.hash())? {
+            Some(finalized_approvals) => {
+                if deploys.len() != finalized_approvals.approvals_hashes().len() {
+                    // todo!() - probably unrecoverable, consider node shut down
+                    error!(
+                        deploy_count = deploys.len(),
+                        finalized_approvals_count = finalized_approvals.approvals_hashes().len(),
+                        "approvals length mismatch"
+                    );
+                    return Ok(None);
+                }
+
+                for (deploy, hash) in deploys.iter().zip(finalized_approvals.approvals_hashes()) {
+                    if deploy
+                        .approvals_hash()
+                        .map_err(FatalStorageError::UnexpectedDeserializationFailure)?
+                        != *hash
+                    {
+                        // todo!() - right deploy with incorrect approvals found in DB, download and
+                        // store deploy with correct approvals
+                        return Ok(None);
+                    }
+                }
+                // todo!() - should be possible to merge deploys and transfers, as they are merged
+                // anyway in the contract runtime
+                let transfers = deploys.split_off(block.deploy_hashes().len());
+                Ok(Some((block.into(), deploys, transfers)))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Writes a block to storage, updating indices as necessary.
