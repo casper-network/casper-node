@@ -3,7 +3,10 @@ mod config;
 mod error;
 mod event;
 
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    iter,
+};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -75,6 +78,9 @@ pub(crate) struct BlockAccumulator {
     dead_air_interval: TimeDiff,
     validator_matrix: ValidatorMatrix,
     last_progress: Timestamp,
+    /// The height of the most recent complete block. The accumulator only needs to care about
+    /// blocks later than this one.
+    highest_complete_block: Option<u64>,
 }
 
 impl BlockAccumulator {
@@ -87,6 +93,7 @@ impl BlockAccumulator {
             dead_air_interval: config.dead_air_interval(),
             validator_matrix,
             last_progress: Timestamp::now(),
+            highest_complete_block: None,
         }
     }
 
@@ -206,6 +213,15 @@ impl BlockAccumulator {
         let block_hash = block.hash();
         let era_id = block.header().era_id();
 
+        if self
+            .highest_complete_block
+            .map_or(false, |height| block.header().height() <= height)
+        {
+            debug!(%block_hash, "ignoring outdated block");
+            self.block_acceptors.remove(block_hash);
+            return Effects::new();
+        }
+
         if let Some(parent_hash) = block.parent() {
             self.block_children.insert(*parent_hash, *block_hash);
         }
@@ -255,6 +271,9 @@ impl BlockAccumulator {
     where
         REv: Send + From<PeerBehaviorAnnouncement>,
     {
+        // TODO: Also ignore signatures for blocks older than the highest complete one?
+        // TODO: Ignore signatures for `already_handled` blocks?
+
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
 
@@ -310,7 +329,8 @@ impl BlockAccumulator {
         }
     }
 
-    pub(crate) fn register_new_local_tip(&mut self, block_header: &BlockHeader) {
+    /// Drops all block acceptors older than this block, and will ignore them in the future.
+    pub(crate) fn register_complete_block(&mut self, block_header: &BlockHeader) {
         for block_hash in self
             .block_acceptors
             .iter()
@@ -321,6 +341,11 @@ impl BlockAccumulator {
             self.block_acceptors.remove(&block_hash);
             self.already_handled.push(block_hash);
         }
+        self.highest_complete_block = self
+            .highest_complete_block
+            .into_iter()
+            .chain(iter::once(block_header.height()))
+            .max();
     }
 
     pub(crate) fn block(&self, block_hash: BlockHash) -> Option<&Block> {
