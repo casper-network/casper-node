@@ -284,7 +284,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
             MainEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
-            MainEvent::ApprovalsHashesFetcher(_) => "ExecutedBlockFetcher",
+            MainEvent::ApprovalsHashesFetcher(_) => "ApprovalsHashesFetcher",
             MainEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             MainEvent::NetworkRequest(_) => "NetworkRequest",
             MainEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -297,7 +297,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
-            MainEvent::ApprovalsHashesFetcherRequest(_) => "ExecutedBlockFetcherRequest",
+            MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
             MainEvent::DeployBufferRequest(_) => "DeployBufferRequest",
             MainEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             MainEvent::MetricsRequest(_) => "MetricsRequest",
@@ -396,7 +396,7 @@ impl Display for MainEvent {
                 write!(f, "sync leap fetcher: {}", event)
             }
             MainEvent::ApprovalsHashesFetcher(event) => {
-                write!(f, "executed block fetcher: {}", event)
+                write!(f, "approvals hashes fetcher: {}", event)
             }
             MainEvent::BlockAccumulator(event) => {
                 write!(f, "block accumulator: {}", event)
@@ -452,7 +452,7 @@ impl Display for MainEvent {
                 write!(f, "sync leap fetcher request: {}", request)
             }
             MainEvent::ApprovalsHashesFetcherRequest(request) => {
-                write!(f, "executed block fetcher request: {}", request)
+                write!(f, "approvals hashes fetcher request: {}", request)
             }
             MainEvent::AddressGossiperCrank(request) => {
                 write!(f, "begin address gossip request: {}", request)

@@ -160,7 +160,7 @@ impl Display for ApprovalsHashes {
     }
 }
 
-/// An error that can arise when validating a `ExecutedBlock`.
+/// An error that can arise when validating `ApprovalsHashes`.
 #[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
 #[non_exhaustive]
 pub(crate) enum ApprovalsHashesValidationError {

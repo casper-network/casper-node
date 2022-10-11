@@ -43,9 +43,9 @@ pub(crate) enum Message {
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(gossiper::Message<Deploy>),
-    /// `ExecutedBlock` gossiper component message.
+    /// `ApprovalsHashes` gossiper component message.
     #[from]
-    ExecutedBlockGossiper(gossiper::Message<ApprovalsHashes>),
+    ApprovalsHashesGossiper(gossiper::Message<ApprovalsHashes>),
     #[from]
     FinalitySignatureGossiper(gossiper::Message<FinalitySignature>),
     /// Address gossiper component message.
@@ -77,7 +77,7 @@ impl Payload for Message {
             Message::Consensus(_) => MessageKind::Consensus,
             Message::BlockGossiper(_) => MessageKind::BlockGossip,
             Message::DeployGossiper(_) => MessageKind::DeployGossip,
-            Message::ExecutedBlockGossiper(_) => MessageKind::BlockGossip,
+            Message::ApprovalsHashesGossiper(_) => MessageKind::BlockGossip,
             Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
@@ -110,7 +110,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::DeployGossiper(_) => false,
             Message::BlockGossiper(_) => false,
-            Message::ExecutedBlockGossiper(_) => false,
+            Message::ApprovalsHashesGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
             Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
@@ -126,7 +126,7 @@ impl Payload for Message {
             Message::Consensus(_) => weights.consensus,
             Message::BlockGossiper(_) => weights.gossip,
             Message::DeployGossiper(_) => weights.gossip,
-            Message::ExecutedBlockGossiper(_) => weights.gossip,
+            Message::ApprovalsHashesGossiper(_) => weights.gossip,
             Message::FinalitySignatureGossiper(_) => weights.gossip,
             Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
@@ -168,7 +168,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::BlockGossiper(_) => false,
             Message::DeployGossiper(_) => false,
-            Message::ExecutedBlockGossiper(_) => false,
+            Message::ApprovalsHashesGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
             // Trie requests can deadlock between syncing nodes.
@@ -260,8 +260,8 @@ impl Debug for Message {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
             Message::BlockGossiper(dg) => f.debug_tuple("BlockGossiper").field(&dg).finish(),
             Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
-            Message::ExecutedBlockGossiper(bg) => {
-                f.debug_tuple("BlockGossiper").field(&bg).finish()
+            Message::ApprovalsHashesGossiper(bg) => {
+                f.debug_tuple("ApprovalsHashesGossiper").field(&bg).finish()
             }
             Message::FinalitySignatureGossiper(sig) => f
                 .debug_tuple("FinalitySignatureGossiper")
@@ -294,7 +294,9 @@ impl Display for Message {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
             Message::BlockGossiper(deploy) => write!(f, "BlockGossiper::{}", deploy),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
-            Message::ExecutedBlockGossiper(block) => write!(f, "BlockGossiper::{}", block),
+            Message::ApprovalsHashesGossiper(block) => {
+                write!(f, "ApprovalsHashesGossiper::{}", block)
+            }
             Message::FinalitySignatureGossiper(sig) => {
                 write!(f, "FinalitySignatureGossiper::{}", sig)
             }
@@ -335,7 +337,9 @@ where
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
             Message::BlockGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
-            Message::ExecutedBlockGossiper(message) => GossiperIncoming { sender, message }.into(),
+            Message::ApprovalsHashesGossiper(message) => {
+                GossiperIncoming { sender, message }.into()
+            }
             Message::FinalitySignatureGossiper(message) => {
                 GossiperIncoming { sender, message }.into()
             }
@@ -403,7 +407,7 @@ where
                 .into(),
                 Tag::ApprovalsHashes => NetRequestIncoming {
                     sender,
-                    message: NetRequest::ExecutedBlock(serialized_id),
+                    message: NetRequest::ApprovalsHashes(serialized_id),
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetRequestIncoming {
@@ -478,7 +482,7 @@ where
                 .into(),
                 Tag::ApprovalsHashes => NetResponseIncoming {
                     sender,
-                    message: NetResponse::ExecutedBlock(serialized_item),
+                    message: NetResponse::ApprovalsHashes(serialized_item),
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetResponseIncoming {

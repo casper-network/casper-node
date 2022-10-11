@@ -53,7 +53,7 @@ pub enum Tag {
     /// correct chain, then so is a later header, which should be the most recent one according
     /// to the sender.
     SyncLeap,
-    /// A `ExecutedBlock`: a block which has been created by validators.
+    /// The hashes of the finalized deploy approvals sets.
     ApprovalsHashes,
     /// Block execution results fetched during syncing.
     BlockExecutionResults,

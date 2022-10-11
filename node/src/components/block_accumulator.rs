@@ -169,6 +169,7 @@ impl BlockAccumulator {
                 return SyncInstruction::Leap;
             }
             if height_diff <= self.attempt_execution_threshold {
+                // TODO: Make sure this child is sufficiently signed.
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
                     self.last_progress = Timestamp::now();
 

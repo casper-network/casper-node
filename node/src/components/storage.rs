@@ -741,7 +741,7 @@ impl Storage {
                 )?)
             }
             // TODO
-            NetRequest::ExecutedBlock(_) => todo!(),
+            NetRequest::ApprovalsHashes(_) => todo!(),
         }
     }
 
@@ -771,7 +771,7 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
-            StorageRequest::GetExecutedBlock {
+            StorageRequest::GetApprovalsHashes {
                 block_hash,
                 responder,
             } => responder
@@ -1437,7 +1437,7 @@ impl Storage {
         Ok(was_written)
     }
 
-    /// Writes an executed block to storage, updating indices as necessary.
+    /// Writes approvals hashes to storage.
     fn write_approvals_hashes(
         &mut self,
         txn: &mut RwTransaction,

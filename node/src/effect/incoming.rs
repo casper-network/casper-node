@@ -97,7 +97,7 @@ pub(crate) enum NetRequest {
     FinalitySignatures(Vec<u8>),
     SyncLeap(Vec<u8>),
     BlockExecutionResults(Vec<u8>),
-    ExecutedBlock(Vec<u8>),
+    ApprovalsHashes(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -119,7 +119,7 @@ impl Display for NetRequest {
             NetRequest::BlockExecutionResults(_) => {
                 f.write_str("request for block execution results")
             }
-            NetRequest::ExecutedBlock(_) => f.write_str("request for executed block"),
+            NetRequest::ApprovalsHashes(_) => f.write_str("request for approvals hashes"),
         }
     }
 }
@@ -140,7 +140,7 @@ impl NetRequest {
             NetRequest::FinalitySignatures(ref id) => id,
             NetRequest::SyncLeap(ref id) => id,
             NetRequest::BlockExecutionResults(ref id) => id,
-            NetRequest::ExecutedBlock(ref id) => id,
+            NetRequest::ApprovalsHashes(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -164,7 +164,7 @@ impl NetRequest {
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
             NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
-            NetRequest::ExecutedBlock(_) => Tag::ApprovalsHashes,
+            NetRequest::ApprovalsHashes(_) => Tag::ApprovalsHashes,
         }
     }
 }
@@ -186,7 +186,7 @@ pub(crate) enum NetResponse {
     FinalitySignatures(Arc<[u8]>),
     SyncLeap(Arc<[u8]>),
     BlockExecutionResults(Arc<[u8]>),
-    ExecutedBlock(Arc<[u8]>),
+    ApprovalsHashes(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -217,7 +217,7 @@ impl Display for NetResponse {
             NetResponse::BlockExecutionResults(_) => {
                 f.write_str("response for block execution results")
             }
-            NetResponse::ExecutedBlock(_) => f.write_str("response for executed block"),
+            NetResponse::ApprovalsHashes(_) => f.write_str("response for approvals hashes"),
         }
     }
 }

@@ -459,7 +459,7 @@ impl reactor::Reactor for Reactor {
                 other @ (NetResponse::LegacyDeploy(_)
                 | NetResponse::FinalizedApprovals(_)
                 | NetResponse::Block(_)
-                | NetResponse::ExecutedBlock(_)
+                | NetResponse::ApprovalsHashes(_)
                 | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndDeploys(_)

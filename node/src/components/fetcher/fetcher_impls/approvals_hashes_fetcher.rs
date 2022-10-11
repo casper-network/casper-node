@@ -31,7 +31,7 @@ impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<ApprovalsHashes> {
-        effect_builder.get_executed_block_from_storage(id).await
+        effect_builder.get_approvals_hashes_from_storage(id).await
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(

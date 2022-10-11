@@ -1124,8 +1124,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested `ExecutedBlock` from the linear block store.
-    pub(crate) async fn get_executed_block_from_storage(
+    /// Gets the requested `ApprovalsHashes` from storage.
+    pub(crate) async fn get_approvals_hashes_from_storage(
         self,
         block_hash: BlockHash,
     ) -> Option<ApprovalsHashes>
@@ -1133,7 +1133,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetExecutedBlock {
+            |responder| StorageRequest::GetApprovalsHashes {
                 block_hash,
                 responder,
             },

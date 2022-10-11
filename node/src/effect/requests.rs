@@ -323,15 +323,15 @@ pub(crate) enum StorageRequest {
     GetBlock {
         /// Hash of block to be retrieved.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve the executed block.
-    GetExecutedBlock {
-        /// Hash of executed block to be retrieved.
+    /// Retrieve the approvals hashes.
+    GetApprovalsHashes {
+        /// Hash of the block for which to retrieve approvals hashes.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the executed block doesn't exist
+        /// Responder to call with the result.  Returns `None` if the approvals hashes don't exist
         /// in local storage.
         responder: Responder<Option<ApprovalsHashes>>,
     },
@@ -339,7 +339,7 @@ pub(crate) enum StorageRequest {
     GetBlockAndDeploys {
         /// Hash of block to be retrieved.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<BlockAndDeploys>>,
     },
@@ -347,7 +347,7 @@ pub(crate) enum StorageRequest {
     GetBlockAndFinalizedDeploys {
         /// Hash of block to be retrieved.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<BlockAndDeploys>>,
     },
@@ -382,7 +382,7 @@ pub(crate) enum StorageRequest {
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
         only_from_available_block_range: bool,
-        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
@@ -392,7 +392,7 @@ pub(crate) enum StorageRequest {
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
         only_from_available_block_range: bool,
-        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
@@ -407,7 +407,7 @@ pub(crate) enum StorageRequest {
     GetBlockTransfers {
         /// Hash of block to get transfers of.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the transfers do not exist in
+        /// Responder to call with the result.  Returns `None` if the transfers do not exist in
         /// local storage under the block_hash provided.
         responder: Responder<Option<Vec<Transfer>>>,
     },
@@ -415,7 +415,7 @@ pub(crate) enum StorageRequest {
     PutDeploy {
         /// Deploy to store.
         deploy: Box<Deploy>,
-        /// Responder to call with the result.  Returns true if the deploy was stored on this
+        /// Responder to call with the result.  Returns `true` if the deploy was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
@@ -618,8 +618,8 @@ impl Display for StorageRequest {
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
             }
-            StorageRequest::GetExecutedBlock { block_hash, .. } => {
-                write!(formatter, "get executed block {}", block_hash)
+            StorageRequest::GetApprovalsHashes { block_hash, .. } => {
+                write!(formatter, "get approvals hashes {}", block_hash)
             }
             StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
                 write!(formatter, "get block and deploys {}", block_hash)

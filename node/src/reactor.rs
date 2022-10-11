@@ -1176,7 +1176,7 @@ where
                 serialized_item,
             )
         }
-        NetResponse::ExecutedBlock(ref serialized_item) => {
+        NetResponse::ApprovalsHashes(ref serialized_item) => {
             handle_fetch_response::<R, ApprovalsHashes>(
                 reactor,
                 effect_builder,

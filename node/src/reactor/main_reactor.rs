@@ -261,9 +261,9 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
         let approvals_hashes_gossiper = Gossiper::new_for_partial_items(
-            "executed_block_gossiper",
+            "approvals_hashes_gossiper",
             config.gossip,
-            gossiper::get_executed_block_from_storage::<ApprovalsHashes, MainEvent>,
+            gossiper::get_approvals_hashes_from_storage::<ApprovalsHashes, MainEvent>,
             registry,
         )?;
         let finality_signature_gossiper = Gossiper::new_for_partial_items(

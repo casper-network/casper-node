@@ -100,17 +100,20 @@ pub(crate) fn get_finality_signature_from_storage<
 }
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
-/// constructing a `Gossiper<ExecutedBlock>`.
-pub(crate) fn get_executed_block_from_storage<T: GossiperItem + 'static, REv: ReactorEventT<T>>(
+/// constructing a `Gossiper<ApprovalsHashes>`.
+pub(crate) fn get_approvals_hashes_from_storage<
+    T: GossiperItem + 'static,
+    REv: ReactorEventT<T>,
+>(
     effect_builder: EffectBuilder<REv>,
     block_hash: BlockHash,
     sender: NodeId,
 ) -> Effects<Event<ApprovalsHashes>> {
     effect_builder
-        .get_executed_block_from_storage(block_hash)
+        .get_approvals_hashes_from_storage(block_hash)
         .event(move |results| {
             let result = match results {
-                Some(executed_block) => Ok(executed_block),
+                Some(approvals_hashes) => Ok(approvals_hashes),
                 None => Err(String::from("block-added not found")),
             };
             Event::GetFromHolderResult {
