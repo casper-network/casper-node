@@ -1347,7 +1347,6 @@ impl Storage {
     pub(crate) fn make_executable_block(
         &self,
         block: &Block,
-        _approvals_hashes: &ApprovalsHashes,
     ) -> Result<Option<FinalizedBlockUple>, FatalStorageError> {
         // check all approvals in `approvals hashes` against stored approvals,
         // deal with any discrepancies

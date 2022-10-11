@@ -38,12 +38,6 @@ impl EraMismatchError {
 
 #[derive(Error, Debug)]
 pub(super) enum InvalidGossipError {
-    #[error("received cryptographically invalid approvals hashes for: {block_hash} from: {peer} with error: {validation_error}")]
-    ApprovalsHashes {
-        block_hash: BlockHash,
-        peer: NodeId,
-        validation_error: ApprovalsHashesValidationError,
-    },
     #[error("received cryptographically invalid block for: {block_hash} from: {peer} with error: {validation_error}")]
     Block {
         block_hash: BlockHash,
@@ -61,8 +55,7 @@ pub(super) enum InvalidGossipError {
 impl InvalidGossipError {
     pub(super) fn peer(&self) -> NodeId {
         match self {
-            InvalidGossipError::ApprovalsHashes { peer, .. }
-            | InvalidGossipError::FinalitySignature { peer, .. }
+            InvalidGossipError::FinalitySignature { peer, .. }
             | InvalidGossipError::Block { peer, .. } => *peer,
         }
     }

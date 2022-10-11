@@ -32,7 +32,6 @@ pub(super) enum CanExecuteOutcome {
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     block: Option<Block>,
-    approvals_hashes: Option<ApprovalsHashes>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
     era_validator_weights: Option<EraValidatorWeights>,
     peers: Vec<NodeId>,
@@ -45,7 +44,6 @@ impl BlockAcceptor {
             block_hash,
             era_validator_weights: None,
             block: None,
-            approvals_hashes: None,
             signatures: BTreeMap::new(),
             peers,
             can_execute: false,
@@ -61,7 +59,6 @@ impl BlockAcceptor {
             block_hash,
             era_validator_weights: Some(era_validator_weights),
             block: None,
-            approvals_hashes: None,
             signatures: BTreeMap::new(),
             peers,
             can_execute: false,
@@ -100,7 +97,6 @@ impl BlockAcceptor {
             block_hash,
             era_validator_weights: Some(era_validator_weights),
             block: self.block,
-            approvals_hashes: self.approvals_hashes,
             signatures,
             peers,
             can_execute: false,
@@ -117,14 +113,12 @@ impl BlockAcceptor {
             });
         }
 
-        let era_id_and_block_hash = self.maybe_era_id_and_block_hash();
-
-        if let Some((era_id, block_hash)) = era_id_and_block_hash {
+        if let Some(era_id) = self.era_id() {
             let evw_era_id = era_validator_weights.era_id();
             if evw_era_id != era_id {
                 return Err(AcceptorError::EraMismatch(
                     EraMismatchError::EraValidatorWeights {
-                        block_hash,
+                        block_hash: self.block_hash,
                         expected: era_id,
                         actual: evw_era_id,
                     },
@@ -134,19 +128,6 @@ impl BlockAcceptor {
         self.era_validator_weights = Some(era_validator_weights);
         self.remove_bogus_validators();
         Ok(())
-    }
-
-    fn maybe_era_id_and_block_hash(&self) -> Option<(EraId, BlockHash)> {
-        match (&self.approvals_hashes, &self.block) {
-            (Some(approvals_hashes), Some(_)) | (Some(approvals_hashes), None) => {
-                Some((approvals_hashes.era_id(), *approvals_hashes.block_hash()))
-            }
-            (None, Some(block)) => {
-                let era_id = block.header().era_id();
-                Some((era_id, *block.hash()))
-            }
-            (None, None) => None,
-        }
     }
 
     pub(super) fn register_block(
@@ -162,6 +143,8 @@ impl BlockAcceptor {
             });
         }
 
+        // TODO: Remove any finality signatures with the wrong era.
+
         if let Err(error) = block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
@@ -174,62 +157,11 @@ impl BlockAcceptor {
             )));
         }
 
-        if let Some(approvals_hashes) = self.approvals_hashes.clone() {
-            // let state_root_hash = block.state_root_hash();
-            // let era_id = block.header().era_id();
-
-            if let Err(error) = approvals_hashes.validate(block) {
-                warn!(%error, "received invalid approvals hashes");
-                self.approvals_hashes = None;
-                return Err(AcceptorError::InvalidGossip(Box::new(
-                    InvalidGossipError::ApprovalsHashes {
-                        block_hash: *approvals_hashes.block_hash(),
-                        peer,
-                        validation_error: error,
-                    },
-                )));
-            }
-        }
-
         self.register_peer(peer);
 
         if self.block.is_none() {
             self.block = Some(block.clone());
             self.remove_bogus_validators();
-        }
-        Ok(())
-    }
-
-    pub(super) fn register_approvals_hashes(
-        &mut self,
-        approvals_hashes: &ApprovalsHashes,
-        peer: NodeId,
-    ) -> Result<(), AcceptorError> {
-        if self.block_hash() != *approvals_hashes.block_hash() {
-            return Err(AcceptorError::BlockHashMismatch {
-                expected: self.block_hash(),
-                actual: *approvals_hashes.block_hash(),
-                peer,
-            });
-        }
-
-        if let Some(block) = &self.block {
-            if let Err(error) = approvals_hashes.validate(block) {
-                warn!(%error, "received invalid approvals hashes");
-                return Err(AcceptorError::InvalidGossip(Box::new(
-                    InvalidGossipError::ApprovalsHashes {
-                        block_hash: *approvals_hashes.block_hash(),
-                        peer,
-                        validation_error: error,
-                    },
-                )));
-            }
-        }
-
-        self.register_peer(peer);
-
-        if self.approvals_hashes.is_none() {
-            self.approvals_hashes = Some(approvals_hashes.clone());
         }
         Ok(())
     }
@@ -284,7 +216,6 @@ impl BlockAcceptor {
         }
 
         let missing_elements = self.block.is_none()
-            || self.approvals_hashes.is_none()
             || self.era_validator_weights.is_none()
             || self.signatures.is_empty();
 
@@ -302,9 +233,11 @@ impl BlockAcceptor {
     }
 
     pub(super) fn era_id(&self) -> Option<EraId> {
-        let era_id_and_block_hash = self.maybe_era_id_and_block_hash();
-        if let Some((era_id, _)) = era_id_and_block_hash {
-            return Some(era_id);
+        if let Some(block) = &self.block {
+            return Some(block.header().era_id());
+        }
+        if let Some(finality_signature) = self.signatures.values().next() {
+            return Some(finality_signature.era_id);
         }
         if let Some(evw) = &self.era_validator_weights {
             return Some(evw.era_id());
@@ -327,29 +260,19 @@ impl BlockAcceptor {
 
     pub(super) fn executable_block_and_signatures(
         &mut self,
-    ) -> Option<(Block, ApprovalsHashes, Vec<FinalitySignature>)> {
+    ) -> Option<(Block, Vec<FinalitySignature>)> {
         if self.can_execute() == CanExecuteOutcome::No {
             return None;
         }
 
-        if let (Some(block), Some(approvals_hashes)) =
-            (self.block.clone(), self.approvals_hashes.clone())
-        {
-            return Some((
-                block,
-                approvals_hashes,
-                self.signatures.values().cloned().collect_vec(),
-            ));
+        if let Some(block) = self.block.clone() {
+            return Some((block, self.signatures.values().cloned().collect_vec()));
         }
         None
     }
 
-    pub(super) fn block_and_approvals_hashes(&self) -> Option<(&Block, &ApprovalsHashes)> {
-        if let (Some(ref block), Some(ref approvals_hashes)) = (&self.block, &self.approvals_hashes)
-        {
-            return Some((block, approvals_hashes));
-        }
-        None
+    pub(super) fn block(&self) -> Option<&Block> {
+        self.block.as_ref()
     }
 
     pub(super) fn block_hash(&self) -> BlockHash {

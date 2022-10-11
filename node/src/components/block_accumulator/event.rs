@@ -17,10 +17,6 @@ pub(crate) enum Event {
         block: Box<Block>,
         sender: NodeId,
     },
-    ReceivedApprovalsHashes {
-        approvals_hashes: Box<ApprovalsHashes>,
-        sender: NodeId,
-    },
     ReceivedFinalitySignature {
         finality_signature: Box<FinalitySignature>,
         sender: NodeId,
@@ -51,12 +47,6 @@ impl Display for Event {
             }
             Event::UpdatedValidatorMatrix { era_id } => {
                 write!(f, "validator matrix update for era {}", era_id)
-            }
-            Event::ReceivedApprovalsHashes {
-                approvals_hashes: _,
-                sender,
-            } => {
-                write!(f, "approvals hashes update from {}", sender)
             }
         }
     }

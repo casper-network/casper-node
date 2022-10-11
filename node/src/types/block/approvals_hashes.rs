@@ -26,6 +26,7 @@ pub(crate) struct ApprovalsHashes {
     // Hash of the block that contains deploys that are relevant to the approvals.
     block_hash: BlockHash,
     // Era id of the block that contains deploys that are relevant to the approvals.
+    // TODO: Is this needed at all?
     era_id: EraId,
     /// The set of all deploys' finalized approvals' hashes.
     approvals_hashes: Vec<ApprovalsHash>,
@@ -124,10 +125,6 @@ impl ApprovalsHashes {
 
     pub(crate) fn block_hash(&self) -> &BlockHash {
         &self.block_hash
-    }
-
-    pub(crate) fn era_id(&self) -> EraId {
-        self.era_id
     }
 }
 
