@@ -4,7 +4,7 @@ mod error;
 mod event;
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     iter,
 };
 
@@ -71,7 +71,7 @@ impl StartingWith {
 /// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockAccumulator {
-    already_handled: Vec<BlockHash>,
+    already_handled: HashSet<BlockHash>, // todo!() - do we need this at all?
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
     attempt_execution_threshold: u64,
@@ -109,7 +109,7 @@ impl BlockAccumulator {
     }
 
     #[allow(unused)] // todo!
-    pub(crate) fn flush_filter(&mut self) {
+    pub(crate) fn flush_already_handled(&mut self) {
         self.already_handled.clear();
     }
 
@@ -340,7 +340,7 @@ impl BlockAccumulator {
             .collect_vec()
         {
             self.block_acceptors.remove(&block_hash);
-            self.already_handled.push(block_hash);
+            self.already_handled.insert(block_hash);
         }
         self.highest_complete_block = self
             .highest_complete_block
