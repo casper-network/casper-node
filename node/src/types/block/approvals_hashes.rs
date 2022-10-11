@@ -26,7 +26,7 @@ pub(crate) struct ApprovalsHashes {
     // Hash of the block that contains deploys that are relevant to the approvals.
     block_hash: BlockHash,
     // Era id of the block that contains deploys that are relevant to the approvals.
-    // TODO: Is this needed at all?
+    // todo!(): Is this needed at all?
     era_id: EraId,
     /// The set of all deploys' finalized approvals' hashes.
     approvals_hashes: Vec<ApprovalsHash>,

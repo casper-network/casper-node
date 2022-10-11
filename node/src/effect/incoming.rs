@@ -85,7 +85,6 @@ pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignatur
 pub(crate) enum NetRequest {
     Deploy(Vec<u8>),
     LegacyDeploy(Vec<u8>),
-    BlockDeployApprovals(Vec<u8>),
     Block(Vec<u8>),
     // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     FinalitySignature(Vec<u8>),
@@ -105,7 +104,6 @@ impl Display for NetRequest {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
             NetRequest::LegacyDeploy(_) => f.write_str("request for legacy deploy"),
-            NetRequest::BlockDeployApprovals(_) => f.write_str("request for finalized approvals"),
             NetRequest::Block(_) => f.write_str("request for block"),
             NetRequest::FinalitySignature(_) => {
                 f.write_str("request for gossiped finality signature")
@@ -130,7 +128,6 @@ impl NetRequest {
         let id = match self {
             NetRequest::Deploy(ref id) => id,
             NetRequest::LegacyDeploy(ref id) => id,
-            NetRequest::BlockDeployApprovals(ref id) => id,
             NetRequest::Block(ref id) => id,
             NetRequest::FinalitySignature(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
@@ -154,7 +151,6 @@ impl NetRequest {
         match self {
             NetRequest::Deploy(_) => Tag::Deploy,
             NetRequest::LegacyDeploy(_) => Tag::LegacyDeploy,
-            NetRequest::BlockDeployApprovals(_) => Tag::BlockDeployApprovals,
             NetRequest::Block(_) => Tag::Block,
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
             NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
@@ -176,7 +172,6 @@ impl NetRequest {
 pub(crate) enum NetResponse {
     Deploy(Arc<[u8]>),
     LegacyDeploy(Arc<[u8]>),
-    FinalizedApprovals(Arc<[u8]>),
     Block(Arc<[u8]>),
     GossipedAddress(Arc<[u8]>),
     BlockHeaderByHash(Arc<[u8]>),
@@ -205,7 +200,6 @@ impl Display for NetResponse {
         match self {
             NetResponse::Deploy(_) => f.write_str("response, deploy"),
             NetResponse::LegacyDeploy(_) => f.write_str("response, legacy deploy"),
-            NetResponse::FinalizedApprovals(_) => f.write_str("response, finalized approvals"),
             NetResponse::Block(_) => f.write_str("response, block"),
             NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),
             NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),

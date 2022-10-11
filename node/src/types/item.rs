@@ -31,8 +31,6 @@ pub enum Tag {
     Deploy,
     /// A legacy deploy identified by its hash alone.
     LegacyDeploy,
-    /// Finalized approvals for a deploy.
-    BlockDeployApprovals,
     /// A block.
     Block,
     /// A gossiped public listening address.

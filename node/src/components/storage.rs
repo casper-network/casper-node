@@ -88,8 +88,8 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
-        BlockDeployApprovals, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
-        BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
         BlockHeadersBatchId, BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployId,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights,
         FetcherItem, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy,
@@ -596,28 +596,6 @@ impl Storage {
                 let opt_item = self
                     .get_legacy_deploy(id)
                     .map_err(FatalStorageError::from)?;
-                let fetch_response = FetchResponse::from_opt(id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
-            NetRequest::BlockDeployApprovals(ref serialized_id) => {
-                let id = decode_item_id::<BlockDeployApprovals>(serialized_id)?;
-
-                let opt_item = self
-                    .read_block_and_finalized_deploys_by_hash(id)
-                    .map_err(FatalStorageError::from)?
-                    .map(|block_and_deploys| {
-                        let approvals = block_and_deploys.deploys.into_iter().map(|deploy| {
-                            let deploy_approvals = deploy.approvals().clone();
-                            (*deploy.hash(), FinalizedApprovals::new(deploy_approvals))
-                        });
-                        BlockDeployApprovals::new(id, approvals.collect())
-                    });
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(

@@ -42,8 +42,8 @@ use crate::{
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
         Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployId,
-        DeployOrTransferHash, EmptyValidationMetadata, FetcherItem, FinalizedApprovals,
-        GossiperItem, Item, JsonBlock, JsonBlockHeader, Tag, ValueOrChunk,
+        DeployOrTransferHash, EmptyValidationMetadata, FetcherItem, GossiperItem, Item, JsonBlock,
+        JsonBlockHeader, Tag, ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
@@ -2656,80 +2656,6 @@ impl Display for FinalitySignatureId {
             f,
             "finality signature id for block hash {}, from {}",
             self.block_hash, self.public_key
-        )
-    }
-}
-
-/// A set of finalized approval sets for a block.
-#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
-pub(crate) struct BlockDeployApprovals {
-    block_hash: BlockHash,
-    approvals: Vec<(DeployHash, FinalizedApprovals)>,
-}
-
-impl BlockDeployApprovals {
-    /// Creates a new instance of `BlockDeployApprovals`.
-    pub(crate) fn new(
-        block_hash: BlockHash,
-        approvals: Vec<(DeployHash, FinalizedApprovals)>,
-    ) -> Self {
-        Self {
-            block_hash,
-            approvals,
-        }
-    }
-
-    #[allow(unused)] // TODO: remove when used
-    /// Returns the inner set of approvals.
-    pub(crate) fn approvals(&self) -> &Vec<(DeployHash, FinalizedApprovals)> {
-        &self.approvals
-    }
-}
-
-/// Error type containing the error message passed from `crypto::verify`
-#[derive(Debug, Error)]
-#[error("invalid approval from {signer}: {error}")]
-pub struct BlockDeployApprovalsVerificationError {
-    signer: PublicKey,
-    error: String,
-}
-
-impl Item for BlockDeployApprovals {
-    type Id = BlockHash;
-
-    const TAG: Tag = Tag::BlockDeployApprovals;
-
-    fn id(&self) -> Self::Id {
-        self.block_hash
-    }
-}
-
-impl FetcherItem for BlockDeployApprovals {
-    type ValidationError = BlockDeployApprovalsVerificationError;
-    type ValidationMetadata = EmptyValidationMetadata; // TODO: Optional approvals root hash?
-
-    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        for (deploy_hash, approval_set) in &self.approvals {
-            for approval in approval_set.inner() {
-                crypto::verify(deploy_hash, approval.signature(), approval.signer()).map_err(
-                    |err| BlockDeployApprovalsVerificationError {
-                        signer: approval.signer().clone(),
-                        error: format!("{}", err),
-                    },
-                )?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Display for BlockDeployApprovals {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "finalized approvals for block {}: {}",
-            self.block_hash,
-            self.approvals.len() // TODO: DisplayIter::new(self.approvals.iter())?
         )
     }
 }

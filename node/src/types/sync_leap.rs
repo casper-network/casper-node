@@ -28,7 +28,7 @@ use crate::{
 pub(crate) struct SyncLeap {
     /// The header of the trusted block specified by hash by the requester.
     pub trusted_block_header: BlockHeader,
-    // TODO: Validate the order or remove the comments?
+    // todo!(): Validate the order or remove the comments?
     /// The block headers of the trusted block's ancestors, back to the most recent switch block.
     /// Sorted from highest to lowest.
     pub trusted_ancestor_headers: Vec<BlockHeader>,
@@ -155,8 +155,8 @@ impl FetcherItem for SyncLeap {
         &self,
         finality_threshold_fraction: &FinalityThresholdFraction,
     ) -> Result<(), Self::ValidationError> {
-        // TODO: Possibly check the size of the collections.
-        // TODO: Put protocol version in validation metadata; only check for latest block?
+        // todo!(): Possibly check the size of the collections.
+        // todo!(): Put protocol version in validation metadata; only check for latest block?
 
         if self.trusted_ancestor_headers.is_empty() {
             return Err(SyncLeapValidationError::MissingTrustedAncestors);

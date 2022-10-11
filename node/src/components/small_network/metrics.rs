@@ -526,10 +526,6 @@ impl Metrics {
                     metrics.out_bytes_deploy_transfer.inc_by(size);
                     metrics.out_count_deploy_transfer.inc();
                 }
-                MessageKind::FinalizedApprovalsTransfer => {
-                    metrics.out_bytes_finalized_approvals_transfer.inc_by(size);
-                    metrics.out_count_finalized_approvals_transfer.inc();
-                }
                 MessageKind::BlockTransfer => {
                     metrics.out_bytes_block_transfer.inc_by(size);
                     metrics.out_count_block_transfer.inc();
@@ -579,10 +575,6 @@ impl Metrics {
                 MessageKind::DeployTransfer => {
                     metrics.in_bytes_deploy_transfer.inc_by(size);
                     metrics.in_count_deploy_transfer.inc();
-                }
-                MessageKind::FinalizedApprovalsTransfer => {
-                    metrics.in_bytes_finalized_approvals_transfer.inc_by(size);
-                    metrics.in_count_finalized_approvals_transfer.inc();
                 }
                 MessageKind::BlockTransfer => {
                     metrics.in_bytes_block_transfer.inc_by(size);

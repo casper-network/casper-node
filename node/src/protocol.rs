@@ -83,7 +83,6 @@ impl Payload for Message {
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
                 match tag {
                     Tag::LegacyDeploy | Tag::Deploy => MessageKind::DeployTransfer,
-                    Tag::BlockDeployApprovals => MessageKind::FinalizedApprovalsTransfer,
                     Tag::Block => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
@@ -131,7 +130,6 @@ impl Payload for Message {
             Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
                 Tag::LegacyDeploy | Tag::Deploy => weights.deploy_requests,
-                Tag::BlockDeployApprovals => weights.finalized_approvals_requests,
                 Tag::Block => weights.block_requests,
                 Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
@@ -146,7 +144,6 @@ impl Payload for Message {
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::LegacyDeploy | Tag::Deploy => weights.deploy_responses,
-                Tag::BlockDeployApprovals => weights.finalized_approvals_responses,
                 Tag::Block => weights.block_responses,
                 Tag::FinalitySignature => weights.gossip,
                 Tag::GossipedAddress => weights.gossip,
@@ -355,11 +352,6 @@ where
                     message: NetRequest::Deploy(serialized_id),
                 }
                 .into(),
-                Tag::BlockDeployApprovals => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockDeployApprovals(serialized_id),
-                }
-                .into(),
                 Tag::Block => NetRequestIncoming {
                     sender,
                     message: NetRequest::Block(serialized_id),
@@ -428,11 +420,6 @@ where
                 Tag::Deploy => NetResponseIncoming {
                     sender,
                     message: NetResponse::Deploy(serialized_item),
-                }
-                .into(),
-                Tag::BlockDeployApprovals => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::FinalizedApprovals(serialized_item),
                 }
                 .into(),
                 Tag::Block => NetResponseIncoming {

@@ -1127,16 +1127,6 @@ where
             // serialized_item)
             Effects::new()
         }
-        NetResponse::FinalizedApprovals(ref serialized_item) => {
-            // handle_fetch_response::<R, BlockDeployApprovals>(
-            //     reactor,
-            //     effect_builder,
-            //     rng,
-            //     sender,
-            //     serialized_item,
-            // )
-            Effects::new()
-        }
         NetResponse::BlockAndDeploys(ref serialized_item) => {
             // handle_fetch_response::<R, BlockAndDeploys>(
             //     reactor,

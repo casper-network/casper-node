@@ -7,10 +7,9 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        ApprovalsHashes, Block, BlockAndDeploys, BlockDeployApprovals,
-        BlockExecutionResultsOrChunk, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockSignatures, BlockWithMetadata, Chainspec, Deploy, FinalitySignature, LegacyDeploy,
-        SyncLeap, TrieOrChunk,
+        ApprovalsHashes, Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
+        BlockHeaderWithMetadata, BlockHeadersBatch, BlockSignatures, BlockWithMetadata, Chainspec,
+        Deploy, FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
     FetcherConfig, NodeRng,
 };
