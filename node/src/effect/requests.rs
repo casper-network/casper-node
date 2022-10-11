@@ -50,12 +50,13 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem,
-        Item, LegacyDeploy, NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata,
+        Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
+        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -295,6 +296,11 @@ pub(crate) enum StorageRequest {
         block: Box<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
+        responder: Responder<bool>,
+    },
+    /// Store the finalized approvals.
+    PutFinalizedApprovals {
+        approvals: BlockDeployApprovals,
         responder: Responder<bool>,
     },
     /// Store the approvals hashes.
@@ -775,6 +781,10 @@ impl Display for StorageRequest {
                     approvals_hashes
                 )
             }
+            StorageRequest::PutFinalizedApprovals {
+                approvals,
+                responder,
+            } => write!(formatter, "put finalized approvals"),
         }
     }
 }

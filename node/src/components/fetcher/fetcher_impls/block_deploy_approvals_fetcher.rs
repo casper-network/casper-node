@@ -1,6 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
+use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
@@ -43,9 +44,14 @@ impl ItemFetcher<BlockDeployApprovals> for Fetcher<BlockDeployApprovals> {
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
-        _effect_builder: EffectBuilder<REv>,
-        _item: BlockDeployApprovals,
+        effect_builder: EffectBuilder<REv>,
+        item: BlockDeployApprovals,
     ) -> StoringState<'a, BlockDeployApprovals> {
-        todo!()
+        StoringState::Enqueued(
+            effect_builder
+                .put_finalized_approvals(item)
+                .map(|_| ())
+                .boxed(),
+        )
     }
 }

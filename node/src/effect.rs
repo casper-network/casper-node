@@ -152,12 +152,13 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem,
-        LegacyDeploy, NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
+        BlockAndDeploys, BlockDeployApprovals, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeadersBatch, BlockHeadersBatchId, BlockPayload, BlockSignatures, BlockWithMetadata,
+        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
+        NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1172,6 +1173,20 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndFinalizedDeploys {
                 block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn put_finalized_approvals(self, approvals: BlockDeployApprovals) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutFinalizedApprovals {
+                approvals,
                 responder,
             },
             QueueKind::Regular,
