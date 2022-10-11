@@ -681,7 +681,12 @@ impl BlockAcquisitionState {
                         peer_list,
                         rng,
                     )),
-                    Some(Either::Left(_)) => todo!(),
+                    Some(Either::Left(deploy_hash)) => Ok(BlockAcquisitionAction::deploy_by_hash(
+                        *block.hash(),
+                        deploy_hash,
+                        peer_list,
+                        rng,
+                    )),
                     None => Ok(BlockAcquisitionAction::finality_signatures(
                         peer_list,
                         rng,
