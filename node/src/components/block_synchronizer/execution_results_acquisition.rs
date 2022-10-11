@@ -39,7 +39,7 @@ pub(crate) enum Error {
     InvalidAttemptToApplyChecksum {
         block_hash: BlockHash,
     },
-    InvalidAttemptToApployDeployHashes {
+    InvalidAttemptToApplyDeployHashes {
         block_hash: BlockHash,
     },
     AttemptToApplyDataAfterCompleted {
@@ -112,7 +112,7 @@ impl Display for Error {
                     block_hash
                 )
             }
-            Error::InvalidAttemptToApployDeployHashes { block_hash } => {
+            Error::InvalidAttemptToApplyDeployHashes { block_hash } => {
                 write!(
                     f,
                     "attempt to apply deploy_hashes in a state other than Complete, block_hash: {}",
@@ -294,7 +294,7 @@ impl ExecutionResultsAcquisition {
             | ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
             | ExecutionResultsAcquisition::Mapped { block_hash, .. } => {
-                Err(Error::InvalidAttemptToApployDeployHashes { block_hash })
+                Err(Error::InvalidAttemptToApplyDeployHashes { block_hash })
             }
             ExecutionResultsAcquisition::Complete {
                 block_hash,

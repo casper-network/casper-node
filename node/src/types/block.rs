@@ -1970,7 +1970,7 @@ impl Item for BlockExecutionResultsOrChunk {
                     block_hash: *block_hash,
                 },
             },
-            // We can't calculate the correcntess of the data against the merkle root of the block
+            // We can't calculate the correctness of the data against the merkle root of the block
             // effects as they weren't part of the request's ID.
             BlockExecutionResultsOrChunk::Contemporary { block_hash, value } => match value {
                 ValueOrChunk::Value(_) => BlockExecutionResultsOrChunkId::Contemporary {
@@ -1990,7 +1990,7 @@ impl Item for BlockExecutionResultsOrChunk {
 
 impl FetcherItem for BlockExecutionResultsOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = EmptyValidationMetadata;
+    type ValidationMetadata = EmptyValidationMetadata; // todo!() - could be `Option<Digest>`?
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         match self {
