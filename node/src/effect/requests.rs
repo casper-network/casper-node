@@ -298,11 +298,6 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
-    /// Store the finalized approvals.
-    PutFinalizedApprovals {
-        approvals: BlockDeployApprovals,
-        responder: Responder<bool>,
-    },
     /// Store the approvals hashes.
     PutApprovalsHashes {
         /// Approvals hashes to store.
@@ -781,10 +776,6 @@ impl Display for StorageRequest {
                     approvals_hashes
                 )
             }
-            StorageRequest::PutFinalizedApprovals {
-                approvals,
-                responder,
-            } => write!(formatter, "put finalized approvals"),
         }
     }
 }

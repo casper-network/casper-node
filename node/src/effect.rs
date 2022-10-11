@@ -1180,20 +1180,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn put_finalized_approvals(self, approvals: BlockDeployApprovals) -> bool
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::PutFinalizedApprovals {
-                approvals,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested block header from the linear block store.
     pub(crate) async fn get_block_header_from_storage(
         self,

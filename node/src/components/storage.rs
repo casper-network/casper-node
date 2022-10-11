@@ -1260,12 +1260,6 @@ impl Storage {
             } => responder
                 .respond(self.put_executed_block(&block, &approvals_hashes, execution_results)?)
                 .ignore(),
-            StorageRequest::PutFinalizedApprovals {
-                approvals,
-                responder,
-            } => responder
-                .respond(self.put_finalized_approvals(&approvals)?)
-                .ignore(),
         })
     }
 
@@ -2325,17 +2319,6 @@ impl Storage {
             }
         }
         Ok(Some(result))
-    }
-
-    fn put_finalized_approvals(
-        &self,
-        finalized_approvals: &BlockDeployApprovals,
-    ) -> Result<bool, FatalStorageError> {
-        // todo!() - put all approvals in single transaction
-        for (deploy_hash, approvals) in finalized_approvals.approvals() {
-            self.store_finalized_approvals(deploy_hash, approvals)?;
-        }
-        Ok(true)
     }
 
     /// Stores a set of finalized approvals.
