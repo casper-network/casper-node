@@ -60,13 +60,8 @@ pub enum ChunkWithProofVerificationError {
         chunk_with_proof: ChunkWithProof,
     },
     /// Unexpected Merkle root hash.
-    #[error("Merkle proof has an unexpected root hash: {actual:?} instead of {expected:?}")]
-    UnexpectedRootHash {
-        /// Expected Merkle root hash.
-        expected: Digest,
-        /// Merkle root hash the proof refers to.
-        actual: Digest,
-    },
+    #[error("Merkle proof has an unexpected root hash")]
+    UnexpectedRootHash,
     /// Bytesrepr error.
     #[error("Bytesrepr error computing chunkable hash: {0}")]
     Bytesrepr(bytesrepr::Error),

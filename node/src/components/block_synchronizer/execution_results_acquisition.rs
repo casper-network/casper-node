@@ -248,10 +248,8 @@ impl ExecutionResultsAcquisition {
         self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<Self, Error> {
-        let (block_hash, value) = match block_execution_results_or_chunk {
-            BlockExecutionResultsOrChunk::Legacy { block_hash, value } => (block_hash, value),
-            BlockExecutionResultsOrChunk::Contemporary { block_hash, value } => (block_hash, value),
-        };
+        let block_hash = *block_execution_results_or_chunk.block_hash();
+        let value = block_execution_results_or_chunk.into_value();
 
         let expected_block_hash = self.block_hash();
         if expected_block_hash != block_hash {
@@ -365,38 +363,18 @@ impl ExecutionResultsAcquisition {
             ExecutionResultsAcquisition::Pending {
                 block_hash,
                 checksum,
-            } => match checksum {
-                ExecutionResultsChecksum::Uncheckable => Some((
-                    BlockExecutionResultsOrChunkId::legacy(*block_hash),
-                    *checksum,
-                )),
-                ExecutionResultsChecksum::Checkable(_) => {
-                    Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum))
-                }
-            },
+            } => Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum)),
+            // todo!() Even for pre-1.5 blocks we need to make sure the chunks fit together,
+            // i.e. they have the same root hash.
             ExecutionResultsAcquisition::Incomplete {
                 block_hash,
                 checksum,
                 next,
                 ..
-            } => match checksum {
-                // todo!() Even for pre-1.5 blocks we need to make sure the chunks fit together,
-                // i.e. they have the same root hash.
-                ExecutionResultsChecksum::Uncheckable => Some((
-                    BlockExecutionResultsOrChunkId::Legacy {
-                        block_hash: *block_hash,
-                        chunk_index: *next,
-                    },
-                    *checksum,
-                )),
-                ExecutionResultsChecksum::Checkable(_) => Some((
-                    BlockExecutionResultsOrChunkId::Contemporary {
-                        block_hash: *block_hash,
-                        chunk_index: *next,
-                    },
-                    *checksum,
-                )),
-            },
+            } => Some((
+                BlockExecutionResultsOrChunkId::new(*block_hash).next_chunk(*next),
+                *checksum,
+            )),
         }
     }
 }
