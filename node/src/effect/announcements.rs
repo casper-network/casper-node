@@ -9,14 +9,10 @@ use std::{
     fs::File,
 };
 
-use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_hashing::Digest;
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, StoredValue, Timestamp, U512,
-};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp, U512};
 
 use crate::{
     components::{
@@ -335,7 +331,7 @@ impl Display for LinearChainAnnouncement {
         match self {
             LinearChainAnnouncement::BlockAdded {
                 block,
-                approvals_hashes,
+                approvals_hashes: _,
             } => {
                 write!(f, "block added {}", block.hash())
             }

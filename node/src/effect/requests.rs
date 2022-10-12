@@ -35,27 +35,24 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_synchronizer::{GlobalStateSynchronizerError, NeedNext, TrieAccumulatorError},
+        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
         consensus::{BlockContext, ClContext, ProposedBlock, ValidatorChange},
-        contract_runtime::{
-            BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
-            EraValidatorsRequest, ExecutionPreState,
-        },
+        contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         fetcher::FetchResult,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::SpeculativeExecutionState,
+    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata,
-        Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, Item, LegacyDeploy,
-        NodeId, NodeState, StatusFeed, SyncLeap, TrieOrChunk, TrieOrChunkId,
+        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalitySignatureId,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy, NodeId, StatusFeed,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -578,14 +575,6 @@ pub(crate) enum StorageRequest {
         /// Responder, responded to once the approvals are written.
         responder: Responder<()>,
     },
-    /// Check if storage has data needed for proposing blocks (ie. all the deploys reaching max-TTL
-    /// into the past).
-    HasDataNeededForProposingBlocks {
-        /// The last switch block before the current era.
-        block_header: Box<BlockHeader>,
-        /// Responder to call with the response.
-        responder: Responder<bool>,
-    },
 }
 
 impl Display for StorageRequest {
@@ -734,25 +723,8 @@ impl Display for StorageRequest {
             StorageRequest::GetDeployHashesForBlock { block_hash, .. } => {
                 write!(formatter, "get deploy hashes for block {}", block_hash)
             }
-            StorageRequest::HasDataNeededForProposingBlocks { block_header, .. } => {
-                write!(
-                    formatter,
-                    "has data needed for proposing blocks: {}",
-                    block_header
-                )
-            }
-            StorageRequest::PutExecutedBlock {
-                block,
-                approvals_hashes,
-                execution_results,
-                responder,
-            } => {
-                write!(
-                    formatter,
-                    "put executed block {} and approvals hashes {}",
-                    block.hash(),
-                    approvals_hashes
-                )
+            StorageRequest::PutExecutedBlock { block, .. } => {
+                write!(formatter, "put executed block {}", block.hash(),)
             }
         }
     }

@@ -1194,12 +1194,6 @@ impl Storage {
             } => responder
                 .respond(self.read_block_and_finalized_deploys_by_hash(block_hash)?)
                 .ignore(),
-            StorageRequest::HasDataNeededForProposingBlocks {
-                block_header,
-                responder,
-            } => responder
-                .respond(self.has_data_needed_for_proposing_blocks(&block_header)?)
-                .ignore(),
             StorageRequest::GetDeployHashesForBlock {
                 block_hash,
                 responder,
@@ -2533,38 +2527,6 @@ impl Storage {
             }
         };
         Ok(Some(request.response(value_or_chunk)))
-    }
-
-    fn has_data_needed_for_proposing_blocks(
-        &self,
-        switch_block_header: &BlockHeader,
-    ) -> Result<bool, FatalStorageError> {
-        let highest_sequence = match self.completed_blocks.highest_sequence() {
-            Some(seq) => seq,
-            None => {
-                return Ok(false);
-            }
-        };
-        if !highest_sequence.contains(switch_block_header.height()) {
-            return Ok(false);
-        }
-        // If we have everything back to genesis, we have enough, even if the genesis timestamp is
-        // too recent.
-        if highest_sequence.contains(0) {
-            return Ok(true);
-        }
-        let lowest_header = match self.read_block_header_by_height(highest_sequence.low())? {
-            Some(header) => header,
-            None => {
-                error!("we don't have a header listed in a complete blocks sequence");
-                return Ok(false);
-            }
-        };
-
-        Ok(switch_block_header
-            .timestamp()
-            .saturating_diff(lowest_header.timestamp())
-            > self.max_ttl)
     }
 }
 

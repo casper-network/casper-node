@@ -74,11 +74,6 @@ impl Sequence {
     pub(crate) fn low(&self) -> u64 {
         self.low
     }
-
-    /// Returns `true` if a sequence contains the value.
-    pub(super) fn contains(&self, value: u64) -> bool {
-        value >= self.low && value <= self.high
-    }
 }
 
 /// Represents a collection of disjoint sequences of `u64`s.
@@ -345,22 +340,6 @@ mod tests {
 
         assert_eq!(three.low, 1);
         assert_eq!(three.high, 2);
-    }
-
-    #[test]
-    fn check_contains() {
-        // Single item sequence.
-        let seq = Sequence::new(1, 1);
-        assert!(!seq.contains(0));
-        assert!(seq.contains(1));
-        assert!(!seq.contains(2));
-
-        // Multiple item sequence.
-        let seq = Sequence::new(1, 2);
-        assert!(!seq.contains(0));
-        assert!(seq.contains(1));
-        assert!(seq.contains(2));
-        assert!(!seq.contains(3));
     }
 
     #[test]

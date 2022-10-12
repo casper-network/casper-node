@@ -128,36 +128,31 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
-    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue,
-    TimeDiff, Timestamp, Transfer, URef, U512,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transfer, URef, U512,
 };
 
 use crate::{
     components::{
-        block_accumulator::BlockAccumulator,
-        block_synchronizer,
         block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
-        consensus::{BlockContext, ClContext, EraDump, ProposedBlock, ValidatorChange},
-        contract_runtime::{
-            BlockAndExecutionResults, BlockExecutionError, ContractRuntimeError,
-            EraValidatorsRequest, ExecutionPreState,
-        },
+        consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
+        contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::FromIncoming,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::requests::{BlockAccumulatorRequest, BlockSynchronizerRequest},
+    effect::requests::BlockAccumulatorRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures, BlockWithMetadata,
-        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
-        NodeId, NodeState, TrieOrChunk, TrieOrChunkId,
+        BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, FinalitySignatureId,
+        FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy, NodeId, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -167,13 +162,12 @@ use announcements::{
     GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
-use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockPayloadRequest,
-    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockValidationRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
+    FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -2008,25 +2002,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             move |responder| StorageRequest::GetFinalizedBlocks { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Checks whether storage has enough data for proposing blocks, ie. all the deploys going back
-    /// max TTL from the timestamp of the given header.
-    pub(crate) async fn has_data_needed_for_proposing_blocks(
-        self,
-        block_header: BlockHeader,
-    ) -> bool
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            move |responder| StorageRequest::HasDataNeededForProposingBlocks {
-                block_header: Box::new(block_header),
-                responder,
-            },
             QueueKind::Regular,
         )
         .await
