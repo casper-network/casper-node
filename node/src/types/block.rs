@@ -1679,7 +1679,7 @@ impl FetcherItem for BlockAndDeploys {
 //     block_hash: BlockHash,
 //     /// Complete execution results for the block or a chunk of the complete data.
 //     value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
-//     /// Can be verified via merkle root (post 1.5.0 can be, legacy cannot be).
+//     /// Can be verified via Merkle root (post 1.5.0 can be, legacy cannot be).
 //     verifiable: bool
 // }
 
@@ -1688,7 +1688,7 @@ impl FetcherItem for BlockAndDeploys {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
 pub enum BlockExecutionResultsOrChunk {
     /// Represents legacy execution results.
-    /// Legacy meaning their merkle root can't be verified against what is expected.
+    /// Legacy meaning their Merkle root can't be verified against what is expected.
     Legacy {
         /// Block to which this value or chunk refers to.
         block_hash: BlockHash,
@@ -1705,7 +1705,7 @@ pub enum BlockExecutionResultsOrChunk {
 }
 
 impl BlockExecutionResultsOrChunk {
-    /// Verifies equivalence of the effects (or chunks) merkle root hash with the expected value.
+    /// Verifies equivalence of the effects (or chunks) Merkle root hash with the expected value.
     pub fn validate(&self, expected_merkle_root: &Digest) -> Result<bool, bytesrepr::Error> {
         match self {
             // For "legacy" block effects we can't verify their correctness as there's no reference,
@@ -1748,7 +1748,7 @@ impl Item for BlockExecutionResultsOrChunk {
                     block_hash: *block_hash,
                 },
             },
-            // We can't calculate the correctness of the data against the merkle root of the block
+            // We can't calculate the correctness of the data against the Merkle root of the block
             // effects as they weren't part of the request's ID.
             BlockExecutionResultsOrChunk::Contemporary { block_hash, value } => match value {
                 ValueOrChunk::Value(_) => BlockExecutionResultsOrChunkId::Contemporary {

@@ -156,7 +156,7 @@ pub struct GetItemResult {
     pub api_version: ProtocolVersion,
     /// The stored value.
     pub stored_value: StoredValue,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
@@ -234,7 +234,7 @@ pub struct GetBalanceResult {
     pub api_version: ProtocolVersion,
     /// The balance value.
     pub balance_value: U512,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
@@ -491,7 +491,7 @@ pub struct GetAccountInfoResult {
     pub api_version: ProtocolVersion,
     /// The account.
     pub account: JsonAccount,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
@@ -690,7 +690,7 @@ pub struct GetDictionaryItemResult {
     pub dictionary_key: String,
     /// The stored value.
     pub stored_value: StoredValue,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
@@ -799,7 +799,7 @@ pub struct QueryGlobalStateResult {
     pub block_header: Option<JsonBlockHeader>,
     /// The stored value.
     pub stored_value: StoredValue,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
@@ -1063,7 +1063,7 @@ type QuerySuccess = (
     Vec<TrieMerkleProof<Key, DomainStoredValue>>,
 );
 
-/// Runs a global state query and returns a tuple of the domain stored value and merkle proof of the
+/// Runs a global state query and returns a tuple of the domain stored value and Merkle proof of the
 /// value.
 ///
 /// On error, a `warp_json_rpc::Error` is returned suitable for sending as a JSON-RPC response.

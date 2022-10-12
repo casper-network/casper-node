@@ -28,7 +28,7 @@ pub enum ValueOrChunk<V> {
 #[derive(Debug, Error)]
 pub enum ChunkingError {
     /// Merkle proof construction error.
-    #[error("error constructing merkle proof for chunk")]
+    #[error("error constructing Merkle proof for chunk")]
     MerkleConstruction(
         #[from]
         #[source]
@@ -47,7 +47,7 @@ impl<V> ValueOrChunk<V> {
     ///
     /// NOTE: The [`Chunkable`] instance used here needs to match the one used when calling
     /// [`Digest::hash_into_chunks_if_necessary`]. This is to ensure that type is turned into
-    /// bytes consistently before chunking and hashing. If not then the merkle proofs for chunks
+    /// bytes consistently before chunking and hashing. If not then the Merkle proofs for chunks
     /// won't match.
     pub fn new(data: V, chunk_index: u64) -> Result<Self, ChunkingError>
     where

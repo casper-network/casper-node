@@ -398,7 +398,7 @@ mod tests {
     fn hash_known() {
         // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE_BYTES]
         // are hashed using Blake2B algorithm.
-        // Larger data are chunked and merkle tree hash is calculated.
+        // Larger data are chunked and Merkle tree hash is calculated.
         //
         // Please note that [ChunkWithProof::CHUNK_SIZE_BYTES] is `test` configuration
         // is smaller than in production, to allow testing with more chunks
@@ -625,7 +625,7 @@ mod tests {
         // │     │
         // └─────── R
         //
-        // The merkle root is thus: R = h( h(1..0) || h(a..j) )
+        // The Merkle root is thus: R = h( h(1..0) || h(a..j) )
         //
         // h(1..0) = 807f1ba73147c3a96c2d63b38dd5a5f514f66290a1436bb9821e9f2a72eff263
         // h(a..j) = 499e1cdb476523fedafc9d9db31125e2744f271578ea95b16ab4bd1905f05fea

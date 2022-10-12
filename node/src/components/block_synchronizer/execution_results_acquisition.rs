@@ -17,9 +17,9 @@ use crate::types::{
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Serialize, Deserialize)]
 pub(crate) enum ExecutionResultsChecksum {
-    // due to historical reasons, pre-1.5 chunks do not support merkle proof checking
+    // due to historical reasons, pre-1.5 chunks do not support Merkle proof checking
     Uncheckable,
-    // can be merkle proof checked
+    // can be Merkle proof checked
     Checkable(Digest),
 }
 
@@ -453,7 +453,7 @@ fn apply_chunk(
                 .collect();
             match bytesrepr::deserialize(serialized) {
                 Ok(results) => {
-                    // todo!() - check merkle root - sure, but how?
+                    // todo!() - check Merkle root - sure, but how?
                     Ok(ExecutionResultsAcquisition::Complete {
                         block_hash,
                         checksum,

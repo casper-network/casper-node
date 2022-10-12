@@ -989,7 +989,7 @@
                 "description": "The era id"
               },
               "merkle_proof": {
-                "description": "The merkle proof",
+                "description": "The Merkle proof",
                 "type": "string"
               },
               "state_root_hash": {
@@ -3579,7 +3579,7 @@
                   "type": "string"
                 },
                 "merkle_proof": {
-                  "description": "The merkle proof.",
+                  "description": "The Merkle proof.",
                   "type": "string"
                 }
               },
@@ -3663,7 +3663,7 @@
                   "type": "string"
                 },
                 "merkle_proof": {
-                  "description": "The merkle proof.",
+                  "description": "The Merkle proof.",
                   "type": "string"
                 },
                 "stored_value": {
@@ -3822,7 +3822,7 @@
                   "description": "The block header if a Block hash was provided."
                 },
                 "merkle_proof": {
-                  "description": "The merkle proof.",
+                  "description": "The Merkle proof.",
                   "type": "string"
                 },
                 "stored_value": {
@@ -4533,7 +4533,7 @@
                   "type": "string"
                 },
                 "merkle_proof": {
-                  "description": "The merkle proof.",
+                  "description": "The Merkle proof.",
                   "type": "string"
                 },
                 "stored_value": {
@@ -4609,7 +4609,7 @@
                   "description": "The balance value."
                 },
                 "merkle_proof": {
-                  "description": "The merkle proof.",
+                  "description": "The Merkle proof.",
                   "type": "string"
                 }
               },

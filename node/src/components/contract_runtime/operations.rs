@@ -419,7 +419,7 @@ where
 /// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
 ///
 /// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
-/// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
+/// node receives the chunks of *full data* it has to be able to verify it against the Merkle root.
 fn compute_execution_results_checksum(
     execution_results: &Vec<ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
