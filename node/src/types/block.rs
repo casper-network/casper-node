@@ -1197,24 +1197,6 @@ impl Display for BlockSignatures {
     }
 }
 
-impl Item for BlockSignatures {
-    type Id = BlockHash;
-    const TAG: Tag = Tag::FinalitySignaturesByHash;
-
-    fn id(&self) -> Self::Id {
-        self.block_hash
-    }
-}
-
-impl FetcherItem for BlockSignatures {
-    type ValidationError = crypto::Error;
-    type ValidationMetadata = EmptyValidationMetadata;
-
-    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
-}
-
 /// A proposed block after execution, with the resulting post-state-hash.  This is the core
 /// component of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]

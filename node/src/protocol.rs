@@ -86,7 +86,6 @@ impl Payload for Message {
                     Tag::Block => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
-                    Tag::FinalitySignaturesByHash => MessageKind::BlockTransfer,
                     Tag::SyncLeap => MessageKind::BlockTransfer,
                     Tag::ApprovalsHashes => MessageKind::BlockTransfer,
                     Tag::BlockExecutionResults => MessageKind::BlockTransfer,
@@ -133,7 +132,6 @@ impl Payload for Message {
                 Tag::GossipedAddress => weights.gossip,
                 Tag::BlockHeaderByHash => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
-                Tag::FinalitySignaturesByHash => weights.block_requests,
                 Tag::SyncLeap => weights.block_requests,
                 Tag::ApprovalsHashes => weights.block_requests,
                 Tag::BlockExecutionResults => weights.block_requests,
@@ -145,7 +143,6 @@ impl Payload for Message {
                 Tag::GossipedAddress => weights.gossip,
                 Tag::BlockHeaderByHash => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
-                Tag::FinalitySignaturesByHash => weights.block_responses,
                 Tag::SyncLeap => weights.block_responses,
                 Tag::ApprovalsHashes => weights.block_responses,
                 Tag::BlockExecutionResults => weights.block_responses,
@@ -371,11 +368,6 @@ where
                     message: NetRequest::FinalitySignature(serialized_id),
                 }
                 .into(),
-                Tag::FinalitySignaturesByHash => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::FinalitySignatures(serialized_id),
-                }
-                .into(),
                 Tag::SyncLeap => NetRequestIncoming {
                     sender,
                     message: NetRequest::SyncLeap(serialized_id),
@@ -429,11 +421,6 @@ where
                 Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
                     message: TrieResponse(serialized_item.to_vec()),
-                }
-                .into(),
-                Tag::FinalitySignaturesByHash => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::FinalitySignatures(serialized_item),
                 }
                 .into(),
                 Tag::SyncLeap => NetResponseIncoming {

@@ -657,18 +657,6 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::FinalitySignatures(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
-                let opt_item = self.read_block_signatures(&item_id)?;
-                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
             NetRequest::SyncLeap(ref serialized_id) => {
                 let item_id = decode_item_id::<SyncLeap>(serialized_id)?;
                 let fetch_response = self.get_sync_leap(item_id, self.recent_era_count)?;

@@ -1118,20 +1118,9 @@ where
                 .ignore()
         }
         // TODO: seems like there should be NetResponse variants for TrieOrChunk.
-
-        // TODO: should be able to get rid of the variants below this line:
+        
         NetResponse::Block(ref serialized_item) => {
             handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
-        }
-        NetResponse::FinalitySignatures(ref serialized_item) => {
-            // handle_fetch_response::<R, BlockSignatures>(
-            //     reactor,
-            //     effect_builder,
-            //     rng,
-            //     sender,
-            //     serialized_item,
-            // )
-            Effects::new()
         }
         NetResponse::BlockExecutionResults(ref serialized_item) => {
             handle_fetch_response::<R, BlockExecutionResultsOrChunk>(

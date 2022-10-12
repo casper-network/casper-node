@@ -462,7 +462,6 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockHeaderByHash(_)
-                | NetResponse::FinalitySignatures(_)
                 | NetResponse::SyncLeap(_)
                 | NetResponse::BlockExecutionResults(_)) => {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
