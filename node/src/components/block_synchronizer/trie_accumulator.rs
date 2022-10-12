@@ -252,8 +252,7 @@ where
                     Err(error) => match self.partial_chunks.remove(hash) {
                         None => {
                             error!(%id,
-                                "got a fetch result for a chunk we weren't trying to \
-                                    fetch",
+                                "got a fetch result for a chunk we weren't trying to fetch",
                             );
                             Effects::new()
                         }

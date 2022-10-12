@@ -377,6 +377,9 @@ impl BlockBuilder {
                 Ok(maybe)
             }
             Err(error) => {
+                // todo!() - how to proceed when we receive incorrect chunks (for example,
+                // `ChunksWithDifferentChecksum` for legacy blocks)? we probably
+                // shouldn't disconnect from the peer, but logic to be discussed
                 self.disqualify_peer(maybe_peer);
                 Err(Error::BlockAcquisition(error))
             }

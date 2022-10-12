@@ -66,6 +66,11 @@ pub(crate) enum Error {
         expected: Digest,
         actual: Digest,
     },
+    ChunksWithDifferentChecksum {
+        block_hash: BlockHash,
+        expected: Digest,
+        actual: Digest,
+    },
     FailedToDeserialize {
         block_hash: BlockHash,
     },
@@ -168,6 +173,15 @@ impl Display for Error {
                     block_hash,
                 )
             }
+            Error::ChunksWithDifferentChecksum {
+                block_hash,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "chunks with different checksum for block_hash: {}; expected {} actual: {}",
+                block_hash, expected, actual
+            ),
         }
     }
 }
@@ -364,8 +378,6 @@ impl ExecutionResultsAcquisition {
                 block_hash,
                 checksum,
             } => Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum)),
-            // todo!() Even for pre-1.5 blocks we need to make sure the chunks fit together,
-            // i.e. they have the same root hash.
             ExecutionResultsAcquisition::Incomplete {
                 block_hash,
                 checksum,
@@ -412,6 +424,15 @@ fn apply_chunk(
                 actual: digest,
             });
         }
+    } else if let Some(other_chunk) = chunks.values().next() {
+        let existing_chunk_digest = other_chunk.proof().root_hash();
+        if existing_chunk_digest != digest {
+            return Err(Error::ChunksWithDifferentChecksum {
+                block_hash,
+                expected: existing_chunk_digest,
+                actual: digest,
+            });
+        }
     }
     let _ = chunks.insert(index, chunk);
 
@@ -430,14 +451,11 @@ fn apply_chunk(
                 .copied()
                 .collect();
             match bytesrepr::deserialize(serialized) {
-                Ok(results) => {
-                    // todo!() - check Merkle root - sure, but how?
-                    Ok(ExecutionResultsAcquisition::Complete {
-                        block_hash,
-                        checksum,
-                        results,
-                    })
-                }
+                Ok(results) => Ok(ExecutionResultsAcquisition::Complete {
+                    block_hash,
+                    checksum,
+                    results,
+                }),
                 Err(error) => {
                     error!(%error, "failed to deserialize execution results");
                     Err(Error::FailedToDeserialize { block_hash })
