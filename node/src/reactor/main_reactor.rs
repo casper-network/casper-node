@@ -1,3 +1,6 @@
+// todo!("Remove this")
+#![allow(unused)]
+
 //! Main reactor for nodes.
 
 mod config;

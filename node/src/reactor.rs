@@ -1,5 +1,3 @@
-#![allow(unused)] // TODO: To be removed
-
 //! Reactor core.
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are
@@ -71,7 +69,7 @@ use crate::{
     types::{
         ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, Chainspec, ChainspecRawBytes,
         Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature, LegacyDeploy,
-        NodeId, SyncLeap, TrieOrChunk,
+        NodeId, SyncLeap, TrieOrChunk, Block,
     },
     unregister_metric,
     utils::{
@@ -987,6 +985,7 @@ where
     R: Reactor,
     <R as Reactor>::Event: From<deploy_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
+        + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
@@ -1118,23 +1117,11 @@ where
                 .announce_disconnect_from_peer(sender)
                 .ignore()
         }
-        // TODO: seems like there should be NetResponse variants for TrieOrChunk and BlockAdded
+        // TODO: seems like there should be NetResponse variants for TrieOrChunk.
 
         // TODO: should be able to get rid of the variants below this line:
         NetResponse::Block(ref serialized_item) => {
-            // handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender,
-            // serialized_item)
-            Effects::new()
-        }
-        NetResponse::BlockAndDeploys(ref serialized_item) => {
-            // handle_fetch_response::<R, BlockAndDeploys>(
-            //     reactor,
-            //     effect_builder,
-            //     rng,
-            //     sender,
-            //     serialized_item,
-            // )
-            Effects::new()
+            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
         }
         NetResponse::FinalitySignatures(ref serialized_item) => {
             // handle_fetch_response::<R, BlockSignatures>(

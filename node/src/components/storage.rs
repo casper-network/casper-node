@@ -657,20 +657,6 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::BlockAndDeploys(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockAndDeploys>(serialized_id)?;
-                let opt_item = self
-                    .read_block_and_deploys_by_hash(item_id)
-                    .map_err(FatalStorageError::from)?;
-                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
             NetRequest::FinalitySignatures(ref serialized_id) => {
                 let item_id = decode_item_id::<BlockSignatures>(serialized_id)?;
                 let opt_item = self.read_block_signatures(&item_id)?;
@@ -1179,15 +1165,6 @@ impl Storage {
             } => responder
                 .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
-            StorageRequest::PutBlockAndDeploys { block, responder } => responder
-                .respond(self.put_block_and_deploys(&*block)?)
-                .ignore(),
-            StorageRequest::GetBlockAndDeploys {
-                block_hash,
-                responder,
-            } => responder
-                .respond(self.read_block_and_deploys_by_hash(block_hash)?)
-                .ignore(),
             StorageRequest::GetBlockAndFinalizedDeploys {
                 block_hash,
                 responder,
@@ -1240,32 +1217,6 @@ impl Storage {
         let outcome = txn.put_value(self.deploy_db, deploy.hash(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
-    }
-
-    /// Puts block and its deploys into storage.
-    ///
-    /// Returns `Ok` only if the block and all deploys were successfully written.
-    fn put_block_and_deploys(
-        &mut self,
-        block_and_deploys: &BlockAndDeploys,
-    ) -> Result<(), FatalStorageError> {
-        let BlockAndDeploys { block, deploys } = block_and_deploys;
-
-        block.verify()?;
-        let deploy_db = self.deploy_db;
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_block(&mut txn, block)?;
-        if !wrote {
-            return Err(FatalStorageError::FailedToOverwriteBlock);
-        }
-
-        for deploy in deploys {
-            let _ = txn.put_value(deploy_db, deploy.hash(), deploy, false)?;
-        }
-        txn.commit()?;
-
-        Ok(())
     }
 
     fn put_executed_block(
@@ -1623,29 +1574,6 @@ impl Storage {
             block_header,
             block_signatures,
         }))
-    }
-
-    /// Retrieves single block and all of its deploys.
-    /// If any of the deploys can't be found, returns `Ok(None)`.
-    // TODO: Is this needed in addition to read_block_and_finalized_deploys_by_hash?
-    fn read_block_and_deploys_by_hash(
-        &self,
-        hash: BlockHash,
-    ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
-        let block = self.read_block(&hash)?;
-        match block {
-            None => Ok(None),
-            Some(block) => {
-                let deploy_hashes = block
-                    .deploy_hashes()
-                    .iter()
-                    .chain(block.transfer_hashes().iter());
-                let deploys_count = block.deploy_hashes().len() + block.transfer_hashes().len();
-                Ok(self
-                    .read_deploys(deploys_count, deploy_hashes)?
-                    .map(|deploys| BlockAndDeploys { block, deploys }))
-            }
-        }
     }
 
     /// Retrieves single block and all of its deploys, with the finalized approvals.
@@ -2246,23 +2174,6 @@ impl Storage {
     ) -> Result<Option<Deploy>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
-    }
-
-    /// Directly returns all deploys or None if any is missing.
-    fn read_deploys<'a, I: Iterator<Item = &'a DeployHash> + 'a>(
-        &self,
-        deploys_count: usize,
-        deploy_hashes: I,
-    ) -> Result<Option<Vec<Deploy>>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        let mut result = Vec::with_capacity(deploys_count);
-        for deploy_hash in deploy_hashes {
-            match txn.get_value(self.deploy_db, deploy_hash)? {
-                Some(deploy) => result.push(deploy),
-                None => return Ok(None),
-            }
-        }
-        Ok(Some(result))
     }
 
     /// Stores a set of finalized approvals.

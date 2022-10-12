@@ -1,5 +1,4 @@
 mod approvals_hashes_fetcher;
-mod block_and_deploys_fetcher;
 mod block_execution_results_or_chunk_fetcher;
 mod block_fetcher;
 mod block_header_fetcher;

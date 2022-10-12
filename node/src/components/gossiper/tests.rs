@@ -461,7 +461,6 @@ impl reactor::Reactor for Reactor {
                 | NetResponse::ApprovalsHashes(_)
                 | NetResponse::FinalitySignature(_)
                 | NetResponse::GossipedAddress(_)
-                | NetResponse::BlockAndDeploys(_)
                 | NetResponse::BlockHeaderByHash(_)
                 | NetResponse::FinalitySignatures(_)
                 | NetResponse::SyncLeap(_)

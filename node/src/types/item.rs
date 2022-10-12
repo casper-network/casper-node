@@ -39,8 +39,6 @@ pub enum Tag {
     BlockHeaderByHash,
     /// A trie or chunk from the global Merkle tree in the execution engine.
     TrieOrChunk,
-    /// A full block and its deploys.
-    BlockAndDeploysByHash,
     /// A single block signature for a block.
     FinalitySignature,
     /// Finality signatures for a block requested by the block's hash.

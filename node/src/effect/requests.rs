@@ -309,13 +309,6 @@ pub(crate) enum StorageRequest {
         execution_results: HashMap<DeployHash, ExecutionResult>,
         responder: Responder<bool>,
     },
-    /// Store given block and its deploys.
-    PutBlockAndDeploys {
-        /// Block to be stored.
-        block: Box<BlockAndDeploys>,
-        /// Responder to call on success.  Failure is a fatal error.
-        responder: Responder<()>,
-    },
     /// Retrieve block with given hash.
     GetBlock {
         /// Hash of block to be retrieved.
@@ -331,14 +324,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` if the approvals hashes don't exist
         /// in local storage.
         responder: Responder<Option<ApprovalsHashes>>,
-    },
-    /// Retrieve block and deploys with given hash.
-    GetBlockAndDeploys {
-        /// Hash of block to be retrieved.
-        block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
-        /// storage.
-        responder: Responder<Option<BlockAndDeploys>>,
     },
     /// Retrieve block and finalized deploys with given hash.
     GetBlockAndFinalizedDeploys {
@@ -586,24 +571,11 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "put {}", approvals_hashes)
             }
-            StorageRequest::PutBlockAndDeploys {
-                block: block_deploys,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "put block and deploys {}",
-                    block_deploys.block.hash()
-                )
-            }
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
             }
             StorageRequest::GetApprovalsHashes { block_hash, .. } => {
                 write!(formatter, "get approvals hashes {}", block_hash)
-            }
-            StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
-                write!(formatter, "get block and deploys {}", block_hash)
             }
             StorageRequest::GetBlockAndFinalizedDeploys { block_hash, .. } => {
                 write!(formatter, "get block and finalized deploys {}", block_hash)

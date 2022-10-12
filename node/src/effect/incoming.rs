@@ -90,7 +90,6 @@ pub(crate) enum NetRequest {
     FinalitySignature(Vec<u8>),
     // TODO: Move this out of `NetRequest` into its own type, it is never valid.
     GossipedAddress(Vec<u8>),
-    BlockAndDeploys(Vec<u8>),
     BlockHeaderByHash(Vec<u8>),
     FinalitySignatures(Vec<u8>),
     SyncLeap(Vec<u8>),
@@ -109,7 +108,6 @@ impl Display for NetRequest {
             }
             NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
             NetRequest::BlockHeaderByHash(_) => f.write_str("request for block header by hash"),
-            NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
             NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
             NetRequest::SyncLeap(_) => f.write_str("request for sync leap"),
             NetRequest::BlockExecutionResults(_) => {
@@ -130,7 +128,6 @@ impl NetRequest {
             NetRequest::FinalitySignature(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
             NetRequest::BlockHeaderByHash(ref id) => id,
-            NetRequest::BlockAndDeploys(ref id) => id,
             NetRequest::FinalitySignatures(ref id) => id,
             NetRequest::SyncLeap(ref id) => id,
             NetRequest::BlockExecutionResults(ref id) => id,
@@ -152,7 +149,6 @@ impl NetRequest {
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
             NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
             NetRequest::BlockHeaderByHash(_) => Tag::BlockHeaderByHash,
-            NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
             NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
             NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
@@ -171,7 +167,6 @@ pub(crate) enum NetResponse {
     Block(Arc<[u8]>),
     GossipedAddress(Arc<[u8]>),
     BlockHeaderByHash(Arc<[u8]>),
-    BlockAndDeploys(Arc<[u8]>),
     FinalitySignature(Arc<[u8]>),
     FinalitySignatures(Arc<[u8]>),
     SyncLeap(Arc<[u8]>),
@@ -199,7 +194,6 @@ impl Display for NetResponse {
             NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),
             NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
             NetResponse::BlockHeaderByHash(_) => f.write_str("response, block header by hash"),
-            NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
             NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
             NetResponse::SyncLeap(_) => f.write_str("response for sync leap"),
             NetResponse::BlockExecutionResults(_) => {
