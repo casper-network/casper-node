@@ -12,13 +12,10 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num::rational::Ratio;
 use prometheus::Registry;
-use tracing::{error, info};
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{
-    system::auction::{EraValidators, ValidatorWeights},
-    EraId, ProtocolVersion,
-};
+use casper_types::{system::auction::EraValidators, EraId, ProtocolVersion};
 
 use self::{
     metrics::Metrics,
@@ -37,7 +34,7 @@ use crate::{
     types::{ActivationPoint, BlockHeader},
     NodeRng,
 };
-pub(crate) use error::{BlockSignatureError, Error};
+pub(crate) use error::BlockSignatureError;
 pub(crate) use event::Event;
 pub(crate) use utils::check_sufficient_block_signatures;
 
@@ -271,9 +268,19 @@ where
     }
 }
 
+#[cfg(test)]
+use tracing::info;
+
+#[cfg(test)]
+use casper_types::system::auction::ValidatorWeights;
+
+#[cfg(test)]
+use error::Error;
+
 /// Returns the validator weights that should be used to check the block signatures for the given
 /// block, taking into account validator-change upgrades.
-pub(crate) async fn era_validator_weights_for_block<T: EraValidatorsGetter>(
+#[cfg(test)]
+async fn era_validator_weights_for_block<T: EraValidatorsGetter>(
     block_header: &BlockHeader,
     era_validators_getter: T,
 ) -> Result<(EraId, ValidatorWeights), Error> {
@@ -337,7 +344,9 @@ mod tests {
     use futures::FutureExt;
 
     use casper_hashing::Digest;
-    use casper_types::{testing::TestRng, PublicKey, SemVer, Timestamp, U512};
+    use casper_types::{
+        system::auction::ValidatorWeights, testing::TestRng, PublicKey, SemVer, Timestamp, U512,
+    };
 
     use super::*;
     use crate::{

@@ -23,9 +23,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::{
-        requests::{
-            BlockPayloadRequest, ContractRuntimeRequest, DeployBufferRequest, NetworkRequest,
-        },
+        requests::{ContractRuntimeRequest, DeployBufferRequest, NetworkRequest},
         EffectExt,
     },
     protocol::Message,

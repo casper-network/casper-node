@@ -1,7 +1,7 @@
 use datasize::DataSize;
-use log::{debug, error};
-use std::{sync::Arc, time::Duration};
-use tracing::{info, warn};
+use log::error;
+use std::time::Duration;
+use tracing::info;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
@@ -11,32 +11,22 @@ use crate::{
         block_accumulator::{StartingWith, SyncInstruction},
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
-        diagnostics_port, event_stream_server,
-        linear_chain::era_validator_weights_for_block,
-        rest_server, rpc_server, small_network,
-        storage::FatalStorageError,
-        sync_leaper,
+        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
         sync_leaper::LeapStatus,
         upgrade_watcher,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
-    reactor,
-    reactor::main_reactor::{
-        utils::{enqueue_shutdown, initialize_component},
-        MainEvent, MainReactor,
+    reactor::{
+        self,
+        main_reactor::{utils::initialize_component, MainEvent, MainReactor},
     },
     types::{
-        ActivationPoint, ApprovalsHashes, BlockHash, BlockHeader, BlockPayload, ChainspecRawBytes,
-        DeployHash, EraValidatorWeights, FinalizedBlock, Item, ValidatorMatrix,
+        ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, ValidatorMatrix,
     },
     NodeRng,
 };
 
 use crate::components::{block_synchronizer, deploy_buffer};
-use casper_execution_engine::core::{
-    engine_state,
-    engine_state::{GenesisSuccess, UpgradeSuccess},
-};
 
 // put in the config
 pub(crate) const WAIT_SEC: u64 = 5;
@@ -644,7 +634,9 @@ impl MainReactor {
                     BlockHash::default(),
                     Digest::default(),
                 );
-                self.contract_runtime.set_initial_state(initial_pre_state);
+                self.contract_runtime
+                    .set_initial_state(initial_pre_state)
+                    .map_err(|err| err.to_string())?;
 
                 let finalized_block = FinalizedBlock::new(
                     BlockPayload::default(),
@@ -689,7 +681,9 @@ impl MainReactor {
                         previous_block_header.block_hash(),
                         previous_block_header.accumulated_seed(),
                     );
-                    self.contract_runtime.set_initial_state(initial_pre_state);
+                    self.contract_runtime
+                        .set_initial_state(initial_pre_state)
+                        .map_err(|err| err.to_string())?;
 
                     let finalized_block = FinalizedBlock::new(
                         BlockPayload::default(),

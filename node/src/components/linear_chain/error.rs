@@ -1,14 +1,20 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
+#[cfg(test)]
+use casper_execution_engine::core::engine_state::GetEraValidatorsError;
+#[cfg(test)]
+use casper_types::EraId;
+use casper_types::{PublicKey, U512};
 use num::rational::Ratio;
+#[cfg(test)]
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{EraId, PublicKey, U512};
+#[cfg(test)]
+use crate::types::BlockHeader;
+use crate::types::BlockSignatures;
 
-use crate::types::{BlockHeader, BlockSignatures};
-
+#[cfg(test)] // TODO: Move closer to the test code?
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
     #[error("cannot get switch block for era {era_id}")]

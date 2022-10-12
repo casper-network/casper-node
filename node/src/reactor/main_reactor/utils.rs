@@ -1,13 +1,8 @@
 use crate::{
-    components::{block_accumulator::SyncInstruction, sync_leaper, InitializedComponent},
+    components::InitializedComponent,
     effect::{EffectBuilder, EffectExt, Effects},
-    reactor::main_reactor::{MainEvent, MainReactor},
-    types::{ActivationPoint, Block, BlockHash, Chainspec, ChainspecRawBytes, NodeId},
+    reactor::main_reactor::MainEvent,
 };
-use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
-use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion, StoredValue, Timestamp};
-use std::{borrow::Borrow, collections::BTreeMap, sync::Arc};
 
 pub(super) fn enqueue_shutdown<T: ToString + Send + 'static>(message: T) -> Effects<MainEvent> {
     async {}.event(move |_| MainEvent::Shutdown(message.to_string()))

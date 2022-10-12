@@ -1,9 +1,5 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use casper_execution_engine::core::{
-    engine_state,
-    engine_state::{GenesisSuccess, UpgradeSuccess},
-};
 use derive_more::From;
 use serde::Serialize;
 
@@ -42,9 +38,8 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        ApprovalsHashes, Block, BlockAndDeploys, BlockExecutionResultsOrChunk, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, FinalitySignature,
-        LegacyDeploy, SyncLeap, TrieOrChunk,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
+        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 

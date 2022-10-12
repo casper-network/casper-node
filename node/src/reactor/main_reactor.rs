@@ -11,51 +11,37 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, RwLock},
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
 use datasize::DataSize;
-use itertools::Itertools;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{error, info};
 
-use casper_execution_engine::core::{
-    engine_state,
-    engine_state::{ChainspecRegistry, GenesisSuccess, UpgradeConfig, UpgradeSuccess},
-};
-use casper_hashing::Digest;
-use casper_types::{EraId, Key, PublicKey, StoredValue, TimeDiff, Timestamp};
+use casper_types::TimeDiff;
 
 use crate::{
     components::{
-        block_accumulator::{BlockAccumulator, StartingWith, SyncInstruction},
+        block_accumulator::BlockAccumulator,
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        consensus::{self, EraReport, EraSupervisor, HighwayProtocol},
+        consensus::{self, ChainspecConsensusExt, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
-        diagnostics_port::{self, DiagnosticsPort},
+        diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, Gossiper},
         linear_chain::{self, LinearChainComponent},
         metrics::Metrics,
-        rest_server,
         rest_server::RestServer,
-        rpc_server,
         rpc_server::RpcServer,
         small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
-        storage::{FatalStorageError, Storage},
-        sync_leaper,
-        sync_leaper::{LeapStatus, SyncLeaper},
+        storage::Storage,
+        sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
         Component,
     },
-    contract_runtime::ExecutionPreState,
     effect::{
         announcements::{
             ConsensusAnnouncement, ContractRuntimeAnnouncement, DeployAcceptorAnnouncement,
@@ -63,7 +49,7 @@ use crate::{
             PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::ChainspecRawBytesRequest,
+        requests::{BlockSynchronizerRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -71,21 +57,15 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{control::ReactorState, fetchers::Fetchers, utils::initialize_component},
+        main_reactor::{control::ReactorState, fetchers::Fetchers},
         EventQueueHandle, ReactorExit,
     },
     types::{
-        ActivationPoint, ApprovalsHashes, Block, BlockHash, BlockHeader, BlockPayload, Chainspec,
-        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, FinalizedBlock, Item, NodeId,
-        SyncLeap, TrieOrChunk, ValidatorMatrix,
+        ApprovalsHashes, Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy,
+        ExitCode, FinalitySignature, Item, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
-};
-
-use crate::{
-    components::{block_accumulator, consensus::ChainspecConsensusExt},
-    effect::requests::BlockSynchronizerRequest,
 };
 pub(crate) use config::Config;
 pub(crate) use error::Error;
@@ -977,7 +957,7 @@ impl MainReactor {
 }
 
 #[cfg(test)]
-use crate::testing::network::NetworkedReactor;
+use crate::{testing::network::NetworkedReactor, types::NodeId};
 
 #[cfg(test)]
 impl NetworkedReactor for MainReactor {
