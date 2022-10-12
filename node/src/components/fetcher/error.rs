@@ -32,6 +32,24 @@ pub(crate) enum Error<T: FetcherItem> {
 }
 
 impl<T: FetcherItem> Error<T> {
+    pub(crate) fn is_peer_fault(&self) -> bool {
+        match self {
+            Error::Absent { .. } | Error::Rejected { .. } | Error::TimedOut { .. } => true,
+            Error::CouldNotConstructGetRequest { .. }
+            | Error::ValidationMetadataMismatch { .. } => false,
+        }
+    }
+
+    pub(crate) fn id(&self) -> &T::Id {
+        match self {
+            Error::Absent { id, .. } => id,
+            Error::Rejected { id, .. } => id,
+            Error::TimedOut { id, .. } => id,
+            Error::CouldNotConstructGetRequest { id, .. } => id,
+            Error::ValidationMetadataMismatch { id, .. } => id,
+        }
+    }
+
     pub(crate) fn peer(&self) -> &NodeId {
         match self {
             Error::Absent { peer, .. }

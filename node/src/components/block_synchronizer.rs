@@ -132,8 +132,8 @@ impl BlockSynchronizer {
     pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
         if let Some(fwd) = &self.forward {
             if fwd.is_complete() {
-            return Some(fwd.block_hash());
-        }
+                return Some(fwd.block_hash());
+            }
         }
         None
     }
@@ -456,12 +456,10 @@ impl BlockSynchronizer {
             Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
             Err(err) => {
                 debug!(%err, "failed to fetch block header");
-                match err {
-                    Error::Absent { id, peer }
-                    | Error::Rejected { id, peer }
-                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. }
-                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
+                if err.is_peer_fault() {
+                    (*err.id(), None, Some(*err.peer()))
+                } else {
+                    (*err.id(), None, None)
                 }
             }
         };
@@ -501,12 +499,10 @@ impl BlockSynchronizer {
             Ok(FetchedData::FromStorage { item }) => (*item.hash(), Some(item), None),
             Err(err) => {
                 debug!(%err, "failed to fetch block");
-                match err {
-                    Error::Absent { id, peer }
-                    | Error::Rejected { id, peer }
-                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. }
-                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
+                if err.is_peer_fault() {
+                    (*err.id(), None, Some(*err.peer()))
+                } else {
+                    (*err.id(), None, None)
                 }
             }
         };
@@ -545,13 +541,11 @@ impl BlockSynchronizer {
             }
             Ok(FetchedData::FromStorage { item }) => (*item.block_hash(), Some(item), None),
             Err(err) => {
-                debug!(%err, "failed to fetch block");
-                match err {
-                    Error::Absent { id, peer }
-                    | Error::Rejected { id, peer }
-                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. }
-                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
+                debug!(%err, "failed to fetch approvals hashes");
+                if err.is_peer_fault() {
+                    (*err.id(), None, Some(*err.peer()))
+                } else {
+                    (*err.id(), None, None)
                 }
             }
         };
@@ -587,12 +581,10 @@ impl BlockSynchronizer {
             Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
             Err(err) => {
                 debug!(%err, "failed to fetch finality signature");
-                match err {
-                    Error::Absent { id, peer }
-                    | Error::Rejected { id, peer }
-                    | Error::TimedOut { id, peer } => (id, None, Some(peer)),
-                    Error::CouldNotConstructGetRequest { id, .. }
-                    | Error::ValidationMetadataMismatch { id, .. } => (id, None, None),
+                if err.is_peer_fault() {
+                    (err.id().clone(), None, Some(*err.peer()))
+                } else {
+                    (err.id().clone(), None, None)
                 }
             }
         };
@@ -711,13 +703,16 @@ impl BlockSynchronizer {
     where
         REv: From<StorageRequest> + Send,
     {
-        let (value_or_chunk, maybe_peer) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (item, Some(peer)),
-            Ok(FetchedData::FromStorage { item }) => (item, None),
+        let (maybe_value_or_chunk, maybe_peer_id) = match result {
+            Ok(FetchedData::FromPeer { item, peer }) => (Some(item), Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (Some(item), None),
             Err(err) => {
                 debug!(%err, "failed to fetch execution results or chunk");
-                // TODO: Remove peer?
-                return Effects::new();
+                if err.is_peer_fault() {
+                    (None, Some(*err.peer()))
+                } else {
+                    (None, None)
+                }
             }
         };
 
@@ -727,19 +722,27 @@ impl BlockSynchronizer {
                 return Effects::new();
             }
 
-            // do to reasons, the stiched back together execution effects need to be saved to disk
-            // here, when the last chunk is collected.
-            // we expect a response back, which will crank the block builder for this block to the
-            // next state.
-            match builder.register_fetched_execution_results(maybe_peer, *value_or_chunk) {
-                Ok(Some(execution_results)) => {
-                    return effect_builder
-                        .put_execution_results_to_storage(block_hash, execution_results)
-                        .event(move |()| Event::ExecutionResultsStored(block_hash));
+            match maybe_value_or_chunk {
+                None => {
+                    builder.demote_peer(maybe_peer_id);
                 }
-                Ok(None) => {}
-                Err(error) => {
-                    error!(%block_hash, %error, "failed to apply execution results or chunk");
+                Some(value_or_chunk) => {
+                    // due to reasons, the stitched back together execution effects need to be saved
+                    // to disk here, when the last chunk is collected.
+                    // we expect a response back, which will crank the block builder for this block
+                    // to the next state.
+                    match builder.register_fetched_execution_results(maybe_peer_id, *value_or_chunk)
+                    {
+                        Ok(Some(execution_results)) => {
+                            return effect_builder
+                                .put_execution_results_to_storage(block_hash, execution_results)
+                                .event(move |()| Event::ExecutionResultsStored(block_hash));
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            error!(%block_hash, %error, "failed to apply execution results or chunk");
+                        }
+                    }
                 }
             }
         }
