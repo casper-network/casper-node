@@ -442,7 +442,7 @@ impl BlockAcquisitionState {
 
     pub(super) fn with_execution_results_root_hash(
         &mut self,
-        execution_results_check_sum: ExecutionResultsChecksum,
+        execution_results_checksum: ExecutionResultsChecksum,
         need_execution_state: bool,
     ) -> Result<(), Error> {
         match self {
@@ -452,7 +452,8 @@ impl BlockAcquisitionState {
                 _,
                 acq @ ExecutionResultsAcquisition::Needed { .. },
             ) if need_execution_state => {
-                if let Err(error) = acq.clone().apply_check_sum(execution_results_check_sum) {
+                // todo!() Don't throw away the new execution results acquisition state.
+                if let Err(error) = acq.clone().apply_checksum(execution_results_checksum) {
                     return Err(Error::ExecutionResults(error));
                 }
             }
@@ -624,12 +625,15 @@ impl BlockAcquisitionState {
                                 debug!(block_hash=%header.block_hash(), "by design, execution_results_acquisition.needs_value_or_chunk() should never be None for these variants for block_hash");
                                 Err(Error::InvalidAttemptToAcquireExecutionResults)
                             }
-                            Some(next) => Ok(BlockAcquisitionAction::execution_results(
-                                header.block_hash(),
-                                peer_list,
-                                rng,
-                                next,
-                            )),
+                            Some((next, checksum)) => {
+                                Ok(BlockAcquisitionAction::execution_results(
+                                    header.block_hash(),
+                                    peer_list,
+                                    rng,
+                                    next,
+                                    checksum,
+                                ))
+                            }
                         }
                     }
                 }
@@ -757,11 +761,12 @@ impl BlockAcquisitionAction {
         peer_list: &PeerList,
         rng: &mut NodeRng,
         next: BlockExecutionResultsOrChunkId,
+        checksum: ExecutionResultsChecksum,
     ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::ExecutionResults(block_hash, next),
+            need_next: NeedNext::ExecutionResults(block_hash, next, checksum),
         }
     }
 

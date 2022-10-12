@@ -36,7 +36,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::consensus,
+    components::{block_synchronizer::ExecutionResultsChecksum, consensus},
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
@@ -1768,25 +1768,46 @@ impl Item for BlockExecutionResultsOrChunk {
 
 impl FetcherItem for BlockExecutionResultsOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = EmptyValidationMetadata; // todo!() - could be `Option<Digest>`?
+    type ValidationMetadata = ExecutionResultsChecksum;
 
-    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+    fn validate(&self, metadata: &ExecutionResultsChecksum) -> Result<(), Self::ValidationError> {
         match self {
             BlockExecutionResultsOrChunk::Legacy {
                 block_hash: _,
                 value,
-            } => match value {
-                ValueOrChunk::Value(_) => Ok(()),
-                ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
-            },
-            BlockExecutionResultsOrChunk::Contemporary {
+            }
+            | BlockExecutionResultsOrChunk::Contemporary {
                 block_hash: _,
                 value,
             } => match value {
-                ValueOrChunk::Value(_) => Ok(()),
-                ValueOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
+                ValueOrChunk::Value(exec_results) => {
+                    if let ExecutionResultsChecksum::Checkable(expected) = *metadata {
+                        let actual = (&exec_results)
+                            .hash()
+                            .map_err(ChunkWithProofVerificationError::Bytesrepr)?;
+                        if actual != expected {
+                            return Err(ChunkWithProofVerificationError::UnexpectedRootHash {
+                                expected,
+                                actual,
+                            });
+                        }
+                    }
+                }
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                    chunk_with_proof.verify()?;
+                    if let ExecutionResultsChecksum::Checkable(expected) = *metadata {
+                        let actual = chunk_with_proof.proof().root_hash();
+                        if actual != expected {
+                            return Err(ChunkWithProofVerificationError::UnexpectedRootHash {
+                                expected,
+                                actual,
+                            });
+                        }
+                    }
+                }
             },
         }
+        Ok(())
     }
 }
 
@@ -1818,6 +1839,7 @@ impl Display for BlockExecutionResultsOrChunk {
 }
 
 /// ID of the request for block execution results or chunk.
+// todo!() Merge the two variants? The peer doesn't care whether it's pre-1.5.
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum BlockExecutionResultsOrChunkId {
     /// Request for pre-1.5 block's effects (or chunk).

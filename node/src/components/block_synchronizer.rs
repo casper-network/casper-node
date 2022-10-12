@@ -44,7 +44,8 @@ use crate::{
 use block_builder::BlockBuilder;
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-use execution_results_acquisition::{ExecutionResultsAcquisition, ExecutionResultsChecksum};
+use execution_results_acquisition::ExecutionResultsAcquisition;
+pub(crate) use execution_results_acquisition::ExecutionResultsChecksum;
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
@@ -399,14 +400,10 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::ExecutionResults(block_hash, id) => {
+                NeedNext::ExecutionResults(block_hash, id, checksum) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<BlockExecutionResultsOrChunk>(
-                                id,
-                                node_id,
-                                EmptyValidationMetadata,
-                            )
+                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, checksum)
                             .event(move |result| Event::ExecutionResultsFetched {
                                 block_hash,
                                 result,

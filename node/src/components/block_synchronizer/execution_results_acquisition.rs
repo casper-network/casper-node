@@ -4,6 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_hashing::{ChunkWithProof, Digest};
@@ -14,12 +15,21 @@ use crate::types::{
     ValueOrChunk,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
-pub(super) enum ExecutionResultsChecksum {
+#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Serialize, Deserialize)]
+pub(crate) enum ExecutionResultsChecksum {
     // due to historical reasons, pre-1.5 chunks do not support merkle proof checking
     Uncheckable,
     // can be merkle proof checked
     Checkable(Digest),
+}
+
+impl Display for ExecutionResultsChecksum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uncheckable => write!(f, "uncheckable execution results"),
+            Self::Checkable(digest) => write!(f, "execution results checksum {}", digest),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
@@ -108,7 +118,7 @@ impl Display for Error {
             Error::InvalidAttemptToApplyChecksum { block_hash } => {
                 write!(
                     f,
-                    "attempt to apply check_sum to a non-pending item, block_hash: {}",
+                    "attempt to apply checksum to a non-pending item, block_hash: {}",
                     block_hash
                 )
             }
@@ -172,53 +182,56 @@ pub(super) enum ExecutionResultsAcquisition {
     },
     Pending {
         block_hash: BlockHash,
-        check_sum: ExecutionResultsChecksum,
+        checksum: ExecutionResultsChecksum,
     },
     Incomplete {
         block_hash: BlockHash,
-        check_sum: ExecutionResultsChecksum,
+        checksum: ExecutionResultsChecksum,
         chunks: HashMap<u64, ChunkWithProof>,
         chunk_count: u64,
         next: u64,
     },
     Complete {
         block_hash: BlockHash,
-        check_sum: ExecutionResultsChecksum,
+        checksum: ExecutionResultsChecksum,
         results: Vec<casper_types::ExecutionResult>,
     },
     Mapped {
         block_hash: BlockHash,
-        check_sum: ExecutionResultsChecksum,
+        checksum: ExecutionResultsChecksum,
         results: HashMap<DeployHash, casper_types::ExecutionResult>,
     },
 }
 
 impl ExecutionResultsAcquisition {
-    pub(super) fn new(block_hash: BlockHash, check_sum: ExecutionResultsChecksum) -> Self {
+    pub(super) fn new(block_hash: BlockHash, checksum: ExecutionResultsChecksum) -> Self {
         Self::Pending {
             block_hash,
-            check_sum,
+            checksum,
         }
     }
 
-    pub(super) fn needs_value_or_chunk(&self) -> Option<BlockExecutionResultsOrChunkId> {
+    pub(super) fn needs_value_or_chunk(
+        &self,
+    ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
         if let Some(chunk_id) = self.first_missing() {
-            if let Some(ret) = self.execution_results_or_chunk_id() {
-                return Some(ret.next_chunk(chunk_id));
+            if let Some((ret, checksum)) = self.execution_results_or_chunk_id() {
+                // todo!() Isn't chunk_id already the same as in ret?
+                return Some((ret.next_chunk(chunk_id), checksum));
             }
         }
         None
     }
 
-    pub(super) fn apply_check_sum(
+    pub(super) fn apply_checksum(
         mut self,
-        check_sum: ExecutionResultsChecksum,
+        checksum: ExecutionResultsChecksum,
     ) -> Result<Self, Error> {
         match self {
             ExecutionResultsAcquisition::Needed { block_hash } => {
                 Ok(ExecutionResultsAcquisition::Pending {
                     block_hash,
-                    check_sum,
+                    checksum,
                 })
             }
             ExecutionResultsAcquisition::Unneeded { block_hash, .. }
@@ -260,30 +273,30 @@ impl ExecutionResultsAcquisition {
                 Err(Error::AttemptToApplyDataAfterCompleted { block_hash })
             }
             (
-                ExecutionResultsAcquisition::Pending { check_sum, .. },
+                ExecutionResultsAcquisition::Pending { checksum, .. },
                 ValueOrChunk::Value(results),
             )
             | (
-                ExecutionResultsAcquisition::Incomplete { check_sum, .. },
+                ExecutionResultsAcquisition::Incomplete { checksum, .. },
                 ValueOrChunk::Value(results),
             ) => Ok(Self::Complete {
                 block_hash,
-                check_sum,
+                checksum,
                 results,
             }),
             (
-                ExecutionResultsAcquisition::Pending { check_sum, .. },
+                ExecutionResultsAcquisition::Pending { checksum, .. },
                 ValueOrChunk::ChunkWithProof(chunk),
-            ) => apply_chunk(block_hash, check_sum, HashMap::new(), chunk, None),
+            ) => apply_chunk(block_hash, checksum, HashMap::new(), chunk, None),
             (
                 ExecutionResultsAcquisition::Incomplete {
-                    check_sum,
+                    checksum,
                     chunks,
                     chunk_count,
                     ..
                 },
                 ValueOrChunk::ChunkWithProof(chunk),
-            ) => apply_chunk(block_hash, check_sum, chunks, chunk, Some(chunk_count)),
+            ) => apply_chunk(block_hash, checksum, chunks, chunk, Some(chunk_count)),
         }
     }
 
@@ -298,7 +311,7 @@ impl ExecutionResultsAcquisition {
             }
             ExecutionResultsAcquisition::Complete {
                 block_hash,
-                check_sum,
+                checksum,
                 results,
                 ..
             } => {
@@ -312,7 +325,7 @@ impl ExecutionResultsAcquisition {
                 let ret = deploy_hashes.into_iter().zip(results).collect();
                 Ok(Self::Mapped {
                     block_hash,
-                    check_sum,
+                    checksum,
                     results: ret,
                 })
             }
@@ -341,7 +354,9 @@ impl ExecutionResultsAcquisition {
         }
     }
 
-    fn execution_results_or_chunk_id(&self) -> Option<BlockExecutionResultsOrChunkId> {
+    fn execution_results_or_chunk_id(
+        &self,
+    ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
         match self {
             ExecutionResultsAcquisition::Unneeded { .. }
             | ExecutionResultsAcquisition::Needed { .. }
@@ -349,30 +364,38 @@ impl ExecutionResultsAcquisition {
             | ExecutionResultsAcquisition::Mapped { .. } => None,
             ExecutionResultsAcquisition::Pending {
                 block_hash,
-                check_sum,
-            } => match check_sum {
-                ExecutionResultsChecksum::Uncheckable => {
-                    Some(BlockExecutionResultsOrChunkId::legacy(*block_hash))
-                }
+                checksum,
+            } => match checksum {
+                ExecutionResultsChecksum::Uncheckable => Some((
+                    BlockExecutionResultsOrChunkId::legacy(*block_hash),
+                    *checksum,
+                )),
                 ExecutionResultsChecksum::Checkable(_) => {
-                    Some(BlockExecutionResultsOrChunkId::new(*block_hash))
+                    Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum))
                 }
             },
             ExecutionResultsAcquisition::Incomplete {
                 block_hash,
-                check_sum,
+                checksum,
                 next,
                 ..
-            } => match check_sum {
-                ExecutionResultsChecksum::Uncheckable => {
-                    Some(BlockExecutionResultsOrChunkId::legacy(*block_hash))
-                }
-                ExecutionResultsChecksum::Checkable(_) => {
-                    Some(BlockExecutionResultsOrChunkId::Contemporary {
+            } => match checksum {
+                // todo!() Even for pre-1.5 blocks we need to make sure the chunks fit together,
+                // i.e. they have the same root hash.
+                ExecutionResultsChecksum::Uncheckable => Some((
+                    BlockExecutionResultsOrChunkId::Legacy {
                         block_hash: *block_hash,
                         chunk_index: *next,
-                    })
-                }
+                    },
+                    *checksum,
+                )),
+                ExecutionResultsChecksum::Checkable(_) => Some((
+                    BlockExecutionResultsOrChunkId::Contemporary {
+                        block_hash: *block_hash,
+                        chunk_index: *next,
+                    },
+                    *checksum,
+                )),
             },
         }
     }
@@ -380,7 +403,7 @@ impl ExecutionResultsAcquisition {
 
 fn apply_chunk(
     block_hash: BlockHash,
-    check_sum: ExecutionResultsChecksum,
+    checksum: ExecutionResultsChecksum,
     mut chunks: HashMap<u64, ChunkWithProof>,
     chunk: ChunkWithProof,
     expected_count: Option<u64>,
@@ -402,8 +425,8 @@ fn apply_chunk(
         }
     }
 
-    // ExecutionResultsRootHash::Legacy has no check_sum, otherwise check it
-    if let ExecutionResultsChecksum::Checkable(expected) = check_sum {
+    // ExecutionResultsRootHash::Legacy has no checksum, otherwise check it
+    if let ExecutionResultsChecksum::Checkable(expected) = checksum {
         if expected != digest {
             return Err(Error::ChecksumMismatch {
                 block_hash,
@@ -417,7 +440,7 @@ fn apply_chunk(
     match (0..chunk_count).find(|idx| !chunks.contains_key(idx)) {
         Some(next) => Ok(ExecutionResultsAcquisition::Incomplete {
             block_hash,
-            check_sum,
+            checksum,
             chunks,
             chunk_count,
             next,
@@ -433,7 +456,7 @@ fn apply_chunk(
                     // todo!() - check merkle root - sure, but how?
                     Ok(ExecutionResultsAcquisition::Complete {
                         block_hash,
-                        check_sum,
+                        checksum,
                         results,
                     })
                 }

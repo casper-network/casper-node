@@ -6,6 +6,8 @@ use casper_types::{EraId, PublicKey};
 
 use crate::types::{Block, BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId};
 
+use super::execution_results_acquisition::ExecutionResultsChecksum;
+
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
     Nothing,
@@ -22,7 +24,12 @@ pub(crate) enum NeedNext {
         block_hash: BlockHash,
         global_state_root_hash: Digest,
     },
-    ExecutionResults(BlockHash, BlockExecutionResultsOrChunkId),
+    // todo!(): Isn't the block hash already in the ID?
+    ExecutionResults(
+        BlockHash,
+        BlockExecutionResultsOrChunkId,
+        ExecutionResultsChecksum,
+    ),
     EraValidators(EraId),
     Peers(BlockHash),
 }

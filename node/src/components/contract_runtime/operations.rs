@@ -107,7 +107,7 @@ pub fn execute_finalized_block(
     // were any deploys.
     let block_height = finalized_block.height();
     let execution_results_checksum = compute_execution_results_checksum(
-        execution_results
+        &execution_results
             .iter()
             .map(|(_, _, result)| result)
             .cloned()
@@ -421,9 +421,9 @@ where
 /// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
 /// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
 fn compute_execution_results_checksum(
-    execution_results: Vec<ExecutionResult>,
+    execution_results: &Vec<ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
-    (&execution_results)
+    execution_results
         .hash()
         .map_err(BlockCreationError::BytesRepr)
 }
