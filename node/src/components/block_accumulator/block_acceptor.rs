@@ -147,6 +147,12 @@ impl BlockAcceptor {
         self.signatures
             .retain(|_, signature| signature.era_id == block.header().era_id());
 
+        if let Some(era_validator_weights) = self.era_validator_weights.as_ref() {
+            if era_validator_weights.era_id() != block.header().era_id() {
+                self.era_validator_weights = None;
+            }
+        }
+
         if let Err(error) = block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
