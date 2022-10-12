@@ -143,7 +143,9 @@ impl BlockAcceptor {
             });
         }
 
-        // TODO: Remove any finality signatures with the wrong era.
+        // todo!() - return the senders of the invalid signatures.
+        self.signatures
+            .retain(|_, signature| signature.era_id == block.header().era_id());
 
         if let Err(error) = block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
