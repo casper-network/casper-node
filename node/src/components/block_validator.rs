@@ -5,7 +5,7 @@
 //!
 //! When multiple requests are made to validate the same block payload, they will eagerly return
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
-//! calling for validation of the same protoblock multiple times at the same time.
+//! calling for validation of the same proposed block multiple times at the same time.
 
 mod keyed_counter;
 #[cfg(test)]

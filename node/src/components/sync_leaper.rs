@@ -29,8 +29,6 @@ enum PeerState {
 }
 
 #[derive(Debug, DataSize)]
-// TODO - fix
-#[allow(clippy::large_enum_variant)]
 pub(crate) enum LeapStatus {
     Inactive,
     Awaiting {

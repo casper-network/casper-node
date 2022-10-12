@@ -114,7 +114,7 @@ pub(crate) enum Event {
         header: Box<BlockHeader>,
         header_hash: BlockHash,
     },
-    /// The proto-block has been validated.
+    /// The proposed block has been validated.
     ResolveValidity(ResolveValidity),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
     DeactivateEra {
@@ -181,7 +181,7 @@ impl Display for Event {
                 block_context,
             }) => write!(
                 f,
-                "New proto-block for era {:?}: {:?}, {:?}",
+                "New proposed block for era {:?}: {:?}, {:?}",
                 era_id, block_payload, block_context
             ),
             Event::ConsensusRequest(request) => write!(

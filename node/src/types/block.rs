@@ -1215,8 +1215,8 @@ impl FetcherItem for BlockSignatures {
     }
 }
 
-/// A proto-block after execution, with the resulting post-state-hash.  This is the core component
-/// of the Casper linear blockchain.
+/// A proposed block after execution, with the resulting post-state-hash.  This is the core
+/// component of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
