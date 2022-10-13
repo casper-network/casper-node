@@ -1,4 +1,28 @@
-//! Asynchronous multiplexing
+//! Asynchronous multiplexing.
+//!
+//! The `muxink` crate allows building complex stream setups that multiplex, fragment, encode and
+//! backpressure messages sent across asynchronous streams.
+//!
+//! # How to get started
+//!
+//! At the lowest level, the [`io::FrameReader`] and [`io::FrameWriter`] wrappers provide
+//! [`Sink`](futures::Sink) and [`Stream`](futures::Stream) implementations on top of
+//! [`AsyncRead`](futures::AsyncRead) and [`AsyncWrite`](futures::AsyncWrite) implementing types.
+//! These can then be wrapped with any of types [`mux`]/[`demux`], [`fragmented`] or
+//! [`backpressured`] to layer functionality on top.
+//!
+//! # Cancellation safety
+//!
+//! All streams and sinks constructed by combining types from this crate at least uphold the
+//! following invariants:
+//!
+//! * [`SinkExt::send`](futures::SinkExt::send), [`SinkExt::send_all`](futures::SinkExt::send_all):
+//!   Safe to cancel, although no guarantees are made whether an item was actually sent -- if the
+//!   sink was still busy, it may not have been moved into the sink. The underlying stream will be
+//!   left in a consistent state regardless.
+//! * [`SinkExt::flush`](futures::SinkExt::flush): Safe to cancel.
+//! * [`StreamExt::next`](futures::StreamExt::next): Safe to cancel. Cancelling it will not cause
+//!   items to be lost upon construction of another [`next`](futures::StreamExt::next) future.
 
 pub mod backpressured;
 pub mod demux;

@@ -1,6 +1,8 @@
 //! Splits frames into fragments.
 //!
-//! The wire format for fragments is `NCCC...` where `CCC...` is the data fragment and `N` is the
+//! # Wire format
+//!
+//! The wire format for fragments is `NCCC...` where `CCC...` is the fragment's data and `N` is the
 //! continuation byte, which is `0x00` if more fragments are following, `0xFF` if this is the
 //! frame's last fragment.
 
@@ -16,6 +18,11 @@ use thiserror::Error;
 
 use crate::{try_ready, ImmediateFrame};
 
+/// A fragment to be sent over the write.
+///
+/// `SingleFrament` is produced by the `Fragmentizer` and sent to the wrapped stream. It is
+/// constructed from the passed in `B: Buf` value, so if `Bytes` is used for the bulk of the data,
+/// no copies of the data are made, all fragments refer to the initial buffer being passed in.
 pub type SingleFragment = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
 /// Indicator that more fragments are following.
@@ -24,6 +31,10 @@ const MORE_FRAGMENTS: u8 = 0x00;
 /// Final fragment indicator.
 const FINAL_FRAGMENT: u8 = 0xFF;
 
+/// A sink adapter for fragmentation.
+///
+/// Any item sent into `Fragmentizer` will be split into `fragment_size` large fragments before
+/// being sent.
 #[derive(Debug)]
 pub struct Fragmentizer<S, F> {
     current_frame: Option<F>,
@@ -47,6 +58,7 @@ where
         }
     }
 
+    /// Attempts to finish sending the current frame.
     fn flush_current_frame(
         &mut self,
         cx: &mut Context<'_>,
@@ -130,14 +142,22 @@ where
     }
 }
 
+/// A defragmenting stream adapter.
 #[derive(Debug)]
 pub struct Defragmentizer<S> {
+    /// The underyling stream that fragments are read from.
     stream: S,
+    /// Buffer for an unfinished frame.
     buffer: BytesMut,
+    /// The maximum frame size to tolerate.
     max_output_frame_size: usize,
 }
 
 impl<S> Defragmentizer<S> {
+    /// Creates a new defragmentizer.
+    ///
+    /// If a received frame assembled from fragments would exceed `max_output_frame_size`, the
+    /// stream will produce an error.
     pub fn new(max_output_frame_size: usize, stream: S) -> Self {
         Defragmentizer {
             stream,
@@ -147,6 +167,7 @@ impl<S> Defragmentizer<S> {
     }
 }
 
+/// An error during defragmentation.
 #[derive(Debug, Error)]
 pub enum DefragmentizerError<StreamErr> {
     /// A fragment header was sent that is not `MORE_FRAGMENTS` or `FINAL_FRAGMENT`.

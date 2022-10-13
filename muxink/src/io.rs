@@ -1,6 +1,6 @@
 //! Frame reading and writing
 //!
-//! Frame readers and writers are responsible for writing a [`bytes::Bytes`] frame to an
+//! [`FrameReader`]s and [`FrameWriter`]s are responsible for writing a [`bytes::Bytes`] frame to an
 //! [`AsyncWrite`] writer, or reading them from [`AsyncRead`] reader. While writing works for any
 //! value that implements the [`bytes::Buf`] trait, decoding requires an implementation of the
 //! [`FrameDecoder`] trait.
@@ -22,11 +22,6 @@ use crate::{
 /// Reads frames from an underlying reader.
 ///
 /// Uses the given [`FrameDecoder`] `D` to read frames from the underlying IO.
-///
-/// # Cancellation safety
-///
-/// The [`Stream`] implementation on [`FrameDecoder`] is cancellation safe, as it buffers data
-/// inside the reader, not the `next` future.
 #[derive(Debug)]
 pub struct FrameReader<D, R> {
     /// Decoder used to decode frames.
