@@ -67,9 +67,9 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, Chainspec, ChainspecRawBytes,
-        Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature, LegacyDeploy,
-        NodeId, SyncLeap, TrieOrChunk, Block,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
+        ChainspecRawBytes, Deploy, DeployHash, DeployId, ExitCode, FetcherItem, FinalitySignature,
+        LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -1118,7 +1118,6 @@ where
                 .ignore()
         }
         // TODO: seems like there should be NetResponse variants for TrieOrChunk.
-        
         NetResponse::Block(ref serialized_item) => {
             handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
         }
