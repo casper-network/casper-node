@@ -3,8 +3,8 @@
 //! Allows for frames to be at most `u16::MAX` (64 KB) in size. Frames are encoded by prefixing
 //! their length in little endian byte order in front of every frame.
 //!
-//! The module provides an encoder through the [`Transcoder`] implementation, and a [`FrameDecoder`]
-//! for reading these length delimited frames back from a stream.
+//! The module provides an encoder through the [`FrameEncoder`] implementation, and a
+//! [`FrameDecoder`] for reading these length delimited frames back from a stream.
 
 use std::convert::Infallible;
 

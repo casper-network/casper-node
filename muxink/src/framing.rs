@@ -52,7 +52,7 @@ where
     fn encode_frame(&mut self, buffer: T) -> Result<Self::Output, Self::Error>;
 }
 
-/// The outcome of a [`decode_frame`] call.
+/// The outcome of a frame decoding operation.
 #[derive(Debug, Error)]
 pub enum DecodeResult<T, E> {
     /// A complete item was decoded.
