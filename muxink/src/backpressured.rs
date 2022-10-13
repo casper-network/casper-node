@@ -28,10 +28,10 @@ use futures::{
     channel::mpsc::{Receiver, Sender},
     ready, Sink, SinkExt, Stream, StreamExt,
 };
-use thiserror::Error as ThisError;
+use thiserror::Error;
 use tracing::error;
 
-use crate::{error::Error, try_ready};
+use crate::try_ready;
 
 /// A back-pressuring sink.
 ///
@@ -63,6 +63,29 @@ pub struct BackpressuredSink<S, A, Item> {
     _phantom: PhantomData<Item>,
 }
 
+/// A backpressure error.
+#[derive(Debug, Error)]
+pub enum BackpressureError<E>
+where
+    E: std::error::Error,
+{
+    /// An ACK was received for an item that had not been sent yet.
+    #[error("received ACK {actual}, but only sent {items_sent} items")]
+    UnexpectedAck { actual: u64, items_sent: u64 },
+    /// Received an ACK for an item that an ACK must have already been received
+    /// as it is outside the window.
+    #[error("duplicate ACK {ack_received} received, already received {highest}")]
+    DuplicateAck { ack_received: u64, highest: u64 },
+    /// The ACK stream associated with a backpressured channel was close.d
+    #[error("ACK stream closed")]
+    AckStreamClosed,
+    #[error("ACK stream error")]
+    AckStreamError, // TODO: Capture actual ack stream error here.
+    /// The wrapped sink returned an error.
+    #[error(transparent)]
+    Sink(#[from] E),
+}
+
 impl<S, A, Item> BackpressuredSink<S, A, Item> {
     /// Constructs a new backpressured sink.
     ///
@@ -87,19 +110,19 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
     /// Validates a received ack.
     ///
     /// Returns an error if the `ACK` was a duplicate or from the future.
-    fn validate_ack<E>(&mut self, ack_received: u64) -> Result<(), Error<E>>
+    fn validate_ack<E>(&mut self, ack_received: u64) -> Result<(), BackpressureError<E>>
     where
         E: std::error::Error,
     {
         if ack_received > self.last_request {
-            return Err(Error::UnexpectedAck {
+            return Err(BackpressureError::UnexpectedAck {
                 actual: ack_received,
                 items_sent: self.last_request,
             });
         }
 
         if ack_received + self.window_size < self.last_request {
-            return Err(Error::DuplicateAck {
+            return Err(BackpressureError::DuplicateAck {
                 ack_received,
                 highest: self.received_ack,
             });
@@ -119,7 +142,7 @@ where
     A: Stream<Item = u64> + Unpin,
     <S as Sink<Item>>::Error: std::error::Error,
 {
-    type Error = Error<<S as Sink<Item>>::Error>;
+    type Error = BackpressureError<<S as Sink<Item>>::Error>;
 
     #[inline]
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -137,14 +160,18 @@ where
                 Poll::Ready(None) => {
                     // The ACK stream has been closed. Close our sink, now that we know, but try to
                     // flush as much as possible.
-                    match self_mut.inner.poll_close_unpin(cx).map_err(Error::Sink) {
+                    match self_mut
+                        .inner
+                        .poll_close_unpin(cx)
+                        .map_err(BackpressureError::Sink)
+                    {
                         Poll::Ready(Ok(())) => {
                             // All data has been flushed, we can now safely return an error.
-                            return Poll::Ready(Err(Error::AckStreamClosed));
+                            return Poll::Ready(Err(BackpressureError::AckStreamClosed));
                         }
                         Poll::Ready(Err(_)) => {
                             // The was an error polling the ACK stream.
-                            return Poll::Ready(Err(Error::AckStreamError));
+                            return Poll::Ready(Err(BackpressureError::AckStreamError));
                         }
                         Poll::Pending => {
                             // Data was flushed, but not done yet, keep polling.
@@ -168,7 +195,10 @@ where
         }
 
         // We have slots available, it is up to the wrapped sink to accept them.
-        self_mut.inner.poll_ready_unpin(cx).map_err(Error::Sink)
+        self_mut
+            .inner
+            .poll_ready_unpin(cx)
+            .map_err(BackpressureError::Sink)
     }
 
     #[inline]
@@ -178,7 +208,10 @@ where
 
         self_mut.last_request += 1;
 
-        self_mut.inner.start_send_unpin(item).map_err(Error::Sink)
+        self_mut
+            .inner
+            .start_send_unpin(item)
+            .map_err(BackpressureError::Sink)
     }
 
     #[inline]
@@ -186,7 +219,7 @@ where
         self.get_mut()
             .inner
             .poll_flush_unpin(cx)
-            .map_err(Error::Sink)
+            .map_err(BackpressureError::Sink)
     }
 
     #[inline]
@@ -194,7 +227,7 @@ where
         self.get_mut()
             .inner
             .poll_close_unpin(cx)
-            .map_err(Error::Sink)
+            .map_err(BackpressureError::Sink)
     }
 }
 
@@ -235,7 +268,7 @@ impl Drop for Ticket {
 }
 
 /// Error type for a [`BackpressuredStream`].
-#[derive(Debug, ThisError)]
+#[derive(Debug, Error)]
 pub enum BackpressuredStreamError<E: std::error::Error> {
     /// Couldn't enqueue an ACK for sending on the ACK sink after it polled
     /// ready.
@@ -441,9 +474,9 @@ mod tests {
     use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
     use tokio_util::sync::PollSender;
 
-    use crate::{backpressured::Ticket, error::Error};
-
-    use super::{BackpressuredSink, BackpressuredStream, BackpressuredStreamError};
+    use super::{
+        BackpressureError, BackpressuredSink, BackpressuredStream, BackpressuredStreamError, Ticket,
+    };
 
     /// Window size used in tests.
     const WINDOW_SIZE: u64 = 3;
@@ -565,7 +598,7 @@ mod tests {
 
         assert!(matches!(
             bp.send('I').now_or_never(),
-            Some(Err(Error::AckStreamClosed))
+            Some(Err(BackpressureError::AckStreamClosed))
         ));
 
         // Check all data was received correctly.
@@ -763,7 +796,7 @@ mod tests {
 
         assert!(matches!(
             bp.send('C').now_or_never(),
-            Some(Err(Error::UnexpectedAck {
+            Some(Err(BackpressureError::UnexpectedAck {
                 items_sent: 2,
                 actual: 3
             }))
@@ -795,7 +828,7 @@ mod tests {
 
         assert!(matches!(
             bp.send('F').now_or_never(),
-            Some(Err(Error::DuplicateAck {
+            Some(Err(BackpressureError::DuplicateAck {
                 ack_received: 1,
                 highest: 2
             }))
@@ -873,7 +906,7 @@ mod tests {
                     sink.flush().await.unwrap();
                     // After flushing, the sink must be able to accept new items.
                     match sink.feed(*item).await {
-                        Err(Error::AckStreamClosed) => {
+                        Err(BackpressureError::AckStreamClosed) => {
                             return sink;
                         }
                         Ok(_) => {}

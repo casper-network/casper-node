@@ -2,7 +2,6 @@
 
 pub mod backpressured;
 pub mod demux;
-pub mod error;
 pub mod fragmented;
 pub mod framing;
 pub mod io;
