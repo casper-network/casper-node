@@ -216,10 +216,7 @@ where
 
 /// A ticket from a [`BackpressuredStream`].
 ///
-/// Each yielded item will decrease the window size as it is processed. When processing of the item
-/// is finished, the associated ticket must be dropped. This signals to the [`BackpressuredStream`]
-/// that there is room for one more item. Not dropping tickets will consume capacity from the window
-/// size indefinitely.
+/// Each ticket, when dropped, will queue an ACK to be sent the next time the stream is polled.
 ///
 /// When the stream that created the ticket is dropped before the ticket, the ACK associated with
 /// the ticket is silently ignored.
