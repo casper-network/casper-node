@@ -9,7 +9,7 @@
 //!
 //! The issue with this type of implementation is that if multiple channels (see [`crate::mux`]) are
 //! used across a shared TCP connection, a single blocking channel will block all the other channels
-//! (see [Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)). Furthermore,
+//! ([Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)). Furthermore,
 //! deadlocks can occur if the data sent is a request which requires a response - should two peers
 //! make requests of each other at the same and end up backpressured, they may end up simultaneously
 //! waiting for the other peer to make progress.
@@ -33,13 +33,14 @@ use tracing::error;
 
 use crate::try_ready;
 
-/// A back-pressuring sink.
+/// A backpressuring sink.
 ///
 /// Combines a stream `A` of acknoledgements (ACKs) with a sink `S` that will count items in flight
 /// and expect an appropriate amount of ACKs to flow back through it.
 ///
-/// In other words, the `BackpressuredSink` will send `window_size` items at most to the sink
-/// without having received one or more ACKs through the `ack_stream`.
+/// The `BackpressuredSink` will pass `window_size` items at most to the wrapped sink without having
+/// received one or more ACKs through the `ack_stream`. If this limit is exceeded, the sink polls as
+/// pending.
 ///
 /// The ACKs sent back must be `u64`s, the sink will expect to receive at most one ACK per item
 /// sent. The first sent item is expected to receive an ACK of `1u64`, the second `2u64` and so on.
@@ -47,6 +48,9 @@ use crate::try_ready;
 /// ACKs are not acknowledgments for a specific item being processed but indicate the total number
 /// of processed items instead, thus they are unordered. They may be combined, an ACK of `n` implies
 /// all missing ACKs `< n`.
+///
+/// Duplicate ACKs will cause an error, thus sending ACKs in the wrong order will cause an error in
+/// the sink, as the higher ACK will implicitly have contained the lower one.
 pub struct BackpressuredSink<S, A, Item> {
     /// The inner sink that items will be forwarded to.
     inner: S,
@@ -148,8 +152,6 @@ where
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let self_mut = Pin::into_inner(self);
 
-        // TODO: Describe deadlock-freeness.
-
         // Attempt to read as many ACKs as possible.
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
@@ -174,6 +176,8 @@ where
                             return Poll::Ready(Err(BackpressureError::AckStreamError));
                         }
                         Poll::Pending => {
+                            // TODO: This is not legal, we should not poll a closed ack stream. Return the error straight away.
+
                             // Data was flushed, but not done yet, keep polling.
                             return Poll::Pending;
                         }
@@ -231,15 +235,15 @@ where
     }
 }
 
-/// Structure representing a ticket that comes with every yielded item from
-/// a [`BackpressuredStream`]. Each yielded item will decrease the window
-/// size as it is processed. When processing of the item is finished, the
-/// associated ticket must be dropped. This signals to the
-/// [`BackpressuredStream`] that there is room for one more item. Not dropping
-/// tickets will consume capacity from the window size indefinitely.
+/// A ticket from a [`BackpressuredStream`].
 ///
-/// When the stream that created the ticket is dropped before the ticket, the
-/// ACK associated with the ticket is silently ignored.
+/// Each yielded item will decrease the window size as it is processed. When processing of the item
+/// is finished, the associated ticket must be dropped. This signals to the [`BackpressuredStream`]
+/// that there is room for one more item. Not dropping tickets will consume capacity from the window
+/// size indefinitely.
+///
+/// When the stream that created the ticket is dropped before the ticket, the ACK associated with
+/// the ticket is silently ignored.
 pub struct Ticket {
     sender: Sender<()>,
 }
@@ -291,24 +295,17 @@ pub enum BackpressuredStreamError<E: std::error::Error> {
     Stream(E),
 }
 
-/// A back-pressuring stream.
+/// A backpressuring stream.
 ///
-/// Combines a sink `A` of acknoledgements (ACKs) with a stream `S` that will expect a maximum
-/// number of items in flight and send ACKs back to signal availability.
+/// Combines a sink `A` of acknowledgements (ACKs) with a stream `S` that will allow a maximum
+/// number of items in flight and send ACKs back to signal availability. Sending of ACKs is managed
+/// through [`Ticket`]s, which will automatically trigger an ACK being sent when dropped.
 ///
-/// In other words, the `BackpressuredStream` will receive and process `window_size` items at most
-/// from the stream before sending one or more ACKs through the `ack_stream`.
+/// If more than `window_size` items are received on the stream before ACKs have been sent back, the
+/// stream will return an error indicating the peer's capacity violation.
 ///
-/// The ACKs sent back must be `u64`s, the sink will expect to receive at most one ACK per item
-/// sent. The first sent item is expected to receive an ACK of `1u64`, the second `2u64` and so on.
-///
-/// ACKs are not acknowledgments for a specific item being processed but indicate the total number
-/// of processed items instead, thus they are unordered. They may be combined, an ACK of `n` implies
-/// all missing ACKs `< n`.
-///
-/// After the stream is closed, users should drop all associated tickets before dropping the stream
-/// itself in order to ensure a graceful shutdown. They should not, however, poll the stream again
-/// as that would lead to undefined behavior.
+/// If a stream is dropped, any outstanding ACKs will be lost. No ACKs will be sent unless this
+/// stream is actively polled (e.g. via [`StreamExt::next`](futures::stream::StreamExt::next)).
 pub struct BackpressuredStream<S, A, Item> {
     /// Inner stream to which backpressure is added.
     inner: S,
@@ -338,7 +335,7 @@ pub struct BackpressuredStream<S, A, Item> {
     _phantom: PhantomData<Item>,
 }
 
-impl<S, A, StreamItem> BackpressuredStream<S, A, StreamItem> {
+impl<S, A, Item> BackpressuredStream<S, A, Item> {
     /// Creates a new [`BackpressuredStream`] with a window size from a given
     /// stream and ACK sink.
     pub fn new(inner: S, ack_sink: A, window_size: u64) -> Self {
