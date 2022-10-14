@@ -246,7 +246,7 @@ impl BlockAcquisitionState {
         need_execution_state: bool,
     ) -> Result<(), Error> {
         let new_state = match self {
-            BlockAcquisitionState::HaveBlockHeader(header, signatures) => {
+            BlockAcquisitionState::HaveWeakFinalitySignatures(header, signatures) => {
                 let expected_block_hash = header.block_hash();
                 let actual_block_hash = block.hash();
                 if *actual_block_hash != expected_block_hash {
@@ -269,7 +269,7 @@ impl BlockAcquisitionState {
             // we do not ask for a block's body while in the following states, and
             // thus it is erroneous to attempt to apply one
             BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
@@ -282,7 +282,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_signature(
+    pub(super) fn with_finality_signature(
         &mut self,
         signature: FinalitySignature,
         validator_weights: EraValidatorWeights,
@@ -493,9 +493,11 @@ impl BlockAcquisitionState {
                         ExecutionResultsAcquisition::Unneeded { .. }
                         | ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. }
-                        | ExecutionResultsAcquisition::Incomplete { .. }
-                        | ExecutionResultsAcquisition::Complete { .. } => {
-                            return Ok(None);
+                        | ExecutionResultsAcquisition::Incomplete { .. } => return Ok(None),
+                        ExecutionResultsAcquisition::Complete { .. } => {
+                            // todo!() - should be Some to tell the caller that we now have all
+                            // chunks of execution results
+                            return Ok(Some(todo!()));
                         }
                         ExecutionResultsAcquisition::Mapped { ref results, .. } => (
                             BlockAcquisitionState::HaveGlobalState(
@@ -541,7 +543,7 @@ impl BlockAcquisitionState {
                 header.clone(),
                 signatures.clone(),
                 deploys.clone(),
-                checksum.clone(),
+                *checksum,
             ),
             BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
@@ -679,7 +681,11 @@ impl BlockAcquisitionState {
                     )),
                 }
             }
-            BlockAcquisitionState::HaveAllDeploys(header, signatures) => {
+            BlockAcquisitionState::HaveAllDeploys(
+                header,
+                signatures, /* , exec_result_acquisition */
+            ) => {
+                // todo!() - wire up the execution_results_acquisition::apply_deploy_hashes() here
                 Ok(BlockAcquisitionAction::finality_signatures(
                     peer_list,
                     rng,

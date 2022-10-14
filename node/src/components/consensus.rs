@@ -301,7 +301,8 @@ where
                 responder.respond(validator_changes).ignore()
             }
             Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
-                // todo!() - use the component state instead of relying on the current era being `None`
+                // todo!() - use the component state instead of relying on the current era being
+                // `None`
                 let current_era = match self.current_era() {
                     None => {
                         return req

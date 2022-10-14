@@ -311,7 +311,7 @@ impl BlockBuilder {
         if let Some(validator_weights) = self.validator_weights.to_owned() {
             match self
                 .acquisition_state
-                .with_signature(finality_signature, validator_weights)
+                .with_finality_signature(finality_signature, validator_weights)
             {
                 Err(error) => {
                     self.disqualify_peer(maybe_peer);
