@@ -60,6 +60,7 @@ use lmdb::{
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use tracing::{debug, error, info, warn};
@@ -134,7 +135,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
-// const_assert!(_STORAGE_EVENT_SIZE <= 96);
+const_assert!(_STORAGE_EVENT_SIZE <= 32);
 
 type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>);
 
@@ -215,17 +216,20 @@ pub struct Storage {
 pub(crate) enum Event {
     /// Storage request.
     #[from]
-    StorageRequest(StorageRequest),
+    StorageRequest(Box<StorageRequest>),
     /// Incoming net request.
     NetRequestIncoming(Box<NetRequestIncoming>),
     /// Incoming state storage request.
     #[from]
-    StateStoreRequest(AppStateRequest),
+    StateStoreRequest(Box<AppStateRequest>),
     /// Block completion announcement.
     #[from]
     MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
 }
-
+#[test]
+fn size_test() {
+    println!("{}", mem::size_of::<AppStateRequest>());
+}
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -243,6 +247,18 @@ impl From<NetRequestIncoming> for Event {
         Event::NetRequestIncoming(Box::new(incoming))
     }
 }
+impl From<StorageRequest> for Event {
+    #[inline]
+    fn from(request: StorageRequest) -> Self {
+        Event::StorageRequest(Box::new(request))
+    }
+}
+impl From<AppStateRequest> for Event {
+    #[inline]
+    fn from(request: AppStateRequest) -> Self {
+        Event::StateStoreRequest(Box::new(request))
+    }
+}
 
 impl<REv> Component<REv> for Storage
 where
@@ -257,7 +273,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(*req),
             Event::NetRequestIncoming(ref incoming) => {
                 match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
                     Ok(effects) => Ok(effects),
@@ -276,7 +292,7 @@ where
                 }
             }
             Event::StateStoreRequest(req) => {
-                self.handle_state_store_request::<REv>(effect_builder, req)
+                self.handle_state_store_request::<REv>(effect_builder, *req)
             }
             Event::MarkBlockCompletedRequest(req) => self.handle_mark_block_completed_request(req),
         };

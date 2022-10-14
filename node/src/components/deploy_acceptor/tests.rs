@@ -623,7 +623,10 @@ fn put_block_to_storage(
         effect_builder
             .into_inner()
             .schedule(
-                storage::Event::StorageRequest(StorageRequest::PutBlock { block, responder }),
+                storage::Event::StorageRequest(Box::new(StorageRequest::PutBlock {
+                    block,
+                    responder,
+                })),
                 QueueKind::Regular,
             )
             .ignore()
@@ -638,7 +641,10 @@ fn put_deploy_to_storage(
         effect_builder
             .into_inner()
             .schedule(
-                storage::Event::StorageRequest(StorageRequest::PutDeploy { deploy, responder }),
+                storage::Event::StorageRequest(Box::new(StorageRequest::PutDeploy {
+                    deploy,
+                    responder,
+                })),
                 QueueKind::Regular,
             )
             .ignore()
