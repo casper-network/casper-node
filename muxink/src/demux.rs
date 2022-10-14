@@ -1,8 +1,8 @@
 //! Stream demultiplexing
 //!
-//! Demultiplexes a Stream of Bytes into multiple channels. Up to 256 channels are supported, and
-//! if messages are present on a channel but there isn't an associated DemultiplexerHandle for that
-//! channel, then the Stream will never poll as Ready.
+//! Demultiplexes a Stream of Bytes into multiple channels. Up to 256 channels are supported, and if
+//! messages are present on a channel but there isn't an associated [`DemultiplexerHandle`] for that
+//! channel, then the stream will never poll as ready.
 
 use std::{
     error::Error,
