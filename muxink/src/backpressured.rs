@@ -160,28 +160,7 @@ where
                     self_mut.received_ack = max(self_mut.received_ack, ack_received);
                 }
                 Poll::Ready(None) => {
-                    // The ACK stream has been closed. Close our sink, now that we know, but try to
-                    // flush as much as possible.
-                    match self_mut
-                        .inner
-                        .poll_close_unpin(cx)
-                        .map_err(BackpressureError::Sink)
-                    {
-                        Poll::Ready(Ok(())) => {
-                            // All data has been flushed, we can now safely return an error.
-                            return Poll::Ready(Err(BackpressureError::AckStreamClosed));
-                        }
-                        Poll::Ready(Err(_)) => {
-                            // The was an error polling the ACK stream.
-                            return Poll::Ready(Err(BackpressureError::AckStreamError));
-                        }
-                        Poll::Pending => {
-                            // TODO: This is not legal, we should not poll a closed ack stream. Return the error straight away.
-
-                            // Data was flushed, but not done yet, keep polling.
-                            return Poll::Pending;
-                        }
-                    }
+                    return Poll::Ready(Err(BackpressureError::AckStreamClosed));
                 }
                 Poll::Pending => {
                     // Invariant: `received_ack` is always <= `last_request`.
