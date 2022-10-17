@@ -710,7 +710,32 @@ impl reactor::Reactor for MainReactor {
             ) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
-                todo!("get rid of this event variant and handle as per other net requests");
+                let sender = incoming.sender;
+                let finality_signature = incoming.message.clone();
+                let mut effects = reactor::wrap_effects(
+                    MainEvent::LinearChain,
+                    self.linear_chain
+                        .handle_event(effect_builder, rng, incoming.into()),
+                );
+
+                let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
+                    finality_signature,
+                    sender,
+                };
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator_event,
+                    ),
+                ));
+
+                // todo!() - reconsider if we need that
+                // let block_synchronizer_event =
+                // block_synchronizer::Event::FinalitySignatureFetched(())
+
+                effects
             }
             MainEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
                 MainEvent::FinalitySignatureGossiper,
