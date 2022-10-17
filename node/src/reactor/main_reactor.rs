@@ -19,7 +19,7 @@ use std::{sync::Arc, time::Instant};
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use casper_types::TimeDiff;
 
@@ -873,6 +873,11 @@ impl reactor::Reactor for MainReactor {
             ) => {
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
+
+                debug!(
+                    %block_hash, height=block.header().height(),
+                    era=block.header().era_id().value(),
+                    "executed block");
 
                 // send to linear chain
                 let reactor_event =

@@ -183,7 +183,10 @@ impl BlockAccumulator {
                 }
             }
         }
-        SyncInstruction::CaughtUp
+        if self.highest_complete_block.is_some() {
+            return SyncInstruction::CaughtUp;
+        }
+        SyncInstruction::Leap
     }
 
     // NOT USED

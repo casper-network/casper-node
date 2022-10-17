@@ -204,6 +204,11 @@ impl BlockSynchronizer {
 
         let _ = sync_leap.apply_validator_weights(&mut self.validator_matrix);
         let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        error!(
+            "XXXXX - self.forward={}, self.historical={}",
+            self.forward.is_some(),
+            self.historical.is_some()
+        );
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))
                 if builder.block_hash() == block_header.block_hash() =>
@@ -322,7 +327,9 @@ impl BlockSynchronizer {
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
-            match action.need_next() {
+            let next_action = action.need_next();
+            error!("XXXXX - next_action={:?}", next_action);
+            match next_action {
                 NeedNext::Nothing => {}
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
@@ -332,6 +339,10 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::BlockBody(block_hash) => {
+                    error!(
+                        "XXXXX - requesting BlockBody with peer count {}",
+                        peers.len()
+                    );
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<Block>(block_hash, node_id, EmptyValidationMetadata)
@@ -490,6 +501,7 @@ impl BlockSynchronizer {
         &mut self,
         result: Result<FetchedData<Block>, Error<Block>>,
     ) -> Effects<Event> {
+        error!("XXXXX - block_fetched");
         let (block_hash, maybe_block, maybe_peer_id): (
             BlockHash,
             Option<Box<Block>>,

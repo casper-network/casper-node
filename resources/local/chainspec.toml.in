@@ -24,10 +24,10 @@ maximum_net_message_size = 23_068_672
 
 [core]
 # Era duration.
-era_duration = '41seconds'
+era_duration = '21seconds'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
-minimum_era_height = 10
+minimum_era_height = 5
 # Number of slots available in validator auction.
 validator_slots = 5
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,

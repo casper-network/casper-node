@@ -463,6 +463,7 @@ impl MainReactor {
                             return CatchUpInstruction::Shutdown(msg);
                         }
                     };
+                    error!("XXXXX - peer count from sync leaper: {}", from_peers.len());
                     self.block_synchronizer.register_sync_leap(
                         &*best_available,
                         from_peers,

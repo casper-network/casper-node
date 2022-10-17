@@ -606,10 +606,12 @@ impl Storage {
                 )?)
             }
             NetRequest::Block(ref serialized_id) => {
+                error!("XXXXX - we've been asked for a block");
                 let id = decode_item_id::<Block>(serialized_id)?;
                 let opt_item = self.read_block(&id).map_err(FatalStorageError::from)?;
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
+                error!("XXXXX - sending block back");
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,
@@ -721,7 +723,10 @@ impl Storage {
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
-            } => responder.respond(self.read_block(&block_hash)?).ignore(),
+            } => {
+                error!("XXXX - StorageRequest::GetBlock");
+                responder.respond(self.read_block(&block_hash)?).ignore()
+            }
             StorageRequest::GetApprovalsHashes {
                 block_hash,
                 responder,
@@ -2239,13 +2244,19 @@ impl Storage {
 
         let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
             Some(trusted_block_header) => trusted_block_header,
-            None => return Ok(FetchResponse::NotFound(block_hash)),
+            None => {
+                error!("XXXXX - sync leap exit 1");
+                return Ok(FetchResponse::NotFound(block_hash));
+            }
         };
 
         let highest_complete_block_header =
             match self.get_header_of_highest_complete_block(&mut txn)? {
                 Some(highest_complete_block_header) => highest_complete_block_header,
-                None => return Ok(FetchResponse::NotFound(block_hash)),
+                None => {
+                    error!("XXXXX - sync leap exit 2");
+                    return Ok(FetchResponse::NotFound(block_hash));
+                }
             };
         if highest_complete_block_header
             .block_header
@@ -2253,10 +2264,12 @@ impl Storage {
             .saturating_sub(trusted_block_header.era_id().into())
             > allowed_era_diff.into()
         {
+            error!("XXXXX - sync leap exit 3");
             return Ok(FetchResponse::NotProvided(block_hash));
         }
 
         if highest_complete_block_header.block_header.height() == 0 {
+            error!("XXXXX - sync leap exit 4");
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_block_header,
                 trusted_ancestor_headers: vec![],
@@ -2267,7 +2280,10 @@ impl Storage {
         let trusted_ancestor_headers =
             match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
-                None => return Ok(FetchResponse::NotFound(block_hash)),
+                None => {
+                    error!("XXXXX - sync leap exit 5");
+                    return Ok(FetchResponse::NotFound(block_hash));
+                }
             };
 
         if let Some(signed_block_headers) = self.get_signed_block_headers(
@@ -2279,12 +2295,14 @@ impl Storage {
                 .cloned()
                 .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
+            error!("XXXXX - sync leap exit 6");
             Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_block_header,
                 trusted_ancestor_headers,
                 signed_block_headers,
             }))
         } else {
+            error!("XXXXX - sync leap exit 7");
             Ok(FetchResponse::NotFound(block_hash))
         }
     }

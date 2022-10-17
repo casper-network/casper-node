@@ -10,6 +10,7 @@ use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
     components::{
@@ -27,7 +28,8 @@ use crate::{
         AutoClosingResponder, EffectBuilder,
     },
     types::{
-        ApprovalsHashes, Block, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag,
+        ApprovalsHashes, Block, BlockHash, Deploy, FetcherItem, FinalitySignature, GossiperItem,
+        NodeId, Tag,
     },
 };
 
@@ -332,58 +334,62 @@ where
                 GossiperIncoming { sender, message }.into()
             }
             Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
-            Message::GetRequest { tag, serialized_id } => match tag {
-                Tag::LegacyDeploy => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::LegacyDeploy(serialized_id),
+            Message::GetRequest { tag, serialized_id } => {
+                let id = bincode::deserialize::<BlockHash>(&serialized_id);
+                error!("XXXXX - GetRequest tag={}, id={:?}", tag, id);
+                match tag {
+                    Tag::LegacyDeploy => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::LegacyDeploy(serialized_id),
+                    }
+                    .into(),
+                    Tag::Deploy => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::Deploy(serialized_id),
+                    }
+                    .into(),
+                    Tag::Block => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::Block(serialized_id),
+                    }
+                    .into(),
+                    Tag::GossipedAddress => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::GossipedAddress(serialized_id),
+                    }
+                    .into(),
+                    Tag::BlockHeaderByHash => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::BlockHeaderByHash(serialized_id),
+                    }
+                    .into(),
+                    Tag::TrieOrChunk => TrieRequestIncoming {
+                        sender,
+                        message: TrieRequest(serialized_id),
+                    }
+                    .into(),
+                    Tag::FinalitySignature => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::FinalitySignature(serialized_id),
+                    }
+                    .into(),
+                    Tag::SyncLeap => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::SyncLeap(serialized_id),
+                    }
+                    .into(),
+                    Tag::ApprovalsHashes => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::ApprovalsHashes(serialized_id),
+                    }
+                    .into(),
+                    Tag::BlockExecutionResults => NetRequestIncoming {
+                        sender,
+                        message: NetRequest::BlockExecutionResults(serialized_id),
+                    }
+                    .into(),
                 }
-                .into(),
-                Tag::Deploy => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::Deploy(serialized_id),
-                }
-                .into(),
-                Tag::Block => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::Block(serialized_id),
-                }
-                .into(),
-                Tag::GossipedAddress => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::GossipedAddress(serialized_id),
-                }
-                .into(),
-                Tag::BlockHeaderByHash => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockHeaderByHash(serialized_id),
-                }
-                .into(),
-                Tag::TrieOrChunk => TrieRequestIncoming {
-                    sender,
-                    message: TrieRequest(serialized_id),
-                }
-                .into(),
-                Tag::FinalitySignature => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::FinalitySignature(serialized_id),
-                }
-                .into(),
-                Tag::SyncLeap => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::SyncLeap(serialized_id),
-                }
-                .into(),
-                Tag::ApprovalsHashes => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::ApprovalsHashes(serialized_id),
-                }
-                .into(),
-                Tag::BlockExecutionResults => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockExecutionResults(serialized_id),
-                }
-                .into(),
-            },
+            }
             Message::GetResponse {
                 tag,
                 serialized_item,
