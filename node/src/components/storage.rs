@@ -226,10 +226,7 @@ pub(crate) enum Event {
     #[from]
     MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
 }
-#[test]
-fn size_test() {
-    println!("{}", mem::size_of::<AppStateRequest>());
-}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -247,12 +244,14 @@ impl From<NetRequestIncoming> for Event {
         Event::NetRequestIncoming(Box::new(incoming))
     }
 }
+
 impl From<StorageRequest> for Event {
     #[inline]
     fn from(request: StorageRequest) -> Self {
         Event::StorageRequest(Box::new(request))
     }
 }
+
 impl From<AppStateRequest> for Event {
     #[inline]
     fn from(request: AppStateRequest) -> Self {
