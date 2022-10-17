@@ -79,8 +79,12 @@ impl DeployBuffer {
             Some(timestamp) => (from_height, timestamp),
         };
 
-        for (height, timestamp) in self.chain_index.range(..=from_height).rev() {
-            if height.saturating_sub(1) != curr.0 {
+        if from_height == 0 {
+            return true;
+        }
+
+        for (height, timestamp) in self.chain_index.range(..from_height).rev() {
+            if height.saturating_add(1) != curr.0 {
                 return false;
             }
             if timestamp.elapsed() > ttl || *height == 0 {

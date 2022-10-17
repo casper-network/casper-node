@@ -256,7 +256,7 @@ impl MainReactor {
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
                         // to run, switch to validate mode
-                        match self.should_we_validate(effect_builder, rng) {
+                        match self.create_required_eras(effect_builder, rng) {
                             Ok(Some(mut effects)) => {
                                 self.state = ReactorState::Validate;
                                 self.block_synchronizer.turn_off();
@@ -298,7 +298,7 @@ impl MainReactor {
                 // we have a block with sufficient finality sigs to start gossiping
                 // enqueue it (add event or direct gossiper call)
                 // }
-                match self.should_we_validate(effect_builder, rng) {
+                match self.create_required_eras(effect_builder, rng) {
                     Ok(Some(mut effects)) => {
                         effects.extend(
                             effect_builder
@@ -554,7 +554,7 @@ impl MainReactor {
         CatchUpInstruction::CaughtUp
     }
 
-    fn should_we_validate(
+    fn create_required_eras(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
@@ -563,6 +563,25 @@ impl MainReactor {
             None => return Ok(None),
             Some(header) => header,
         };
+
+        if let Some(current_era) = self.consensus.current_era() {
+            if highest_switch_block_header.next_block_era_id() <= current_era {
+                return Ok(Some(Effects::new()));
+            }
+        }
+
+        let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
+            None => {
+                return Err(format!(
+                    "highest switch block has no era end: {}",
+                    highest_switch_block_header
+                ));
+            }
+            Some(weights) => weights,
+        };
+        if !highest_era_weights.contains_key(self.consensus.public_key()) {
+            return Ok(None);
+        }
 
         if !self
             .deploy_buffer
@@ -575,19 +594,6 @@ impl MainReactor {
             .upgrade_watcher
             .should_upgrade_after(highest_switch_block_header.era_id())
         {
-            return Ok(None);
-        }
-
-        let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
-            None => {
-                return Err(format!(
-                    "highest switch block has no era end: {}",
-                    highest_switch_block_header
-                ))
-            }
-            Some(weights) => weights,
-        };
-        if !highest_era_weights.contains_key(self.consensus.public_key()) {
             return Ok(None);
         }
 
