@@ -79,7 +79,7 @@ impl DeployBuffer {
             Some(timestamp) => (from_height, timestamp),
         };
 
-        for (height, timestamp) in self.chain_index.range(..from_height).rev() {
+        for (height, timestamp) in self.chain_index.range(..=from_height).rev() {
             if height.saturating_sub(1) != curr.0 {
                 return false;
             }

@@ -564,13 +564,12 @@ impl MainReactor {
             Some(header) => header,
         };
 
-        // todo!() - disabled temporarily
-        // if !self
-        //     .deploy_buffer
-        //     .have_full_ttl_of_deploys(highest_switch_block_header.height())
-        // {
-        //     return Ok(None);
-        // }
+        if !self
+            .deploy_buffer
+            .have_full_ttl_of_deploys(highest_switch_block_header.height())
+        {
+            return Ok(None);
+        }
 
         if self
             .upgrade_watcher
