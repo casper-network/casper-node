@@ -23,10 +23,10 @@ name = 'casper-example'
 maximum_net_message_size = 23_068_672
 
 [core]
-# Era duration.
+# Era duration. TODO: revert
 era_duration = '21seconds'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
-# minimum height.
+# minimum height.  TODO: revert
 minimum_era_height = 5
 # Number of slots available in validator auction.
 validator_slots = 5
