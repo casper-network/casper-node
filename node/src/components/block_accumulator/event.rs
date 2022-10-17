@@ -5,8 +5,8 @@ use derive_more::From;
 use casper_types::EraId;
 
 use crate::{
-    effect::requests::BlockAccumulatorRequest,
-    types::{ApprovalsHashes, Block, FinalitySignature, NodeId},
+    effect::{announcements::LinearChainAnnouncement, requests::BlockAccumulatorRequest},
+    types::{ApprovalsHashes, Block, BlockHash, BlockHeader, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -23,6 +23,9 @@ pub(crate) enum Event {
     },
     UpdatedValidatorMatrix {
         era_id: EraId,
+    },
+    ExecutedBlock {
+        block_header: BlockHeader,
     },
 }
 
@@ -47,6 +50,9 @@ impl Display for Event {
             }
             Event::UpdatedValidatorMatrix { era_id } => {
                 write!(f, "validator matrix update for era {}", era_id)
+            }
+            Event::ExecutedBlock { block_header } => {
+                write!(f, "executed block: hash={}", block_header.block_hash())
             }
         }
     }

@@ -25,7 +25,7 @@ use casper_types::TimeDiff;
 
 use crate::{
     components::{
-        block_accumulator::BlockAccumulator,
+        block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
         consensus::{self, ChainspecConsensusExt, EraSupervisor, HighwayProtocol},
@@ -543,7 +543,7 @@ impl reactor::Reactor for MainReactor {
                         height: block.height(),
                     });
                 let deploy_buffer_event =
-                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block));
+                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects.extend(self.dispatch_event(
@@ -553,6 +553,26 @@ impl reactor::Reactor for MainReactor {
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
+                let block_accumulator_event =
+                    MainEvent::BlockAccumulator(block_accumulator::Event::ExecutedBlock {
+                        block_header: block.header().clone(),
+                    });
+                effects.extend(self.dispatch_event(effect_builder, rng, block_accumulator_event));
+
+                if block.header().is_switch_block() {
+                    if self
+                        .recent_switch_block_headers
+                        .last()
+                        .map_or(true, |header| {
+                            header.era_id().successor() == block.header().era_id()
+                        })
+                    {
+                        self.recent_switch_block_headers
+                            .push(block.header().clone())
+                    } else {
+                        error!("recent switch block era id mismatch");
+                    }
+                }
 
                 effects
             }

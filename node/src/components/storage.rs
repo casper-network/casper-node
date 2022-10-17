@@ -660,6 +660,7 @@ impl Storage {
             NetRequest::SyncLeap(ref serialized_id) => {
                 let item_id = decode_item_id::<SyncLeap>(serialized_id)?;
                 let fetch_response = self.get_sync_leap(item_id, self.recent_era_count)?;
+                error!("XXXXX - sending sync leap: {:?}", fetch_response);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -2253,6 +2254,14 @@ impl Storage {
             > allowed_era_diff.into()
         {
             return Ok(FetchResponse::NotProvided(block_hash));
+        }
+
+        if highest_complete_block_header.block_header.height() == 0 {
+            return Ok(FetchResponse::Fetched(SyncLeap {
+                trusted_block_header,
+                trusted_ancestor_headers: vec![],
+                signed_block_headers: vec![],
+            }));
         }
 
         let trusted_ancestor_headers =

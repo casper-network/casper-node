@@ -10,13 +10,16 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
-    effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::{self, PeerBehaviorAnnouncement},
+        EffectBuilder, EffectExt, Effects,
+    },
     types::{ApprovalsHashes, Block, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
@@ -180,15 +183,11 @@ impl BlockAccumulator {
                 }
             }
         }
-        SyncInstruction::Leap
+        SyncInstruction::CaughtUp
     }
 
     // NOT USED
-    pub(crate) fn register_block_by_identifier<REv>(
-        &mut self,
-        block_hash: BlockHash,
-        era_id: EraId,
-    ) {
+    fn register_block_by_identifier(&mut self, block_hash: BlockHash, era_id: EraId) {
         if self.already_handled.contains(&block_hash) {
             return;
         }
@@ -202,7 +201,7 @@ impl BlockAccumulator {
         self.block_acceptors.insert(block_hash, acceptor);
     }
 
-    pub(crate) fn register_block<REv>(
+    fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block: &Block,
@@ -263,7 +262,7 @@ impl BlockAccumulator {
         Effects::new()
     }
 
-    pub(crate) fn register_finality_signature<REv>(
+    fn register_finality_signature<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         finality_signature: FinalitySignature,
@@ -331,7 +330,7 @@ impl BlockAccumulator {
     }
 
     /// Drops all block acceptors older than this block, and will ignore them in the future.
-    pub(crate) fn register_complete_block(&mut self, block_header: &BlockHeader) {
+    fn register_complete_block(&mut self, block_header: &BlockHeader) {
         for block_hash in self
             .block_acceptors
             .iter()
@@ -439,6 +438,10 @@ where
             } => self.register_finality_signature(effect_builder, *finality_signature, sender),
             Event::UpdatedValidatorMatrix { era_id } => {
                 //self.handle_updated_validator_matrix(effect_builder, era_id)
+                Effects::new()
+            }
+            Event::ExecutedBlock { block_header } => {
+                self.register_complete_block(&block_header);
                 Effects::new()
             }
         }

@@ -158,7 +158,7 @@ impl FetcherItem for SyncLeap {
         // todo!(): Possibly check the size of the collections.
         // todo!(): Put protocol version in validation metadata; only check for latest block?
 
-        if self.trusted_ancestor_headers.is_empty() {
+        if self.trusted_ancestor_headers.is_empty() && self.trusted_block_header.height() > 0 {
             return Err(SyncLeapValidationError::MissingTrustedAncestors);
         }
 
