@@ -1,6 +1,7 @@
 use datasize::DataSize;
 use log::error;
 use std::time::Duration;
+use tokio::time;
 use tracing::info;
 
 use casper_hashing::Digest;
@@ -9,16 +10,18 @@ use casper_types::{EraId, PublicKey, Timestamp};
 use crate::{
     components::{
         block_accumulator::{StartingWith, SyncInstruction},
+        block_synchronizer,
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
-        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
+        deploy_buffer, diagnostics_port, event_stream_server, rest_server, rpc_server,
+        small_network, sync_leaper,
         sync_leaper::LeapStatus,
         upgrade_watcher,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::{
         self,
-        main_reactor::{utils::initialize_component, MainEvent, MainReactor},
+        main_reactor::{utils, MainEvent, MainReactor},
     },
     types::{
         ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, ValidatorMatrix,
@@ -26,10 +29,8 @@ use crate::{
     NodeRng,
 };
 
-use crate::components::{block_synchronizer, deploy_buffer};
-
-// put in the config
-pub(crate) const WAIT_SEC: u64 = 5;
+// todo!: put in the config
+pub(crate) const WAIT_DURATION: Duration = Duration::from_secs(5);
 
 #[derive(DataSize, Debug)]
 pub(crate) enum ReactorState {
@@ -46,165 +47,125 @@ pub(crate) enum ReactorState {
 enum CatchUpInstruction {
     Do(Effects<MainEvent>),
     CheckSoon(String),
-    CheckLater(String, u64),
+    CheckLater(String, Duration),
     Shutdown(String),
     CaughtUp,
     CommitGenesis,
     CommitUpgrade(Box<BlockHeader>),
 }
 
-enum KeepUpInstruction {}
-
 impl MainReactor {
-    pub(crate) fn crank(
+    pub(super) fn crank(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Effects<MainEvent> {
+        let (delay, mut effects) = self.do_crank(effect_builder, rng);
+        effects.extend(
+            async move {
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await
+                }
+            }
+            .event(|_| MainEvent::ReactorCrank),
+        );
+        effects
+    }
+
+    fn do_crank(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+    ) -> (Duration, Effects<MainEvent>) {
         match self.state {
             ReactorState::Initialize => {
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.diagnostics_port,
                     "diagnostics",
                     MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.upgrade_watcher,
                     "upgrade_watcher",
                     MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.small_network,
                     "small_network",
                     MainEvent::Network(small_network::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.event_stream_server,
                     "event_stream_server",
                     MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.rest_server,
                     "rest_server",
                     MainEvent::RestServer(rest_server::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.rpc_server,
                     "rpc_server",
                     MainEvent::RpcServer(rpc_server::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.block_synchronizer,
                     "block_synchronizer",
                     MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = initialize_component(
+                if let Some(effects) = utils::initialize_component(
                     effect_builder,
                     &mut self.deploy_buffer,
                     "deploy_buffer",
                     MainEvent::DeployBuffer(deploy_buffer::Event::Initialize),
                 ) {
-                    return effects;
+                    return (Duration::ZERO, effects);
                 }
                 self.state = ReactorState::CatchUp;
-                return effect_builder
-                    .immediately()
-                    .event(|_| MainEvent::ReactorCrank);
+                return (Duration::ZERO, Effects::new());
             }
             ReactorState::CatchUp => match self.catch_up_instructions(rng, effect_builder) {
-                CatchUpInstruction::CommitGenesis => {
-                    let mut ret = Effects::new();
-                    match self.commit_genesis(effect_builder) {
-                        Ok(effects) => {
-                            ret.extend(effects);
-                            ret.extend(
-                                effect_builder
-                                    .set_timeout(Duration::from_secs(WAIT_SEC))
-                                    .event(|_| MainEvent::ReactorCrank),
-                            );
-                        }
-                        Err(msg) => {
-                            ret.extend(
-                                effect_builder
-                                    .immediately()
-                                    .event(move |_| MainEvent::Shutdown(msg)),
-                            );
-                        }
-                    }
-                    return ret;
-                }
+                CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
+                    Ok(effects) => return (WAIT_DURATION, effects),
+                    Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                },
                 CatchUpInstruction::CommitUpgrade(block_header) => {
-                    let mut ret = Effects::new();
                     match self.commit_upgrade(effect_builder, block_header) {
-                        Ok(effects) => {
-                            ret.extend(effects);
-                            ret.extend(
-                                effect_builder
-                                    .set_timeout(Duration::from_secs(WAIT_SEC))
-                                    .event(|_| MainEvent::ReactorCrank),
-                            );
-                        }
-                        Err(msg) => {
-                            ret.extend(
-                                effect_builder
-                                    .immediately()
-                                    .event(move |_| MainEvent::Shutdown(msg)),
-                            );
-                        }
+                        Ok(effects) => return (WAIT_DURATION, effects),
+                        Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                     }
-                    return ret;
                 }
-                CatchUpInstruction::Do(effects) => {
-                    let mut ret = Effects::new();
-                    ret.extend(effects);
-                    ret.extend(
-                        effect_builder
-                            .set_timeout(Duration::from_secs(WAIT_SEC))
-                            .event(|_| MainEvent::ReactorCrank),
-                    );
-                    return ret;
-                }
-                CatchUpInstruction::CheckLater(_, wait) => {
-                    return effect_builder
-                        .set_timeout(Duration::from_secs(wait))
-                        .event(|_| MainEvent::ReactorCrank);
-                }
-                CatchUpInstruction::CheckSoon(_) => {
-                    return effect_builder
-                        .immediately()
-                        .event(|_| MainEvent::ReactorCrank);
-                }
+                CatchUpInstruction::Do(effects) => return (WAIT_DURATION, effects),
+                CatchUpInstruction::CheckLater(_, wait) => return (wait, Effects::new()),
+                CatchUpInstruction::CheckSoon(_) => return (Duration::ZERO, Effects::new()),
                 CatchUpInstruction::Shutdown(msg) => {
-                    return effect_builder
-                        .immediately()
-                        .event(move |_| MainEvent::Shutdown(msg))
+                    return (Duration::ZERO, utils::new_shutdown_effect(msg))
                 }
                 CatchUpInstruction::CaughtUp => {
                     self.state = ReactorState::KeepUp;
-                    return effect_builder
-                        .immediately()
-                        .event(|_| MainEvent::ReactorCrank);
+                    return (Duration::ZERO, Effects::new());
                 }
             },
             ReactorState::KeepUp => {
@@ -242,16 +203,10 @@ impl MainReactor {
                                 .core_config
                                 .sync_leap_simultaneous_peer_requests,
                         );
-                        let mut effects = Effects::new();
-                        effects.extend(effect_builder.immediately().event(|_| {
+                        let effects = effect_builder.immediately().event(|_| {
                             MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                        }));
-                        effects.extend(
-                            effect_builder
-                                .set_timeout(Duration::from_secs(WAIT_SEC))
-                                .event(|_| MainEvent::ReactorCrank),
-                        );
-                        return effects;
+                        });
+                        return (WAIT_DURATION, effects);
                     }
                     SyncInstruction::CaughtUp => {
                         // if node is in validator set and era supervisor has what it needs
@@ -260,34 +215,14 @@ impl MainReactor {
                             Ok(Some(mut effects)) => {
                                 self.state = ReactorState::Validate;
                                 self.block_synchronizer.turn_off();
-                                effects.extend(
-                                    effect_builder
-                                        .immediately()
-                                        .event(|_| MainEvent::ReactorCrank),
-                                );
-                                return effects;
+                                return (Duration::ZERO, effects);
                             }
                             Ok(None) => {}
-                            Err(error_msg) => {
-                                return effect_builder
-                                    .immediately()
-                                    .event(move |_| MainEvent::Shutdown(error_msg))
-                            }
+                            Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                         }
                         match self.enqueue_executable_block(effect_builder) {
-                            Ok(mut effects) => {
-                                effects.extend(
-                                    effect_builder
-                                        .immediately()
-                                        .event(|_| MainEvent::ReactorCrank),
-                                );
-                                return effects;
-                            }
-                            Err(msg) => {
-                                return effect_builder
-                                    .immediately()
-                                    .event(move |_| MainEvent::Shutdown(msg));
-                            }
+                            Ok(effects) => return (Duration::ZERO, effects),
+                            Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                         }
                     }
                 }
@@ -299,14 +234,7 @@ impl MainReactor {
                 // enqueue it (add event or direct gossiper call)
                 // }
                 match self.create_required_eras(effect_builder, rng) {
-                    Ok(Some(mut effects)) => {
-                        effects.extend(
-                            effect_builder
-                                .immediately()
-                                .event(|_| MainEvent::ReactorCrank),
-                        );
-                        return effects;
-                    }
+                    Ok(Some(effects)) => return (Duration::ZERO, effects),
                     Ok(None) => {
                         // either consensus doesn't have enough protocol data
                         // or this node has been evicted or has naturally
@@ -318,11 +246,7 @@ impl MainReactor {
                         self.state = ReactorState::KeepUp;
                         self.block_synchronizer.turn_on();
                     }
-                    Err(error_msg) => {
-                        return effect_builder
-                            .immediately()
-                            .event(move |_| MainEvent::Shutdown(error_msg))
-                    }
+                    Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                 }
 
                 if self.consensus.last_progress().elapsed() <= self.idle_tolerances {
@@ -334,9 +258,7 @@ impl MainReactor {
             }
         }
         // TODO: Really immediately?
-        effect_builder
-            .immediately()
-            .event(|_| MainEvent::ReactorCrank)
+        (Duration::ZERO, Effects::new())
     }
 
     fn catch_up_instructions(
@@ -660,7 +582,7 @@ impl MainReactor {
         }
     }
 
-    pub(crate) fn commit_upgrade(
+    fn commit_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         previous_block_header: Box<BlockHeader>,
@@ -709,7 +631,7 @@ impl MainReactor {
         }
     }
 
-    pub(crate) fn enqueue_executable_block(
+    fn enqueue_executable_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
