@@ -195,6 +195,10 @@ impl LimiterHandle {
                 // No limit imposed on validators.
             }
             PeerClass::NonValidator => {
+                if self.data.resources_per_second == 0 {
+                    return;
+                }
+
                 let max_stored_resource = ((self.data.resources_per_second as f64)
                     * STORED_BUFFER_SECS.as_secs_f64())
                     as u32;
