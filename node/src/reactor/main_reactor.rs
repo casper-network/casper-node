@@ -875,9 +875,11 @@ impl reactor::Reactor for MainReactor {
                 let block_hash = *block.hash();
 
                 debug!(
-                    %block_hash, height=block.header().height(),
+                    %block_hash,
+                    height=block.header().height(),
                     era=block.header().era_id().value(),
-                    "executed block");
+                    "executed block"
+                );
 
                 // send to linear chain
                 let reactor_event =

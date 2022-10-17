@@ -52,7 +52,6 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
     where
         REv: From<StorageRequest> + From<ContractRuntimeRequest> + Send,
     {
-        error!("XXXXX - fetch - start");
         Self::get_from_storage(effect_builder, id.clone()).event(move |result| {
             Event::GetFromStorageResult {
                 id,
@@ -82,7 +81,6 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         <T as Item>::Id: 'static,
         REv: From<NetworkRequest<Message>> + Send,
     {
-        error!("XXXXX - failed_to_get_from_storage - start");
         let peer_timeout = self.peer_timeout();
         // Capture responder for later signalling.
         let item_handles = self.item_handles();
@@ -97,7 +95,6 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
                         new: Box::new(validation_metadata),
                     };
                     error!(%error, "failed to fetch");
-                    error!("XXXXX - failed_to_get_from_storage - exit 1");
                     return responder.respond(Err(error)).ignore();
                 }
                 handle.push_responder(responder);
@@ -109,13 +106,7 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
                 self.metrics().fetch_total.inc();
-                let id_clone = id.clone();
                 async move {
-                    error!(
-                        "XXXXX - sending fetch request: id={} tag={}",
-                        id_clone,
-                        T::TAG
-                    );
                     effect_builder.send_message(peer, message).await;
                     effect_builder.set_timeout(peer_timeout).await
                 }
@@ -123,7 +114,6 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
             .event(move |_| Event::TimeoutPeer { id, peer }),
             Err(error) => {
                 error!(%peer, %error, "failed to construct get request");
-                error!("XXXXX - failed_to_get_from_storage - exit 2");
 
                 self.signal(
                     id.clone(),

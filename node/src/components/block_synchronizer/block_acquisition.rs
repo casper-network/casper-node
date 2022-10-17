@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use either::Either;
-use tracing::{debug, error};
+use tracing::debug;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
@@ -22,9 +22,9 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        error, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, DeployHash, DeployId,
-        EraValidatorWeights, FinalitySignature, Item, NodeId, SignatureWeight,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockHash, BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, Item,
+        NodeId, SignatureWeight,
     },
     NodeRng,
 };
@@ -329,18 +329,14 @@ impl BlockAcquisitionState {
 
             // we never ask for finality signatures while in these states, thus it's always
             // erroneous to attempt to apply any
-            // BlockAcquisitionState::Initialized(..)
-            // | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
-            // | BlockAcquisitionState::HaveBlock(..)
-            // | BlockAcquisitionState::HaveGlobalState(..)
-            // | BlockAcquisitionState::HaveAllExecutionResults(..)
-            // | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            // | BlockAcquisitionState::HaveApprovalsHashes(..)
-            // | BlockAcquisitionState::Fatal => return Err(Error::InvalidAttemptToApplySignatures),
-            state => {
-                error!("XXXXX - state = {:?}", state);
-                return Err(Error::InvalidAttemptToApplySignatures);
-            }
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::Fatal => return Err(Error::InvalidAttemptToApplySignatures),
         };
         *self = new_state;
         Ok(true)
@@ -501,7 +497,8 @@ impl BlockAcquisitionState {
                         ExecutionResultsAcquisition::Complete { .. } => {
                             // todo!() - should be Some to tell the caller that we now have all
                             // chunks of execution results
-                            return Ok(Some(todo!()));
+                            // return Ok(Some(todo!()));
+                            todo!();
                         }
                         ExecutionResultsAcquisition::Mapped { ref results, .. } => (
                             BlockAcquisitionState::HaveGlobalState(

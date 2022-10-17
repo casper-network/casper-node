@@ -2,7 +2,6 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
-use tracing::error;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
@@ -30,10 +29,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<Block> {
-        error!("XXXXX - get_from_storage - start");
-        let x = effect_builder.get_block_from_storage(id).await;
-        error!("XXXXX - get_from_storage - end");
-        x
+        effect_builder.get_block_from_storage(id).await
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(

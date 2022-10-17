@@ -3,7 +3,6 @@ use std::collections::{btree_map::Entry, BTreeMap};
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::seq::IteratorRandom;
-use tracing::error;
 
 use crate::{types::NodeId, NodeRng};
 use casper_types::{TimeDiff, Timestamp};
@@ -57,7 +56,6 @@ impl PeerList {
     }
 
     pub(super) fn flush(&mut self) {
-        error!("XXXXX - PeerList::flush()");
         self.peer_list.clear();
     }
 
@@ -158,7 +156,7 @@ impl PeerList {
             .collect();
 
         // if below limit get semi-useful
-        let missing: usize = peers.len().saturating_sub(up_to);
+        let missing = up_to.saturating_sub(peers.len());
         if missing > 0 {
             let better_than_nothing = self
                 .peer_list

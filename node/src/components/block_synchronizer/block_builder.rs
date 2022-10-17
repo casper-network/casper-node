@@ -236,7 +236,6 @@ impl BlockBuilder {
             }
             Some(validator_weights) => validator_weights,
         };
-        error!("XXXXX - peer_list={:?}", &self.peer_list);
         match self.acquisition_state.next_action(
             &self.peer_list,
             validator_weights,
