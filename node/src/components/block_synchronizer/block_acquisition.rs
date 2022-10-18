@@ -967,6 +967,7 @@ impl BlockAcquisitionAction {
         }
     }
 
+    // NOT WIRED - NEEDS TO BE WIRED TO `strict_finality_signatures` actions.
     pub(super) fn strict_finality_signatures(
         peer_list: &PeerList,
         rng: &mut NodeRng,
