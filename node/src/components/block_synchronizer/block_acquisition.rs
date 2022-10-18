@@ -225,6 +225,7 @@ impl BlockAcquisitionState {
                 if need_execution_state =>
             {
                 deploys.apply_approvals_hashes(approvals_hashes)?;
+                error!("XXXXX - state will be HaveApprovalsHashes");
                 BlockAcquisitionState::HaveApprovalsHashes(
                     block.clone(),
                     signatures.clone(),
@@ -243,7 +244,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::Fatal => {
-                todo!()
+                return Ok(());
             }
         };
         *self = new_state;
@@ -353,6 +354,43 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::Fatal => {
+                // todo!()
+                // return Err(Error::InvalidAttemptToApplySignatures);
+                return Ok(false);
+            }
+        };
+        *self = new_state;
+        Ok(true)
+    }
+
+    pub(super) fn with_strict_finality_signatures(
+        &mut self,
+        validator_weights: EraValidatorWeights,
+    ) -> Result<bool, Error> {
+        let new_state = match self {
+            BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
+                BlockAcquisitionState::HaveStrictFinalitySignatures(
+                    header.clone(),
+                    acquired_signatures.clone(),
+                )
+            }
+            BlockAcquisitionState::HaveApprovalsHashes(block, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveAllExecutionResults(block, acquired_signatures, ..) => {
+                BlockAcquisitionState::HaveStrictFinalitySignatures(
+                    Box::new(block.header().clone()),
+                    acquired_signatures.clone(),
+                )
+            }
+
+            // we never ask for finality signatures while in these states, thus it's always
+            // erroneous to attempt to apply any
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Fatal => {
                 // todo!()
                 // return Err(Error::InvalidAttemptToApplySignatures);
@@ -473,10 +511,10 @@ impl BlockAcquisitionState {
                 _,
                 acq @ ExecutionResultsAcquisition::Needed { .. },
             ) if need_execution_state => {
-                // todo!() Don't throw away the new execution results acquisition state.
-                if let Err(error) = acq.clone().apply_checksum(execution_results_checksum) {
-                    return Err(Error::ExecutionResults(error));
-                }
+                *acq = acq
+                    .clone()
+                    .apply_checksum(execution_results_checksum)
+                    .map_err(|error| Error::ExecutionResults(error))?;
             }
             BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveGlobalState(..)
@@ -501,7 +539,7 @@ impl BlockAcquisitionState {
     ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
         let (new_state, ret) = match self {
             BlockAcquisitionState::HaveGlobalState(
-                header,
+                block,
                 signatures,
                 deploys,
                 exec_results_acq,
@@ -516,14 +554,43 @@ impl BlockAcquisitionState {
                         | ExecutionResultsAcquisition::Pending { .. }
                         | ExecutionResultsAcquisition::Incomplete { .. } => return Ok(None),
                         ExecutionResultsAcquisition::Complete { .. } => {
-                            // todo!() - should be Some to tell the caller that we now have all
-                            // chunks of execution results
-                            // return Ok(Some(todo!()));
-                            todo!();
+                            let deploy_hashes =
+                                block.deploy_and_transfer_hashes().copied().collect();
+                            match new_effects.apply_deploy_hashes(deploy_hashes) {
+                                Ok(ExecutionResultsAcquisition::Mapped {
+                                    block_hash,
+                                    checksum,
+                                    results,
+                                }) => (
+                                    BlockAcquisitionState::HaveGlobalState(
+                                        block.clone(),
+                                        signatures.clone(),
+                                        deploys.clone(),
+                                        ExecutionResultsAcquisition::Mapped {
+                                            block_hash,
+                                            checksum,
+                                            results: results.clone(),
+                                        },
+                                    ),
+                                    Some(results),
+                                ),
+                                Ok(ExecutionResultsAcquisition::Unneeded { .. })
+                                | Ok(ExecutionResultsAcquisition::Needed { .. })
+                                | Ok(ExecutionResultsAcquisition::Pending { .. })
+                                | Ok(ExecutionResultsAcquisition::Incomplete { .. })
+                                | Ok(ExecutionResultsAcquisition::Complete { .. }) => {
+                                    return Err(Error::InvalidStateTransition)
+                                }
+                                // todo!() - when `apply_deploy_hashes` returns an
+                                // `ExecutionResultToDeployHashLengthDiscrepancyError`, we must
+                                // disconnect from the peer that gave us the execution results
+                                // and start over using another peer.
+                                Err(error) => return Err(Error::ExecutionResults(error)),
+                            }
                         }
                         ExecutionResultsAcquisition::Mapped { ref results, .. } => (
                             BlockAcquisitionState::HaveGlobalState(
-                                header.clone(),
+                                block.clone(),
                                 signatures.clone(),
                                 deploys.clone(),
                                 new_effects.clone(),
@@ -718,55 +785,56 @@ impl BlockAcquisitionState {
                         peer_list,
                         rng,
                     )),
-                    None => Ok(BlockAcquisitionAction::finality_signatures(
+                    None => Ok(BlockAcquisitionAction::strict_finality_signatures(
                         peer_list,
                         rng,
                         block.header(),
-                        validator_weights
-                            .missing_validators(signatures.have_signatures())
-                            .cloned()
-                            .collect(),
+                        validator_weights,
+                        &signatures,
                     )),
                 }
             }
             BlockAcquisitionState::HaveAllDeploys(
                 header,
                 signatures, /* , exec_result_acquisition */
-            ) => {
-                // todo!() - wire up the execution_results_acquisition::apply_deploy_hashes() here
-                Ok(BlockAcquisitionAction::finality_signatures(
-                    peer_list,
-                    rng,
-                    header.as_ref(),
-                    validator_weights
-                        .missing_validators(signatures.have_signatures())
-                        .cloned()
-                        .collect(),
-                ))
-            }
+            ) => Ok(BlockAcquisitionAction::strict_finality_signatures(
+                peer_list,
+                rng,
+                header.as_ref(),
+                validator_weights,
+                signatures,
+            )),
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
+                error!("XXXXX - State is HaveApprovalsHashes");
                 match deploys.needs_deploy() {
-                    Some(Either::Right(deploy_id)) => Ok(BlockAcquisitionAction::deploy_by_id(
-                        *block.hash(),
-                        deploy_id,
-                        peer_list,
-                        rng,
-                    )),
-                    Some(Either::Left(deploy_hash)) => Ok(BlockAcquisitionAction::deploy_by_hash(
-                        *block.hash(),
-                        deploy_hash,
-                        peer_list,
-                        rng,
-                    )),
-                    None => Ok(BlockAcquisitionAction::finality_signatures(
-                        peer_list,
-                        rng,
-                        block.header(),
-                        validator_weights
-                            .missing_validators(signatures.have_signatures())
-                            .cloned()
-                            .collect(),
-                    )),
+                    Some(Either::Right(deploy_id)) => {
+                        error!("XXXXX - requesting missing deploys by ID");
+                        Ok(BlockAcquisitionAction::deploy_by_id(
+                            *block.hash(),
+                            deploy_id,
+                            peer_list,
+                            rng,
+                        ))
+                    }
+                    Some(Either::Left(deploy_hash)) => {
+                        error!("XXXXX - requesting missing deploys by hash");
+                        Ok(BlockAcquisitionAction::deploy_by_hash(
+                            *block.hash(),
+                            deploy_hash,
+                            peer_list,
+                            rng,
+                        ))
+                    }
+                    None => {
+                        error!("XXXXX - requesting finality signatures");
+                        Ok(BlockAcquisitionAction::strict_finality_signatures(
+                            peer_list,
+                            rng,
+                            block.header(),
+                            validator_weights,
+                            signatures,
+                        ))
+                    }
                 }
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(..)
@@ -896,6 +964,44 @@ impl BlockAcquisitionAction {
         BlockAcquisitionAction {
             peers_to_ask,
             need_next: NeedNext::FinalitySignatures(block_hash, era_id, missing_signatures),
+        }
+    }
+
+    pub(super) fn strict_finality_signatures(
+        peer_list: &PeerList,
+        rng: &mut NodeRng,
+        block_header: &BlockHeader,
+        validator_weights: &EraValidatorWeights,
+        signature_acquisition: &SignatureAcquisition,
+    ) -> Self {
+        let peers_to_ask = peer_list.qualified_peers(rng);
+        let era_id = block_header.era_id();
+        let block_hash = block_header.block_hash();
+
+        if validator_weights
+            .missing_validators(signature_acquisition.have_signatures())
+            .count()
+            == 0
+        {
+            if let (SignatureWeight::Sufficient) =
+                validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
+            {
+                return BlockAcquisitionAction {
+                    peers_to_ask: vec![],
+                    need_next: NeedNext::Nothing,
+                };
+            }
+        }
+        BlockAcquisitionAction {
+            peers_to_ask,
+            need_next: NeedNext::FinalitySignatures(
+                block_hash,
+                era_id,
+                validator_weights
+                    .missing_validators(signature_acquisition.have_signatures())
+                    .cloned()
+                    .collect(),
+            ),
         }
     }
 

@@ -146,6 +146,10 @@ impl BlockSynchronizer {
         requires_strict_finality: bool,
         max_simultaneous_peers: u32,
     ) {
+        error!(
+            "XXXXX - Creating a *new* block builder for block {}",
+            block_hash
+        );
         let builder = BlockBuilder::new(
             block_hash,
             should_fetch_execution_state,
@@ -213,6 +217,13 @@ impl BlockSynchronizer {
             _ => {
                 let era_id = block_header.era_id();
                 if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
+                    error!(
+                        "XXXXX - Creating block builder from sync leap for block {}",
+                        block_header.block_hash()
+                    );
+                    if peers.is_empty() {
+                        error!("XXXXX - BUT THE PEER LIST IS EMPTY");
+                    }
                     let mut builder = BlockBuilder::new_from_sync_leap(
                         sync_leap,
                         validator_weights,
@@ -439,6 +450,7 @@ impl BlockSynchronizer {
     }
 
     fn disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
+        error!("XXXXX - disconnecting from peer (for blockable offense)");
         if let Some(builder) = &mut self.forward {
             builder.demote_peer(Some(node_id));
         }
@@ -654,6 +666,7 @@ impl BlockSynchronizer {
         block_hash: BlockHash,
         result: Result<Option<Digest>, engine_state::Error>,
     ) -> Effects<Event> {
+        error!("XXXXX - got the root hash {:?}", result);
         let execution_results_root_hash = match result {
             Ok(Some(digest)) => ExecutionResultsChecksum::Checkable(digest),
             Ok(None) => {

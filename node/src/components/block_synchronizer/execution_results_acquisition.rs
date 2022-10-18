@@ -312,7 +312,6 @@ impl ExecutionResultsAcquisition {
         }
     }
 
-    // todo!() - not hooked
     pub(super) fn apply_deploy_hashes(self, deploy_hashes: Vec<DeployHash>) -> Result<Self, Error> {
         match self {
             ExecutionResultsAcquisition::Unneeded { block_hash, .. }

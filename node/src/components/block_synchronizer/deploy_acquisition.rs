@@ -7,6 +7,7 @@ use std::{
 use datasize::DataSize;
 use either::Either;
 use itertools::Itertools;
+use tracing::error;
 
 use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 
@@ -77,7 +78,10 @@ impl DeployAcquisition {
                     need_execution_result: acquisition.need_execution_result,
                 })
             }
-            DeployAcquisition::ById(_) => return Err(Error::AcquisitionByIdNotPossible),
+            DeployAcquisition::ById(_) => {
+                error!("XXXXX - this should not be possible, but we are applying approvals hashes on a deploy acq by ID");
+                return Err(Error::AcquisitionByIdNotPossible);
+            }
         };
 
         *self = new_acquisition;

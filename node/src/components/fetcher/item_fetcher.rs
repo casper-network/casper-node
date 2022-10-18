@@ -142,7 +142,10 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         {
             Some(item_handle) => item_handle.validation_metadata(),
             None => {
-                error!("XXXXX - unexpected item, item handles: {:?}", self.item_handles());
+                error!(
+                    "XXXXX - unexpected item, item handles: {:?}",
+                    self.item_handles()
+                );
                 debug!(item_id = %item.id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
                 return Effects::new();
             }

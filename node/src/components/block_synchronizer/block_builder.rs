@@ -211,6 +211,7 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
+        error!("XXXXX - demoting peer {:?}", peer);
         self.peer_list.demote_peer(peer);
     }
 

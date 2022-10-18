@@ -3,6 +3,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::seq::IteratorRandom;
+use tracing::error;
 
 use crate::{types::NodeId, NodeRng};
 use casper_types::{TimeDiff, Timestamp};
@@ -125,21 +126,31 @@ impl PeerList {
     }
 
     pub(super) fn need_peers(&self) -> bool {
-        if self.peer_list.is_empty() {
-            return true;
-        }
-        // periodically ask for refreshed peers
-        // NOTE: if we decide to do this imperatively from the reactor, this can likely be removed
-        if Timestamp::now().saturating_diff(self.latch) > self.peer_refresh_interval {
-            return true;
-        }
-        // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers
-        let reliability_goal = self.max_simultaneous_peers as usize;
-        self.peer_list
-            .iter()
-            .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
-            .count()
-            < reliability_goal
+        return self.peer_list.is_empty();
+
+        // if self.peer_list.is_empty() {
+        //     return true;
+        // }
+        // // periodically ask for refreshed peers
+        // // NOTE: if we decide to do this imperatively from the reactor, this can likely be
+        // removed if Timestamp::now().saturating_diff(self.latch) >
+        // self.peer_refresh_interval {     error!("XXXXX - need_next: Peers: list is NOT
+        // empty, but latch diff {} is telling us we need to refresh",
+        // Timestamp::now().saturating_diff(self.latch));     return true;
+        // }
+        // // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers
+        // let reliability_goal = self.max_simultaneous_peers as usize;
+        // error!("XXXXX - reliability goal is {}", reliability_goal);
+        // let good_peer_count = self.peer_list
+        // .iter()
+        // .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
+        // .count();
+        // error!("XXXXX - good peer count is {}", good_peer_count);
+        // self.peer_list
+        //     .iter()
+        //     .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
+        //     .count()
+        //     < reliability_goal
     }
 
     pub(super) fn qualified_peers(&self, rng: &mut NodeRng) -> Vec<NodeId> {
