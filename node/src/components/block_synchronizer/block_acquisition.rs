@@ -612,8 +612,15 @@ impl BlockAcquisitionState {
                 ))
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => {
-                error!("XXXXX - getting block body for block {}", header.block_hash());
-                Ok(BlockAcquisitionAction::block_body(peer_list, rng, header.id()))
+                error!(
+                    "XXXXX - getting block body for block {}",
+                    header.block_hash()
+                );
+                Ok(BlockAcquisitionAction::block_body(
+                    peer_list,
+                    rng,
+                    header.id(),
+                ))
             }
             BlockAcquisitionState::HaveBlock(block, signatures, deploy_state) => {
                 if should_fetch_execution_state {
@@ -626,7 +633,10 @@ impl BlockAcquisitionState {
                     ));
                 }
 
-                error!("XXXXX - getting approvals hashes for block {}", block.hash());
+                error!(
+                    "XXXXX - getting approvals hashes for block {}",
+                    block.hash()
+                );
                 Ok(BlockAcquisitionAction::approvals_hashes(
                     block, peer_list, rng,
                 ))
@@ -642,7 +652,10 @@ impl BlockAcquisitionState {
                         Err(Error::InvalidAttemptToAcquireExecutionResults)
                     }
                     ExecutionResultsAcquisition::Needed { .. } => {
-                        error!("XXXXX - getting execution results root hash for block {}", block.hash());
+                        error!(
+                            "XXXXX - getting execution results root hash for block {}",
+                            block.hash()
+                        );
                         Ok(BlockAcquisitionAction::execution_results_root_hash(
                             *block.hash(),
                             *block.state_root_hash(),
@@ -656,7 +669,10 @@ impl BlockAcquisitionState {
                                 Err(Error::InvalidAttemptToAcquireExecutionResults)
                             }
                             Some((next, checksum)) => {
-                                error!("XXXXX - getting execution results for block {}", block.hash());
+                                error!(
+                                    "XXXXX - getting execution results for block {}",
+                                    block.hash()
+                                );
                                 Ok(BlockAcquisitionAction::execution_results(
                                     *block.hash(),
                                     peer_list,
@@ -675,7 +691,10 @@ impl BlockAcquisitionState {
                 deploys,
                 checksum,
             ) => {
-                error!("XXXXX - somehow got all execution results for block {}", block.hash());
+                error!(
+                    "XXXXX - somehow got all execution results for block {}",
+                    block.hash()
+                );
                 if should_fetch_execution_state == false {
                     return Err(Error::InvalidStateTransition);
                 }

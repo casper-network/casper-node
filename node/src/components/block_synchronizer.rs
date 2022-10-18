@@ -321,6 +321,11 @@ impl BlockSynchronizer {
         let mut results = Effects::new();
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             let action = builder.block_acquisition_action(rng);
+
+            error!(
+                "XXXXX - block_acquisition_action need_next = {:?}",
+                action.need_next()
+            );
             let peers = action.peers_to_ask(); // pass this to any fetcher
             match action.need_next() {
                 NeedNext::Nothing => {}
@@ -514,7 +519,10 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block {
                     None => {
-                        error!("XXXXX - demoting peer because we have no block {:?}", peer);
+                        error!(
+                            "XXXXX - demoting peer because we have no block {:?}",
+                            maybe_peer_id
+                        );
                         builder.demote_peer(maybe_peer_id);
                     }
                     Some(block) => {
