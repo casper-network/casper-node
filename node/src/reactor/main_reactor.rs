@@ -529,11 +529,11 @@ impl reactor::Reactor for MainReactor {
                 });
                 // TODO - only gossip once we have enough finality signatures (and only if we're
                 //        a validator?)
-                let reactor_approvals_hashes_gossiper_event =
-                    MainEvent::ApprovalsHashesGossiper(gossiper::Event::ItemReceived {
-                        item_id: *block.hash(),
-                        source: Source::Ourself,
-                    });
+                // let reactor_approvals_hashes_gossiper_event =
+                //     MainEvent::ApprovalsHashesGossiper(gossiper::Event::ItemReceived {
+                //         item_id: *block.hash(),
+                //         source: Source::Ourself,
+                //     });
                 let reactor_event_es = MainEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block.clone()),
                 );
@@ -546,11 +546,11 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    reactor_approvals_hashes_gossiper_event,
-                ));
+                // effects.extend(self.dispatch_event(
+                //     effect_builder,
+                //     rng,
+                //     reactor_approvals_hashes_gossiper_event,
+                // ));
                 effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
                 let block_accumulator_event =

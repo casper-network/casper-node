@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use either::Either;
-use tracing::debug;
+use tracing::{debug, error};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
@@ -121,27 +121,37 @@ enum ExecutionState {
     ExecutionResults(BTreeMap<DeployHash, DeployState>),
 }
 
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+#[derive(Clone, PartialEq, Eq, DataSize, Debug, derive_more::Display)]
 pub(super) enum BlockAcquisitionState {
+    #[display(fmt = "Initialize")]
     Initialized(BlockHash, SignatureAcquisition),
+    #[display(fmt = "HaveBlockHeader")]
     HaveBlockHeader(Box<BlockHeader>, SignatureAcquisition),
+    #[display(fmt = "HaveWeakFinalitySignatures")]
     HaveWeakFinalitySignatures(Box<BlockHeader>, SignatureAcquisition),
+    #[display(fmt = "HaveBlock")]
     HaveBlock(Box<Block>, SignatureAcquisition, DeployAcquisition),
+    #[display(fmt = "HaveApprovalsHashes")]
     HaveApprovalsHashes(Box<Block>, SignatureAcquisition, DeployAcquisition),
+    #[display(fmt = "HaveGlobalState")]
     HaveGlobalState(
         Box<Block>,
         SignatureAcquisition,
         DeployAcquisition,
         ExecutionResultsAcquisition,
     ),
+    #[display(fmt = "HaveAllExecutionResults")]
     HaveAllExecutionResults(
         Box<Block>,
         SignatureAcquisition,
         DeployAcquisition,
         ExecutionResultsChecksum,
     ),
+    #[display(fmt = "HaveAllDeploys")]
     HaveAllDeploys(Box<BlockHeader>, SignatureAcquisition),
+    #[display(fmt = "HaveStrictFinalitySignatures")]
     HaveStrictFinalitySignatures(Box<BlockHeader>, SignatureAcquisition),
+    #[display(fmt = "Fatal")]
     Fatal,
 }
 
@@ -245,6 +255,7 @@ impl BlockAcquisitionState {
         block: &Block,
         need_execution_state: bool,
     ) -> Result<(), Error> {
+        error!("XXXXX - with_block was called with state {}", self);
         let new_state = match self {
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, signatures) => {
                 let expected_block_hash = header.block_hash();
@@ -268,15 +279,21 @@ impl BlockAcquisitionState {
             }
             // we do not ask for a block's body while in the following states, and
             // thus it is erroneous to attempt to apply one
-            BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveBlockHeader(..)
-            | BlockAcquisitionState::HaveBlock(..)
-            | BlockAcquisitionState::HaveGlobalState(..)
-            | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
-            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::Fatal => return Err(Error::InvalidStateTransition),
+            // BlockAcquisitionState::Initialized(..)
+            // | BlockAcquisitionState::HaveBlockHeader(..)
+            // | BlockAcquisitionState::HaveBlock(..)
+            // | BlockAcquisitionState::HaveGlobalState(..)
+            // | BlockAcquisitionState::HaveAllExecutionResults(..)
+            // | BlockAcquisitionState::HaveAllDeploys(..)
+            // | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            // | BlockAcquisitionState::HaveApprovalsHashes(..)
+            // | BlockAcquisitionState::Fatal => return Err(Error::InvalidStateTransition),
+            state => {
+                // error!("XXXXX - invalid `with_block` call from state {:?}", state);
+                // return Err(Error::InvalidStateTransition);
+                // todo!()
+                return Ok(());
+            }
         };
         *self = new_state;
         Ok(())
@@ -336,7 +353,11 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::Fatal => return Err(Error::InvalidAttemptToApplySignatures),
+            | BlockAcquisitionState::Fatal => {
+                // todo!()
+                // return Err(Error::InvalidAttemptToApplySignatures);
+                return Ok(false);
+            }
         };
         *self = new_state;
         Ok(true)
@@ -590,11 +611,13 @@ impl BlockAcquisitionState {
                         .collect(),
                 ))
             }
-            BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Ok(
-                BlockAcquisitionAction::block_body(peer_list, rng, header.id()),
-            ),
+            BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => {
+                error!("XXXXX - getting block body for block {}", header.block_hash());
+                Ok(BlockAcquisitionAction::block_body(peer_list, rng, header.id()))
+            }
             BlockAcquisitionState::HaveBlock(block, signatures, deploy_state) => {
                 if should_fetch_execution_state {
+                    error!("XXXXX - getting global state for block {}", block.hash());
                     return Ok(BlockAcquisitionAction::global_state(
                         peer_list,
                         rng,
@@ -602,6 +625,8 @@ impl BlockAcquisitionState {
                         *block.state_root_hash(),
                     ));
                 }
+
+                error!("XXXXX - getting approvals hashes for block {}", block.hash());
                 Ok(BlockAcquisitionAction::approvals_hashes(
                     block, peer_list, rng,
                 ))
@@ -617,6 +642,7 @@ impl BlockAcquisitionState {
                         Err(Error::InvalidAttemptToAcquireExecutionResults)
                     }
                     ExecutionResultsAcquisition::Needed { .. } => {
+                        error!("XXXXX - getting execution results root hash for block {}", block.hash());
                         Ok(BlockAcquisitionAction::execution_results_root_hash(
                             *block.hash(),
                             *block.state_root_hash(),
@@ -630,6 +656,7 @@ impl BlockAcquisitionState {
                                 Err(Error::InvalidAttemptToAcquireExecutionResults)
                             }
                             Some((next, checksum)) => {
+                                error!("XXXXX - getting execution results for block {}", block.hash());
                                 Ok(BlockAcquisitionAction::execution_results(
                                     *block.hash(),
                                     peer_list,
@@ -648,6 +675,7 @@ impl BlockAcquisitionState {
                 deploys,
                 checksum,
             ) => {
+                error!("XXXXX - somehow got all execution results for block {}", block.hash());
                 if should_fetch_execution_state == false {
                     return Err(Error::InvalidStateTransition);
                 }

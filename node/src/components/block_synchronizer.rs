@@ -495,7 +495,10 @@ impl BlockSynchronizer {
             Option<Box<Block>>,
             Option<NodeId>,
         ) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (*item.hash(), Some(item), Some(peer)),
+            Ok(FetchedData::FromPeer { item, peer }) => {
+                error!("XXXXX - fetched block {} from peer {:?}", item.hash(), peer);
+                (*item.hash(), Some(item), Some(peer))
+            }
             Ok(FetchedData::FromStorage { item }) => (*item.hash(), Some(item), None),
             Err(err) => {
                 debug!(%err, "failed to fetch block");
@@ -511,6 +514,7 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block {
                     None => {
+                        error!("XXXXX - demoting peer because we have no block {:?}", peer);
                         builder.demote_peer(maybe_peer_id);
                     }
                     Some(block) => {
