@@ -153,7 +153,9 @@ impl Display for Event {
             Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")
             }
-            Event::SufficientFinalitySignaturesRegistered(..) => write!(f, "SufficientFinalitySignaturesRegistered"),
+            Event::SufficientFinalitySignaturesRegistered(..) => {
+                write!(f, "SufficientFinalitySignaturesRegistered")
+            }
         }
     }
 }

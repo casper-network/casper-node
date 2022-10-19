@@ -32,9 +32,13 @@ pub(crate) use event::Event;
 
 use self::block_acceptor::CanExecuteOutcome;
 
+#[derive(Debug)]
 pub(crate) enum SyncInstruction {
     Leap,
     CaughtUp,
+    BlockExec {
+        next_block_hash: BlockHash,
+    },
     BlockSync {
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
@@ -43,6 +47,7 @@ pub(crate) enum SyncInstruction {
 
 #[derive(Clone, Debug)]
 pub(crate) enum StartingWith {
+    ExecutableBlock(BlockHash),
     Block(Box<Block>),
     Hash(BlockHash),
     // simplifies call sites; results in a Leap instruction
@@ -125,7 +130,7 @@ impl BlockAccumulator {
         // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
         // AFTER the f-seq cant help you, SYNC-all-state
         // |------------- future chain ------------------------> ?
-        let should_fetch_execution_state = starting_with.have_block() == false;
+        let should_fetch_execution_state = false == starting_with.have_block();
         let block_hash = starting_with.block_hash();
         if let Some((_highest_block_hash, highest_block_height, _highest_era_id)) =
             self.highest_known_block()
@@ -184,26 +189,26 @@ impl BlockAccumulator {
             }
         }
         if self.highest_complete_block.is_some() {
-            error!("XXXXX - going CaughtUp");
+            error!("XXXXX - returning sync instruction CaughtUp");
             return SyncInstruction::CaughtUp;
         }
         SyncInstruction::Leap
     }
 
     // NOT USED
-    fn register_block_by_identifier(&mut self, block_hash: BlockHash, era_id: EraId) {
-        if self.already_handled.contains(&block_hash) {
-            return;
-        }
-        let mut acceptor = BlockAcceptor::new(block_hash, vec![]);
-        if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-            if let Err(err) = acceptor.register_era_validator_weights(evw) {
-                warn!(%err, "unable to register era_validator_weights");
-                return;
-            }
-        }
-        self.block_acceptors.insert(block_hash, acceptor);
-    }
+    // fn register_block_by_identifier(&mut self, block_hash: BlockHash, era_id: EraId) {
+    //     if self.already_handled.contains(&block_hash) {
+    //         return;
+    //     }
+    //     let mut acceptor = BlockAcceptor::new(block_hash, vec![]);
+    //     if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
+    //         if let Err(err) = acceptor.register_era_validator_weights(evw) {
+    //             warn!(%err, "unable to register era_validator_weights");
+    //             return;
+    //         }
+    //     }
+    //     self.block_acceptors.insert(block_hash, acceptor);
+    // }
 
     fn register_block<REv>(
         &mut self,
@@ -215,11 +220,16 @@ impl BlockAccumulator {
         REv: Send + From<PeerBehaviorAnnouncement>,
     {
         let block_hash = block.hash();
+        error!(
+            "XXXXX - registering block {} -- {} in accumulator",
+            block_hash,
+            block.height()
+        );
         let era_id = block.header().era_id();
 
         if self
             .highest_complete_block
-            .map_or(false, |height| block.header().height() <= height)
+            .map_or(false, |height| block.header().height() < height)
         {
             debug!(%block_hash, "ignoring outdated block");
             self.block_acceptors.remove(block_hash);
@@ -279,6 +289,7 @@ impl BlockAccumulator {
         // TODO: Ignore signatures for `already_handled` blocks?
 
         let block_hash = finality_signature.block_hash;
+        error!("XXXXX - registering sig {} in accumulator", block_hash);
         let era_id = finality_signature.era_id;
 
         let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
@@ -318,8 +329,7 @@ impl BlockAccumulator {
         Effects::new()
     }
 
-    pub(crate) fn register_updated_validator_matrix(&mut self, validator_matrix: ValidatorMatrix) {
-        self.validator_matrix = validator_matrix;
+    pub(crate) fn register_updated_validator_matrix(&mut self) {
         let block_hashes = self.block_acceptors.keys().copied().collect_vec();
         for block_hash in block_hashes {
             if let Some(mut acceptor) = self.block_acceptors.remove(&block_hash) {
@@ -338,7 +348,7 @@ impl BlockAccumulator {
         for block_hash in self
             .block_acceptors
             .iter()
-            .filter(|(_, v)| v.block_height().unwrap_or_default() <= height)
+            .filter(|(_, v)| v.block_height().unwrap_or_default() < height)
             .map(|(k, _)| *k)
             .collect_vec()
         {

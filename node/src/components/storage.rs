@@ -1191,6 +1191,14 @@ impl Storage {
         })
     }
 
+    pub(crate) fn mark_block_completed(
+        &mut self,
+        block_height: u64,
+    ) -> Result<(), FatalStorageError> {
+        self.completed_blocks.insert(block_height);
+        self.persist_completed_blocks()
+    }
+
     /// Handles a [`BlockCompletedAnnouncement`].
     fn handle_mark_block_completed_request(
         &mut self,

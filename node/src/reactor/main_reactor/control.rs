@@ -1,8 +1,7 @@
 use datasize::DataSize;
-use log::error;
 use std::time::Duration;
 use tokio::time;
-use tracing::info;
+use tracing::{debug, error, info};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
@@ -176,9 +175,16 @@ impl MainReactor {
                 // are available and if so, queue up block sync to get next
                 // missing historical block
 
+                /*
+                1. If synchronizer is not working on next block, we need to give it one to work on
+                2. if accumulator thinks we're at tip, nothing to do
+                3. if accumulator thinks we're close to tip, accumulator gives us the block to have synced before exec
+                4. if accumulator thinks we're too far from tip, leap (go back to catchup)
+                 */
+
                 // TODO: double check getting this from block_sync actually makes sense
                 let starting_with = match self.block_synchronizer.maybe_executable_block_hash() {
-                    // TODO: We might have the complete block, with state: We should execute.
+                    // TODO: We might have the complete block, without state: We should execute.
                     // If we don't, we might want to go back to CatchUp mode?
                     Some(block_hash) => StartingWith::Hash(block_hash),
                     // TODO: We might just not have finalized the next block yet. No need to leap
@@ -186,7 +192,15 @@ impl MainReactor {
                     None => StartingWith::Nothing,
                 };
 
-                match self.block_accumulator.sync_instruction(starting_with) {
+                error!(?starting_with, "XXXXX - in keep up mode");
+
+                let instruction = self.block_accumulator.sync_instruction(starting_with);
+                error!(
+                    ?instruction,
+                    "XXXXX - in keep up mode, block accumulator instruction"
+                );
+
+                match instruction {
                     SyncInstruction::Leap => {
                         // we've fallen behind, go back to catch up mode
                         self.state = ReactorState::CatchUp;
@@ -257,8 +271,9 @@ impl MainReactor {
                 }
             }
         }
-        // TODO: Really immediately?
-        (Duration::ZERO, Effects::new())
+        error!("XXXXX - end of crank, next scheduled for 1 second from now");
+        // todo! immediately - or some const amount?
+        (Duration::from_secs(1), Effects::new())
     }
 
     fn catch_up_instructions(
@@ -365,7 +380,12 @@ impl MainReactor {
         if let Some(block_height) = self.block_synchronizer.maybe_complete_block_height() {
             error!("XXXXX - registering complete block");
             self.block_accumulator.register_complete_block(block_height);
-            effects.extend(effect_builder.mark_block_completed(block_height).ignore());
+            if let Err(err) = self.storage.mark_block_completed(block_height) {
+                return CatchUpInstruction::Shutdown(format!(
+                    "fatal error when attempting to mark block completed: {}",
+                    err
+                ));
+            }
         }
 
         // the block accumulator should be receiving blocks via gossiping
@@ -398,6 +418,11 @@ impl MainReactor {
                     from_peers,
                     ..
                 } => {
+                    error!(
+                        "XXXXX - leap result highest block {} -- {}",
+                        best_available.highest_block_header().0.block_hash(),
+                        best_available.highest_block_header().0.height()
+                    );
                     let era_id = best_available.highest_era();
                     let validator_weights = match best_available.validators_of_highest_block() {
                         Some(validator_weights) => validator_weights,
@@ -419,12 +444,10 @@ impl MainReactor {
                             .sync_leap_simultaneous_peer_requests,
                     );
 
-                    let mut validator_matrix = ValidatorMatrix::new(
-                        self.chainspec.highway_config.finality_threshold_fraction,
-                    );
-                    validator_matrix.register_validator_weights(era_id, validator_weights.clone());
-                    self.block_accumulator
-                        .register_updated_validator_matrix(validator_matrix);
+                    self.validator_matrix
+                        .register_validator_weights(era_id, validator_weights.clone());
+                    error!("XXXXX - registered validator weights for {}", era_id);
+                    self.block_accumulator.register_updated_validator_matrix();
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                     });
@@ -460,13 +483,17 @@ impl MainReactor {
                 return CatchUpInstruction::Do(effects);
             }
             SyncInstruction::CaughtUp => {
-                // TODO: should we be using linear chain for this?
-                match self.linear_chain.highest_block() {
-                    Some(block) => {
+                match self.storage.read_highest_complete_block() {
+                    Ok(Some(block)) => {
                         let era_id = block.header().era_id();
-                        // TODO - this seems wrong - should use
-                        // `ProtocolConfig::is_last_block_before_activation`?
-                        if era_id == block.header().next_block_era_id() {
+                        error!(
+                            "XXXXX - caught up - highest complete block era {} -- {:?}",
+                            era_id, self.validator_matrix
+                        );
+                        // todo! - this seems wrong - should use
+                        //         `ProtocolConfig::is_last_block_before_activation`?
+                        if false {
+                            // if era_id == block.header().next_block_era_id() {
                             match self.validator_matrix.validator_weights(era_id) {
                                 Some(validator_weights) => {
                                     if self
@@ -487,11 +514,17 @@ impl MainReactor {
                             }
                         }
                     }
-                    None => {
+                    Ok(None) => {
                         // should be unreachable
                         return CatchUpInstruction::Shutdown(
                             "can't be caught up with no block in the block store".to_string(),
                         );
+                    }
+                    Err(err) => {
+                        return CatchUpInstruction::Shutdown(format!(
+                            "fatal error when attempting to read highest complete block: {}",
+                            err
+                        ));
                     }
                 }
             }
@@ -661,9 +694,8 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         let mut effects = Effects::new();
-        // TODO - try to avoid repeating executing the same blocks.
+        // todo! - try to avoid repeating executing the same blocks.
         if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
-            // TODO: Why did we ask block accumulator here?
             match self.storage.make_executable_block(&block_hash) {
                 Ok(Some((finalized_block, deploys))) => {
                     effects.extend(
@@ -675,10 +707,10 @@ impl MainReactor {
                 Ok(None) => {
                     // noop
                 }
-                Err(_) => {
+                Err(err) => {
                     return Err(format!(
-                        "failure to make block and approvals hashes into executable block: {}",
-                        block_hash
+                        "failure to make block {} and approvals hashes into executable block: {}",
+                        block_hash, err
                     ));
                 }
             }

@@ -170,7 +170,7 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn last_progress_time(&self) -> Option<Timestamp> {
-        if self.is_complete() || self.is_executable() || self.is_fatal() {
+        if self.is_finished() || self.is_fatal() {
             return None;
         }
         self.last_progress
@@ -182,24 +182,17 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn is_complete(&self) -> bool {
+    pub(super) fn is_finished(&self) -> bool {
         matches!(
             self.acquisition_state,
             BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-        ) && self.should_fetch_execution_state
-    }
-
-    pub(super) fn is_executable(&self) -> bool {
-        matches!(
-            self.acquisition_state,
-            BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-        ) && false == self.should_fetch_execution_state
+        )
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_peer(&mut self, peer: NodeId) {
         // todo! - do we need this if? what it is protecting against?
-        if self.is_complete() || self.is_executable() || self.is_fatal() {
+        if self.is_finished() || self.is_fatal() {
             return;
         }
         self.peer_list.register_peer(peer);

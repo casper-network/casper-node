@@ -1128,9 +1128,8 @@ where
                 .announce_disconnect_from_peer(sender)
                 .ignore()
         }
-        // TODO: seems like there should be NetResponse variants for TrieOrChunk.
         NetResponse::Block(ref serialized_item) => {
-            // Handle response both in the fetcher and the block accumulator.
+            error!("XXXXX - received fetch response for block");
             // TODO: Use different message types for gossip and fetch responses?
             let mut effects = handle_fetch_response::<R, Block>(
                 reactor,

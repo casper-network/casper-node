@@ -134,7 +134,7 @@ impl BlockSynchronizer {
     // CALLED FROM REACTOR
     pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
         if let Some(fwd) = &self.forward {
-            if fwd.is_executable() {
+            if fwd.is_finished() {
                 return Some(fwd.block_hash());
             }
         }
@@ -143,7 +143,7 @@ impl BlockSynchronizer {
 
     pub(crate) fn maybe_complete_block_height(&self) -> Option<u64> {
         if let Some(historical) = &self.historical {
-            if historical.is_complete() {
+            if historical.is_finished() {
                 return historical.block_height();
             }
         }

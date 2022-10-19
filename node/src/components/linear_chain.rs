@@ -75,9 +75,9 @@ impl LinearChainComponent {
         self.stop_for_upgrade
     }
 
-    pub(crate) fn highest_block(&self) -> Option<&crate::types::Block> {
-        self.linear_chain_state.latest_block().as_ref()
-    }
+    // pub(crate) fn highest_block(&self) -> Option<&crate::types::Block> {
+    //     self.linear_chain_state.latest_block().as_ref()
+    // }
 }
 
 fn outcomes_to_effects<REv>(

@@ -4,6 +4,7 @@
 use std::iter;
 use std::{
     collections::{BTreeMap, HashSet},
+    fmt::{self, Debug, Formatter},
     sync::{Arc, RwLock, RwLockReadGuard},
 };
 
@@ -24,7 +25,7 @@ pub(crate) enum SignatureWeight {
     Sufficient,
 }
 
-#[derive(Clone, DataSize, Debug, Serialize, Default)]
+#[derive(Clone, DataSize, Serialize, Default)]
 pub(crate) struct ValidatorMatrix {
     inner: Arc<RwLock<BTreeMap<EraId, EraValidatorWeights>>>,
     #[data_size(skip)]
@@ -204,6 +205,18 @@ impl ValidatorMatrix {
 
     fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
         self.inner.read().unwrap()
+    }
+}
+
+impl Debug for ValidatorMatrix {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ValidatorMatrix")
+            .field("weights", &*self.read_inner())
+            .field(
+                "finality_threshold_fraction",
+                &self.finality_threshold_fraction,
+            )
+            .finish()
     }
 }
 
