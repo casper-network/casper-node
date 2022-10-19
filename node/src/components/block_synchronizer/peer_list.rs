@@ -126,7 +126,7 @@ impl PeerList {
     }
 
     pub(super) fn need_peers(&self) -> bool {
-        return self.peer_list.is_empty();
+        self.peer_list.is_empty()
 
         // if self.peer_list.is_empty() {
         //     return true;

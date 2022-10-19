@@ -511,7 +511,7 @@ impl BlockAcquisitionState {
                 *acq = acq
                     .clone()
                     .apply_checksum(execution_results_checksum)
-                    .map_err(|error| Error::ExecutionResults(error))?;
+                    .map_err(Error::ExecutionResults)?;
             }
             BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveGlobalState(..)
@@ -787,7 +787,7 @@ impl BlockAcquisitionState {
                         rng,
                         block.header(),
                         validator_weights,
-                        &signatures,
+                        signatures,
                     )),
                 }
             }
