@@ -170,6 +170,9 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn last_progress_time(&self) -> Option<Timestamp> {
+        if self.is_complete() || self.is_executable() || self.is_fatal() {
+            return None;
+        }
         self.last_progress
     }
 

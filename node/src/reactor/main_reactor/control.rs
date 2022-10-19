@@ -290,13 +290,13 @@ impl MainReactor {
         // determine which block / block_hash we should attempt to leap from
         let starting_with = match self.trusted_hash {
             None => {
-                match self.linear_chain.highest_block() {
+                match self.storage.read_highest_complete_block() {
                     // no trusted hash provided use local tip if available
-                    Some(block) => {
+                    Ok(Some(block)) => {
                         // -+ : leap w/ local tip
-                        StartingWith::Block(Box::new(block.clone()))
+                        StartingWith::Block(Box::new(block))
                     }
-                    None => {
+                    Ok(None) => {
                         if let ActivationPoint::Genesis(timestamp) =
                             self.chainspec.protocol_config.activation_point
                         {
@@ -312,23 +312,37 @@ impl MainReactor {
                                 .to_string(),
                         );
                     }
+                    Err(err) => {
+                        return CatchUpInstruction::Shutdown(format!(
+                            "fatal block store error when attempting to read highest \
+                            complete block: {}",
+                            err
+                        ));
+                    }
                 }
             }
             Some(trusted_hash) => {
-                match self.storage.read_block(&trusted_hash) {
-                    Ok(Some(trusted_block)) => {
-                        match self.linear_chain.highest_block() {
-                            Some(block) => {
+                match self.storage.read_block_header(&trusted_hash) {
+                    Ok(Some(trusted_header)) => {
+                        match self.storage.read_highest_complete_block() {
+                            Ok(Some(block)) => {
                                 // ++ : leap w/ the higher of local tip or trusted hash
-                                if trusted_block.height() > block.height() {
+                                if trusted_header.height() > block.height() {
                                     StartingWith::Hash(trusted_hash)
                                 } else {
-                                    StartingWith::Block(Box::new(block.clone()))
+                                    StartingWith::Block(Box::new(block))
                                 }
                             }
-                            None => {
+                            Ok(None) => {
                                 // should be unreachable if we've gotten this far
                                 StartingWith::Hash(trusted_hash)
+                            }
+                            Err(_) => {
+                                return CatchUpInstruction::Shutdown(
+                                    "fatal block store error when attempting to read highest \
+                                    complete block"
+                                        .to_string(),
+                                );
                             }
                         }
                     }
@@ -336,10 +350,12 @@ impl MainReactor {
                         // +- : leap w/ config hash
                         StartingWith::Hash(trusted_hash)
                     }
-                    Err(_) => {
-                        return CatchUpInstruction::Shutdown(
-                                "fatal block store error when attempting to read block under trusted hash".to_string(),
-                            );
+                    Err(err) => {
+                        return CatchUpInstruction::Shutdown(format!(
+                            "fatal block store error when attempting to read highest \
+                            complete block: {}",
+                            err
+                        ));
                     }
                 }
             }

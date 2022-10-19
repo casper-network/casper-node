@@ -1263,6 +1263,17 @@ impl Storage {
         self.get_highest_block(&mut txn)
     }
 
+    /// Retrieves the highest complete block from the storage, if one exists.
+    pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let maybe_block = self.get_highest_complete_block(&mut txn)?;
+        txn.commit().expect("Could not commit transaction");
+        Ok(maybe_block)
+    }
+
     /// Make a finalized block from a executed block, respecting Deploy Approvals.
     pub(crate) fn make_executable_block(
         &self,
@@ -1513,6 +1524,15 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves a single block header by hash.
+    pub fn read_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        self.get_single_block_header(&mut txn, block_hash)
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
@@ -1720,6 +1740,31 @@ impl Storage {
         // The `completed_blocks` contains blocks with sufficient finality signatures,
         // so we don't need to check the sufficiency again.
         self.get_single_block_header_with_metadata(txn, highest_complete_block_hash)
+    }
+
+    /// Retrieves the highest complete block from storage, if one exists. May return an LMDB error.
+    fn get_highest_complete_block<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+    ) -> Result<Option<Block>, FatalStorageError> {
+        let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
+            Some(sequence) => sequence.high(),
+            None => {
+                return Ok(None);
+            }
+        };
+        let highest_complete_block_hash =
+            match self.block_height_index.get(&highest_complete_block_height) {
+                Some(hash) => hash,
+                None => {
+                    warn!("couldn't find the highest complete block in block height index");
+                    return Ok(None);
+                }
+            };
+
+        // The `completed_blocks` contains blocks with sufficient finality signatures,
+        // so we don't need to check the sufficiency again.
+        self.get_single_block(txn, highest_complete_block_hash)
     }
 
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
