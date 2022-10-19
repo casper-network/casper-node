@@ -184,6 +184,7 @@ impl BlockAccumulator {
             }
         }
         if self.highest_complete_block.is_some() {
+            error!("XXXXX - going CaughtUp");
             return SyncInstruction::CaughtUp;
         }
         SyncInstruction::Leap
@@ -333,11 +334,11 @@ impl BlockAccumulator {
     }
 
     /// Drops all block acceptors older than this block, and will ignore them in the future.
-    fn register_complete_block(&mut self, block_header: &BlockHeader) {
+    pub(crate) fn register_complete_block(&mut self, height: u64) {
         for block_hash in self
             .block_acceptors
             .iter()
-            .filter(|(_, v)| v.block_height().unwrap_or_default() <= block_header.height())
+            .filter(|(_, v)| v.block_height().unwrap_or_default() <= height)
             .map(|(k, _)| *k)
             .collect_vec()
         {
@@ -347,7 +348,7 @@ impl BlockAccumulator {
         self.highest_complete_block = self
             .highest_complete_block
             .into_iter()
-            .chain(iter::once(block_header.height()))
+            .chain(iter::once(height))
             .max();
     }
 
@@ -444,7 +445,7 @@ where
                 Effects::new()
             }
             Event::ExecutedBlock { block_header } => {
-                self.register_complete_block(&block_header);
+                self.register_complete_block(block_header.height());
                 Effects::new()
             }
         }

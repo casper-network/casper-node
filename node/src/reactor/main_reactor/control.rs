@@ -267,6 +267,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> CatchUpInstruction {
         let mut effects = Effects::new();
+        error!("XXXXX - catch_up_instructions 1");
         // check idleness & enforce re-attempts if necessary
         if let Some(last_progress) = self.block_synchronizer.last_progress() {
             if Timestamp::now().saturating_diff(last_progress) <= self.idle_tolerances {
@@ -275,6 +276,7 @@ impl MainReactor {
                 effects.extend(effect_builder.immediately().event(|_| {
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                 }));
+                error!("XXXXX - catch_up_instructions 2");
                 return CatchUpInstruction::Do(effects);
             }
             self.attempts += 1;
@@ -342,6 +344,13 @@ impl MainReactor {
                 }
             }
         };
+        error!("XXXXX - catch_up_instructions 3");
+
+        if let Some(block_height) = self.block_synchronizer.maybe_complete_block_height() {
+            error!("XXXXX - registering complete block");
+            self.block_accumulator.register_complete_block(block_height);
+            effects.extend(effect_builder.mark_block_completed(block_height).ignore());
+        }
 
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip

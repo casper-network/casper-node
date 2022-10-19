@@ -33,7 +33,10 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor,
+    reactor::{
+        self,
+        main_reactor::{self, MainEvent},
+    },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
@@ -131,11 +134,31 @@ impl BlockSynchronizer {
     // CALLED FROM REACTOR
     pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
         if let Some(fwd) = &self.forward {
-            if fwd.is_complete() {
+            if fwd.is_executable() {
                 return Some(fwd.block_hash());
             }
         }
         None
+    }
+
+    pub(crate) fn maybe_complete_block_height(&self) -> Option<u64> {
+        if let Some(historical) = &self.historical {
+            if historical.is_complete() {
+                return historical.block_height();
+            }
+        }
+        None
+    }
+
+    pub(crate) fn register_strict_finality_signatures(&mut self, block_hash: &BlockHash) {
+        match (&mut self.forward, &mut self.historical) {
+            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+                builder.register_strict_finality_signatures();
+            }
+            _ => {
+                debug!(%block_hash, "not currently synchronizing block");
+            }
+        }
     }
 
     // CALLED FROM REACTOR
@@ -339,6 +362,12 @@ impl BlockSynchronizer {
             );
             let peers = action.peers_to_ask(); // pass this to any fetcher
             match action.need_next() {
+                NeedNext::NothingNeededSufficientFinalitySignaturesWeight(block_hash) => results
+                    .extend(
+                        effect_builder.immediately().event(move |_| {
+                            Event::SufficientFinalitySignaturesRegistered(block_hash)
+                        }),
+                    ),
                 NeedNext::Nothing => {}
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
@@ -998,6 +1027,14 @@ where
                     Event::GlobalStateSynchronizer,
                     self.global_sync.handle_event(effect_builder, rng, event),
                 )
+            }
+            (
+                ComponentStatus::Initialized,
+                Event::SufficientFinalitySignaturesRegistered(block_hash),
+            ) => {
+                self.register_strict_finality_signatures(&block_hash);
+
+                Effects::new()
             }
             // TRIGGERED VIA ANNOUNCEMENT
             (ComponentStatus::Initialized, Event::DisconnectFromPeer(node_id)) => {

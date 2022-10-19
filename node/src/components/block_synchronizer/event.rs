@@ -36,6 +36,8 @@ pub(crate) enum Event {
 
     DisconnectFromPeer(NodeId),
 
+    SufficientFinalitySignaturesRegistered(BlockHash),
+
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
@@ -151,6 +153,7 @@ impl Display for Event {
             Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")
             }
+            Event::SufficientFinalitySignaturesRegistered(..) => write!(f, "SufficientFinalitySignaturesRegistered"),
         }
     }
 }

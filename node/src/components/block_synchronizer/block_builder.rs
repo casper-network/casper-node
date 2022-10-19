@@ -183,15 +183,27 @@ impl BlockBuilder {
         matches!(
             self.acquisition_state,
             BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-        )
+        ) && self.should_fetch_execution_state
+    }
+
+    pub(super) fn is_executable(&self) -> bool {
+        matches!(
+            self.acquisition_state,
+            BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
+        ) && false == self.should_fetch_execution_state
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_peer(&mut self, peer: NodeId) {
-        if self.is_complete() || self.is_fatal() {
+        // todo! - do we need this if? what it is protecting against?
+        if self.is_complete() || self.is_executable() || self.is_fatal() {
             return;
         }
         self.peer_list.register_peer(peer);
+    }
+
+    pub(super) fn register_strict_finality_signatures(&mut self) {
+        self.acquisition_state.with_strict_finality_signatures();
     }
 
     // WIRED IN BLOCK SYNCHRONIZER

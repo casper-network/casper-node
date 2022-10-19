@@ -364,10 +364,7 @@ impl BlockAcquisitionState {
         Ok(true)
     }
 
-    pub(super) fn with_strict_finality_signatures(
-        &mut self,
-        validator_weights: EraValidatorWeights,
-    ) -> Result<bool, Error> {
+    pub(super) fn with_strict_finality_signatures(&mut self) -> Result<bool, Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
                 BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -837,8 +834,11 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::Fatal => Ok(BlockAcquisitionAction::noop()),
+            BlockAcquisitionState::HaveStrictFinalitySignatures(..) => {
+                error!("XXXXX - HaveStrictFinalitySignatures");
+                Ok(BlockAcquisitionAction::noop())
+            }
+            BlockAcquisitionState::Fatal => Ok(BlockAcquisitionAction::noop()),
         }
     }
 }
@@ -989,7 +989,9 @@ impl BlockAcquisitionAction {
             {
                 return BlockAcquisitionAction {
                     peers_to_ask: vec![],
-                    need_next: NeedNext::Nothing,
+                    need_next: NeedNext::NothingNeededSufficientFinalitySignaturesWeight(
+                        block_hash,
+                    ),
                 };
             }
         }
