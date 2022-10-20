@@ -24,14 +24,11 @@ use crate::{
     NodeRng,
 };
 
-use crate::components::block_accumulator::block_acceptor::HasSufficientFinality::No;
 use crate::{effect::requests::BlockAccumulatorRequest, types::BlockHeader};
 use block_acceptor::BlockAcceptor;
 pub(crate) use config::Config;
 use error::Error;
 pub(crate) use event::Event;
-
-use self::block_acceptor::HasSufficientFinality;
 
 #[derive(Debug)]
 pub(crate) enum SyncInstruction {
@@ -183,30 +180,30 @@ impl BlockAccumulator {
                     }
                 }
             }
-            StartingWith::Hash(block_hash) => match self.block_acceptors.get(&block_hash) {
-                None => {
-                    // the accumulator is unaware of the starting-with block
-                    return SyncInstruction::Leap;
-                }
-                Some(block_acceptor) => {
-                    if self.should_sync(
-                        block_acceptor.block_height(),
-                        maybe_highest_usable_block_height,
-                    ) {
-                        self.last_progress = Timestamp::now();
-                        return SyncInstruction::BlockSync {
-                            block_hash: block_acceptor.block_hash(),
-                            should_fetch_execution_state,
-                        };
+            StartingWith::Hash(block_hash) => {
+                let (block_hash, maybe_block_height) = match self.block_acceptors.get(&block_hash) {
+                    None => {
+                        // the accumulator is unaware of the starting-with block
+                        return SyncInstruction::Leap;
                     }
+                    Some(block_acceptor) => {
+                        (block_acceptor.block_hash(), block_acceptor.block_height())
+                    }
+                };
+                if self.should_sync(maybe_block_height, maybe_highest_usable_block_height) {
+                    self.last_progress = Timestamp::now();
+                    return SyncInstruction::BlockSync {
+                        block_hash,
+                        should_fetch_execution_state,
+                    };
                 }
-            },
+            }
             StartingWith::BlockIdentifer(block_hash, block_height) => {
                 // catch up only
                 if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
                     self.last_progress = Timestamp::now();
                     return SyncInstruction::BlockSync {
-                        block_hash: block_acceptor.block_hash(),
+                        block_hash,
                         should_fetch_execution_state,
                     };
                 }
@@ -220,10 +217,8 @@ impl BlockAccumulator {
                             block_hash: child_hash,
                             should_fetch_execution_state,
                         };
-                    } else {
-                        if self.last_progress.elapsed() < self.dead_air_interval {
-                            return SyncInstruction::CaughtUp;
-                        }
+                    } else if self.last_progress.elapsed() < self.dead_air_interval {
+                        return SyncInstruction::CaughtUp;
                     }
                 }
             }
@@ -254,7 +249,7 @@ impl BlockAccumulator {
 
     fn next_syncable_block_hash(&mut self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
-        let block_acceptor = self.block_acceptors.get_mut(&child_hash)?;
+        let block_acceptor = self.block_acceptors.get_mut(child_hash)?;
         block_acceptor
             .has_sufficient_finality()
             .then(|| *child_hash)
@@ -395,21 +390,11 @@ impl BlockAccumulator {
     }
 
     pub(crate) fn register_updated_validator_matrix(&mut self) {
-        let block_hashes = self
-            .block_acceptors
-            .iter()
-            .filter(|(_, ba)| !ba.has_era_validator_weights())
-            .keys()
-            .copied()
-            .collect_vec();
-        for block_hash in block_hashes {
-            if let Some(mut acceptor) = self.block_acceptors.remove(&block_hash) {
-                if let Some(era_id) = acceptor.era_id() {
-                    if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                        acceptor = acceptor.refresh(evw);
-                    }
+        for block_acceptor in self.block_acceptors.values_mut() {
+            if let Some(era_id) = block_acceptor.era_id() {
+                if let Some(weights) = self.validator_matrix.validator_weights(era_id) {
+                    block_acceptor.refresh(weights);
                 }
-                self.block_acceptors.insert(block_hash, acceptor);
             }
         }
     }

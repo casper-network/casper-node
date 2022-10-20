@@ -127,10 +127,6 @@ impl NextUpgrade {
             protocol_version,
         }
     }
-
-    pub(crate) fn activation_point(&self) -> ActivationPoint {
-        self.activation_point
-    }
 }
 
 impl From<ProtocolConfig> for NextUpgrade {
@@ -185,12 +181,6 @@ impl UpgradeWatcher {
         };
 
         Ok(upgrade_watcher)
-    }
-
-    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
-        self.next_upgrade
-            .as_ref()
-            .map(|next_upgrade| next_upgrade.activation_point())
     }
 
     pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {

@@ -20,7 +20,6 @@ use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
-use crate::types::Tag::Block;
 use crate::{
     components::{
         fetcher::{Error, FetchResult, FetchedData},
@@ -29,8 +28,9 @@ use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
-            BlockAccumulatorRequest, BlockSynchronizerRequest, ContractRuntimeRequest,
-            FetcherRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
+            ContractRuntimeRequest, FetcherRequest, StorageRequest, SyncGlobalStateRequest,
+            TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -60,6 +60,7 @@ pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAc
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
+    + From<FetcherRequest<Block>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
     + From<FetcherRequest<Deploy>>
@@ -72,6 +73,7 @@ pub(crate) trait ReactorEvent:
     + From<TrieAccumulatorRequest>
     + From<ContractRuntimeRequest>
     + From<SyncGlobalStateRequest>
+    + From<BlockCompleteConfirmationRequest>
     + Send
     + 'static
 {
@@ -79,6 +81,7 @@ pub(crate) trait ReactorEvent:
 
 impl<REv> ReactorEvent for REv where
     REv: From<FetcherRequest<ApprovalsHashes>>
+        + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<Deploy>>
@@ -91,6 +94,7 @@ impl<REv> ReactorEvent for REv where
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>
         + From<SyncGlobalStateRequest>
+        + From<BlockCompleteConfirmationRequest>
         + Send
         + 'static
 {
@@ -150,18 +154,24 @@ impl BlockSynchronizer {
         } else {
             &self.historical
         } {
-            None => {
-                return BlockSynchronizerProgress::Idle;
-            }
+            None => BlockSynchronizerProgress::Idle,
             Some(builder) => {
                 if builder.is_finished() {
-                    return BlockSynchronizerProgress::Synced(builder.block_hash(), block_height);
+                    match builder.block_height() {
+                        None => error!("finished builder should have block height"),
+                        Some(block_height) => {
+                            return BlockSynchronizerProgress::Synced(
+                                builder.block_hash(),
+                                block_height,
+                            )
+                        }
+                    }
                 }
-                return BlockSynchronizerProgress::Syncing(
+                BlockSynchronizerProgress::Syncing(
                     builder.block_hash(),
                     builder.block_height(),
                     builder.last_progress_time(),
-                );
+                )
             }
         }
     }
@@ -405,7 +415,7 @@ impl BlockSynchronizer {
         rng: &mut NodeRng,
     ) -> Effects<Event>
     where
-        REv: ReactorEvent + From<FetcherRequest<Block>>,
+        REv: ReactorEvent + From<FetcherRequest<Block>> + From<BlockCompleteConfirmationRequest>,
     {
         let mut results = Effects::new();
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
@@ -916,10 +926,7 @@ where
     }
 }
 
-impl<REv> Component<REv> for BlockSynchronizer
-where
-    REv: ReactorEvent + From<FetcherRequest<Block>>,
-{
+impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
     type Event = Event;
 
     fn handle_event(

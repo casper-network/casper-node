@@ -6,12 +6,11 @@ use tracing::{debug, error, info};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
-use crate::components::block_synchronizer::BlockSynchronizerProgress;
-use crate::reactor::Reactor;
 use crate::{
     components::{
         block_accumulator::{StartingWith, SyncInstruction},
         block_synchronizer,
+        block_synchronizer::BlockSynchronizerProgress,
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
         deploy_buffer, diagnostics_port, event_stream_server, rest_server, rpc_server,
@@ -23,6 +22,7 @@ use crate::{
     reactor::{
         self,
         main_reactor::{utils, MainEvent, MainReactor},
+        Reactor,
     },
     types::{
         ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, ValidatorMatrix,
@@ -33,7 +33,7 @@ use crate::{
 // todo!: put in the config
 pub(crate) const WAIT_DURATION: Duration = Duration::from_secs(5);
 
-#[derive(DataSize, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum ReactorState {
     // get all components and reactor state set up on start
     Initialize,
@@ -220,19 +220,8 @@ impl MainReactor {
                                 return (Duration::ZERO, effects);
                             }
                             Ok(None) => {
-                                if let Some(block_header) = self.recent_switch_block_headers.last()
-                                {
-                                    match self.check_upgrade(block_header) {
-                                        Ok(_) => {
-                                            // noop
-                                        }
-                                        Err(msg) => {
-                                            return (
-                                                Duration::ZERO,
-                                                utils::new_shutdown_effect(msg),
-                                            );
-                                        }
-                                    }
+                                if let Err(msg) = self.check_upgrade() {
+                                    return (Duration::ZERO, utils::new_shutdown_effect(msg));
                                 }
                             }
                             Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
@@ -307,7 +296,7 @@ impl MainReactor {
                             // no trusted hash provided use local tip if available
                             Ok(Some(block)) => {
                                 // -+ : leap w/ local tip
-                                StartingWith::BlockIdentifer(block.block_hash(), block.height())
+                                StartingWith::BlockIdentifer(*block.hash(), block.height())
                             }
                             Ok(None) => {
                                 if let ActivationPoint::Genesis(timestamp) =
@@ -349,7 +338,7 @@ impl MainReactor {
                                             )
                                         } else {
                                             StartingWith::BlockIdentifer(
-                                                block.block_hash(),
+                                                *block.hash(),
                                                 block.height(),
                                             )
                                         }
@@ -420,12 +409,12 @@ impl MainReactor {
                             .core_config
                             .sync_leap_simultaneous_peer_requests,
                     );
-                    effects.extend(effect_builder.immediately().event(move |_| {
+                    let effects = effect_builder.immediately().event(move |_| {
                         MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
                             trusted_hash,
                             peers_to_ask,
                         })
-                    }));
+                    });
                     return CatchUpInstruction::Do(effects);
                 }
                 LeapStatus::Awaiting { .. } => {
@@ -511,30 +500,8 @@ impl MainReactor {
                 return CatchUpInstruction::Shutdown(msg);
             }
             SyncInstruction::CaughtUp => {
-                match self.storage.read_highest_complete_block() {
-                    Ok(Some(block)) => {
-                        match self.check_upgrade(block.header()) {
-                            Ok(_) => {
-                                // noop
-                            }
-                            Err(msg) => {
-                                // should be unreachable
-                                return CatchUpInstruction::Shutdown(msg);
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        // should be unreachable
-                        return CatchUpInstruction::Shutdown(
-                            "can't be caught up with no block in the block store".to_string(),
-                        );
-                    }
-                    Err(err) => {
-                        return CatchUpInstruction::Shutdown(format!(
-                            "fatal error when attempting to read highest complete block: {}",
-                            err
-                        ));
-                    }
+                if let Err(msg) = self.check_upgrade() {
+                    return CatchUpInstruction::Shutdown(msg);
                 }
             }
         }
@@ -698,15 +665,18 @@ impl MainReactor {
         }
     }
 
-    fn check_upgrade(&mut self, block_header: &BlockHeader) -> Result<(), String> {
+    fn check_upgrade(&mut self) -> Result<(), String> {
+        let highest_switch_block_era = match self.recent_switch_block_headers.last() {
+            None => return Ok(()),
+            Some(block_header) => block_header.era_id(),
+        };
         if self
             .upgrade_watcher
-            .should_upgrade_after(block_header.era_id())
-            && block_header.is_switch_block()
+            .should_upgrade_after(highest_switch_block_era)
         {
             match self
                 .validator_matrix
-                .validator_weights(block.header().era_id())
+                .validator_weights(highest_switch_block_era)
             {
                 Some(validator_weights) => {
                     if self
@@ -717,7 +687,6 @@ impl MainReactor {
                     }
                 }
                 None => {
-                    // should be unreachable
                     return Err(
                         "should not be possible to be in this state with no era validators"
                             .to_string(),

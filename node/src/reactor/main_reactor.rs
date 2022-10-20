@@ -276,14 +276,11 @@ impl reactor::Reactor for MainReactor {
         let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
-        let next_upgrade_activation_point = upgrade_watcher.next_upgrade_activation_point();
         let linear_chain = LinearChainComponent::new(
             registry,
             protocol_version,
             chainspec.core_config.auction_delay,
             chainspec.core_config.unbonding_delay,
-            chainspec.highway_config.finality_threshold_fraction,
-            next_upgrade_activation_point,
         )?;
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
@@ -396,18 +393,14 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => {
-                let reactor_event = MainEvent::UpgradeWatcher(
-                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade.clone()),
-                );
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-
-                let reactor_event = MainEvent::LinearChain(
-                    linear_chain::Event::GotUpgradeActivationPoint(next_upgrade.activation_point()),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                effects
-            }
+            ) => reactor::wrap_effects(
+                MainEvent::UpgradeWatcher,
+                self.upgrade_watcher.handle_event(
+                    effect_builder,
+                    rng,
+                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
+                ),
+            ),
             MainEvent::RpcServer(event) => reactor::wrap_effects(
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),

@@ -61,34 +61,20 @@ impl BlockAcceptor {
         self.peers.push(peer);
     }
 
-    pub(super) fn refresh(self, era_validator_weights: EraValidatorWeights) -> Self {
-        let block_hash = self.block_hash;
-        let signatures = if self.signatures.is_empty() {
-            self.signatures
-        } else {
-            let mut ret = BTreeMap::new();
-            let mut public_keys = era_validator_weights.validator_public_keys();
-            for (k, v) in self.signatures {
-                if public_keys.contains(&k)
-                    && v.block_hash == block_hash
-                    && v.era_id == era_validator_weights.era_id()
-                {
-                    ret.insert(k, v);
-                }
-            }
-            ret
-        };
-
-        let peers = self.peers;
-
-        Self {
-            block_hash,
-            era_validator_weights: Some(era_validator_weights),
-            block: self.block,
-            signatures,
-            peers,
-            has_sufficient_finality: false,
+    pub(super) fn refresh(&mut self, era_validator_weights: EraValidatorWeights) {
+        if self.era_validator_weights.is_some() {
+            return;
         }
+
+        debug_assert!(!self.has_sufficient_finality);
+
+        let block_hash = self.block_hash;
+        let mut validators = era_validator_weights.validator_public_keys();
+        self.signatures.retain(|pub_key, sig| {
+            validators.contains(pub_key)
+                && sig.block_hash == block_hash
+                && sig.era_id == era_validator_weights.era_id()
+        });
     }
 
     pub(super) fn register_era_validator_weights(
@@ -206,10 +192,6 @@ impl BlockAcceptor {
         Ok(())
     }
 
-    pub(super) fn has_era_validator_weights(&self) -> bool {
-        self.era_validator_weights.is_some()
-    }
-
     pub(super) fn has_sufficient_finality(&mut self) -> bool {
         if self.has_sufficient_finality {
             return self.has_sufficient_finality;
@@ -261,7 +243,7 @@ impl BlockAcceptor {
     pub(super) fn block_with_sufficient_finality(
         &mut self,
     ) -> Option<(Block, Vec<FinalitySignature>)> {
-        if self.has_sufficient_finality() == HasSufficientFinality::No {
+        if false == self.has_sufficient_finality() {
             return None;
         }
 

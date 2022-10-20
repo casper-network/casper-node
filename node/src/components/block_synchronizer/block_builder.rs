@@ -14,9 +14,9 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
-use crate::components::block_synchronizer::block_acquisition::FinalitySignatureAcceptance;
 use crate::{
     components::block_synchronizer::{
+        block_acquisition::FinalitySignatureAcceptance,
         execution_results_acquisition::ExecutionResultsChecksum, peer_list::PeerList,
         signature_acquisition::SignatureAcquisition,
     },

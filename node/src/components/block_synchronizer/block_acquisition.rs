@@ -362,7 +362,7 @@ impl BlockAcquisitionState {
 
     pub(super) fn with_marked_complete(&mut self) -> Result<bool, Error> {
         let new_state = match self {
-            BlockAcquisitionState::HaveBlock(block, _, _) => {
+            BlockAcquisitionState::HaveBlock(block, acquired_signatures, _) => {
                 BlockAcquisitionState::HaveStrictFinalitySignatures(
                     Box::new(block.header().clone()),
                     acquired_signatures.clone(),
@@ -690,7 +690,6 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveBlock(block, signatures, deploy_state) => {
                 if should_fetch_execution_state {
-                    error!("XXXXX - getting global state for block {}", block.hash());
                     return Ok(BlockAcquisitionAction::global_state(
                         peer_list,
                         rng,
@@ -699,19 +698,14 @@ impl BlockAcquisitionState {
                     ));
                 }
 
-                error!(
-                    "XXXXX - getting approvals hashes for block {}",
-                    block.hash()
-                );
-
                 if deploy_state.needs_deploy().is_none() {
-                    BlockAcquisitionAction::strict_finality_signatures(
+                    return Ok(BlockAcquisitionAction::strict_finality_signatures(
                         peer_list,
                         rng,
-                        &block.header(),
+                        block.header(),
                         validator_weights,
                         signatures,
-                    )
+                    ));
                 }
 
                 Ok(BlockAcquisitionAction::approvals_hashes(
@@ -803,6 +797,15 @@ impl BlockAcquisitionState {
                         signatures,
                     )),
                 }
+            }
+            BlockAcquisitionState::HaveAllDeploys(header, signatures) => {
+                Ok(BlockAcquisitionAction::strict_finality_signatures(
+                    peer_list,
+                    rng,
+                    header.as_ref(),
+                    validator_weights,
+                    signatures,
+                ))
             }
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
                 error!("XXXXX - State is HaveApprovalsHashes");
