@@ -31,13 +31,9 @@ pub(crate) enum Event {
     EraValidators {
         era_validator_weights: EraValidatorWeights,
     },
-
     MaybeEraValidators(EraId, Option<BTreeMap<PublicKey, U512>>),
-
     DisconnectFromPeer(NodeId),
-
-    SufficientFinalitySignaturesRegistered(BlockHash),
-
+    MarkedComplete(BlockHash),
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
@@ -153,8 +149,8 @@ impl Display for Event {
             Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")
             }
-            Event::SufficientFinalitySignaturesRegistered(..) => {
-                write!(f, "SufficientFinalitySignaturesRegistered")
+            Event::MarkedComplete(..) => {
+                write!(f, "MarkedComplete")
             }
         }
     }

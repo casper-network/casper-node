@@ -6,6 +6,8 @@ use tracing::{debug, error, info};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
 
+use crate::components::block_synchronizer::BlockSynchronizerProgress;
+use crate::reactor::Reactor;
 use crate::{
     components::{
         block_accumulator::{StartingWith, SyncInstruction},
@@ -41,6 +43,8 @@ pub(crate) enum ReactorState {
     KeepUp,
     // node is currently caught up and is an active validator
     Validate,
+    // node should be shut down for upgrade
+    Upgrade,
 }
 
 enum CatchUpInstruction {
@@ -50,7 +54,6 @@ enum CatchUpInstruction {
     Shutdown(String),
     CaughtUp,
     CommitGenesis,
-    CommitUpgrade(Box<BlockHeader>),
 }
 
 impl MainReactor {
@@ -142,6 +145,7 @@ impl MainReactor {
                 ) {
                     return (Duration::ZERO, effects);
                 }
+                // apply upgrade here?
                 self.state = ReactorState::CatchUp;
                 return (Duration::ZERO, Effects::new());
             }
@@ -150,12 +154,6 @@ impl MainReactor {
                     Ok(effects) => return (WAIT_DURATION, effects),
                     Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                 },
-                CatchUpInstruction::CommitUpgrade(block_header) => {
-                    match self.commit_upgrade(effect_builder, block_header) {
-                        Ok(effects) => return (WAIT_DURATION, effects),
-                        Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
-                    }
-                }
                 CatchUpInstruction::Do(effects) => return (WAIT_DURATION, effects),
                 CatchUpInstruction::CheckLater(_, wait) => return (wait, Effects::new()),
                 CatchUpInstruction::CheckSoon(_) => return (Duration::ZERO, Effects::new()),
@@ -168,37 +166,27 @@ impl MainReactor {
                 }
             },
             ReactorState::KeepUp => {
-                // TODO: if UpgradeWatcher announcement raised, keep track of era id's against
-                // the new activation points detected upgrade to make this a stronger check
+                // todo! if sync to genesis == true, determine if cycles
+                // are available to get next earliest historical block via synchronizer
 
-                // TODO: if sync to genesis == true, determine if cycles
-                // are available and if so, queue up block sync to get next
-                // missing historical block
-
-                /*
-                1. If synchronizer is not working on next block, we need to give it one to work on
-                2. if accumulator thinks we're at tip, nothing to do
-                3. if accumulator thinks we're close to tip, accumulator gives us the block to have synced before exec
-                4. if accumulator thinks we're too far from tip, leap (go back to catchup)
-                 */
-
-                // TODO: double check getting this from block_sync actually makes sense
-                let starting_with = match self.block_synchronizer.maybe_executable_block_hash() {
-                    // TODO: We might have the complete block, without state: We should execute.
-                    // If we don't, we might want to go back to CatchUp mode?
-                    Some(block_hash) => StartingWith::Hash(block_hash),
-                    // TODO: We might just not have finalized the next block yet. No need to leap
-                    // again!
-                    None => StartingWith::Nothing,
-                };
-
-                error!(?starting_with, "XXXXX - in keep up mode");
+                let starting_with =
+                    match self.block_synchronizer.maybe_executable_block_identifier() {
+                        Some((block_hash, block_height)) => {
+                            StartingWith::ExecutableBlock(block_hash, block_height)
+                        }
+                        None => match self.block_synchronizer.maybe_finished_block_identifier() {
+                            None => {
+                                // this should be unreachable
+                                self.state = ReactorState::CatchUp;
+                                return (Duration::ZERO, Effects::new());
+                            }
+                            Some((block_hash, block_height)) => {
+                                StartingWith::BlockIdentifer(block_hash, block_height)
+                            }
+                        },
+                    };
 
                 let instruction = self.block_accumulator.sync_instruction(starting_with);
-                error!(
-                    ?instruction,
-                    "XXXXX - in keep up mode, block accumulator instruction"
-                );
 
                 match instruction {
                     SyncInstruction::Leap => {
@@ -223,30 +211,61 @@ impl MainReactor {
                         return (WAIT_DURATION, effects);
                     }
                     SyncInstruction::CaughtUp => {
-                        // if node is in validator set and era supervisor has what it needs
-                        // to run, switch to validate mode
                         match self.create_required_eras(effect_builder, rng) {
+                            // if node is in validator set and era supervisor has what it needs
+                            // to run, switch to validate mode
                             Ok(Some(mut effects)) => {
                                 self.state = ReactorState::Validate;
                                 self.block_synchronizer.turn_off();
                                 return (Duration::ZERO, effects);
                             }
-                            Ok(None) => {}
+                            Ok(None) => {
+                                if let Some(block_header) = self.recent_switch_block_headers.last()
+                                {
+                                    match self.check_upgrade(block_header) {
+                                        Ok(_) => {
+                                            // noop
+                                        }
+                                        Err(msg) => {
+                                            return (
+                                                Duration::ZERO,
+                                                utils::new_shutdown_effect(msg),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
                             Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                         }
+                    }
+                    SyncInstruction::BlockExec { next_block_hash } => {
                         match self.enqueue_executable_block(effect_builder) {
-                            Ok(effects) => return (Duration::ZERO, effects),
+                            Ok(effects) => {
+                                if let Some(block_hash) = next_block_hash {
+                                    self.block_synchronizer.register_block_by_hash(
+                                        block_hash,
+                                        false,
+                                        true,
+                                        self.chainspec
+                                            .core_config
+                                            .sync_leap_simultaneous_peer_requests,
+                                    );
+                                }
+                                return (Duration::ZERO, effects);
+                            }
                             Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                         }
                     }
                 }
             }
             ReactorState::Validate => {
-                // todo!
-                // if self.block_accumulator.foo() {
-                // we have a block with sufficient finality sigs to start gossiping
-                // enqueue it (add event or direct gossiper call)
-                // }
+                //if self.upgrade_watcher.should_upgrade_after(era_id)
+                // todo! only validators should actually apply upgrades and sign them and gossip
+                // them; other nodes should instead sync to them
+                //     match self.commit_upgrade(effect_builder, block_header) {
+                //         Ok(effects) => return (WAIT_DURATION, effects),
+                //         Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                //     }
                 match self.create_required_eras(effect_builder, rng) {
                     Ok(Some(effects)) => return (Duration::ZERO, effects),
                     Ok(None) => {
@@ -262,17 +281,15 @@ impl MainReactor {
                     }
                     Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                 }
-
-                if self.consensus.last_progress().elapsed() <= self.idle_tolerances {
-                    // TODO: Reset counter?
-                    // TODO: ELSE: Increment counter, leap?
-                    // With Highway we must make sure that the whole network doesn't restart
-                    // at the same time, though, since it doesn't restore protocol state.
+                let last_progress = self.consensus.last_progress();
+                if last_progress > self.last_progress {
+                    self.last_progress = last_progress;
                 }
             }
+            ReactorState::Upgrade => {
+                // noop ... patiently wait for the runner to shut down cleanly
+            }
         }
-        error!("XXXXX - end of crank, next scheduled for 1 second from now");
-        // todo! immediately - or some const amount?
         (Duration::from_secs(1), Effects::new())
     }
 
@@ -281,112 +298,115 @@ impl MainReactor {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> CatchUpInstruction {
-        let mut effects = Effects::new();
-        error!("XXXXX - catch_up_instructions 1");
-        // check idleness & enforce re-attempts if necessary
-        if let Some(last_progress) = self.block_synchronizer.last_progress() {
-            if Timestamp::now().saturating_diff(last_progress) <= self.idle_tolerances {
-                self.attempts = 0; // if any progress has been made, reset attempts
-                let mut effects = Effects::new();
-                effects.extend(effect_builder.immediately().event(|_| {
-                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                }));
-                error!("XXXXX - catch_up_instructions 2");
-                return CatchUpInstruction::Do(effects);
-            }
-            self.attempts += 1;
-            if self.attempts > self.max_attempts {
-                return CatchUpInstruction::Shutdown(
-                    "catch up process exceeds idle tolerances".to_string(),
-                );
-            }
-        }
-
-        // determine which block / block_hash we should attempt to leap from
-        let starting_with = match self.trusted_hash {
-            None => {
-                match self.storage.read_highest_complete_block() {
-                    // no trusted hash provided use local tip if available
-                    Ok(Some(block)) => {
-                        // -+ : leap w/ local tip
-                        StartingWith::Block(Box::new(block))
-                    }
-                    Ok(None) => {
-                        if let ActivationPoint::Genesis(timestamp) =
-                            self.chainspec.protocol_config.activation_point
-                        {
-                            if Timestamp::now() <= timestamp {
-                                // the network is in pre-genesis
-                                return CatchUpInstruction::CommitGenesis;
-                            }
-                        }
-                        // we are post genesis, have no local blocks, and no trusted hash
-                        // so we can't possibly catch up to the network and should shut down
-                        return CatchUpInstruction::Shutdown(
-                            "post-genesis; cannot proceed without trusted hash provided"
-                                .to_string(),
-                        );
-                    }
-                    Err(err) => {
-                        return CatchUpInstruction::Shutdown(format!(
-                            "fatal block store error when attempting to read highest \
-                            complete block: {}",
-                            err
-                        ));
-                    }
-                }
-            }
-            Some(trusted_hash) => {
-                match self.storage.read_block_header(&trusted_hash) {
-                    Ok(Some(trusted_header)) => {
+        let catch_up = true;
+        let starting_with = match self.block_synchronizer.progress(catch_up) {
+            BlockSynchronizerProgress::Idle => {
+                match self.trusted_hash {
+                    None => {
                         match self.storage.read_highest_complete_block() {
+                            // no trusted hash provided use local tip if available
                             Ok(Some(block)) => {
-                                // ++ : leap w/ the higher of local tip or trusted hash
-                                if trusted_header.height() > block.height() {
-                                    StartingWith::Hash(trusted_hash)
-                                } else {
-                                    StartingWith::Block(Box::new(block))
-                                }
+                                // -+ : leap w/ local tip
+                                StartingWith::BlockIdentifer(block.block_hash(), block.height())
                             }
                             Ok(None) => {
-                                // should be unreachable if we've gotten this far
-                                StartingWith::Hash(trusted_hash)
-                            }
-                            Err(_) => {
+                                if let ActivationPoint::Genesis(timestamp) =
+                                    self.chainspec.protocol_config.activation_point
+                                {
+                                    if Timestamp::now() <= timestamp {
+                                        // the network is in pre-genesis
+                                        return CatchUpInstruction::CommitGenesis;
+                                    }
+                                }
+                                // we are post genesis, have no local blocks, and no trusted hash
+                                // so we can't possibly catch up to the network and should shut down
                                 return CatchUpInstruction::Shutdown(
-                                    "fatal block store error when attempting to read highest \
-                                    complete block"
+                                    "post-genesis; cannot proceed without trusted hash provided"
                                         .to_string(),
                                 );
                             }
+                            Err(err) => {
+                                return CatchUpInstruction::Shutdown(format!(
+                                    "fatal block store error when attempting to read highest \
+                            complete block: {}",
+                                    err
+                                ));
+                            }
                         }
                     }
-                    Ok(None) => {
-                        // +- : leap w/ config hash
-                        StartingWith::Hash(trusted_hash)
-                    }
-                    Err(err) => {
-                        return CatchUpInstruction::Shutdown(format!(
-                            "fatal block store error when attempting to read highest \
+                    Some(trusted_hash) => {
+                        // if we have a trusted hash and we have a local tip, use the higher
+                        match self.storage.read_block_header(&trusted_hash) {
+                            Ok(Some(trusted_header)) => {
+                                match self.storage.read_highest_complete_block() {
+                                    Ok(Some(block)) => {
+                                        // ++ : leap w/ the higher of local tip or trusted hash
+                                        let trusted_height = trusted_header.height();
+                                        if trusted_height > block.height() {
+                                            StartingWith::BlockIdentifer(
+                                                trusted_hash,
+                                                trusted_height,
+                                            )
+                                        } else {
+                                            StartingWith::BlockIdentifer(
+                                                block.block_hash(),
+                                                block.height(),
+                                            )
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        // should be unreachable if we've gotten this far
+                                        StartingWith::Hash(trusted_hash)
+                                    }
+                                    Err(_) => {
+                                        return CatchUpInstruction::Shutdown(
+                                            "fatal block store error when attempting to read highest \
+                                    complete block"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                            Ok(None) => {
+                                // +- : leap w/ config hash
+                                StartingWith::Hash(trusted_hash)
+                            }
+                            Err(err) => {
+                                return CatchUpInstruction::Shutdown(format!(
+                                    "fatal block store error when attempting to read highest \
                             complete block: {}",
-                            err
-                        ));
+                                    err
+                                ));
+                            }
+                        }
                     }
                 }
             }
-        };
-        error!("XXXXX - catch_up_instructions 3");
-
-        if let Some(block_height) = self.block_synchronizer.maybe_complete_block_height() {
-            error!("XXXXX - registering complete block");
-            self.block_accumulator.register_complete_block(block_height);
-            if let Err(err) = self.storage.mark_block_completed(block_height) {
-                return CatchUpInstruction::Shutdown(format!(
-                    "fatal error when attempting to mark block completed: {}",
-                    err
-                ));
+            BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
+                // do the shutdown / reattempt checking and are we still near tip
+                if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerances {
+                    self.attempts += 1;
+                    if self.attempts > self.max_attempts {
+                        return CatchUpInstruction::Shutdown(
+                            "catch up process exceeds idle tolerances".to_string(),
+                        );
+                    }
+                }
+                // if any progress has been made, reset attempts
+                if last_progress > self.last_progress {
+                    self.last_progress = last_progress;
+                    self.attempts = 0;
+                }
+                match maybe_block_height {
+                    None => StartingWith::Hash(block_hash),
+                    Some(block_height) => StartingWith::BlockIdentifer(block_hash, block_height),
+                }
             }
-        }
+            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+                // do this dance:
+                StartingWith::SyncedBlockIdentifer(block_hash, block_height)
+            }
+        };
 
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip
@@ -435,6 +455,7 @@ impl MainReactor {
                             return CatchUpInstruction::Shutdown(msg);
                         }
                     };
+                    // todo! maybe register sync_leap to accumulator instead
                     self.block_synchronizer.register_sync_leap(
                         &*best_available,
                         from_peers,
@@ -447,6 +468,7 @@ impl MainReactor {
                     self.validator_matrix
                         .register_validator_weights(era_id, validator_weights.clone());
                     error!("XXXXX - registered validator weights for {}", era_id);
+
                     self.block_accumulator.register_updated_validator_matrix();
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
@@ -475,6 +497,7 @@ impl MainReactor {
                         .core_config
                         .sync_leap_simultaneous_peer_requests,
                 );
+
                 // once started NeedNext should perpetuate until nothing is needed
                 let mut effects = Effects::new();
                 effects.extend(effect_builder.immediately().event(|_| {
@@ -482,35 +505,21 @@ impl MainReactor {
                 }));
                 return CatchUpInstruction::Do(effects);
             }
+            SyncInstruction::BlockExec { .. } => {
+                let msg = "BlockExec is not valid while in CatchUp mode".to_string();
+                error!("{}", msg);
+                return CatchUpInstruction::Shutdown(msg);
+            }
             SyncInstruction::CaughtUp => {
                 match self.storage.read_highest_complete_block() {
                     Ok(Some(block)) => {
-                        let era_id = block.header().era_id();
-                        error!(
-                            "XXXXX - caught up - highest complete block era {} -- {:?}",
-                            era_id, self.validator_matrix
-                        );
-                        // todo! - this seems wrong - should use
-                        //         `ProtocolConfig::is_last_block_before_activation`?
-                        if false {
-                            // if era_id == block.header().next_block_era_id() {
-                            match self.validator_matrix.validator_weights(era_id) {
-                                Some(validator_weights) => {
-                                    if self
-                                        .storage
-                                        .era_has_sufficient_finality_signatures(&validator_weights)
-                                    {
-                                        return CatchUpInstruction::CommitUpgrade(Box::new(
-                                            block.header().clone(),
-                                        ));
-                                    }
-                                }
-                                None => {
-                                    // should be unreachable
-                                    return CatchUpInstruction::Shutdown(
-                                        "should not be possible to be caught up with no era validators".to_string(),
-                                    );
-                                }
+                        match self.check_upgrade(block.header()) {
+                            Ok(_) => {
+                                // noop
+                            }
+                            Err(msg) => {
+                                // should be unreachable
+                                return CatchUpInstruction::Shutdown(msg);
                             }
                         }
                     }
@@ -689,13 +698,44 @@ impl MainReactor {
         }
     }
 
+    fn check_upgrade(&mut self, block_header: &BlockHeader) -> Result<(), String> {
+        if self
+            .upgrade_watcher
+            .should_upgrade_after(block_header.era_id())
+            && block_header.is_switch_block()
+        {
+            match self
+                .validator_matrix
+                .validator_weights(block.header().era_id())
+            {
+                Some(validator_weights) => {
+                    if self
+                        .storage
+                        .era_has_sufficient_finality_signatures(&validator_weights)
+                    {
+                        self.state = ReactorState::Upgrade;
+                    }
+                }
+                None => {
+                    // should be unreachable
+                    return Err(
+                        "should not be possible to be in this state with no era validators"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn enqueue_executable_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         let mut effects = Effects::new();
-        // todo! - try to avoid repeating executing the same blocks.
-        if let Some(block_hash) = self.block_synchronizer.maybe_executable_block_hash() {
+        if let Some((block_hash, block_height)) =
+            self.block_synchronizer.maybe_executable_block_identifier()
+        {
             match self.storage.make_executable_block(&block_hash) {
                 Ok(Some((finalized_block, deploys))) => {
                     effects.extend(

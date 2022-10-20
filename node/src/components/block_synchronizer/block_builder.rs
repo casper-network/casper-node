@@ -14,6 +14,7 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
+use crate::components::block_synchronizer::block_acquisition::FinalitySignatureAcceptance;
 use crate::{
     components::block_synchronizer::{
         execution_results_acquisition::ExecutionResultsChecksum, peer_list::PeerList,
@@ -52,8 +53,7 @@ pub(super) struct BlockBuilder {
     peer_list: PeerList,
 
     // progress tracking
-    started: Option<Timestamp>,
-    last_progress: Option<Timestamp>,
+    last_progress: Timestamp,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -81,8 +81,7 @@ impl BlockBuilder {
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
             requires_strict_finality,
-            started: None,
-            last_progress: None,
+            last_progress: Timestamp::now(),
         }
     }
 
@@ -124,8 +123,7 @@ impl BlockBuilder {
             peer_list,
             should_fetch_execution_state,
             requires_strict_finality,
-            started: None,
-            last_progress: Some(Timestamp::now()),
+            last_progress: Timestamp::now(),
         }
     }
 
@@ -163,16 +161,8 @@ impl BlockBuilder {
         &self.acquisition_state
     }
 
-    // NOT WIRED
-    pub(super) fn started(&self) -> Option<Timestamp> {
-        self.started
-    }
-
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn last_progress_time(&self) -> Option<Timestamp> {
-        if self.is_finished() || self.is_fatal() {
-            return None;
-        }
+    pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
     }
 
@@ -198,8 +188,8 @@ impl BlockBuilder {
         self.peer_list.register_peer(peer);
     }
 
-    pub(super) fn register_strict_finality_signatures(&mut self) {
-        self.acquisition_state.with_strict_finality_signatures();
+    pub(super) fn register_marked_complete(&mut self) {
+        self.acquisition_state.with_marked_complete();
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
@@ -326,15 +316,12 @@ impl BlockBuilder {
                     self.disqualify_peer(maybe_peer);
                     return Err(Error::BlockAcquisition(error));
                 }
-                Ok(true) => {
+                Ok(FinalitySignatureAcceptance::NeededIt) => {
                     self.touch();
                     self.promote_peer(maybe_peer);
                 }
-                Ok(false) => {
-                    warn!(
-                        ?maybe_peer,
-                        "received a finality signature that we already have"
-                    )
+                Ok(FinalitySignatureAcceptance::Noop) => {
+                    // noop
                 }
             }
             Ok(())
@@ -446,15 +433,15 @@ impl BlockBuilder {
         Ok(())
     }
 
+    pub(super) fn era_id(&self) -> Option<EraId> {
+        self.era_id
+    }
+
     fn flush_peers(&mut self) {
         self.peer_list.flush();
     }
 
     fn touch(&mut self) {
-        let now = Timestamp::now();
-        if self.started.is_none() {
-            self.started = Some(now);
-        }
-        self.last_progress = Some(now);
+        self.last_progress = Timestamp::now();
     }
 }

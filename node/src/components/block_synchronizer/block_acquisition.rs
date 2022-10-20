@@ -155,6 +155,11 @@ pub(super) enum BlockAcquisitionState {
     Fatal,
 }
 
+pub(super) enum FinalitySignatureAcceptance {
+    Noop,
+    NeededIt,
+}
+
 impl BlockAcquisitionState {
     pub(super) fn new(block_hash: BlockHash, validators: Vec<PublicKey>) -> Self {
         BlockAcquisitionState::Initialized(block_hash, SignatureAcquisition::new(validators))
@@ -256,7 +261,6 @@ impl BlockAcquisitionState {
         block: &Block,
         need_execution_state: bool,
     ) -> Result<(), Error> {
-        error!("XXXXX - with_block was called with state {}", self);
         let new_state = match self {
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, signatures) => {
                 let expected_block_hash = header.block_hash();
@@ -278,21 +282,15 @@ impl BlockAcquisitionState {
                     deploy_acquisition,
                 )
             }
-            // we do not ask for a block's body while in the following states, and
-            // thus it is erroneous to attempt to apply one
-            // BlockAcquisitionState::Initialized(..)
-            // | BlockAcquisitionState::HaveBlockHeader(..)
-            // | BlockAcquisitionState::HaveBlock(..)
-            // | BlockAcquisitionState::HaveGlobalState(..)
-            // | BlockAcquisitionState::HaveAllExecutionResults(..)
-            // | BlockAcquisitionState::HaveAllDeploys(..)
-            // | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            // | BlockAcquisitionState::HaveApprovalsHashes(..)
-            // | BlockAcquisitionState::Fatal => return Err(Error::InvalidStateTransition),
-            state => {
-                // error!("XXXXX - invalid `with_block` call from state {:?}", state);
-                // return Err(Error::InvalidStateTransition);
-                // todo!()
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::Fatal => {
                 return Ok(());
             }
         };
@@ -304,18 +302,18 @@ impl BlockAcquisitionState {
         &mut self,
         signature: FinalitySignature,
         validator_weights: EraValidatorWeights,
-    ) -> Result<bool, Error> {
+    ) -> Result<FinalitySignatureAcceptance, Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures) => {
-                if !acquired_signatures.apply_signature(signature) {
-                    return Ok(false);
+                if false == acquired_signatures.apply_signature(signature) {
+                    return Ok(FinalitySignatureAcceptance::Noop);
                 };
 
                 match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient => {
                         // Should not change state.
-                        return Ok(true);
+                        return Ok(FinalitySignatureAcceptance::NeededIt);
                     }
                     SignatureWeight::Weak | SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveWeakFinalitySignatures(
@@ -326,15 +324,15 @@ impl BlockAcquisitionState {
                 }
             }
             BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
-                if !acquired_signatures.apply_signature(signature) {
-                    return Ok(false);
+                if false == acquired_signatures.apply_signature(signature) {
+                    return Ok(FinalitySignatureAcceptance::Noop);
                 };
 
                 match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient | SignatureWeight::Weak => {
                         // Should not change state.
-                        return Ok(true);
+                        return Ok(FinalitySignatureAcceptance::NeededIt);
                     }
                     SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -355,17 +353,21 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
-                // todo!()
-                // return Err(Error::InvalidAttemptToApplySignatures);
-                return Ok(false);
+                return Ok(FinalitySignatureAcceptance::Noop);
             }
         };
         *self = new_state;
-        Ok(true)
+        Ok(FinalitySignatureAcceptance::Noop)
     }
 
-    pub(super) fn with_strict_finality_signatures(&mut self) -> Result<bool, Error> {
+    pub(super) fn with_marked_complete(&mut self) -> Result<bool, Error> {
         let new_state = match self {
+            BlockAcquisitionState::HaveBlock(block, _, _) => {
+                BlockAcquisitionState::HaveStrictFinalitySignatures(
+                    Box::new(block.header().clone()),
+                    acquired_signatures.clone(),
+                )
+            }
             BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
                 BlockAcquisitionState::HaveStrictFinalitySignatures(
                     header.clone(),
@@ -701,6 +703,17 @@ impl BlockAcquisitionState {
                     "XXXXX - getting approvals hashes for block {}",
                     block.hash()
                 );
+
+                if deploy_state.needs_deploy().is_none() {
+                    BlockAcquisitionAction::strict_finality_signatures(
+                        peer_list,
+                        rng,
+                        &block.header(),
+                        validator_weights,
+                        signatures,
+                    )
+                }
+
                 Ok(BlockAcquisitionAction::approvals_hashes(
                     block, peer_list, rng,
                 ))
@@ -791,16 +804,6 @@ impl BlockAcquisitionState {
                     )),
                 }
             }
-            BlockAcquisitionState::HaveAllDeploys(
-                header,
-                signatures, /* , exec_result_acquisition */
-            ) => Ok(BlockAcquisitionAction::strict_finality_signatures(
-                peer_list,
-                rng,
-                header.as_ref(),
-                validator_weights,
-                signatures,
-            )),
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
                 error!("XXXXX - State is HaveApprovalsHashes");
                 match deploys.needs_deploy() {
@@ -966,8 +969,6 @@ impl BlockAcquisitionAction {
             need_next: NeedNext::FinalitySignatures(block_hash, era_id, missing_signatures),
         }
     }
-
-    // NOT WIRED - NEEDS TO BE WIRED TO `strict_finality_signatures` actions.
     pub(super) fn strict_finality_signatures(
         peer_list: &PeerList,
         rng: &mut NodeRng,
@@ -978,7 +979,7 @@ impl BlockAcquisitionAction {
         let peers_to_ask = peer_list.qualified_peers(rng);
         let era_id = block_header.era_id();
         let block_hash = block_header.block_hash();
-
+        let block_height = block_header.height();
         if validator_weights
             .missing_validators(signature_acquisition.have_signatures())
             .count()
@@ -989,9 +990,7 @@ impl BlockAcquisitionAction {
             {
                 return BlockAcquisitionAction {
                     peers_to_ask: vec![],
-                    need_next: NeedNext::NothingNeededSufficientFinalitySignaturesWeight(
-                        block_hash,
-                    ),
+                    need_next: NeedNext::MarkComplete(block_hash, block_height),
                 };
             }
         }

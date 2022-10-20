@@ -20,6 +20,7 @@ use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
+use crate::types::Tag::Block;
 use crate::{
     components::{
         fetcher::{Error, FetchResult, FetchedData},
@@ -95,6 +96,12 @@ impl<REv> ReactorEvent for REv where
 {
 }
 
+pub(crate) enum BlockSynchronizerProgress {
+    Idle,
+    Syncing(BlockHash, Option<u64>, Timestamp),
+    Synced(BlockHash, u64),
+}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     status: ComponentStatus,
@@ -122,6 +129,44 @@ impl BlockSynchronizer {
     }
 
     // CALLED FROM REACTOR
+    pub(crate) fn last_progress(&self) -> Timestamp {
+        if let Some(forward) = &self.forward {
+            return forward.last_progress_time();
+            // maybe there's an edge case on a sync to genesis node
+            // where we are fully at tip, so forward is stale
+            // but we are syncing a historical block and making progress on that
+            // but as currently written we're not checking for idleness shutdown
+            // while in keep mode so...
+        }
+        if let Some(historical) = &self.historical {
+            return historical.last_progress_time();
+        }
+        Timestamp::zero()
+    }
+
+    pub(crate) fn progress(&mut self, catch_up: bool) -> BlockSynchronizerProgress {
+        match if catch_up {
+            &self.forward
+        } else {
+            &self.historical
+        } {
+            None => {
+                return BlockSynchronizerProgress::Idle;
+            }
+            Some(builder) => {
+                if builder.is_finished() {
+                    return BlockSynchronizerProgress::Synced(builder.block_hash(), block_height);
+                }
+                return BlockSynchronizerProgress::Syncing(
+                    builder.block_hash(),
+                    builder.block_height(),
+                    builder.last_progress_time(),
+                );
+            }
+        }
+    }
+
+    // CALLED FROM REACTOR
     pub(crate) fn turn_on(&mut self) {
         self.disabled = false;
     }
@@ -132,33 +177,39 @@ impl BlockSynchronizer {
     }
 
     // CALLED FROM REACTOR
-    pub(crate) fn maybe_executable_block_hash(&self) -> Option<BlockHash> {
+    pub(crate) fn maybe_executable_block_identifier(&self) -> Option<(BlockHash, u64)> {
         if let Some(fwd) = &self.forward {
             if fwd.is_finished() {
-                return Some(fwd.block_hash());
+                match fwd.block_height() {
+                    None => {
+                        error!("block_height should be Some");
+                        return None;
+                    }
+                    Some(height) => {
+                        return Some((fwd.block_hash(), height));
+                    }
+                }
             }
         }
         None
     }
 
-    pub(crate) fn maybe_complete_block_height(&self) -> Option<u64> {
+    // CALLED FROM REACTOR
+    pub(crate) fn maybe_finished_block_identifier(&self) -> Option<(BlockHash, u64)> {
         if let Some(historical) = &self.historical {
             if historical.is_finished() {
-                return historical.block_height();
+                match historical.block_height() {
+                    None => {
+                        error!("block_height should be Some");
+                        return None;
+                    }
+                    Some(height) => {
+                        return Some((historical.block_hash(), height));
+                    }
+                }
             }
         }
         None
-    }
-
-    pub(crate) fn register_strict_finality_signatures(&mut self, block_hash: &BlockHash) {
-        match (&mut self.forward, &mut self.historical) {
-            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
-                builder.register_strict_finality_signatures();
-            }
-            _ => {
-                debug!(%block_hash, "not currently synchronizing block");
-            }
-        }
     }
 
     // CALLED FROM REACTOR
@@ -169,44 +220,35 @@ impl BlockSynchronizer {
         requires_strict_finality: bool,
         max_simultaneous_peers: u32,
     ) {
-        error!(
-            "XXXXX - Creating a *new* block builder for block {}",
-            block_hash
-        );
-        let builder = BlockBuilder::new(
-            block_hash,
-            should_fetch_execution_state,
-            requires_strict_finality,
-            max_simultaneous_peers,
-            self.peer_refresh_interval,
-        );
         if should_fetch_execution_state {
-            if let Some(historical) = self.historical.replace(builder) {
-                debug!(
-                    block_hash = %historical.block_hash(),
-                    "replacing current sync of historical complete block"
-                );
+            if let Some(block_builder) = &self.historical {
+                if block_builder.block_hash() == block_hash {
+                    return;
+                }
             }
-        } else if let Some(forward) = self.forward.replace(builder) {
-            debug!(
-                block_hash = %forward.block_hash(),
-                "replacing current sync of forward complete block"
+            let builder = BlockBuilder::new(
+                block_hash,
+                should_fetch_execution_state,
+                requires_strict_finality,
+                max_simultaneous_peers,
+                self.peer_refresh_interval,
             );
+            self.historical.replace(builder);
+        } else {
+            if let Some(block_builder) = &self.forward {
+                if block_builder.block_hash() == block_hash {
+                    return;
+                }
+            }
+            let builder = BlockBuilder::new(
+                block_hash,
+                should_fetch_execution_state,
+                requires_strict_finality,
+                max_simultaneous_peers,
+                self.peer_refresh_interval,
+            );
+            self.forward.replace(builder);
         }
-    }
-
-    // CALLED FROM REACTOR
-    pub(crate) fn last_progress(&self) -> Option<Timestamp> {
-        self.forward
-            .as_ref()
-            .and_then(BlockBuilder::last_progress_time)
-            .into_iter()
-            .chain(
-                self.historical
-                    .as_ref()
-                    .and_then(BlockBuilder::last_progress_time),
-            )
-            .max()
     }
 
     // CALLED FROM REACTOR
@@ -272,6 +314,18 @@ impl BlockSynchronizer {
     }
 
     // EVENTED
+    fn register_marked_complete(&mut self, block_hash: &BlockHash) {
+        match (&mut self.forward, &mut self.historical) {
+            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+                builder.register_marked_complete();
+            }
+            _ => {
+                debug!(%block_hash, "not currently synchronizing block");
+            }
+        }
+    }
+
+    // EVENTED
     fn register_peers(&mut self, block_hash: BlockHash, peers: Vec<NodeId>) -> Effects<Event> {
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
@@ -309,7 +363,7 @@ impl BlockSynchronizer {
         }
     }
 
-    // WIRED AND EVENTED
+    // EVENTED
     fn dishonest_peers(&self) -> Vec<NodeId> {
         let mut ret = vec![];
         if let Some(builder) = &self.forward {
@@ -344,6 +398,7 @@ impl BlockSynchronizer {
         effects
     }
 
+    // EVENTED
     fn need_next<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -362,13 +417,12 @@ impl BlockSynchronizer {
             );
             let peers = action.peers_to_ask(); // pass this to any fetcher
             match action.need_next() {
-                NeedNext::NothingNeededSufficientFinalitySignaturesWeight(block_hash) => results
-                    .extend(
-                        effect_builder.immediately().event(move |_| {
-                            Event::SufficientFinalitySignaturesRegistered(block_hash)
-                        }),
-                    ),
                 NeedNext::Nothing => {}
+                NeedNext::MarkComplete(block_hash, block_height) => results.extend(
+                    effect_builder
+                        .mark_block_completed(block_height)
+                        .event(move |_| Event::MarkedComplete(block_hash)),
+                ),
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -1028,12 +1082,8 @@ where
                     self.global_sync.handle_event(effect_builder, rng, event),
                 )
             }
-            (
-                ComponentStatus::Initialized,
-                Event::SufficientFinalitySignaturesRegistered(block_hash),
-            ) => {
-                self.register_strict_finality_signatures(&block_hash);
-
+            (ComponentStatus::Initialized, Event::MarkedComplete(block_hash)) => {
+                self.register_marked_complete(&block_hash);
                 Effects::new()
             }
             // TRIGGERED VIA ANNOUNCEMENT
