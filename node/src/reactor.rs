@@ -145,6 +145,7 @@ fn adjust_open_files_limit() {
 pub(crate) enum ReactorExit {
     /// The process should exit with the given exit code to allow the launcher to react
     /// accordingly.
+    /// todo! why do we need a enum to wrap exit code enum?
     ProcessShouldExit(ExitCode),
 }
 

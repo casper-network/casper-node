@@ -24,20 +24,21 @@ use crate::{
     NodeRng,
 };
 
+use crate::components::block_accumulator::block_acceptor::HasSufficientFinality::No;
 use crate::{effect::requests::BlockAccumulatorRequest, types::BlockHeader};
 use block_acceptor::BlockAcceptor;
 pub(crate) use config::Config;
 use error::Error;
 pub(crate) use event::Event;
 
-use self::block_acceptor::CanExecuteOutcome;
+use self::block_acceptor::HasSufficientFinality;
 
 #[derive(Debug)]
 pub(crate) enum SyncInstruction {
     Leap,
     CaughtUp,
     BlockExec {
-        next_block_hash: BlockHash,
+        next_block_hash: Option<BlockHash>,
     },
     BlockSync {
         block_hash: BlockHash,
@@ -47,8 +48,9 @@ pub(crate) enum SyncInstruction {
 
 #[derive(Clone, Debug)]
 pub(crate) enum StartingWith {
-    ExecutableBlock(BlockHash),
-    Block(Box<Block>),
+    ExecutableBlock(BlockHash, u64),
+    BlockIdentifer(BlockHash, u64),
+    SyncedBlockIdentifer(BlockHash, u64),
     Hash(BlockHash),
     // simplifies call sites; results in a Leap instruction
     Nothing,
@@ -57,21 +59,31 @@ pub(crate) enum StartingWith {
 impl StartingWith {
     pub(crate) fn block_hash(&self) -> BlockHash {
         match self {
-            StartingWith::Block(block) => block.id(),
+            StartingWith::BlockIdentifer(hash, _) => *hash,
+            StartingWith::SyncedBlockIdentifer(hash, _) => *hash,
+            StartingWith::ExecutableBlock(hash, _) => *hash,
             StartingWith::Hash(hash) => *hash,
             StartingWith::Nothing => BlockHash::default(),
-            StartingWith::ExecutableBlock(block_hash) => *block_hash,
+        }
+    }
+
+    pub(crate) fn block_height(&self) -> u64 {
+        match self {
+            StartingWith::BlockIdentifer(_, height) => *height,
+            StartingWith::SyncedBlockIdentifer(_, height) => *height,
+            StartingWith::ExecutableBlock(_, height) => *height,
+            StartingWith::Hash(hash) => 0,
+            StartingWith::Nothing => 0,
         }
     }
 
     pub(crate) fn have_block(&self) -> bool {
         match self {
-            // StartingWith::Block means we have have the block locally and
-            // it should have global state
-            StartingWith::Block(_) => true,
+            StartingWith::BlockIdentifer(..) => true,
+            StartingWith::ExecutableBlock(..) => true,
+            StartingWith::SyncedBlockIdentifer(..) => true,
             StartingWith::Hash(_) => false,
             StartingWith::Nothing => false,
-            StartingWith::ExecutableBlock(_) => true,
         }
     }
 }
@@ -81,47 +93,49 @@ impl StartingWith {
 /// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockAccumulator {
-    already_handled: HashSet<BlockHash>, // todo!() - do we need this at all?
-    block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
-    block_children: BTreeMap<BlockHash, BlockHash>,
+    validator_matrix: ValidatorMatrix,
     attempt_execution_threshold: u64,
     dead_air_interval: TimeDiff,
-    validator_matrix: ValidatorMatrix,
+
+    block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
+    block_children: BTreeMap<BlockHash, BlockHash>,
+    already_handled: HashSet<BlockHash>,
+
     last_progress: Timestamp,
-    /// The height of the most recent complete block. The accumulator only needs to care about
-    /// blocks later than this one.
-    highest_complete_block: Option<u64>,
+    /// The height of the subjective local tip of the chain.
+    /// todo! this needs to be set if available as part of init
+    local_tip: Option<u64>,
 }
 
 impl BlockAccumulator {
     pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
         Self {
-            already_handled: Default::default(),
-            block_acceptors: Default::default(),
-            block_children: Default::default(),
+            validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
             dead_air_interval: config.dead_air_interval(),
-            validator_matrix,
-            last_progress: Timestamp::now(),
-            highest_complete_block: None,
-        }
-    }
-
-    #[allow(unused)] // todo!: Flush less aggressively. Obsolete with highest_complete_block?
-    pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
-        Self {
             already_handled: Default::default(),
             block_acceptors: Default::default(),
             block_children: Default::default(),
-            validator_matrix,
-            ..self
+            last_progress: Timestamp::now(),
+            local_tip: None,
         }
     }
 
-    #[allow(unused)] // todo!
-    pub(crate) fn flush_already_handled(&mut self) {
-        self.already_handled.clear();
-    }
+    // #[allow(unused)] // todo!: Flush less aggressively. Obsolete with highest_complete_block?
+    // pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
+    //     Self {
+    //         already_handled: Default::default(),
+    //         block_acceptors: Default::default(),
+    //         block_children: Default::default(),
+    //         validator_matrix,
+    //         ..self
+    //     }
+    // }
+    //
+    // #[allow(unused)] // todo!
+    // pub(crate) fn flush_already_handled(&mut self) {
+    //     self.already_handled.clear();
+    // }
 
     pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
         // BEFORE the f-seq cant help you, LEAP
@@ -133,72 +147,117 @@ impl BlockAccumulator {
         // AFTER the f-seq cant help you, SYNC-all-state
         // |------------- future chain ------------------------> ?
         let should_fetch_execution_state = false == starting_with.have_block();
-        let block_hash = starting_with.block_hash();
-        if let Some((_highest_block_hash, highest_block_height, _highest_era_id)) =
-            self.highest_known_block()
-        {
-            let (_era_id, block_height) = match starting_with {
-                StartingWith::Nothing => {
-                    return SyncInstruction::Leap;
-                }
-                StartingWith::Block(ref block) => {
-                    (block.header().era_id(), block.header().height())
-                }
-                StartingWith::Hash(hash) | StartingWith::ExecutableBlock(hash) => {
-                    match self.block_acceptors.get(&hash) {
-                        None => {
-                            // the accumulator is unaware of the starting-with block
-                            return SyncInstruction::Leap;
-                        }
-                        Some(gossiped_block) => {
-                            match gossiped_block.block_era_and_height() {
-                                None => {
-                                    // we have received at least one finality signature for this
-                                    // block via gossiping but
-                                    // have not seen the block body itself
-                                    return SyncInstruction::Leap;
-                                }
-                                // we can derive the height for the trusted hash
-                                // because we've seen the block it refers to via gossiping
-                                Some(block_era_and_height) => block_era_and_height,
-                            }
-                        }
-                    }
-                }
-            };
 
-            // the starting-with block may be close to perceived tip
-            let height_diff = highest_block_height.saturating_sub(block_height);
-            if height_diff == 0 {
-                // NOTE: what we're trying to protect against here is if we
-                // haven't seen any new info about new blocks but we should have;
-                // either the network is hung / skipping a lot of blocks
-                // or this node is partitioned. In such a case, attempt a leap
-                // to see where other nodes think the tip is
-                if self.last_progress.elapsed() < self.dead_air_interval {
-                    if let StartingWith::ExecutableBlock(next_block_hash) = starting_with {
-                        return SyncInstruction::BlockExec { next_block_hash };
-                    }
-                    return SyncInstruction::CaughtUp;
-                }
+        let maybe_highest_usable_block_height = self.highest_usable_block_height();
+
+        match starting_with {
+            StartingWith::Nothing => {
                 return SyncInstruction::Leap;
             }
-            if height_diff <= self.attempt_execution_threshold {
-                // TODO: Make sure this child is sufficiently signed.
-                if let Some(child_hash) = self.block_children.get(&block_hash) {
-                    self.last_progress = Timestamp::now();
-
-                    if let StartingWith::ExecutableBlock(next_block_hash) = starting_with {
-                        return SyncInstruction::BlockExec { next_block_hash };
+            StartingWith::ExecutableBlock(block_hash, block_height) => {
+                // keep up only
+                match maybe_highest_usable_block_height {
+                    None => {
+                        return SyncInstruction::BlockExec {
+                            next_block_hash: None,
+                        };
                     }
+                    Some(highest_perceived) => {
+                        if block_height > highest_perceived {
+                            self.block_acceptors
+                                .insert(block_hash, BlockAcceptor::new(block_hash, vec![]));
+                            return SyncInstruction::BlockExec {
+                                next_block_hash: None,
+                            };
+                        }
+                        if highest_perceived == block_height {
+                            return SyncInstruction::BlockExec {
+                                next_block_hash: None,
+                            };
+                        }
+                        if highest_perceived - self.attempt_execution_threshold <= block_height {
+                            return SyncInstruction::BlockExec {
+                                next_block_hash: self.next_syncable_block_hash(block_hash),
+                            };
+                        }
+                    }
+                }
+            }
+            StartingWith::Hash(block_hash) => match self.block_acceptors.get(&block_hash) {
+                None => {
+                    // the accumulator is unaware of the starting-with block
+                    return SyncInstruction::Leap;
+                }
+                Some(block_acceptor) => {
+                    if self.should_sync(
+                        block_acceptor.block_height(),
+                        maybe_highest_usable_block_height,
+                    ) {
+                        self.last_progress = Timestamp::now();
+                        return SyncInstruction::BlockSync {
+                            block_hash: block_acceptor.block_hash(),
+                            should_fetch_execution_state,
+                        };
+                    }
+                }
+            },
+            StartingWith::BlockIdentifer(block_hash, block_height) => {
+                // catch up only
+                if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
+                    self.last_progress = Timestamp::now();
                     return SyncInstruction::BlockSync {
-                        block_hash: *child_hash,
+                        block_hash: block_acceptor.block_hash(),
                         should_fetch_execution_state,
                     };
                 }
             }
+            StartingWith::SyncedBlockIdentifer(block_hash, block_height) => {
+                // catch up only
+                if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
+                    if let Some(child_hash) = self.next_syncable_block_hash(block_hash) {
+                        self.last_progress = Timestamp::now();
+                        return SyncInstruction::BlockSync {
+                            block_hash: child_hash,
+                            should_fetch_execution_state,
+                        };
+                    } else {
+                        if self.last_progress.elapsed() < self.dead_air_interval {
+                            return SyncInstruction::CaughtUp;
+                        }
+                    }
+                }
+            }
         }
         SyncInstruction::Leap
+    }
+
+    fn should_sync(
+        &mut self,
+        maybe_starting_with_block_height: Option<u64>,
+        maybe_highest_usable_block_height: Option<u64>,
+    ) -> bool {
+        match (
+            maybe_starting_with_block_height,
+            maybe_highest_usable_block_height,
+        ) {
+            (None, _) | (_, None) => false,
+            (Some(starting_with), Some(highest_usable_block_height)) => {
+                let height_diff = highest_usable_block_height.saturating_sub(starting_with);
+                if height_diff == 0 {
+                    true
+                } else {
+                    height_diff <= self.attempt_execution_threshold
+                }
+            }
+        }
+    }
+
+    fn next_syncable_block_hash(&mut self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+        let child_hash = self.block_children.get(&parent_block_hash)?;
+        let block_acceptor = self.block_acceptors.get_mut(&child_hash)?;
+        block_acceptor
+            .has_sufficient_finality()
+            .then(|| *child_hash)
     }
 
     // NOT USED
@@ -234,7 +293,7 @@ impl BlockAccumulator {
         let era_id = block.header().era_id();
 
         if self
-            .highest_complete_block
+            .local_tip
             .map_or(false, |height| block.header().height() < height)
         {
             debug!(%block_hash, "ignoring outdated block");
@@ -336,7 +395,13 @@ impl BlockAccumulator {
     }
 
     pub(crate) fn register_updated_validator_matrix(&mut self) {
-        let block_hashes = self.block_acceptors.keys().copied().collect_vec();
+        let block_hashes = self
+            .block_acceptors
+            .iter()
+            .filter(|(_, ba)| !ba.has_era_validator_weights())
+            .keys()
+            .copied()
+            .collect_vec();
         for block_hash in block_hashes {
             if let Some(mut acceptor) = self.block_acceptors.remove(&block_hash) {
                 if let Some(era_id) = acceptor.era_id() {
@@ -350,7 +415,7 @@ impl BlockAccumulator {
     }
 
     /// Drops all block acceptors older than this block, and will ignore them in the future.
-    pub(crate) fn register_complete_block(&mut self, height: u64) {
+    pub(crate) fn register_local_tip(&mut self, height: u64) {
         for block_hash in self
             .block_acceptors
             .iter()
@@ -361,11 +426,7 @@ impl BlockAccumulator {
             self.block_acceptors.remove(&block_hash);
             self.already_handled.insert(block_hash);
         }
-        self.highest_complete_block = self
-            .highest_complete_block
-            .into_iter()
-            .chain(iter::once(height))
-            .max();
+        self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
     }
 
     pub(crate) fn block(&self, block_hash: BlockHash) -> Option<&Block> {
@@ -376,27 +437,30 @@ impl BlockAccumulator {
         }
     }
 
-    fn highest_known_block(&mut self) -> Option<(BlockHash, u64, EraId)> {
-        let mut ret: Option<(BlockHash, u64, EraId)> = None;
+    fn highest_usable_block_height(&mut self) -> Option<u64> {
+        let mut ret: Option<u64> = None;
         for (k, v) in &mut self.block_acceptors {
             if self.already_handled.contains(k) {
-                // should be unreachable
+                error!(
+                    "should not have a block acceptor for an already handled block_hash: {}",
+                    k
+                );
                 continue;
             }
-            if v.can_execute() == CanExecuteOutcome::No {
+            if false == v.has_sufficient_finality() {
                 continue;
             }
             match v.block_era_and_height() {
                 None => {
                     continue;
                 }
-                Some((era_id, height)) => {
-                    if let Some((_bh, h, _e)) = ret {
-                        if height <= h {
+                Some((_, acceptor_height)) => {
+                    if let Some(curr_height) = ret {
+                        if acceptor_height <= curr_height {
                             continue;
                         }
                     }
-                    ret = Some((*k, height, era_id));
+                    ret = Some(acceptor_height);
                 }
             };
         }
@@ -461,7 +525,7 @@ where
                 Effects::new()
             }
             Event::ExecutedBlock { block_header } => {
-                self.register_complete_block(block_header.height());
+                self.register_local_tip(block_header.height());
                 Effects::new()
             }
         }

@@ -10,7 +10,6 @@ use super::execution_results_acquisition::ExecutionResultsChecksum;
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
-    NothingNeededSufficientFinalitySignaturesWeight(BlockHash),
     Nothing,
     BlockHeader(BlockHash),
     BlockBody(BlockHash),
@@ -33,4 +32,5 @@ pub(crate) enum NeedNext {
     ),
     EraValidators(EraId),
     Peers(BlockHash),
+    MarkComplete(BlockHash, u64),
 }

@@ -21,7 +21,7 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_types::TimeDiff;
+use casper_types::{TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -130,6 +130,8 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
+    // todo! add this to the status endpoint maybe?
+    last_progress: Timestamp,
     attempts: usize,
     idle_tolerances: TimeDiff,
     recent_switch_block_headers: Vec<BlockHeader>,
@@ -322,6 +324,7 @@ impl reactor::Reactor for MainReactor {
 
             state: ReactorState::Initialize {},
             attempts: 0,
+            last_progress: Timestamp::now(),
             max_attempts: 3,
             idle_tolerances: TimeDiff::from_seconds(1200),
             trusted_hash,
@@ -342,9 +345,11 @@ impl reactor::Reactor for MainReactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.linear_chain
-            .stop_for_upgrade()
-            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
+        if self.state == ReactorState::Upgrade {
+            Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
+        } else {
+            None
+        }
     }
 
     fn dispatch_event(
@@ -378,7 +383,6 @@ impl reactor::Reactor for MainReactor {
                     .ignore()
                 }
             }
-
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
                 MainEvent::UpgradeWatcher,
