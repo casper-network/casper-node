@@ -19,9 +19,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, ControlAnnouncement},
         requests::{
             ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
             MarkBlockCompletedRequest, NetworkInfoRequest, NodeStateRequest,
@@ -180,7 +178,6 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<ChainSynchronizerAnnouncement>
         + Send,
 {
     /// Constructs a new `ChainSynchronizer` suitable for use in the participating reactor to sync
@@ -232,10 +229,7 @@ where
             _phantom: PhantomData,
         };
 
-        Ok((
-            synchronizer,
-            effect_builder.announce_finished_chain_syncing().ignore(),
-        ))
+        Ok((synchronizer, Effects::new()))
     }
 }
 

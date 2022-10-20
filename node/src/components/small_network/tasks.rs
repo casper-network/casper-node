@@ -4,7 +4,7 @@ use std::{
     fmt::Display,
     net::SocketAddr,
     pin::Pin,
-    sync::{atomic::AtomicBool, Arc, Weak},
+    sync::{Arc, Weak},
 };
 
 use bincode::{self, Options};
@@ -142,7 +142,6 @@ where
             transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_syncing: is_syncing,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -158,7 +157,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 transport,
-                is_syncing,
             }
         }
         Err(error) => OutgoingConnection::Failed {
@@ -206,8 +204,6 @@ where
     pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     pub(super) max_in_flight_demands: usize,
-    /// Flag indicating whether this node is syncing.
-    pub(super) is_syncing: AtomicBool,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -257,7 +253,6 @@ where
             transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_syncing: _,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));

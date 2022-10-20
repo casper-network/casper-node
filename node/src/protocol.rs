@@ -140,20 +140,6 @@ impl Payload for Message {
     }
 
     #[inline]
-    fn is_unsafe_for_syncing_peers(&self) -> bool {
-        match self {
-            Message::Consensus(_) => false,
-            Message::DeployGossiper(_) => false,
-            Message::AddressGossiper(_) => false,
-            // Trie requests can deadlock between syncing nodes.
-            Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
-            Message::GetRequest { .. } => false,
-            Message::GetResponse { .. } => false,
-            Message::FinalitySignature(_) => false,
-        }
-    }
-
-    #[inline]
     fn get_channel(&self) -> Channel {
         match self {
             Message::Consensus(_) => Channel::Consensus,

@@ -37,9 +37,7 @@ use crate::{
         linear_chain::{self, BlockSignatureError},
     },
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ControlAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, ControlAnnouncement},
         requests::{
             ContractRuntimeRequest, FetcherRequest, MarkBlockCompletedRequest, NetworkInfoRequest,
         },
@@ -334,41 +332,12 @@ const fn has_connected_to_network() -> bool {
     true
 }
 
-/// Allows us to decide whether syncing peers can also be used when calling `fetch`.
-trait CanUseSyncingNodes {
-    fn can_use_syncing_nodes() -> bool {
-        true
-    }
-}
-
-/// Tries and trie chunks can only be retrieved from non-syncing peers to avoid syncing nodes
-/// deadlocking while requesting these from each other.
-impl CanUseSyncingNodes for TrieOrChunk {
-    fn can_use_syncing_nodes() -> bool {
-        false
-    }
-}
-
-/// All other `Item` types can safely be retrieved from syncing peers, as there is no networking
-/// backpressure implemented for these fetch requests.
-impl CanUseSyncingNodes for BlockHeader {}
-impl CanUseSyncingNodes for Block {}
-impl CanUseSyncingNodes for Deploy {}
-impl CanUseSyncingNodes for BlockAndDeploys {}
-impl CanUseSyncingNodes for BlockHeadersBatch {}
-
 /// Gets a list of peers suitable for the fetch operation.
-async fn get_peers<REv>(include_syncing: bool, ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
+async fn get_peers<REv>(ctx: &ChainSyncContext<'_, REv>) -> Vec<NodeId>
 where
     REv: From<NetworkInfoRequest>,
 {
-    let mut peer_list = if include_syncing {
-        ctx.effect_builder.get_fully_connected_peers().await
-    } else {
-        ctx.effect_builder
-            .get_fully_connected_non_syncing_peers()
-            .await
-    };
+    let mut peer_list = ctx.effect_builder.get_fully_connected_peers().await;
     ctx.filter_bad_peers(&mut peer_list);
     peer_list
 }
@@ -402,14 +371,14 @@ async fn fetch_with_retries<REv, T>(
     id: T::Id,
 ) -> Result<FetchedData<T>, FetchWithRetryError<T>>
 where
-    T: Item + CanUseSyncingNodes + 'static,
+    T: Item + 'static,
     REv: From<FetcherRequest<T>> + From<NetworkInfoRequest>,
 {
     let mut total_attempts = 0;
     let mut attempts_after_bootstrapped = 0;
     loop {
         let has_connected_to_network = has_connected_to_network();
-        let new_peer_list = get_peers(T::can_use_syncing_nodes(), ctx).await;
+        let new_peer_list = get_peers(ctx).await;
         if new_peer_list.is_empty() && total_attempts % 100 == 0 {
             warn!(
                 total_attempts,
@@ -417,7 +386,6 @@ where
                 has_connected_to_network,
                 item_type = ?T::TAG,
                 ?id,
-                can_use_syncing_nodes = %T::can_use_syncing_nodes(),
                 "failed to attempt to fetch item due to no fully-connected peers"
             );
         }
@@ -986,7 +954,7 @@ where
 {
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = get_peers(true, ctx).await;
+        peers = get_peers(ctx).await;
         if !peers.is_empty() {
             break;
         }
@@ -1418,7 +1386,6 @@ where
         + From<ContractRuntimeRequest>
         + From<BlocklistAnnouncement>
         + From<MarkBlockCompletedRequest>
-        + From<ChainSynchronizerAnnouncement>
         + Send,
 {
     info!("starting chain sync to genesis");
@@ -1429,7 +1396,6 @@ where
             .await?;
     fetch_headers_till_genesis(&ctx).await?;
     fetch_blocks_and_state_and_finality_signatures_since_genesis(&ctx).await?;
-    effect_builder.announce_finished_chain_syncing().await;
     ctx.progress.finish();
     info!("finished chain sync to genesis");
     Ok(())
@@ -1790,7 +1756,7 @@ where
         + Send,
 {
     let start = Timestamp::now();
-    let peer_list = get_peers(true, ctx).await;
+    let peer_list = get_peers(ctx).await;
 
     let mut sig_collector = BlockSignaturesCollector::new();
 
@@ -2135,7 +2101,7 @@ where
         let mut attempts = 0;
         while !blocks_match {
             // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
-            for peer in get_peers(true, ctx).await {
+            for peer in get_peers(ctx).await {
                 attempts += 1;
                 warn!(
                     fetched_block=%block,

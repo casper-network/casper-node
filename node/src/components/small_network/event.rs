@@ -16,9 +16,7 @@ use super::{
 };
 use crate::{
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -102,10 +100,6 @@ where
     /// Contract runtime announcement.
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
-
-    /// Chain synchronizer announcement.
-    #[from]
-    ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement),
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -157,9 +151,6 @@ where
             }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
-            }
-            Event::ChainSynchronizerAnnouncement(ann) => {
-                write!(f, "handling chain synchronizer announcement: {}", ann)
             }
         }
     }
@@ -269,8 +260,6 @@ pub(crate) enum OutgoingConnection {
         /// Sink for outgoing messages.
         #[serde(skip)]
         transport: Transport,
-        /// Holds the information whether the remote node is syncing.
-        is_syncing: bool,
     },
 }
 
@@ -291,13 +280,8 @@ impl Display for OutgoingConnection {
                 peer_id,
                 peer_consensus_public_key,
                 transport: _,
-                is_syncing,
             } => {
-                write!(
-                    f,
-                    "connection established to {}/{}, is_syncing: {}",
-                    peer_addr, peer_id, is_syncing
-                )?;
+                write!(f, "connection established to {}/{}", peer_addr, peer_id,)?;
 
                 if let Some(public_key) = peer_consensus_public_key {
                     write!(f, " [{}]", public_key)

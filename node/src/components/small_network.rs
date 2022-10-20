@@ -47,10 +47,7 @@ use std::{
     fs::OpenOptions,
     net::{SocketAddr, TcpListener},
     num::NonZeroUsize,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -107,9 +104,7 @@ use self::{
 use crate::{
     components::{consensus, Component},
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects,
     },
@@ -169,9 +164,6 @@ where
     outgoing_manager: OutgoingManager<OutgoingHandle<P>, ConnectionError>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
-
-    /// Tracks nodes that have announced themselves as nodes that are syncing.
-    syncing_nodes: HashSet<NodeId>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -371,7 +363,6 @@ where
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands: demand_max,
-            is_syncing: AtomicBool::new(true),
         });
 
         // Run the server task.
@@ -396,7 +387,6 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            syncing_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
             close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
@@ -434,13 +424,6 @@ where
         );
 
         Ok((component, effects))
-    }
-
-    fn close_incoming_connections(&mut self) {
-        info!("disconnecting incoming connections");
-        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
-        self.close_incoming_sender = Some(close_incoming_sender);
-        self.close_incoming_receiver = close_incoming_receiver;
     }
 
     /// Queues a message to be sent to all nodes.
@@ -493,13 +476,6 @@ where
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            if msg.payload_is_unsafe_for_syncing_nodes() && self.syncing_nodes.contains(&dest) {
-                // We should never attempt to send an unsafe message to a peer that we know is still
-                // syncing. Since "unsafe" does usually not mean immediately catastrophic, we
-                // attempt to carry on, but warn loudly.
-                error!(kind=%msg.classify(), node_id=%dest, "sending unsafe message to syncing node");
-            }
-
             if let Err(msg) = connection.sender.send((msg, opt_responder)) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
@@ -762,7 +738,6 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 transport,
-                is_syncing,
             } => {
                 info!("new outgoing connection established");
 
@@ -787,7 +762,6 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
-                    self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
 
                 // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
@@ -900,19 +874,6 @@ where
     fn connection_completed(&self, peer_id: NodeId) {
         trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
         self.net_metrics.peers.set(self.peers().len() as i64);
-    }
-
-    /// Updates a set of known joining nodes.
-    /// If we've just connected to a non-joining node that peer will be removed from the set.
-    fn update_syncing_nodes_set(&mut self, peer_id: NodeId, is_syncing: bool) {
-        // Update set of syncing peers.
-        if is_syncing {
-            debug!(%peer_id, "is syncing");
-            self.syncing_nodes.insert(peer_id);
-        } else {
-            debug!(%peer_id, "is no longer syncing");
-            self.syncing_nodes.remove(&peer_id);
-        }
     }
 
     /// Returns the set of connected nodes.
@@ -1078,20 +1039,6 @@ where
 
                     responder.respond(symmetric_peers).ignore()
                 }
-                NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder } => {
-                    let mut symmetric_validator_peers: Vec<NodeId> = self
-                        .connection_symmetries
-                        .iter()
-                        .filter_map(|(node_id, sym)| {
-                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
-                        })
-                        .filter(|node_id| !self.syncing_nodes.contains(node_id))
-                        .collect();
-
-                    symmetric_validator_peers.shuffle(rng);
-
-                    responder.respond(symmetric_validator_peers).ignore()
-                }
             },
             Event::PeerAddressReceived(gossiped_address) => {
                 let requests = self.outgoing_manager.learn_addr(
@@ -1188,11 +1135,6 @@ where
                 );
 
                 effects
-            }
-            Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished) => {
-                self.context.is_syncing.store(false, Ordering::SeqCst);
-                self.close_incoming_connections();
-                Effects::new()
             }
         }
     }

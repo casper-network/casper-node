@@ -143,7 +143,6 @@ use crate::{
         small_network::FromIncoming,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::announcements::ChainSynchronizerAnnouncement,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
@@ -761,18 +760,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkInfoRequest::FullyConnectedPeers { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the current network non-syncing peers in random order.
-    pub async fn get_fully_connected_non_syncing_peers(self) -> Vec<NodeId>
-    where
-        REv: From<NetworkInfoRequest>,
-    {
-        self.make_request(
-            |responder| NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder },
             QueueKind::Regular,
         )
         .await
@@ -1666,19 +1653,6 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announce that the sync process has finished.
-    pub(crate) async fn announce_finished_chain_syncing(self)
-    where
-        REv: From<ChainSynchronizerAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ChainSynchronizerAnnouncement::SyncFinished,
-                QueueKind::Network,
             )
             .await
     }

@@ -6,7 +6,7 @@
 //! This module contains an implementation for a minimal framing format based on 32-bit fixed size
 //! big endian length prefixes.
 
-use std::{net::SocketAddr, sync::atomic::Ordering, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use casper_types::PublicKey;
 use rand::Rng;
@@ -30,8 +30,6 @@ pub(super) struct HandshakeOutcome {
     pub(super) public_addr: SocketAddr,
     /// The public key the peer is validating with, if any.
     pub(super) peer_consensus_public_key: Option<PublicKey>,
-    /// Holds the information whether the remote node is syncing.
-    pub(super) is_peer_syncing: bool,
 }
 
 /// Reads a 32 byte big endian integer prefix, followed by an actual raw message.
@@ -119,7 +117,6 @@ where
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
-        context.is_syncing.load(Ordering::SeqCst),
     );
 
     let serialized_handshake_message =
@@ -156,7 +153,6 @@ where
         public_addr,
         protocol_version,
         consensus_certificate,
-        is_syncing,
         chainspec_hash,
     } = remote_message
     {
@@ -213,7 +209,6 @@ where
             transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_syncing: is_syncing,
         })
     } else {
         // Received a non-handshake, this is an error.

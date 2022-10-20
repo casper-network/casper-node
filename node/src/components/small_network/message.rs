@@ -39,9 +39,6 @@ pub(crate) enum Message<P> {
         /// A self-signed certificate indicating validator status.
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
-        /// True if the node is syncing.
-        #[serde(default)]
-        is_syncing: bool,
         /// Hash of the chainspec the node is running.
         #[serde(default)]
         chainspec_hash: Option<Digest>,
@@ -74,15 +71,6 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
-        }
-    }
-
-    /// Returns whether or not the payload is unsafe for syncing node consumption.
-    #[inline]
-    pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
-        match self {
-            Message::Handshake { .. } => false,
-            Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
         }
     }
 
@@ -263,17 +251,16 @@ impl<P: Display> Display for Message<P> {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
                 chainspec_hash,
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, is_syncing: {}, chainspec_hash: {}",
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, chainspec_hash: {}",
                     network_name,
                     public_addr,
                     protocol_version,
                     OptDisplay::new(consensus_certificate.as_ref(), "none"),
-                    is_syncing,
+
                     OptDisplay::new(chainspec_hash.as_ref(), "none")
                 )
             }
@@ -371,11 +358,6 @@ pub(crate) trait Payload:
     fn is_low_priority(&self) -> bool {
         false
     }
-
-    /// Indicates a message is not safe to send to a syncing node.
-    ///
-    /// This functionality should be removed once multiplexed networking lands.
-    fn is_unsafe_for_syncing_peers(&self) -> bool;
 
     /// Determine which channel a message is supposed to sent/received on.
     fn get_channel(&self) -> Channel;
@@ -584,7 +566,6 @@ mod tests {
             public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
             consensus_certificate: Some(ConsensusCertificate::random(&mut rng)),
-            is_syncing: false,
             chainspec_hash: Some(Digest::hash("example-chainspec")),
         };
 
@@ -619,14 +600,14 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -645,15 +626,14 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
-                assert!(!is_syncing);
                 assert_eq!(network_name, "serialization-test");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -672,13 +652,13 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
-                assert!(!is_syncing);
+
                 let ConsensusCertificate {
                     public_key,
                     signature,
@@ -699,7 +679,7 @@ mod tests {
                     )
                     .unwrap()
                 );
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -718,10 +698,9 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
-                assert!(!is_syncing);
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
@@ -745,7 +724,7 @@ mod tests {
                     )
                     .unwrap()
                 );
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
