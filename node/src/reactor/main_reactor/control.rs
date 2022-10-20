@@ -239,6 +239,12 @@ impl MainReactor {
                             Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                         }
                     }
+                    SyncInstruction::BlockExec { next_block_hash } => {
+                        match self.enqueue_executable_block(effect_builder) {
+                            Ok(effects) => return (Duration::ZERO, effects),
+                            Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                        }
+                    }
                 }
             }
             ReactorState::Validate => {

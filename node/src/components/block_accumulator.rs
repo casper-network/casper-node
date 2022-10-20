@@ -60,6 +60,7 @@ impl StartingWith {
             StartingWith::Block(block) => block.id(),
             StartingWith::Hash(hash) => *hash,
             StartingWith::Nothing => BlockHash::default(),
+            StartingWith::ExecutableBlock(block_hash) => *block_hash,
         }
     }
 
@@ -70,6 +71,7 @@ impl StartingWith {
             StartingWith::Block(_) => true,
             StartingWith::Hash(_) => false,
             StartingWith::Nothing => false,
+            StartingWith::ExecutableBlock(_) => true,
         }
     }
 }
@@ -139,9 +141,11 @@ impl BlockAccumulator {
                 StartingWith::Nothing => {
                     return SyncInstruction::Leap;
                 }
-                StartingWith::Block(block) => (block.header().era_id(), block.header().height()),
-                StartingWith::Hash(trusted_hash) => {
-                    match self.block_acceptors.get(&trusted_hash) {
+                StartingWith::Block(ref block) => {
+                    (block.header().era_id(), block.header().height())
+                }
+                StartingWith::Hash(hash) | StartingWith::ExecutableBlock(hash) => {
+                    match self.block_acceptors.get(&hash) {
                         None => {
                             // the accumulator is unaware of the starting-with block
                             return SyncInstruction::Leap;
@@ -172,6 +176,9 @@ impl BlockAccumulator {
                 // or this node is partitioned. In such a case, attempt a leap
                 // to see where other nodes think the tip is
                 if self.last_progress.elapsed() < self.dead_air_interval {
+                    if let StartingWith::ExecutableBlock(next_block_hash) = starting_with {
+                        return SyncInstruction::BlockExec { next_block_hash };
+                    }
                     return SyncInstruction::CaughtUp;
                 }
                 return SyncInstruction::Leap;
@@ -181,16 +188,15 @@ impl BlockAccumulator {
                 if let Some(child_hash) = self.block_children.get(&block_hash) {
                     self.last_progress = Timestamp::now();
 
+                    if let StartingWith::ExecutableBlock(next_block_hash) = starting_with {
+                        return SyncInstruction::BlockExec { next_block_hash };
+                    }
                     return SyncInstruction::BlockSync {
                         block_hash: *child_hash,
                         should_fetch_execution_state,
                     };
                 }
             }
-        }
-        if self.highest_complete_block.is_some() {
-            error!("XXXXX - returning sync instruction CaughtUp");
-            return SyncInstruction::CaughtUp;
         }
         SyncInstruction::Leap
     }
