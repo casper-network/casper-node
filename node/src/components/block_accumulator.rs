@@ -172,7 +172,9 @@ impl BlockAccumulator {
                                 next_block_hash: None,
                             };
                         }
-                        if highest_perceived - self.attempt_execution_threshold <= block_height {
+                        if highest_perceived.saturating_sub(self.attempt_execution_threshold)
+                            <= block_height
+                        {
                             return SyncInstruction::BlockExec {
                                 next_block_hash: self.next_syncable_block_hash(block_hash),
                             };

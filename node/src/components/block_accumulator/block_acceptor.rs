@@ -194,7 +194,7 @@ impl BlockAcceptor {
 
     pub(super) fn has_sufficient_finality(&mut self) -> bool {
         if self.has_sufficient_finality {
-            return self.has_sufficient_finality;
+            return true;
         }
 
         let missing_elements = self.block.is_none()
