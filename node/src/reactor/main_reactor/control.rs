@@ -427,11 +427,6 @@ impl MainReactor {
                     from_peers,
                     ..
                 } => {
-                    error!(
-                        "XXXXX - leap result highest block {} -- {}",
-                        best_available.highest_block_header().0.block_hash(),
-                        best_available.highest_block_header().0.height()
-                    );
                     let era_id = best_available.highest_era();
                     let validator_weights = match best_available.validators_of_highest_block() {
                         Some(validator_weights) => validator_weights,
@@ -456,10 +451,9 @@ impl MainReactor {
 
                     self.validator_matrix
                         .register_validator_weights(era_id, validator_weights.clone());
-                    error!("XXXXX - registered validator weights for {}", era_id);
 
                     self.block_accumulator
-                        .register_updated_validator_matrix(effect_builder);
+                        .register_updated_validator_matrix(effect_builder, era_id);
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                     });

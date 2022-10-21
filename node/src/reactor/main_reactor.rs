@@ -574,7 +574,21 @@ impl reactor::Reactor for MainReactor {
                     });
                 effects.extend(self.dispatch_event(effect_builder, rng, block_accumulator_event));
 
-                if block.header().is_switch_block() {
+                if let Some(era_end) = block.header().era_end() {
+                    let era_id = block.header().era_id();
+                    let validator_weights = era_end.next_era_validator_weights();
+                    self.validator_matrix
+                        .register_validator_weights(era_id, validator_weights.clone());
+
+                    let block_accumulator_event = MainEvent::BlockAccumulator(
+                        block_accumulator::Event::UpdatedValidatorMatrix { era_id },
+                    );
+                    effects.extend(self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator_event,
+                    ));
+
                     if self
                         .recent_switch_block_headers
                         .last()

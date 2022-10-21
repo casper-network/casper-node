@@ -413,17 +413,26 @@ impl BlockAccumulator {
     pub(crate) fn register_updated_validator_matrix<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
     ) -> Effects<Event>
     where
         REv: From<StorageRequest> + Send,
     {
         let mut effects = Effects::new();
+        let validator_weights = match self.validator_matrix.validator_weights(era_id) {
+            Some(validator_weights) => validator_weights,
+            None => {
+                error!(%era_id, "validator weights for era should exist");
+                return Effects::new();
+            }
+        };
+
         for block_acceptor in self.block_acceptors.values_mut() {
             if let Some(era_id) = block_acceptor.era_id() {
-                if let Some(weights) = self.validator_matrix.validator_weights(era_id) {
+                if validator_weights.era_id() == era_id {
                     effects.extend(store_block_and_finality_signatures(
                         effect_builder,
-                        block_acceptor.refresh(weights),
+                        block_acceptor.refresh(validator_weights.clone()),
                     ))
                 }
             }
@@ -557,8 +566,7 @@ where
                 sender,
             } => self.register_finality_signature(effect_builder, *finality_signature, sender),
             Event::UpdatedValidatorMatrix { era_id } => {
-                //self.handle_updated_validator_matrix(effect_builder, era_id)
-                Effects::new()
+                self.register_updated_validator_matrix(effect_builder, era_id)
             }
             Event::ExecutedBlock { block_header } => {
                 self.register_local_tip(block_header.height());
