@@ -56,8 +56,8 @@ pub(crate) enum SyncInstruction {
 #[derive(Clone, Debug)]
 pub(crate) enum StartingWith {
     ExecutableBlock(BlockHash, u64),
-    BlockIdentifer(BlockHash, u64),
-    SyncedBlockIdentifer(BlockHash, u64),
+    BlockIdentifier(BlockHash, u64),
+    SyncedBlockIdentifier(BlockHash, u64),
     Hash(BlockHash),
     // simplifies call sites; results in a Leap instruction
     Nothing,
@@ -66,8 +66,8 @@ pub(crate) enum StartingWith {
 impl StartingWith {
     pub(crate) fn block_hash(&self) -> BlockHash {
         match self {
-            StartingWith::BlockIdentifer(hash, _) => *hash,
-            StartingWith::SyncedBlockIdentifer(hash, _) => *hash,
+            StartingWith::BlockIdentifier(hash, _) => *hash,
+            StartingWith::SyncedBlockIdentifier(hash, _) => *hash,
             StartingWith::ExecutableBlock(hash, _) => *hash,
             StartingWith::Hash(hash) => *hash,
             StartingWith::Nothing => BlockHash::default(),
@@ -76,8 +76,8 @@ impl StartingWith {
 
     pub(crate) fn block_height(&self) -> u64 {
         match self {
-            StartingWith::BlockIdentifer(_, height) => *height,
-            StartingWith::SyncedBlockIdentifer(_, height) => *height,
+            StartingWith::BlockIdentifier(_, height) => *height,
+            StartingWith::SyncedBlockIdentifier(_, height) => *height,
             StartingWith::ExecutableBlock(_, height) => *height,
             StartingWith::Hash(hash) => 0,
             StartingWith::Nothing => 0,
@@ -86,9 +86,9 @@ impl StartingWith {
 
     pub(crate) fn have_block(&self) -> bool {
         match self {
-            StartingWith::BlockIdentifer(..) => true,
+            StartingWith::BlockIdentifier(..) => true,
             StartingWith::ExecutableBlock(..) => true,
-            StartingWith::SyncedBlockIdentifer(..) => true,
+            StartingWith::SyncedBlockIdentifier(..) => true,
             StartingWith::Hash(_) => false,
             StartingWith::Nothing => false,
         }
@@ -110,12 +110,15 @@ pub(crate) struct BlockAccumulator {
 
     last_progress: Timestamp,
     /// The height of the subjective local tip of the chain.
-    /// todo! this needs to be set if available as part of init
     local_tip: Option<u64>,
 }
 
 impl BlockAccumulator {
-    pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
+    pub(crate) fn new(
+        config: Config,
+        validator_matrix: ValidatorMatrix,
+        local_tip: Option<u64>,
+    ) -> Self {
         Self {
             validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
@@ -124,7 +127,7 @@ impl BlockAccumulator {
             block_acceptors: Default::default(),
             block_children: Default::default(),
             last_progress: Timestamp::now(),
-            local_tip: None,
+            local_tip,
         }
     }
 
@@ -210,7 +213,7 @@ impl BlockAccumulator {
                     };
                 }
             }
-            StartingWith::BlockIdentifer(block_hash, block_height) => {
+            StartingWith::BlockIdentifier(block_hash, block_height) => {
                 // catch up only
                 if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
                     self.last_progress = Timestamp::now();
@@ -220,7 +223,7 @@ impl BlockAccumulator {
                     };
                 }
             }
-            StartingWith::SyncedBlockIdentifer(block_hash, block_height) => {
+            StartingWith::SyncedBlockIdentifier(block_hash, block_height) => {
                 // catch up only
                 if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
                     if let Some(child_hash) = self.next_syncable_block_hash(block_hash) {

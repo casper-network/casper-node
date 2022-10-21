@@ -181,7 +181,7 @@ impl MainReactor {
                                 return (Duration::ZERO, Effects::new());
                             }
                             Some((block_hash, block_height)) => {
-                                StartingWith::BlockIdentifer(block_hash, block_height)
+                                StartingWith::BlockIdentifier(block_hash, block_height)
                             }
                         },
                     };
@@ -296,7 +296,7 @@ impl MainReactor {
                             // no trusted hash provided use local tip if available
                             Ok(Some(block)) => {
                                 // -+ : leap w/ local tip
-                                StartingWith::BlockIdentifer(*block.hash(), block.height())
+                                StartingWith::BlockIdentifier(*block.hash(), block.height())
                             }
                             Ok(None) => {
                                 if let ActivationPoint::Genesis(timestamp) =
@@ -332,12 +332,12 @@ impl MainReactor {
                                         // ++ : leap w/ the higher of local tip or trusted hash
                                         let trusted_height = trusted_header.height();
                                         if trusted_height > block.height() {
-                                            StartingWith::BlockIdentifer(
+                                            StartingWith::BlockIdentifier(
                                                 trusted_hash,
                                                 trusted_height,
                                             )
                                         } else {
-                                            StartingWith::BlockIdentifer(
+                                            StartingWith::BlockIdentifier(
                                                 *block.hash(),
                                                 block.height(),
                                             )
@@ -388,12 +388,12 @@ impl MainReactor {
                 }
                 match maybe_block_height {
                     None => StartingWith::Hash(block_hash),
-                    Some(block_height) => StartingWith::BlockIdentifer(block_hash, block_height),
+                    Some(block_height) => StartingWith::BlockIdentifier(block_hash, block_height),
                 }
             }
             BlockSynchronizerProgress::Synced(block_hash, block_height) => {
                 // do this dance:
-                StartingWith::SyncedBlockIdentifer(block_hash, block_height)
+                StartingWith::SyncedBlockIdentifier(block_hash, block_height)
             }
         };
 

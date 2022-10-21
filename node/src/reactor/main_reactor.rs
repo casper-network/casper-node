@@ -272,8 +272,13 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         // chain / deploy management
-        let block_accumulator =
-            BlockAccumulator::new(config.block_accumulator, validator_matrix.clone());
+        let highest_block_height = storage.read_highest_block_height();
+
+        let block_accumulator = BlockAccumulator::new(
+            config.block_accumulator,
+            validator_matrix.clone(),
+            highest_block_height,
+        );
         let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
