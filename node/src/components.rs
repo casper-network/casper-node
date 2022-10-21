@@ -44,7 +44,6 @@
 //! will usually be dictated by a restriction on a method on an
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
-#[allow(unused)] // TODO
 pub(crate) mod block_accumulator;
 #[allow(unused)] // TODO
 pub(crate) mod block_synchronizer;

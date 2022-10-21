@@ -5,11 +5,8 @@ use derive_more::From;
 use casper_types::EraId;
 
 use crate::{
-    effect::{announcements::LinearChainAnnouncement, requests::BlockAccumulatorRequest},
-    types::{
-        ApprovalsHashes, Block, BlockHash, BlockHeader, FinalitySignature, FinalitySignatureId,
-        NodeId,
-    },
+    effect::requests::BlockAccumulatorRequest,
+    types::{Block, BlockHash, BlockHeader, FinalitySignature, FinalitySignatureId, NodeId},
 };
 
 #[derive(Debug, From)]

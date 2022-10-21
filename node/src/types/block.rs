@@ -47,7 +47,7 @@ use crate::{
     },
     utils::{ds, DisplayIter},
 };
-pub(crate) use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
+pub(crate) use approvals_hashes::ApprovalsHashes;
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();

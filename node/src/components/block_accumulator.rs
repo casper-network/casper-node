@@ -17,14 +17,8 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
-    effect::{
-        announcements::{self, PeerBehaviorAnnouncement},
-        EffectBuilder, EffectExt, Effects,
-    },
-    types::{
-        ApprovalsHashes, Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId,
-        ValidatorMatrix,
-    },
+    effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -33,7 +27,7 @@ use crate::{
         announcements::BlockAccumulatorAnnouncement,
         requests::{BlockAccumulatorRequest, StorageRequest},
     },
-    types::{BlockHeader, FinalitySignatureId},
+    types::FinalitySignatureId,
 };
 use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
@@ -71,16 +65,6 @@ impl StartingWith {
             StartingWith::ExecutableBlock(hash, _) => *hash,
             StartingWith::Hash(hash) => *hash,
             StartingWith::Nothing => BlockHash::default(),
-        }
-    }
-
-    pub(crate) fn block_height(&self) -> u64 {
-        match self {
-            StartingWith::BlockIdentifier(_, height) => *height,
-            StartingWith::SyncedBlockIdentifier(_, height) => *height,
-            StartingWith::ExecutableBlock(_, height) => *height,
-            StartingWith::Hash(hash) => 0,
-            StartingWith::Nothing => 0,
         }
     }
 
@@ -460,14 +444,6 @@ impl BlockAccumulator {
             self.already_handled.insert(block_hash);
         }
         self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
-    }
-
-    pub(crate) fn block(&self, block_hash: BlockHash) -> Option<&Block> {
-        if let Some(acceptor) = self.block_acceptors.get(&block_hash) {
-            acceptor.block()
-        } else {
-            None
-        }
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {

@@ -2,16 +2,10 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{ApprovalsHashesValidationError, BlockHash, BlockValidationError, NodeId};
+use crate::types::{BlockHash, BlockValidationError, NodeId};
 
 #[derive(Error, Debug)]
 pub(super) enum EraMismatchError {
-    #[error("attempt to add block: {block_hash} with mismatched era; expected: {expected} actual: {actual}")]
-    Block {
-        block_hash: BlockHash,
-        expected: EraId,
-        actual: EraId,
-    },
     #[error("attempt to add finality signature for block: {block_hash} with mismatched era; expected: {expected} actual: {actual}")]
     FinalitySignature {
         block_hash: BlockHash,
@@ -24,16 +18,6 @@ pub(super) enum EraMismatchError {
         expected: EraId,
         actual: EraId,
     },
-}
-
-impl EraMismatchError {
-    pub(super) fn block_hash(&self) -> BlockHash {
-        match self {
-            EraMismatchError::Block { block_hash, .. }
-            | EraMismatchError::FinalitySignature { block_hash, .. }
-            | EraMismatchError::EraValidatorWeights { block_hash, .. } => *block_hash,
-        }
-    }
 }
 
 #[derive(Error, Debug)]

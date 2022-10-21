@@ -11,8 +11,8 @@ use crate::{
         EraMismatchError, Error as AcceptorError, InvalidGossipError,
     },
     types::{
-        ApprovalsHashes, Block, BlockHash, EmptyValidationMetadata, EraValidatorWeights,
-        FetcherItem, FinalitySignature, NodeId, SignatureWeight,
+        Block, BlockHash, EmptyValidationMetadata, EraValidatorWeights, FetcherItem,
+        FinalitySignature, NodeId, SignatureWeight,
     },
 };
 
@@ -279,23 +279,6 @@ impl BlockAcceptor {
             }
         }
         None
-    }
-
-    pub(super) fn block_with_sufficient_finality(
-        &mut self,
-    ) -> Option<(Block, Vec<FinalitySignature>)> {
-        if false == self.has_sufficient_finality() {
-            return None;
-        }
-
-        if let Some(block) = self.block.clone() {
-            return Some((block, self.signatures.values().cloned().collect_vec()));
-        }
-        None
-    }
-
-    pub(super) fn block(&self) -> Option<&Block> {
-        self.block.as_ref()
     }
 
     pub(super) fn block_hash(&self) -> BlockHash {
