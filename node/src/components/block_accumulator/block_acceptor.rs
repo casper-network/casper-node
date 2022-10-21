@@ -135,7 +135,7 @@ impl BlockAcceptor {
         &mut self,
         block: Block,
         peer: NodeId,
-    ) -> Result<(), AcceptorError> {
+    ) -> Result<ShouldStore, AcceptorError> {
         if self.block_hash() != *block.hash() {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash(),
@@ -158,13 +158,34 @@ impl BlockAcceptor {
 
         self.register_peer(peer);
 
+        let mut removed_validator_weights = false;
+        let era_id = block.header().era_id();
         if self.block.is_none() {
-            debug_assert!(self.era_validator_weights.is_none());
+            if let Some(era_validator_weights) = self.era_validator_weights.as_ref() {
+                if era_validator_weights.era_id() != era_id {
+                    self.era_validator_weights = None;
+                    removed_validator_weights = true;
+                }
+            }
             self.block = Some(block);
             // todo!() - return the senders of the invalid signatures.
             self.remove_bogus_validators();
         }
-        Ok(())
+
+        if removed_validator_weights {
+            return Err(AcceptorError::RemovedValidatorWeights { era_id });
+        }
+
+        if self.has_sufficient_finality() {
+            let block = self.block.clone().ok_or_else(|| {
+                error!("self.block should be Some due to check in `has_sufficient_finality`");
+                AcceptorError::InvalidState
+            })?;
+            let signatures = self.signatures.values().cloned().collect();
+            return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
+        }
+
+        Ok(ShouldStore::Nothing)
     }
 
     pub(super) fn register_finality_signature(
@@ -257,11 +278,9 @@ impl BlockAcceptor {
         if let Some(block) = &self.block {
             return Some(block.header().era_id());
         }
-        // todo! - I think we shouldn't use finality signatures to avoid adding era validator
-        //         weights for the wrong era.
-        // if let Some(finality_signature) = self.signatures.values().next() {
-        //     return Some(finality_signature.era_id);
-        // }
+        if let Some(finality_signature) = self.signatures.values().next() {
+            return Some(finality_signature.era_id);
+        }
         if let Some(evw) = &self.era_validator_weights {
             return Some(evw.era_id());
         }

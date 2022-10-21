@@ -313,7 +313,7 @@ impl BlockAccumulator {
         sender: NodeId,
     ) -> Effects<Event>
     where
-        REv: Send + From<PeerBehaviorAnnouncement>,
+        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
     {
         let block_hash = block.hash();
         let era_id = block.header().era_id();
@@ -338,31 +338,36 @@ impl BlockAccumulator {
             }
         };
 
-        let block_hash = *block.hash();
-        if let Err(error) = acceptor.register_block(block, sender) {
-            warn!(%error, %block_hash, "received invalid block");
-            match error {
-                Error::InvalidGossip(err) => {
-                    return effect_builder
-                        .announce_disconnect_from_peer(err.peer())
-                        .ignore();
-                }
-                Error::EraMismatch(_err) => {
-                    // TODO: Log?
-                    // this block acceptor is borked; get rid of it
-                    self.block_acceptors.remove(&block_hash);
-                }
-                Error::BlockHashMismatch {
-                    expected: _,
-                    actual: _,
-                    peer,
-                } => {
-                    return effect_builder.announce_disconnect_from_peer(peer).ignore();
-                }
-                Error::InvalidState => {}
+        match acceptor.register_block(block, sender) {
+            Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
+            Err(Error::InvalidGossip(error)) => {
+                warn!(%error, "received invalid finality_signature");
+                effect_builder
+                    .announce_disconnect_from_peer(error.peer())
+                    .ignore()
             }
+            Err(Error::EraMismatch(error)) => {
+                // the acceptor logic purges finality signatures that don't match
+                // the era validators, so in this case we can continue to
+                // use the acceptor
+                warn!(%error, "finality signature has mismatched era_id");
+
+                // TODO: Log?
+                // this block acceptor is borked; get rid of it?
+                Effects::new()
+            }
+            Err(ref error @ Error::BlockHashMismatch { peer, .. }) => {
+                warn!(%error, "finality signature has mismatched block_hash");
+                effect_builder.announce_disconnect_from_peer(peer).ignore()
+            }
+            Err(Error::RemovedValidatorWeights { era_id }) => {
+                if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
+                    // todo!()
+                }
+                Effects::new()
+            }
+            Err(Error::InvalidState) => Effects::new(),
         }
-        Effects::new()
     }
 
     fn register_finality_signature<REv>(
@@ -405,6 +410,10 @@ impl BlockAccumulator {
             Err(ref error @ Error::BlockHashMismatch { peer, .. }) => {
                 warn!(%error, "finality signature has mismatched block_hash");
                 effect_builder.announce_disconnect_from_peer(peer).ignore()
+            }
+            Err(Error::RemovedValidatorWeights { era_id }) => {
+                error!(%era_id, "should not remove validator weights when registering finality signatures");
+                Effects::new()
             }
             Err(Error::InvalidState) => Effects::new(),
         }

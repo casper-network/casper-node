@@ -60,4 +60,6 @@ pub(super) enum Error {
     /// Programmer error.
     #[error("invalid state")]
     InvalidState,
+    #[error("removed validator weights")]
+    RemovedValidatorWeights { era_id: EraId },
 }
