@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_types::{EraId, PublicKey};
 
@@ -24,6 +24,17 @@ pub(super) struct BlockAcceptor {
     era_validator_weights: Option<EraValidatorWeights>,
     peers: Vec<NodeId>,
     has_sufficient_finality: bool,
+}
+
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub(super) enum ShouldStore {
+    SufficientlySignedBlock {
+        block: Block,
+        signatures: Vec<FinalitySignature>,
+    },
+    SingleSignature(FinalitySignature),
+    Nothing,
 }
 
 impl BlockAcceptor {
@@ -77,36 +88,36 @@ impl BlockAcceptor {
         });
     }
 
-    pub(super) fn register_era_validator_weights(
-        &mut self,
-        era_validator_weights: EraValidatorWeights,
-    ) -> Result<(), AcceptorError> {
-        if self.era_validator_weights.is_some() {
-            return Err(AcceptorError::DuplicatedEraValidatorWeights {
-                era_id: era_validator_weights.era_id(),
-            });
-        }
-
-        if let Some(era_id) = self.era_id() {
-            let evw_era_id = era_validator_weights.era_id();
-            if evw_era_id != era_id {
-                return Err(AcceptorError::EraMismatch(
-                    EraMismatchError::EraValidatorWeights {
-                        block_hash: self.block_hash,
-                        expected: era_id,
-                        actual: evw_era_id,
-                    },
-                ));
-            }
-        }
-        self.era_validator_weights = Some(era_validator_weights);
-        self.remove_bogus_validators();
-        Ok(())
-    }
+    // pub(super) fn register_era_validator_weights(
+    //     &mut self,
+    //     era_validator_weights: EraValidatorWeights,
+    // ) -> Result<(), AcceptorError> {
+    //     if self.era_validator_weights.is_some() {
+    //         return Err(AcceptorError::DuplicatedEraValidatorWeights {
+    //             era_id: era_validator_weights.era_id(),
+    //         });
+    //     }
+    //
+    //     if let Some(era_id) = self.era_id() {
+    //         let evw_era_id = era_validator_weights.era_id();
+    //         if evw_era_id != era_id {
+    //             return Err(AcceptorError::EraMismatch(
+    //                 EraMismatchError::EraValidatorWeights {
+    //                     block_hash: self.block_hash,
+    //                     expected: era_id,
+    //                     actual: evw_era_id,
+    //                 },
+    //             ));
+    //         }
+    //     }
+    //     self.era_validator_weights = Some(era_validator_weights);
+    //     self.remove_bogus_validators();
+    //     Ok(())
+    // }
 
     pub(super) fn register_block(
         &mut self,
-        block: &Block,
+        block: Block,
         peer: NodeId,
     ) -> Result<(), AcceptorError> {
         if self.block_hash() != *block.hash() {
@@ -115,16 +126,6 @@ impl BlockAcceptor {
                 actual: *block.hash(),
                 peer,
             });
-        }
-
-        // todo!() - return the senders of the invalid signatures.
-        self.signatures
-            .retain(|_, signature| signature.era_id == block.header().era_id());
-
-        if let Some(era_validator_weights) = self.era_validator_weights.as_ref() {
-            if era_validator_weights.era_id() != block.header().era_id() {
-                self.era_validator_weights = None;
-            }
         }
 
         if let Err(error) = block.validate(&EmptyValidationMetadata) {
@@ -142,7 +143,9 @@ impl BlockAcceptor {
         self.register_peer(peer);
 
         if self.block.is_none() {
-            self.block = Some(block.clone());
+            debug_assert!(self.era_validator_weights.is_none());
+            self.block = Some(block);
+            // todo!() - return the senders of the invalid signatures.
             self.remove_bogus_validators();
         }
         Ok(())
@@ -152,7 +155,7 @@ impl BlockAcceptor {
         &mut self,
         finality_signature: FinalitySignature,
         peer: NodeId,
-    ) -> Result<(), AcceptorError> {
+    ) -> Result<ShouldStore, AcceptorError> {
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
             return Err(AcceptorError::InvalidGossip(Box::new(
@@ -186,10 +189,30 @@ impl BlockAcceptor {
             }
         }
         self.register_peer(peer);
-        self.signatures
-            .insert(finality_signature.public_key.clone(), finality_signature);
+        let already_had_sufficient_finality = self.has_sufficient_finality;
+        let is_new = self
+            .signatures
+            .insert(
+                finality_signature.public_key.clone(),
+                finality_signature.clone(),
+            )
+            .is_none();
         self.remove_bogus_validators();
-        Ok(())
+
+        if already_had_sufficient_finality && is_new {
+            return Ok(ShouldStore::SingleSignature(finality_signature));
+        };
+
+        if !already_had_sufficient_finality && self.has_sufficient_finality() {
+            let block = self.block.clone().ok_or_else(|| {
+                error!("self.block should be Some due to check in `has_sufficient_finality`");
+                AcceptorError::InvalidState
+            })?;
+            let signatures = self.signatures.values().cloned().collect();
+            return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
+        }
+
+        Ok(ShouldStore::Nothing)
     }
 
     pub(super) fn has_sufficient_finality(&mut self) -> bool {
@@ -218,9 +241,11 @@ impl BlockAcceptor {
         if let Some(block) = &self.block {
             return Some(block.header().era_id());
         }
-        if let Some(finality_signature) = self.signatures.values().next() {
-            return Some(finality_signature.era_id);
-        }
+        // todo! - I think we shouldn't use finality signatures to avoid adding era validator
+        //         weights for the wrong era.
+        // if let Some(finality_signature) = self.signatures.values().next() {
+        //     return Some(finality_signature.era_id);
+        // }
         if let Some(evw) = &self.era_validator_weights {
             return Some(evw.era_id());
         }

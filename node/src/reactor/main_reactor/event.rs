@@ -15,10 +15,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
-            DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
-            UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -127,6 +127,8 @@ pub(crate) enum MainEvent {
     BlockAccumulator(#[serde(skip_serializing)] block_accumulator::Event),
     #[from]
     BlockAccumulatorRequest(#[serde(skip_serializing)] BlockAccumulatorRequest),
+    #[from]
+    BlockAccumulatorAnnouncement(#[serde(skip_serializing)] BlockAccumulatorAnnouncement),
     #[from]
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
     #[from]
@@ -333,6 +335,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::BlockAccumulator(_) => "BlockAccumulator",
             MainEvent::BlockAccumulatorRequest(_) => "BlockAccumulatorRequest",
+            MainEvent::BlockAccumulatorAnnouncement(_) => "BlockAccumulatorAnnouncement",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
             MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
             MainEvent::BlockGossiper(_) => "BlockGossiper",
@@ -397,6 +400,9 @@ impl Display for MainEvent {
             }
             MainEvent::BlockAccumulatorRequest(req) => {
                 write!(f, "block accumulator request: {}", req)
+            }
+            MainEvent::BlockAccumulatorAnnouncement(ann) => {
+                write!(f, "block accumulator announcement: {}", ann)
             }
             MainEvent::BlockSynchronizer(event) => {
                 write!(f, "block synchronizer: {}", event)

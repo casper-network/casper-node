@@ -6,7 +6,10 @@ use casper_types::EraId;
 
 use crate::{
     effect::{announcements::LinearChainAnnouncement, requests::BlockAccumulatorRequest},
-    types::{ApprovalsHashes, Block, BlockHash, BlockHeader, FinalitySignature, NodeId},
+    types::{
+        ApprovalsHashes, Block, BlockHash, BlockHeader, FinalitySignature, FinalitySignatureId,
+        NodeId,
+    },
 };
 
 #[derive(Debug, From)]
@@ -26,6 +29,10 @@ pub(crate) enum Event {
     },
     ExecutedBlock {
         block_header: BlockHeader,
+    },
+    Stored {
+        block_hash: Option<BlockHash>,
+        finality_signature_ids: Vec<FinalitySignatureId>,
     },
 }
 
@@ -53,6 +60,17 @@ impl Display for Event {
             }
             Event::ExecutedBlock { block_header } => {
                 write!(f, "executed block: hash={}", block_header.block_hash())
+            }
+            Event::Stored {
+                block_hash,
+                finality_signature_ids,
+            } => {
+                write!(
+                    f,
+                    "stored {:?} and {} finality signatures",
+                    block_hash,
+                    finality_signature_ids.len()
+                )
             }
         }
     }

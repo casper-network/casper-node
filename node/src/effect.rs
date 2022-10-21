@@ -842,13 +842,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that the block accumulator has received and stored a new block.
-    pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
+    pub(crate) async fn announce_block_accepted(self, block_hash: BlockHash)
     where
         REv: From<BlockAccumulatorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
+                BlockAccumulatorAnnouncement::AcceptedNewBlock { block_hash },
                 QueueKind::Regular,
             )
             .await;
@@ -857,14 +857,14 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
-        finality_signature: FinalitySignature,
+        finality_signature_id: FinalitySignatureId,
     ) where
         REv: From<BlockAccumulatorAnnouncement>,
     {
         self.event_queue
             .schedule(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
-                    finality_signature: Box::new(finality_signature),
+                    finality_signature_id: Box::new(finality_signature_id),
                 },
                 QueueKind::Regular,
             )

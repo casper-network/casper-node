@@ -420,19 +420,9 @@ impl BlockSynchronizer {
         let mut results = Effects::new();
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             let action = builder.block_acquisition_action(rng);
-
-            error!(
-                "XXXXX - block_acquisition_action need_next = {:?}",
-                action.need_next()
-            );
             let peers = action.peers_to_ask(); // pass this to any fetcher
             match action.need_next() {
                 NeedNext::Nothing => {}
-                NeedNext::MarkComplete(block_hash, block_height) => results.extend(
-                    effect_builder
-                        .mark_block_completed(block_height)
-                        .event(move |_| Event::MarkedComplete(block_hash)),
-                ),
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -520,6 +510,11 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
+                NeedNext::MarkComplete(block_hash, block_height) => results.extend(
+                    effect_builder
+                        .mark_block_completed(block_height)
+                        .event(move |_| Event::MarkedComplete(block_hash)),
+                ),
                 NeedNext::EraValidators(era_id) => results.extend(
                     effect_builder
                         .get_era_validators(era_id)
@@ -543,7 +538,6 @@ impl BlockSynchronizer {
     }
 
     fn disconnect_from_peer(&mut self, node_id: NodeId) -> Effects<Event> {
-        error!("XXXXX - disconnecting from peer (for blockable offense)");
         if let Some(builder) = &mut self.forward {
             builder.demote_peer(Some(node_id));
         }

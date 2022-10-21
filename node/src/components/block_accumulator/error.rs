@@ -73,6 +73,7 @@ pub(super) enum Error {
         actual: BlockHash,
         peer: NodeId,
     },
-    #[error("attempt to register weights for an era that already has registered weights")]
-    DuplicatedEraValidatorWeights { era_id: EraId },
+    /// Programmer error.
+    #[error("invalid state")]
+    InvalidState,
 }

@@ -23,8 +23,8 @@ use crate::{
     },
     effect::Responder,
     types::{
-        ApprovalsHashes, Block, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalizedBlock, GossiperItem, NodeId,
+        ApprovalsHashes, Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature,
+        FinalitySignatureId, FinalizedBlock, GossiperItem, NodeId,
     },
     utils::Source,
 };
@@ -410,27 +410,27 @@ impl Display for ContractRuntimeAnnouncement {
     }
 }
 
-/// A `BlockAccumulator` announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockAccumulatorAnnouncement {
     /// A block which wasn't previously stored on this node has been accepted and stored.
-    AcceptedNewBlock { block: Box<Block> },
+    AcceptedNewBlock { block_hash: BlockHash },
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
-        /// The new finality signature.
-        finality_signature: Box<FinalitySignature>,
+        finality_signature_id: Box<FinalitySignatureId>,
     },
 }
 
 impl Display for BlockAccumulatorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockAccumulatorAnnouncement::AcceptedNewBlock { block } => {
-                write!(f, "block {} accepted", block.hash())
+            BlockAccumulatorAnnouncement::AcceptedNewBlock { block_hash } => {
+                write!(f, "block {} accepted", block_hash)
             }
-            BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
-                write!(f, "finality signature {} accepted", finality_signature)
+            BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
+                finality_signature_id,
+            } => {
+                write!(f, "finality signature {} accepted", finality_signature_id)
             }
         }
     }

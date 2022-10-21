@@ -9,6 +9,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use futures::FutureExt;
 use itertools::Itertools;
 use tracing::{debug, error, warn};
 
@@ -20,12 +21,21 @@ use crate::{
         announcements::{self, PeerBehaviorAnnouncement},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{ApprovalsHashes, Block, BlockHash, FinalitySignature, Item, NodeId, ValidatorMatrix},
+    types::{
+        ApprovalsHashes, Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId,
+        ValidatorMatrix,
+    },
     NodeRng,
 };
 
-use crate::{effect::requests::BlockAccumulatorRequest, types::BlockHeader};
-use block_acceptor::BlockAcceptor;
+use crate::{
+    effect::{
+        announcements::BlockAccumulatorAnnouncement,
+        requests::{BlockAccumulatorRequest, StorageRequest},
+    },
+    types::{BlockHeader, FinalitySignatureId},
+};
+use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 use error::Error;
 pub(crate) use event::Event;
@@ -275,18 +285,13 @@ impl BlockAccumulator {
     fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: &Block,
+        block: Block,
         sender: NodeId,
     ) -> Effects<Event>
     where
         REv: Send + From<PeerBehaviorAnnouncement>,
     {
         let block_hash = block.hash();
-        error!(
-            "XXXXX - registering block {} -- {} in accumulator",
-            block_hash,
-            block.height()
-        );
         let era_id = block.header().era_id();
 
         if self
@@ -309,9 +314,10 @@ impl BlockAccumulator {
             }
         };
 
-        if let Err(err) = acceptor.register_block(block, sender) {
-            warn!(%err, block_hash=%block.hash(), "received invalid block");
-            match err {
+        let block_hash = *block.hash();
+        if let Err(error) = acceptor.register_block(block, sender) {
+            warn!(%error, %block_hash, "received invalid block");
+            match error {
                 Error::InvalidGossip(err) => {
                     return effect_builder
                         .announce_disconnect_from_peer(err.peer())
@@ -320,11 +326,7 @@ impl BlockAccumulator {
                 Error::EraMismatch(_err) => {
                     // TODO: Log?
                     // this block acceptor is borked; get rid of it
-                    self.block_acceptors.remove(block.hash());
-                }
-                Error::DuplicatedEraValidatorWeights { .. } => {
-                    // this should be unreachable; definitely a programmer error
-                    debug!(%err, "unexpected error registering block");
+                    self.block_acceptors.remove(&block_hash);
                 }
                 Error::BlockHashMismatch {
                     expected: _,
@@ -333,6 +335,7 @@ impl BlockAccumulator {
                 } => {
                     return effect_builder.announce_disconnect_from_peer(peer).ignore();
                 }
+                Error::InvalidState => {}
             }
         }
         Effects::new()
@@ -345,13 +348,12 @@ impl BlockAccumulator {
         sender: NodeId,
     ) -> Effects<Event>
     where
-        REv: Send + From<PeerBehaviorAnnouncement>,
+        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
     {
         // TODO: Also ignore signatures for blocks older than the highest complete one?
         // TODO: Ignore signatures for `already_handled` blocks?
 
         let block_hash = finality_signature.block_hash;
-        error!("XXXXX - registering sig {} in accumulator", block_hash);
         let era_id = finality_signature.era_id;
 
         let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
@@ -361,34 +363,53 @@ impl BlockAccumulator {
             }
         };
 
-        if let Err(err) = acceptor.register_finality_signature(finality_signature, sender) {
-            warn!(%err, "received invalid finality_signature");
-            match err {
-                Error::InvalidGossip(err) => {
-                    return effect_builder
-                        .announce_disconnect_from_peer(err.peer())
-                        .ignore();
-                }
-                Error::EraMismatch(err) => {
-                    // the acceptor logic purges finality signatures that don't match
-                    // the era validators, so in this case we can continue to
-                    // use the acceptor
-                    warn!(%err, "finality signature has mismatched era_id");
-                }
-                Error::DuplicatedEraValidatorWeights { .. } => {
-                    // this should be unreachable; definitely a programmer error
-                    debug!(%err, "unexpected error registering a finality signature");
-                }
-                Error::BlockHashMismatch {
-                    expected: _,
-                    actual: _,
-                    peer,
-                } => {
-                    return effect_builder.announce_disconnect_from_peer(peer).ignore();
-                }
+        match acceptor.register_finality_signature(finality_signature, sender) {
+            Ok(ShouldStore::SufficientlySignedBlock { block, signatures }) => {
+                let block_hash = Some(*block.hash());
+                let mut block_signatures =
+                    BlockSignatures::new(*block.hash(), block.header().era_id());
+                let mut signature_ids = vec![];
+                signatures.into_iter().for_each(|signature| {
+                    signature_ids.push(signature.id());
+                    block_signatures.insert_proof(signature.public_key, signature.signature);
+                });
+                effect_builder
+                    .put_block_to_storage(Box::new(block))
+                    .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
+                    .event(move |_| Event::Stored {
+                        block_hash,
+                        finality_signature_ids: signature_ids,
+                    })
             }
+            Ok(ShouldStore::SingleSignature(signature)) => {
+                let signature_ids = vec![signature.id()];
+                effect_builder
+                    .put_finality_signature_to_storage(signature)
+                    .event(move |_| Event::Stored {
+                        block_hash: None,
+                        finality_signature_ids: signature_ids,
+                    })
+            }
+            Ok(ShouldStore::Nothing) => Effects::new(),
+            Err(Error::InvalidGossip(error)) => {
+                warn!(%error, "received invalid finality_signature");
+                effect_builder
+                    .announce_disconnect_from_peer(error.peer())
+                    .ignore()
+            }
+            Err(Error::EraMismatch(error)) => {
+                // the acceptor logic purges finality signatures that don't match
+                // the era validators, so in this case we can continue to
+                // use the acceptor
+                warn!(%error, "finality signature has mismatched era_id");
+                Effects::new()
+            }
+            Err(ref error @ Error::BlockHashMismatch { peer, .. }) => {
+                warn!(%error, "finality signature has mismatched block_hash");
+                effect_builder.announce_disconnect_from_peer(peer).ignore()
+            }
+            Err(Error::InvalidState) => Effects::new(),
         }
-        Effects::new()
     }
 
     pub(crate) fn register_updated_validator_matrix(&mut self) {
@@ -480,12 +501,39 @@ impl BlockAccumulator {
             .get(&block_hash)
             .map(BlockAcceptor::peers)
     }
+
+    fn handle_stored<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        block_hash: Option<BlockHash>,
+        finality_signature_ids: Vec<FinalitySignatureId>,
+    ) -> Effects<Event>
+    where
+        REv: From<BlockAccumulatorAnnouncement> + Send,
+    {
+        let mut effects = if let Some(block_hash) = block_hash {
+            effect_builder.announce_block_accepted(block_hash).ignore()
+        } else {
+            Effects::new()
+        };
+        for finality_signature_id in finality_signature_ids {
+            effects.extend(
+                effect_builder
+                    .announce_finality_signature_accepted(finality_signature_id)
+                    .ignore(),
+            );
+        }
+        effects
+    }
 }
 
 // TODO: is this even really a component?
 impl<REv> Component<REv> for BlockAccumulator
 where
-    REv: Send + From<PeerBehaviorAnnouncement>,
+    REv: From<StorageRequest>
+        + From<PeerBehaviorAnnouncement>
+        + From<BlockAccumulatorAnnouncement>
+        + Send,
 {
     type Event = Event;
 
@@ -501,7 +549,7 @@ where
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
             Event::ReceivedBlock { block, sender } => {
-                self.register_block(effect_builder, &*block, sender)
+                self.register_block(effect_builder, *block, sender)
             }
             Event::ReceivedFinalitySignature {
                 finality_signature,
@@ -515,6 +563,10 @@ where
                 self.register_local_tip(block_header.height());
                 Effects::new()
             }
+            Event::Stored {
+                block_hash,
+                finality_signature_ids,
+            } => self.handle_stored(effect_builder, block_hash, finality_signature_ids),
         }
     }
 }

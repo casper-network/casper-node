@@ -47,9 +47,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            ConsensusAnnouncement, ContractRuntimeAnnouncement, DeployAcceptorAnnouncement,
-            DeployBufferAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::{BlockSynchronizerRequest, ChainspecRawBytesRequest},
@@ -679,6 +680,34 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::BlockSynchronizer,
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
+            ),
+            MainEvent::BlockAccumulatorAnnouncement(
+                BlockAccumulatorAnnouncement::AcceptedNewBlock { block_hash },
+            ) => reactor::wrap_effects(
+                MainEvent::BlockGossiper,
+                self.block_gossiper.handle_event(
+                    effect_builder,
+                    rng,
+                    gossiper::Event::ItemReceived {
+                        item_id: block_hash,
+                        source: Source::Ourself,
+                    },
+                ),
+            ),
+            MainEvent::BlockAccumulatorAnnouncement(
+                BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
+                    finality_signature_id,
+                },
+            ) => reactor::wrap_effects(
+                MainEvent::FinalitySignatureGossiper,
+                self.finality_signature_gossiper.handle_event(
+                    effect_builder,
+                    rng,
+                    gossiper::Event::ItemReceived {
+                        item_id: *finality_signature_id,
+                        source: Source::Ourself,
+                    },
+                ),
             ),
             MainEvent::BlockGossiper(event) => reactor::wrap_effects(
                 MainEvent::BlockGossiper,
