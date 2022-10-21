@@ -140,7 +140,7 @@ use crate::{
         },
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::{blocklist::BlocklistJustification, FromIncoming},
+        small_network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
     },
     contract_runtime::SpeculativeExecutionState,
     effect::announcements::ChainSynchronizerAnnouncement,
@@ -740,6 +740,18 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
         .unwrap_or_default()
+    }
+
+    /// Gets a structure describing the current network status.
+    pub(crate) async fn get_network_insights(self) -> NetworkInsights
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::Insight { responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Gets a map of the current network peers to their socket addresses.

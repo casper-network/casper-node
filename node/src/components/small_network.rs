@@ -1031,6 +1031,9 @@ where
 
                     responder.respond(symmetric_validator_peers).ignore()
                 }
+                NetworkInfoRequest::Insight { responder } => {
+                    responder.respond(NetworkInsights { dummy: 1234 }).ignore()
+                }
             },
             Event::PeerAddressReceived(gossiped_address) => {
                 let requests = self.outgoing_manager.learn_addr(
@@ -1137,6 +1140,18 @@ where
                 Effects::new()
             }
         }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct NetworkInsights {
+    dummy: u32,
+}
+
+impl Display for NetworkInsights {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // Currently, we use the debug formatting, as it is "good enough".
+        Debug::fmt(self, f)
     }
 }
 

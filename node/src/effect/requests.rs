@@ -43,6 +43,7 @@ use crate::{
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
+        small_network::NetworkInsights,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::{AutoClosingResponder, Responder},
@@ -187,7 +188,7 @@ where
 }
 
 /// A networking info request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
@@ -222,6 +223,9 @@ impl Display for NetworkInfoRequest {
             }
             NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
                 formatter.write_str("get fully connected non-syncing peers")
+            }
+            NetworkInfoRequest::Insight { responder: _ } => {
+                formatter.write_str("get networking insights")
             }
         }
     }
