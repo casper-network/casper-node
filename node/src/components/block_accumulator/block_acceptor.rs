@@ -72,9 +72,9 @@ impl BlockAcceptor {
         self.peers.push(peer);
     }
 
-    pub(super) fn refresh(&mut self, era_validator_weights: EraValidatorWeights) {
+    pub(super) fn refresh(&mut self, era_validator_weights: EraValidatorWeights) -> ShouldStore {
         if self.era_validator_weights.is_some() {
-            return;
+            return ShouldStore::Nothing;
         }
 
         debug_assert!(!self.has_sufficient_finality);
@@ -86,6 +86,22 @@ impl BlockAcceptor {
                 && sig.block_hash == block_hash
                 && sig.era_id == era_validator_weights.era_id()
         });
+
+        if self.has_sufficient_finality() {
+            match &self.block {
+                Some(block) => {
+                    let signatures = self.signatures.values().cloned().collect();
+                    return ShouldStore::SufficientlySignedBlock {
+                        block: block.clone(),
+                        signatures,
+                    };
+                }
+                None => {
+                    error!("self.block should be Some due to check in `has_sufficient_finality`");
+                }
+            }
+        }
+        ShouldStore::Nothing
     }
 
     // pub(super) fn register_era_validator_weights(

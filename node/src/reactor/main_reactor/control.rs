@@ -458,7 +458,8 @@ impl MainReactor {
                         .register_validator_weights(era_id, validator_weights.clone());
                     error!("XXXXX - registered validator weights for {}", era_id);
 
-                    self.block_accumulator.register_updated_validator_matrix();
+                    self.block_accumulator
+                        .register_updated_validator_matrix(effect_builder);
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                     });

@@ -113,6 +113,43 @@ pub(crate) struct BlockAccumulator {
     local_tip: Option<u64>,
 }
 
+fn store_block_and_finality_signatures<REv>(
+    effect_builder: EffectBuilder<REv>,
+    should_store: ShouldStore,
+) -> Effects<Event>
+where
+    REv: From<StorageRequest> + Send,
+{
+    match should_store {
+        ShouldStore::SufficientlySignedBlock { block, signatures } => {
+            let block_hash = Some(*block.hash());
+            let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
+            let mut signature_ids = vec![];
+            signatures.into_iter().for_each(|signature| {
+                signature_ids.push(signature.id());
+                block_signatures.insert_proof(signature.public_key, signature.signature);
+            });
+            effect_builder
+                .put_block_to_storage(Box::new(block))
+                .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
+                .event(move |_| Event::Stored {
+                    block_hash,
+                    finality_signature_ids: signature_ids,
+                })
+        }
+        ShouldStore::SingleSignature(signature) => {
+            let signature_ids = vec![signature.id()];
+            effect_builder
+                .put_finality_signature_to_storage(signature)
+                .event(move |_| Event::Stored {
+                    block_hash: None,
+                    finality_signature_ids: signature_ids,
+                })
+        }
+        ShouldStore::Nothing => Effects::new(),
+    }
+}
+
 impl BlockAccumulator {
     pub(crate) fn new(
         config: Config,
@@ -367,33 +404,7 @@ impl BlockAccumulator {
         };
 
         match acceptor.register_finality_signature(finality_signature, sender) {
-            Ok(ShouldStore::SufficientlySignedBlock { block, signatures }) => {
-                let block_hash = Some(*block.hash());
-                let mut block_signatures =
-                    BlockSignatures::new(*block.hash(), block.header().era_id());
-                let mut signature_ids = vec![];
-                signatures.into_iter().for_each(|signature| {
-                    signature_ids.push(signature.id());
-                    block_signatures.insert_proof(signature.public_key, signature.signature);
-                });
-                effect_builder
-                    .put_block_to_storage(Box::new(block))
-                    .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
-                    .event(move |_| Event::Stored {
-                        block_hash,
-                        finality_signature_ids: signature_ids,
-                    })
-            }
-            Ok(ShouldStore::SingleSignature(signature)) => {
-                let signature_ids = vec![signature.id()];
-                effect_builder
-                    .put_finality_signature_to_storage(signature)
-                    .event(move |_| Event::Stored {
-                        block_hash: None,
-                        finality_signature_ids: signature_ids,
-                    })
-            }
-            Ok(ShouldStore::Nothing) => Effects::new(),
+            Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
             Err(Error::InvalidGossip(error)) => {
                 warn!(%error, "received invalid finality_signature");
                 effect_builder
@@ -415,14 +426,25 @@ impl BlockAccumulator {
         }
     }
 
-    pub(crate) fn register_updated_validator_matrix(&mut self) {
+    pub(crate) fn register_updated_validator_matrix<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event>
+    where
+        REv: From<StorageRequest> + Send,
+    {
+        let mut effects = Effects::new();
         for block_acceptor in self.block_acceptors.values_mut() {
             if let Some(era_id) = block_acceptor.era_id() {
                 if let Some(weights) = self.validator_matrix.validator_weights(era_id) {
-                    block_acceptor.refresh(weights);
+                    effects.extend(store_block_and_finality_signatures(
+                        effect_builder,
+                        block_acceptor.refresh(weights),
+                    ))
                 }
             }
         }
+        effects
     }
 
     /// Drops all block acceptors older than this block, and will ignore them in the future.
