@@ -361,8 +361,8 @@ impl BlockAccumulator {
                 effect_builder.announce_disconnect_from_peer(peer).ignore()
             }
             Err(Error::RemovedValidatorWeights { era_id }) => {
-                if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
-                    // todo!()
+                if self.validator_matrix.validator_weights(era_id).is_some() {
+                    return self.register_updated_validator_matrix(effect_builder, era_id);
                 }
                 Effects::new()
             }
