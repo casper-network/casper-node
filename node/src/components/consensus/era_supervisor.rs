@@ -182,6 +182,18 @@ impl EraSupervisor {
         self.open_eras.keys().last().copied()
     }
 
+    pub(crate) fn create_finality_signature(
+        &self,
+        block_header: &BlockHeader,
+    ) -> FinalitySignature {
+        FinalitySignature::create(
+            block_header.block_hash(),
+            block_header.era_id(),
+            &self.secret_signing_key,
+            self.public_signing_key.clone(),
+        )
+    }
+
     pub(crate) fn create_required_eras<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -693,18 +705,12 @@ impl EraSupervisor {
         block_header: BlockHeader,
     ) -> Effects<Event> {
         let our_public_key = self.public_signing_key.clone();
-        let our_secret_key = self.secret_signing_key.clone();
         let era_id = block_header.era_id();
         self.executed_block(&block_header);
         self.last_progress = Timestamp::now();
         let mut effects = if self.is_validator_in(&our_public_key, era_id) {
             effect_builder
-                .announce_created_finality_signature(FinalitySignature::create(
-                    block_header.block_hash(),
-                    era_id,
-                    &our_secret_key,
-                    our_public_key,
-                ))
+                .announce_created_finality_signature(self.create_finality_signature(&block_header))
                 .ignore()
         } else {
             Effects::new()

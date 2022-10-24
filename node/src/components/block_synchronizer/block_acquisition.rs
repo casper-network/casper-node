@@ -373,7 +373,8 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToMarkComplete);
+                return Ok(());
+                // todo!: return Err(Error::InvalidAttemptToMarkComplete);
             }
         };
         *self = new_state;
@@ -428,7 +429,8 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToApplyDeploy { deploy_id });
+                return Ok(());
+                // todo!: return Err(Error::InvalidAttemptToApplyDeploy { deploy_id });
             }
         };
         *self = new_state;
@@ -471,7 +473,8 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToApplyGlobalState { root_hash });
+                // todo!: return Err(Error::InvalidAttemptToApplyGlobalState { root_hash });
+                return Ok(());
             }
         };
         *self = new_state;
@@ -505,7 +508,8 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToApplyExecutionResultsChecksum);
+                return Ok(());
+                // todo!: return Err(Error::InvalidAttemptToApplyExecutionResultsChecksum);
             }
         };
         Ok(())
@@ -575,7 +579,11 @@ impl BlockAcquisitionState {
                             Some(results.clone()),
                         ),
                     },
-                    Err(error) => return Err(Error::ExecutionResults(error)),
+                    Err(error) => {
+                        error!(%error, "failed to apply execution results");
+                        // todo!: return Err(Error::ExecutionResults(error))
+                        return Ok(None);
+                    }
                 }
             }
             BlockAcquisitionState::HaveAllDeploys(..)
@@ -588,7 +596,8 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToApplyExecutionResults)
+                return Ok(None);
+                // todo: return Err(Error::InvalidAttemptToApplyExecutionResults)
             }
         };
         *self = new_state;
@@ -621,7 +630,8 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
-                return Err(Error::InvalidAttemptToApplyStoredExecutionResults);
+                return Ok(());
+                // todo!: return Err(Error::InvalidAttemptToApplyStoredExecutionResults);
             }
         };
         *self = new_state;

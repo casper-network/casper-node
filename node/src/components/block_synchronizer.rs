@@ -293,13 +293,6 @@ impl BlockSynchronizer {
             _ => {
                 let era_id = block_header.era_id();
                 if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
-                    error!(
-                        "XXXXX - Creating block builder from sync leap for block {}",
-                        block_header.block_hash()
-                    );
-                    if peers.is_empty() {
-                        error!("XXXXX - BUT THE PEER LIST IS EMPTY");
-                    }
                     let mut builder = BlockBuilder::new_from_sync_leap(
                         sync_leap,
                         validator_weights,

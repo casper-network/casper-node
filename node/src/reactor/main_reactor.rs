@@ -530,6 +530,28 @@ impl reactor::Reactor for MainReactor {
                     header: Box::new(block.header().clone()),
                     header_hash: *block.hash(),
                 });
+
+                let mut effects = Effects::new();
+
+                // todo! - make this proper
+                if block.height() == 0
+                    && block
+                        .header()
+                        .next_era_validator_weights()
+                        .map_or(false, |weights| {
+                            weights.contains_key(self.consensus.public_key())
+                        })
+                {
+                    let finality_signature =
+                        self.consensus.create_finality_signature(block.header());
+                    let event = MainEvent::ConsensusAnnouncement(
+                        ConsensusAnnouncement::CreatedFinalitySignature(Box::new(
+                            finality_signature,
+                        )),
+                    );
+                    effects.extend(self.dispatch_event(effect_builder, rng, event));
+                }
+
                 // TODO - only gossip once we have enough finality signatures (and only if we're
                 //        a validator?)
                 // let reactor_approvals_hashes_gossiper_event =
@@ -554,7 +576,7 @@ impl reactor::Reactor for MainReactor {
                     });
                 let deploy_buffer_event =
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_es));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 // effects.extend(self.dispatch_event(
                 //     effect_builder,
