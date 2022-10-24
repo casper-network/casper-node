@@ -1,5 +1,4 @@
 use datasize::DataSize;
-use itertools::Either;
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};

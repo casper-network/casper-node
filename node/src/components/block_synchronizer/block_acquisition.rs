@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::{Display, Formatter},
 };
 
@@ -15,11 +15,9 @@ use super::deploy_acquisition;
 
 use crate::{
     components::block_synchronizer::{
-        deploy_acquisition::{DeployAcquisition, DeployState},
-        need_next::NeedNext,
-        peer_list::PeerList,
-        signature_acquisition::SignatureAcquisition,
-        ExecutionResultsAcquisition, ExecutionResultsChecksum,
+        deploy_acquisition::DeployAcquisition, need_next::NeedNext, peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition, ExecutionResultsAcquisition,
+        ExecutionResultsChecksum,
     },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
@@ -40,7 +38,6 @@ pub(crate) enum Error {
         expected: Digest,
         actual: Digest,
     },
-    InvalidAttemptToApplySignatures,
     #[from]
     InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
     InvalidAttemptToApplyGlobalState {
@@ -53,7 +50,7 @@ pub(crate) enum Error {
     InvalidAttemptToApplyExecutionResultsChecksum,
     InvalidAttemptToApplyStoredExecutionResults,
     InvalidAttemptToAcquireExecutionResults,
-    UnexpectedExecutionResultsState,
+    InvalidAttemptToMarkComplete,
     ExecutionResults(super::execution_results_acquisition::Error),
 }
 
@@ -61,8 +58,8 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::InvalidStateTransition => write!(f, "invalid state transition"),
-            Error::InvalidAttemptToApplySignatures => {
-                write!(f, "invalid attempt to apply signatures")
+            Error::InvalidAttemptToMarkComplete => {
+                write!(f, "invalid attempt to mark complete")
             }
             Error::InvalidAttemptToApplyGlobalState { root_hash } => {
                 write!(
@@ -101,9 +98,6 @@ impl Display for Error {
                 "root hash mismatch: expected {} actual: {}",
                 expected, actual
             ),
-            Error::UnexpectedExecutionResultsState => {
-                write!(f, "unexpected execution results state")
-            }
             Error::ExecutionResults(error) => write!(f, "execution results error: {}", error),
             Error::InvalidAttemptToApplyApprovalsHashes(error) => write!(
                 f,
@@ -112,13 +106,6 @@ impl Display for Error {
             ),
         }
     }
-}
-
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-enum ExecutionState {
-    Unneeded,
-    GlobalState(Digest),
-    ExecutionResults(BTreeMap<DeployHash, DeployState>),
 }
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, derive_more::Display)]
@@ -161,10 +148,6 @@ pub(super) enum FinalitySignatureAcceptance {
 }
 
 impl BlockAcquisitionState {
-    pub(super) fn new(block_hash: BlockHash, validators: Vec<PublicKey>) -> Self {
-        BlockAcquisitionState::Initialized(block_hash, SignatureAcquisition::new(validators))
-    }
-
     pub(super) fn block_height(&self) -> Option<u64> {
         match self {
             BlockAcquisitionState::Initialized(..) | BlockAcquisitionState::Fatal => None,
@@ -181,7 +164,7 @@ impl BlockAcquisitionState {
         }
     }
 
-    pub(super) fn with_header(&mut self, header: BlockHeader) -> Result<(), Error> {
+    pub(super) fn register_header(&mut self, header: BlockHeader) -> Result<(), Error> {
         let new_state = match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
                 if header.id() == *block_hash {
@@ -209,7 +192,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_approvals_hashes(
+    pub(super) fn register_approvals_hashes(
         &mut self,
         approvals_hashes: &ApprovalsHashes,
         need_execution_state: bool,
@@ -256,7 +239,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_block(
+    pub(super) fn register_block(
         &mut self,
         block: &Block,
         need_execution_state: bool,
@@ -298,7 +281,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_finality_signature(
+    pub(super) fn register_finality_signature(
         &mut self,
         signature: FinalitySignature,
         validator_weights: EraValidatorWeights,
@@ -360,7 +343,7 @@ impl BlockAcquisitionState {
         Ok(FinalitySignatureAcceptance::Noop)
     }
 
-    pub(super) fn with_marked_complete(&mut self) -> Result<bool, Error> {
+    pub(super) fn register_marked_complete(&mut self) -> Result<(), Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, _) => {
                 BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -387,20 +370,17 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
-            | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Fatal => {
-                // todo!()
-                // return Err(Error::InvalidAttemptToApplySignatures);
-                return Ok(false);
+                return Err(Error::InvalidAttemptToMarkComplete);
             }
         };
         *self = new_state;
-        Ok(true)
+        Ok(())
     }
 
-    pub(super) fn with_deploy(
+    pub(super) fn register_deploy(
         &mut self,
         deploy_id: DeployId,
         need_execution_state: bool,
@@ -455,7 +435,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_global_state(
+    pub(super) fn register_global_state(
         &mut self,
         root_hash: Digest,
         need_execution_state: bool,
@@ -498,7 +478,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_execution_results_root_hash(
+    pub(super) fn register_execution_results_root_hash(
         &mut self,
         execution_results_checksum: ExecutionResultsChecksum,
         need_execution_state: bool,
@@ -531,7 +511,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn with_execution_results_or_chunk(
+    pub(super) fn register_execution_results_or_chunk(
         &mut self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
         need_execution_state: bool,
@@ -548,8 +528,7 @@ impl BlockAcquisitionState {
                     .apply_block_execution_results_or_chunk(block_execution_results_or_chunk)
                 {
                     Ok(new_effects) => match new_effects {
-                        ExecutionResultsAcquisition::Unneeded { .. }
-                        | ExecutionResultsAcquisition::Needed { .. }
+                        ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. }
                         | ExecutionResultsAcquisition::Incomplete { .. } => return Ok(None),
                         ExecutionResultsAcquisition::Complete { .. } => {
@@ -573,15 +552,14 @@ impl BlockAcquisitionState {
                                     ),
                                     Some(results),
                                 ),
-                                Ok(ExecutionResultsAcquisition::Unneeded { .. })
-                                | Ok(ExecutionResultsAcquisition::Needed { .. })
+                                Ok(ExecutionResultsAcquisition::Needed { .. })
                                 | Ok(ExecutionResultsAcquisition::Pending { .. })
                                 | Ok(ExecutionResultsAcquisition::Incomplete { .. })
                                 | Ok(ExecutionResultsAcquisition::Complete { .. }) => {
                                     return Err(Error::InvalidStateTransition)
                                 }
                                 // todo!() - when `apply_deploy_hashes` returns an
-                                // `ExecutionResultToDeployHashLengthDiscrepancyError`, we must
+                                // `ExecutionResultToDeployHashLengthDiscrepancy`, we must
                                 // disconnect from the peer that gave us the execution results
                                 // and start over using another peer.
                                 Err(error) => return Err(Error::ExecutionResults(error)),
@@ -617,7 +595,7 @@ impl BlockAcquisitionState {
         Ok(ret)
     }
 
-    pub(super) fn with_execution_results_stored_notification(
+    pub(super) fn register_execution_results_stored_notification(
         &mut self,
         need_execution_state: bool,
     ) -> Result<(), Error> {
@@ -717,8 +695,7 @@ impl BlockAcquisitionState {
                     return Err(Error::InvalidStateTransition);
                 }
                 match exec_results {
-                    ExecutionResultsAcquisition::Unneeded { .. }
-                    | ExecutionResultsAcquisition::Complete { .. }
+                    ExecutionResultsAcquisition::Complete { .. }
                     | ExecutionResultsAcquisition::Mapped { .. } => {
                         Err(Error::InvalidAttemptToAcquireExecutionResults)
                     }
@@ -762,10 +739,6 @@ impl BlockAcquisitionState {
                 deploys,
                 checksum,
             ) => {
-                error!(
-                    "XXXXX - somehow got all execution results for block {}",
-                    block.hash()
-                );
                 if should_fetch_execution_state == false {
                     return Err(Error::InvalidStateTransition);
                 }
@@ -855,13 +828,6 @@ pub(crate) struct BlockAcquisitionAction {
 }
 
 impl BlockAcquisitionAction {
-    pub(super) fn new(peers_to_ask: Vec<NodeId>, need_next: NeedNext) -> Self {
-        BlockAcquisitionAction {
-            peers_to_ask,
-            need_next,
-        }
-    }
-
     pub(super) fn need_next(&self) -> NeedNext {
         self.need_next.clone()
     }
@@ -972,6 +938,7 @@ impl BlockAcquisitionAction {
             need_next: NeedNext::FinalitySignatures(block_hash, era_id, missing_signatures),
         }
     }
+
     pub(super) fn strict_finality_signatures(
         peer_list: &PeerList,
         rng: &mut NodeRng,
@@ -988,7 +955,7 @@ impl BlockAcquisitionAction {
             .count()
             == 0
         {
-            if let (SignatureWeight::Sufficient) =
+            if let SignatureWeight::Sufficient =
                 validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
             {
                 return BlockAcquisitionAction {
@@ -1041,9 +1008,5 @@ impl BlockAcquisitionAction {
             peers_to_ask,
             need_next,
         }
-    }
-
-    pub(super) fn build(self) -> (Vec<NodeId>, NeedNext) {
-        (self.peers_to_ask, self.need_next)
     }
 }

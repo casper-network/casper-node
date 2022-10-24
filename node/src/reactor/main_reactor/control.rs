@@ -194,6 +194,7 @@ impl MainReactor {
             ReactorState::KeepUp => {
                 // todo! if sync to genesis == true, determine if cycles
                 // are available to get next earliest historical block via synchronizer
+                self.block_synchronizer.flush_dishonest_peers();
 
                 let starting_with =
                     match self.block_synchronizer.maybe_executable_block_identifier() {

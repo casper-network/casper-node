@@ -17,7 +17,7 @@ use crate::{
     effect::requests::BlockSynchronizerRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        EraValidatorWeights, FinalitySignature, LegacyDeploy, NodeId,
+        FinalitySignature, LegacyDeploy, NodeId,
     },
 };
 
@@ -28,9 +28,6 @@ pub(crate) enum Event {
     #[from]
     Request(BlockSynchronizerRequest),
     /// Received announcement about era validators.
-    EraValidators {
-        era_validator_weights: EraValidatorWeights,
-    },
     MaybeEraValidators(EraId, Option<BTreeMap<PublicKey, U512>>),
     DisconnectFromPeer(NodeId),
     MarkedComplete(BlockHash),
@@ -77,9 +74,6 @@ impl Display for Event {
             }
             Event::Initialize => {
                 write!(f, "initialize this component")
-            }
-            Event::EraValidators { .. } => {
-                write!(f, "new era validators")
             }
             Event::MaybeEraValidators(era_id, _) => {
                 write!(f, "maybe new new era validators for era_id: {}", era_id)

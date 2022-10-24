@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use datasize::DataSize;
-use itertools::Itertools;
 
 use crate::types::FinalitySignature;
 use casper_types::PublicKey;
@@ -36,28 +35,10 @@ impl SignatureAcquisition {
             .is_none()
     }
 
-    pub(super) fn needing_signatures(&self) -> Vec<PublicKey> {
-        self.inner
-            .iter()
-            .filter(|(_, v)| **v == SignatureState::Vacant)
-            .map(|(k, _)| k.clone())
-            .collect_vec()
-    }
-
     pub(super) fn have_signatures(&self) -> impl Iterator<Item = &PublicKey> {
         self.inner.iter().filter_map(|(k, v)| match v {
             SignatureState::Vacant => None,
             SignatureState::Signature(_finality_signature) => Some(k),
         })
-    }
-
-    pub(super) fn is_non_vacant(&self) -> bool {
-        self.inner
-            .iter()
-            .any(|(_public_key, signature)| *signature != SignatureState::Vacant)
-    }
-
-    pub(super) fn is_empty(&self) -> bool {
-        self.inner.is_empty()
     }
 }

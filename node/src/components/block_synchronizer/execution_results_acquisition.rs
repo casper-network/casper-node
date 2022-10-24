@@ -55,9 +55,6 @@ pub(crate) enum Error {
     AttemptToApplyDataAfterCompleted {
         block_hash: BlockHash,
     },
-    AttemptToApplyDataWhenUnneeded {
-        block_hash: BlockHash,
-    },
     AttemptToApplyDataWhenMissingChecksum {
         block_hash: BlockHash,
     },
@@ -141,13 +138,6 @@ impl Display for Error {
                     block_hash
                 )
             }
-            Error::AttemptToApplyDataWhenUnneeded { block_hash } => {
-                write!(
-                    f,
-                    "attempt to apply unneeded execution results for block_hash: {}",
-                    block_hash
-                )
-            }
             Error::AttemptToApplyDataWhenMissingChecksum { block_hash } => {
                 write!(
                     f,
@@ -188,9 +178,6 @@ impl Display for Error {
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum ExecutionResultsAcquisition {
-    Unneeded {
-        block_hash: BlockHash,
-    },
     Needed {
         block_hash: BlockHash,
     },
@@ -218,13 +205,6 @@ pub(super) enum ExecutionResultsAcquisition {
 }
 
 impl ExecutionResultsAcquisition {
-    pub(super) fn new(block_hash: BlockHash, checksum: ExecutionResultsChecksum) -> Self {
-        Self::Pending {
-            block_hash,
-            checksum,
-        }
-    }
-
     pub(super) fn needs_value_or_chunk(
         &self,
     ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
@@ -237,10 +217,7 @@ impl ExecutionResultsAcquisition {
         None
     }
 
-    pub(super) fn apply_checksum(
-        mut self,
-        checksum: ExecutionResultsChecksum,
-    ) -> Result<Self, Error> {
+    pub(super) fn apply_checksum(self, checksum: ExecutionResultsChecksum) -> Result<Self, Error> {
         match self {
             ExecutionResultsAcquisition::Needed { block_hash } => {
                 Ok(ExecutionResultsAcquisition::Pending {
@@ -248,8 +225,7 @@ impl ExecutionResultsAcquisition {
                     checksum,
                 })
             }
-            ExecutionResultsAcquisition::Unneeded { block_hash, .. }
-            | ExecutionResultsAcquisition::Pending { block_hash, .. }
+            ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
             | ExecutionResultsAcquisition::Complete { block_hash, .. }
             | ExecutionResultsAcquisition::Mapped { block_hash, .. } => {
@@ -274,9 +250,6 @@ impl ExecutionResultsAcquisition {
         }
 
         match (self, value) {
-            (ExecutionResultsAcquisition::Unneeded { block_hash }, _) => {
-                Err(Error::AttemptToApplyDataWhenUnneeded { block_hash })
-            }
             (ExecutionResultsAcquisition::Needed { block_hash }, _) => {
                 Err(Error::AttemptToApplyDataWhenMissingChecksum { block_hash })
             }
@@ -314,8 +287,7 @@ impl ExecutionResultsAcquisition {
 
     pub(super) fn apply_deploy_hashes(self, deploy_hashes: Vec<DeployHash>) -> Result<Self, Error> {
         match self {
-            ExecutionResultsAcquisition::Unneeded { block_hash, .. }
-            | ExecutionResultsAcquisition::Needed { block_hash, .. }
+            ExecutionResultsAcquisition::Needed { block_hash, .. }
             | ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
             | ExecutionResultsAcquisition::Mapped { block_hash, .. } => {
@@ -346,8 +318,7 @@ impl ExecutionResultsAcquisition {
 
     fn block_hash(&self) -> BlockHash {
         match self {
-            ExecutionResultsAcquisition::Unneeded { block_hash }
-            | ExecutionResultsAcquisition::Needed { block_hash }
+            ExecutionResultsAcquisition::Needed { block_hash }
             | ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
             | ExecutionResultsAcquisition::Complete { block_hash, .. }
@@ -361,8 +332,7 @@ impl ExecutionResultsAcquisition {
             | ExecutionResultsAcquisition::Pending { .. } => Some(0),
             ExecutionResultsAcquisition::Incomplete { next, .. } => Some(*next),
             ExecutionResultsAcquisition::Complete { .. }
-            | ExecutionResultsAcquisition::Mapped { .. }
-            | ExecutionResultsAcquisition::Unneeded { .. } => None,
+            | ExecutionResultsAcquisition::Mapped { .. } => None,
         }
     }
 
@@ -370,8 +340,7 @@ impl ExecutionResultsAcquisition {
         &self,
     ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
         match self {
-            ExecutionResultsAcquisition::Unneeded { .. }
-            | ExecutionResultsAcquisition::Needed { .. }
+            ExecutionResultsAcquisition::Needed { .. }
             | ExecutionResultsAcquisition::Complete { .. }
             | ExecutionResultsAcquisition::Mapped { .. } => None,
             ExecutionResultsAcquisition::Pending {

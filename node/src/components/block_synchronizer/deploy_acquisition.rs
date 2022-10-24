@@ -1,12 +1,10 @@
 use std::{
     cmp::Ord,
-    collections::BTreeMap,
     fmt::{Display, Formatter},
 };
 
 use datasize::DataSize;
 use either::Either;
-use itertools::Itertools;
 use tracing::error;
 
 use crate::types::{ApprovalsHashes, DeployHash, DeployId};
@@ -37,10 +35,6 @@ impl Display for Error {
 impl DeployAcquisition {
     pub(super) fn new_by_hash(deploy_hashes: Vec<DeployHash>, need_execution_result: bool) -> Self {
         DeployAcquisition::ByHash(Acquisition::new(deploy_hashes, need_execution_result))
-    }
-
-    pub(super) fn new_by_id(deploy_ids: Vec<DeployId>, need_execution_result: bool) -> Self {
-        DeployAcquisition::ById(Acquisition::new(deploy_ids, need_execution_result))
     }
 
     pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) {
@@ -92,21 +86,6 @@ impl DeployAcquisition {
         match self {
             DeployAcquisition::ByHash(acquisition) => acquisition.needs_deploy().map(Either::Left),
             DeployAcquisition::ById(acquisition) => acquisition.needs_deploy().map(Either::Right),
-        }
-    }
-
-    pub(super) fn deploy_hashes(&self) -> Vec<DeployHash> {
-        match self {
-            DeployAcquisition::ByHash(x) => x
-                .inner
-                .iter()
-                .map(|(deploy_hash, _)| *deploy_hash)
-                .collect(),
-            DeployAcquisition::ById(y) => y
-                .inner
-                .iter()
-                .map(|(deploy_id, _)| *deploy_id.deploy_hash())
-                .collect(),
         }
     }
 }

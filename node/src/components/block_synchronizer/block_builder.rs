@@ -4,8 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use either::Either;
-use tracing::{error, warn};
+use tracing::error;
 
 use crate::components::block_synchronizer::{
     block_acquisition,
@@ -139,11 +138,10 @@ impl BlockBuilder {
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn abort(&mut self) -> bool {
+    pub(super) fn abort(&mut self) {
         self.acquisition_state = BlockAcquisitionState::Fatal;
         self.flush_peers();
         self.touch();
-        self.is_fatal()
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
@@ -154,11 +152,6 @@ impl BlockBuilder {
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
-    }
-
-    // NOT WIRED
-    pub(super) fn builder_state(&self) -> &BlockAcquisitionState {
-        &self.acquisition_state
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
@@ -179,17 +172,11 @@ impl BlockBuilder {
         )
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn register_peer(&mut self, peer: NodeId) {
-        // todo! - do we need this if? what it is protecting against?
-        if self.is_finished() || self.is_fatal() {
-            return;
-        }
-        self.peer_list.register_peer(peer);
-    }
-
     pub(super) fn register_marked_complete(&mut self) {
-        self.acquisition_state.with_marked_complete();
+        if let Err(error) = self.acquisition_state.register_marked_complete() {
+            error!(%error, "register marked complete failed");
+            self.abort()
+        }
     }
 
     // WIRED IN BLOCK SYNCHRONIZER
@@ -209,7 +196,6 @@ impl BlockBuilder {
 
     // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
-        error!("XXXXX - demoting peer {:?}", peer);
         self.peer_list.demote_peer(peer);
     }
 
@@ -243,8 +229,8 @@ impl BlockBuilder {
         ) {
             Ok(ret) => ret,
             Err(err) => {
-                self.acquisition_state = BlockAcquisitionState::Fatal;
                 error!(%err);
+                self.abort();
                 BlockAcquisitionAction::noop()
             }
         }
@@ -256,7 +242,7 @@ impl BlockBuilder {
         block_header: BlockHeader,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Err(error) = self.acquisition_state.with_header(block_header) {
+        if let Err(error) = self.acquisition_state.register_header(block_header) {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
         }
@@ -273,7 +259,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_block(block, self.should_fetch_execution_state)
+            .register_block(block, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -291,7 +277,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_approvals_hashes(approvals_hashes, self.should_fetch_execution_state)
+            .register_approvals_hashes(approvals_hashes, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -310,7 +296,7 @@ impl BlockBuilder {
         if let Some(validator_weights) = self.validator_weights.to_owned() {
             match self
                 .acquisition_state
-                .with_finality_signature(finality_signature, validator_weights)
+                .register_finality_signature(finality_signature, validator_weights)
             {
                 Err(error) => {
                     self.disqualify_peer(maybe_peer);
@@ -334,7 +320,7 @@ impl BlockBuilder {
     pub(super) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_global_state(global_state, self.should_fetch_execution_state)
+            .register_global_state(global_state, self.should_fetch_execution_state)
         {
             return Err(Error::BlockAcquisition(error));
         }
@@ -347,7 +333,7 @@ impl BlockBuilder {
         &mut self,
         execution_results_root_hash: ExecutionResultsChecksum,
     ) -> Result<(), Error> {
-        if let Err(err) = self.acquisition_state.with_execution_results_root_hash(
+        if let Err(err) = self.acquisition_state.register_execution_results_root_hash(
             execution_results_root_hash,
             self.should_fetch_execution_state,
         ) {
@@ -363,7 +349,7 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
-        match self.acquisition_state.with_execution_results_or_chunk(
+        match self.acquisition_state.register_execution_results_or_chunk(
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
         ) {
@@ -386,11 +372,9 @@ impl BlockBuilder {
     pub(super) fn register_execution_results_stored_notification(&mut self) -> Result<(), Error> {
         if let Err(err) = self
             .acquisition_state
-            .with_execution_results_stored_notification(self.should_fetch_execution_state)
+            .register_execution_results_stored_notification(self.should_fetch_execution_state)
         {
-            // todo!() - Fraser, I think that this cannot be recovered from and am
-            // marking it fatal...if you disagree just delete the line below and this comment
-            self.acquisition_state = BlockAcquisitionState::Fatal;
+            self.abort();
             return Err(Error::BlockAcquisition(err));
         }
         self.touch();
@@ -405,7 +389,7 @@ impl BlockBuilder {
     ) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
-            .with_deploy(deploy_id, self.should_fetch_execution_state)
+            .register_deploy(deploy_id, self.should_fetch_execution_state)
         {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
@@ -415,7 +399,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // NOT WIRED
     pub(super) fn register_era_validator_weights(
         &mut self,
         validator_weights: EraValidatorWeights,
@@ -424,17 +407,13 @@ impl BlockBuilder {
         self.touch();
     }
 
-    // NOT WIRED
-    pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) -> Result<(), Error> {
-        peers
-            .into_iter()
-            .for_each(|peer| self.peer_list.register_peer(peer));
+    pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
+        peers.into_iter().for_each(|peer| {
+            if !(self.is_finished() || self.is_fatal()) {
+                self.peer_list.register_peer(peer)
+            }
+        });
         self.touch();
-        Ok(())
-    }
-
-    pub(super) fn era_id(&self) -> Option<EraId> {
-        self.era_id
     }
 
     fn flush_peers(&mut self) {

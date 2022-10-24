@@ -45,7 +45,6 @@
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
 pub(crate) mod block_accumulator;
-#[allow(unused)] // TODO
 pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
 pub(crate) mod consensus;

@@ -34,10 +34,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::{
-        self,
-        main_reactor::{self, MainEvent},
-    },
+    reactor::{self},
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
@@ -143,7 +140,11 @@ impl BlockSynchronizer {
             // while in keep mode so...
         }
         if let Some(historical) = &self.historical {
-            return historical.last_progress_time();
+            return historical.last_progress_time().max(
+                self.global_sync
+                    .last_progress()
+                    .unwrap_or_else(Timestamp::zero),
+            );
         }
         Timestamp::zero()
     }
@@ -339,9 +340,7 @@ impl BlockSynchronizer {
     fn register_peers(&mut self, block_hash: BlockHash, peers: Vec<NodeId>) -> Effects<Event> {
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
-                for peer in peers {
-                    builder.register_peer(peer);
-                }
+                builder.register_peers(peers);
             }
             _ => {
                 debug!(%block_hash, "not currently synchronizing block");
@@ -385,8 +384,7 @@ impl BlockSynchronizer {
         ret
     }
 
-    // NOT WIRED OR EVENTED
-    fn flush_dishonest_peers(&mut self) {
+    pub(crate) fn flush_dishonest_peers(&mut self) {
         if let Some(builder) = &mut self.forward {
             builder.flush_dishonest_peers();
         }
@@ -883,7 +881,7 @@ impl BlockSynchronizer {
         };
 
         if finished_with_forward {
-            let mut builder = self
+            let builder = self
                 .forward
                 .take()
                 .expect("must be Some due to check above");
@@ -1064,18 +1062,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 self.hook_need_next(effect_builder, Effects::new())
             }
             (ComponentStatus::Initialized, Event::MaybeEraValidators(_, None)) => {
+                // todo! - this happens when we're syncing backwards. We should request the block
+                // headers batch until the previous switch block.
                 self.hook_need_next(effect_builder, Effects::new())
-            }
-            // CURRENTLY NOT TRIGGERED -- should get this from step announcement
-            (
-                ComponentStatus::Initialized,
-                Event::EraValidators {
-                    era_validator_weights: validators,
-                },
-            ) => {
-                self.validator_matrix
-                    .register_era_validator_weights(validators);
-                Effects::new()
             }
             (ComponentStatus::Initialized, Event::GlobalStateSynchronizer(event)) => {
                 reactor::wrap_effects(
