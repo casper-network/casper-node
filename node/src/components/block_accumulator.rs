@@ -53,8 +53,6 @@ pub(crate) enum StartingWith {
     BlockIdentifier(BlockHash, u64),
     SyncedBlockIdentifier(BlockHash, u64),
     Hash(BlockHash),
-    // simplifies call sites; results in a Leap instruction
-    Nothing,
 }
 
 impl StartingWith {
@@ -64,7 +62,6 @@ impl StartingWith {
             StartingWith::SyncedBlockIdentifier(hash, _) => *hash,
             StartingWith::ExecutableBlock(hash, _) => *hash,
             StartingWith::Hash(hash) => *hash,
-            StartingWith::Nothing => BlockHash::default(),
         }
     }
 
@@ -74,7 +71,6 @@ impl StartingWith {
             StartingWith::ExecutableBlock(..) => true,
             StartingWith::SyncedBlockIdentifier(..) => true,
             StartingWith::Hash(_) => false,
-            StartingWith::Nothing => false,
         }
     }
 }
@@ -182,9 +178,6 @@ impl BlockAccumulator {
         let maybe_highest_usable_block_height = self.highest_usable_block_height();
 
         match starting_with {
-            StartingWith::Nothing => {
-                return SyncInstruction::Leap;
-            }
             StartingWith::ExecutableBlock(block_hash, block_height) => {
                 // keep up only
                 match maybe_highest_usable_block_height {
@@ -439,10 +432,15 @@ impl BlockAccumulator {
         for block_acceptor in self.block_acceptors.values_mut() {
             if let Some(era_id) = block_acceptor.era_id() {
                 if validator_weights.era_id() == era_id {
-                    effects.extend(store_block_and_finality_signatures(
-                        effect_builder,
-                        block_acceptor.refresh(validator_weights.clone()),
-                    ))
+                    match block_acceptor.refresh(validator_weights.clone()) {
+                        Ok(new_effects) => effects.extend(store_block_and_finality_signatures(
+                            effect_builder,
+                            new_effects,
+                        )),
+                        Err(err) => {
+                            error!(%err, "failed to register new validator weights");
+                        }
+                    }
                 }
             }
         }

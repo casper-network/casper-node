@@ -72,9 +72,24 @@ impl BlockAcceptor {
         self.peers.push(peer);
     }
 
-    pub(super) fn refresh(&mut self, era_validator_weights: EraValidatorWeights) -> ShouldStore {
+    pub(super) fn refresh(
+        &mut self,
+        era_validator_weights: EraValidatorWeights,
+    ) -> Result<ShouldStore, AcceptorError> {
         if self.era_validator_weights.is_some() {
-            return ShouldStore::Nothing;
+            return Ok(ShouldStore::Nothing);
+        }
+
+        if let Some(expected) = self.block.as_ref().map(|block| block.header().era_id()) {
+            if expected != era_validator_weights.era_id() {
+                return Err(AcceptorError::EraMismatch(
+                    EraMismatchError::EraValidatorWeights {
+                        block_hash: self.block_hash,
+                        expected,
+                        actual: era_validator_weights.era_id(),
+                    },
+                ));
+            }
         }
 
         debug_assert!(!self.has_sufficient_finality);
@@ -91,17 +106,17 @@ impl BlockAcceptor {
             match &self.block {
                 Some(block) => {
                     let signatures = self.signatures.values().cloned().collect();
-                    return ShouldStore::SufficientlySignedBlock {
+                    return Ok(ShouldStore::SufficientlySignedBlock {
                         block: block.clone(),
                         signatures,
-                    };
+                    });
                 }
                 None => {
                     error!("self.block should be Some due to check in `has_sufficient_finality`");
                 }
             }
         }
-        ShouldStore::Nothing
+        Ok(ShouldStore::Nothing)
     }
 
     // pub(super) fn register_era_validator_weights(
