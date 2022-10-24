@@ -1961,21 +1961,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
-    ///
-    /// These blocks contain all deploy and transfer hashes that are known to be finalized but
-    /// may not have expired yet.
-    pub(crate) async fn get_finalized_blocks(self) -> Vec<Block>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            move |responder| StorageRequest::GetFinalizedBlocks { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Loads potentially previously stored state from storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.

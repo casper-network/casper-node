@@ -418,11 +418,6 @@ pub(crate) enum StorageRequest {
         deploy_id: DeployId,
         responder: Responder<Option<Deploy>>,
     },
-    /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
-    GetFinalizedBlocks {
-        /// Responder to call with the results.
-        responder: Responder<Vec<Block>>,
-    },
     /// Store execution results for a set of deploys of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
@@ -679,9 +674,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutFinalitySignature { .. } => {
                 write!(formatter, "put finality signature")
-            }
-            StorageRequest::GetFinalizedBlocks { .. } => {
-                write!(formatter, "get finalized blocks")
             }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)

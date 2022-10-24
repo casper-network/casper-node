@@ -13,10 +13,10 @@ use crate::{
         block_synchronizer::BlockSynchronizerProgress,
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
-        deploy_buffer, diagnostics_port, event_stream_server, rest_server, rpc_server,
-        small_network, sync_leaper,
+        deploy_buffer::{self, DeployBuffer},
+        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
         sync_leaper::LeapStatus,
-        upgrade_watcher,
+        upgrade_watcher, InitializedComponent,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::{
@@ -137,13 +137,39 @@ impl MainReactor {
                 ) {
                     return (Duration::ZERO, effects);
                 }
-                if let Some(effects) = utils::initialize_component(
-                    effect_builder,
-                    &mut self.deploy_buffer,
-                    "deploy_buffer",
-                    MainEvent::DeployBuffer(deploy_buffer::Event::Initialize),
+                if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(
+                    &self.deploy_buffer,
                 ) {
-                    return (Duration::ZERO, effects);
+                    let timestamp = self.recent_switch_block_headers.last().map_or_else(
+                        Timestamp::now,
+                        |switch_block| {
+                            switch_block
+                                .timestamp()
+                                .saturating_sub(self.chainspec.deploy_config.max_ttl)
+                        },
+                    );
+                    let blocks = match self.storage.read_blocks_since(timestamp) {
+                        Ok(blocks) => blocks,
+                        Err(err) => {
+                            return (
+                                Duration::ZERO,
+                                utils::new_shutdown_effect(format!(
+                                    "fatal block store error when attempting to read highest \
+                                    blocks: {}",
+                                    err
+                                )),
+                            )
+                        }
+                    };
+                    let event = deploy_buffer::Event::Initialize(blocks);
+                    if let Some(effects) = utils::initialize_component(
+                        effect_builder,
+                        &mut self.deploy_buffer,
+                        "deploy_buffer",
+                        MainEvent::DeployBuffer(event),
+                    ) {
+                        return (Duration::ZERO, effects);
+                    }
                 }
                 // apply upgrade here?
                 self.state = ReactorState::CatchUp;

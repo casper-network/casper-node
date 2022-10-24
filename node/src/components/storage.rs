@@ -68,7 +68,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
 };
 use disjoint_sequences::{DisjointSequences, Sequence};
 use error::GetRequestError;
@@ -1129,9 +1129,6 @@ impl Storage {
                     .respond(self.get_block_signature(&mut txn, &block_hash, &public_key)?)
                     .ignore()
             }
-            StorageRequest::GetFinalizedBlocks { responder } => {
-                responder.respond(self.get_finalized_blocks()?).ignore()
-            }
             StorageRequest::GetBlockHeaderByHeight {
                 block_height,
                 only_from_available_block_range,
@@ -1272,6 +1269,17 @@ impl Storage {
         let maybe_block = self.get_highest_complete_block(&mut txn)?;
         txn.commit().expect("Could not commit transaction");
         Ok(maybe_block)
+    }
+
+    pub(crate) fn read_blocks_since(
+        &self,
+        timestamp: Timestamp,
+    ) -> Result<Vec<Block>, FatalStorageError> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        self.get_blocks_while(&mut txn, |block| block.timestamp() >= timestamp)
     }
 
     /// Make a finalized block from a executed block, respecting Deploy Approvals.
@@ -1793,14 +1801,6 @@ impl Storage {
             }
         }
         Ok(blocks)
-    }
-
-    /// Returns the vector of blocks that could still have deploys whose TTL hasn't expired yet.
-    fn get_finalized_blocks(&self) -> Result<Vec<Block>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        // We're interested in deploys whose TTL hasn't expired yet.
-        let ttl_not_expired = |block: &Block| block.timestamp().elapsed() < self.max_ttl;
-        self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
     /// Retrieves a single block header in a given transaction from storage

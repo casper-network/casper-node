@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Debug, From, DataSize)]
 pub(crate) enum Event {
-    Initialize,
+    Initialize(Vec<Block>),
     #[from]
     Request(DeployBufferRequest),
     ReceiveDeploy(Box<Deploy>),
@@ -24,8 +24,8 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Initialize => {
-                write!(formatter, "initialize")
+            Event::Initialize(blocks) => {
+                write!(formatter, "initialize, {} blocks", blocks.len())
             }
             Event::Request(DeployBufferRequest::GetAppendableBlock { .. }) => {
                 write!(formatter, "get appendable block request")

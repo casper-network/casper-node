@@ -47,6 +47,8 @@ pub(crate) struct DeployBuffer {
     // will become eligible to propose again.
     hold: BTreeMap<Timestamp, HashSet<DeployHash>>,
     // deploy_hashes that should not be proposed, ever
+    // todo!(): Make a note of the finalization timestamp, and prune after entering an era whose
+    //          start is more than one max TTL later.
     dead: HashSet<DeployHash>,
     // block_height and block_time of blocks added to the local chain
     // needed to ensure we have seen sufficient blocks
@@ -261,7 +263,10 @@ where
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
+            (ComponentStatus::Uninitialized, Event::Initialize(blocks)) => {
+                for block in blocks {
+                    self.register_block_finalized(&block.into());
+                }
                 self.status = ComponentStatus::Initialized;
                 // start self-expiry management on initialization
                 effect_builder
@@ -272,8 +277,8 @@ where
                 warn!("should not handle this event when component is uninitialized");
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::Initialize) => {
-                // noop
+            (ComponentStatus::Initialized, Event::Initialize(_)) => {
+                error!("deploy buffer already initialized");
                 Effects::new()
             }
             (
