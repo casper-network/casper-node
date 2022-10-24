@@ -53,16 +53,26 @@ impl SyncLeap {
     // Returns `true` if any new validator weight was registered.
     pub(crate) fn apply_validator_weights(&self, validator_matrix: &mut ValidatorMatrix) -> bool {
         let fault_tolerance_fraction = validator_matrix.fault_tolerance_threshold();
-        self.switch_blocks().fold(false, |acc, switch| {
+        self.switch_blocks().fold(false, |mut acc, switch| {
             if let Some(validator_weights) = switch.next_era_validator_weights() {
-                validator_matrix.register_era_validator_weights(EraValidatorWeights::new(
-                    switch.next_block_era_id(),
-                    validator_weights.clone(),
-                    fault_tolerance_fraction,
-                )) || acc
-            } else {
-                acc
+                if switch.is_genesis() {
+                    acc = acc
+                        || validator_matrix.register_era_validator_weights(
+                            EraValidatorWeights::new(
+                                0.into(),
+                                validator_weights.clone(),
+                                fault_tolerance_fraction,
+                            ),
+                        );
+                }
+                acc = acc
+                    || validator_matrix.register_era_validator_weights(EraValidatorWeights::new(
+                        switch.next_block_era_id(),
+                        validator_weights.clone(),
+                        fault_tolerance_fraction,
+                    ));
             }
+            acc
         })
     }
 

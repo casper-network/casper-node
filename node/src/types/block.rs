@@ -894,9 +894,9 @@ impl BlockHeader {
         BlockHash::new(Digest::hash(&serialized_header))
     }
 
-    /// Returns true if block is Genesis' child.
+    /// Returns true if block is Genesis.
     /// Genesis child block is from era 0 and height 0.
-    pub(crate) fn is_genesis_child(&self) -> bool {
+    pub(crate) fn is_genesis(&self) -> bool {
         self.era_id().is_genesis() && self.height() == 0
     }
 
@@ -1322,7 +1322,7 @@ impl Block {
     /// Returns the hash of the parent block.
     /// If the block is the first block in the linear chain returns `None`.
     pub fn parent(&self) -> Option<&BlockHash> {
-        if self.header.is_genesis_child() {
+        if self.header.is_genesis() {
             None
         } else {
             Some(self.header.parent_hash())
