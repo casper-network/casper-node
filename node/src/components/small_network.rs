@@ -24,6 +24,7 @@
 //! maintain an outgoing connection to any new address learned.
 
 mod bincode_format;
+pub(crate) mod blocklist;
 mod chain_info;
 mod config;
 mod counting_format;
