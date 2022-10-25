@@ -314,8 +314,7 @@ impl MainReactor {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> CatchUpInstruction {
-        let catch_up = true;
-        let starting_with = match self.block_synchronizer.progress(catch_up) {
+        let starting_with = match self.block_synchronizer.catch_up_progress() {
             BlockSynchronizerProgress::Idle => {
                 match self.trusted_hash {
                     None => {

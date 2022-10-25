@@ -53,7 +53,7 @@ use crate::{
     fatal,
     types::{
         BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployOrTransferHash,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, NodeId,
+        FinalizedApprovals, FinalizedBlock, NodeId,
     },
     NodeRng,
 };

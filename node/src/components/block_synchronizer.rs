@@ -129,32 +129,9 @@ impl BlockSynchronizer {
         }
     }
 
-    // CALLED FROM REACTOR
-    pub(crate) fn last_progress(&self) -> Timestamp {
-        if let Some(forward) = &self.forward {
-            return forward.last_progress_time();
-            // maybe there's an edge case on a sync to genesis node
-            // where we are fully at tip, so forward is stale
-            // but we are syncing a historical block and making progress on that
-            // but as currently written we're not checking for idleness shutdown
-            // while in keep mode so...
-        }
-        if let Some(historical) = &self.historical {
-            return historical.last_progress_time().max(
-                self.global_sync
-                    .last_progress()
-                    .unwrap_or_else(Timestamp::zero),
-            );
-        }
-        Timestamp::zero()
-    }
-
-    pub(crate) fn progress(&mut self, catch_up: bool) -> BlockSynchronizerProgress {
-        match if catch_up {
-            &self.forward
-        } else {
-            &self.historical
-        } {
+    /// Returns the progress being made on the historical syncing.
+    pub(crate) fn catch_up_progress(&mut self) -> BlockSynchronizerProgress {
+        match &self.historical {
             None => BlockSynchronizerProgress::Idle,
             Some(builder) => {
                 if builder.is_finished() {
@@ -171,7 +148,11 @@ impl BlockSynchronizer {
                 BlockSynchronizerProgress::Syncing(
                     builder.block_hash(),
                     builder.block_height(),
-                    builder.last_progress_time(),
+                    builder.last_progress_time().max(
+                        self.global_sync
+                            .last_progress()
+                            .unwrap_or_else(Timestamp::zero),
+                    ),
                 )
             }
         }
