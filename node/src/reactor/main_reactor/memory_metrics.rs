@@ -21,7 +21,6 @@ pub(super) struct MemoryMetrics {
     mem_deploy_gossiper: IntGauge,
     mem_deploy_buffer: IntGauge,
     mem_block_validator: IntGauge,
-    mem_linear_chain: IntGauge,
 
     mem_all_fetchers: IntGauge,
     /// Histogram detailing how long it took to measure memory usage.
@@ -64,8 +63,6 @@ impl MemoryMetrics {
             "mem_block_validator",
             "block validator memory usage in bytes",
         )?;
-        let mem_linear_chain =
-            IntGauge::new("mem_linear_chain", "linear chain memory usage in bytes")?;
 
         let mem_estimator_runtime_s = Histogram::with_opts(
             HistogramOpts::new(
@@ -90,7 +87,6 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
         registry.register(Box::new(mem_deploy_buffer.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
-        registry.register(Box::new(mem_linear_chain.clone()))?;
         registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
 
         Ok(MemoryMetrics {
@@ -108,7 +104,6 @@ impl MemoryMetrics {
             mem_deploy_gossiper,
             mem_deploy_buffer,
             mem_block_validator,
-            mem_linear_chain,
             mem_estimator_runtime_s,
             registry,
         })
@@ -131,7 +126,6 @@ impl MemoryMetrics {
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
         let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
-        let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
 
         let total = metrics
             + net
@@ -145,8 +139,7 @@ impl MemoryMetrics {
             + fetchers
             + deploy_gossiper
             + deploy_buffer
-            + block_validator
-            + linear_chain;
+            + block_validator;
 
         self.mem_total.set(total);
         self.mem_metrics.set(metrics);
@@ -162,7 +155,6 @@ impl MemoryMetrics {
         self.mem_deploy_gossiper.set(deploy_gossiper);
         self.mem_deploy_buffer.set(deploy_buffer);
         self.mem_block_validator.set(block_validator);
-        self.mem_linear_chain.set(linear_chain);
 
         // Stop the timer explicitly, don't count logging.
         let duration_s = timer.stop_and_record();
@@ -182,7 +174,6 @@ impl MemoryMetrics {
                %deploy_gossiper,
                %deploy_buffer,
                %block_validator,
-               %linear_chain,
                "Collected new set of memory metrics.");
     }
 }
@@ -203,7 +194,6 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_deploy_gossiper);
         unregister_metric!(self.registry, self.mem_deploy_buffer);
         unregister_metric!(self.registry, self.mem_block_validator);
-        unregister_metric!(self.registry, self.mem_linear_chain);
         unregister_metric!(self.registry, self.mem_estimator_runtime_s);
     }
 }

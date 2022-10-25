@@ -106,8 +106,6 @@ pub(crate) enum MainEvent {
     #[from]
     SyncLeapFetcherRequest(#[serde(skip_serializing)] FetcherRequest<SyncLeap>),
     #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
-    #[from]
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
@@ -269,7 +267,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
             MainEvent::BlockValidator(_) => "BlockValidator",
-            MainEvent::LinearChain(_) => "LinearChain",
             MainEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             MainEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             MainEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
@@ -372,7 +369,6 @@ impl Display for MainEvent {
             MainEvent::ContractRuntimeRequest(event) => {
                 write!(f, "contract runtime request: {:?}", event)
             }
-            MainEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             MainEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
             MainEvent::BlockHeaderFetcher(event) => {
                 write!(f, "block header fetcher: {}", event)

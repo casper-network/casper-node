@@ -35,7 +35,6 @@ use crate::{
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, Gossiper},
-        linear_chain::{self, LinearChainComponent},
         metrics::Metrics,
         rest_server::RestServer,
         rpc_server::RpcServer,
@@ -92,7 +91,6 @@ pub(crate) struct MainReactor {
     consensus: EraSupervisor,
 
     // block handling
-    linear_chain: LinearChainComponent, // todo! is redundant - remove.
     block_validator: BlockValidator,
     block_accumulator: BlockAccumulator,
     block_synchronizer: BlockSynchronizer,
@@ -283,12 +281,6 @@ impl reactor::Reactor for MainReactor {
             BlockSynchronizer::new(config.block_synchronizer, validator_matrix.clone());
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
-        let linear_chain = LinearChainComponent::new(
-            registry,
-            protocol_version,
-            chainspec.core_config.auction_delay,
-            chainspec.core_config.unbonding_delay,
-        )?;
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
         let era_count = chainspec.number_of_past_switch_blocks_needed();
@@ -317,7 +309,6 @@ impl reactor::Reactor for MainReactor {
             deploy_buffer,
             consensus,
             block_validator,
-            linear_chain,
             block_accumulator,
             block_synchronizer,
             diagnostics_port,
@@ -519,10 +510,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::SyncLeaper,
                 self.sync_leaper.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::LinearChain(event) => reactor::wrap_effects(
-                MainEvent::LinearChain,
-                self.linear_chain.handle_event(effect_builder, rng, event),
-            ),
             MainEvent::Consensus(event) => reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
@@ -543,26 +530,6 @@ impl reactor::Reactor for MainReactor {
                         let reactor_event =
                             MainEvent::DeployBuffer(deploy_buffer::Event::BlockFinalized(block));
                         self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
-                        let reactor_finality_signatures_gossiper_event =
-                            MainEvent::FinalitySignatureGossiper(gossiper::Event::ItemReceived {
-                                item_id: fs.id(),
-                                source: Source::Ourself,
-                            });
-                        let mut effects = self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            MainEvent::LinearChain(linear_chain::Event::FinalitySignatureReceived(
-                                fs, false,
-                            )),
-                        );
-                        effects.extend(self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            reactor_finality_signatures_gossiper_event,
-                        ));
-                        effects
                     }
                     ConsensusAnnouncement::Fault {
                         era_id,
@@ -615,19 +582,6 @@ impl reactor::Reactor for MainReactor {
                 BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
             ) => {
                 let mut effects = Effects::new();
-
-                // When this node is a validator in this era, sign and announce.
-                if let Some(finality_signature) = self
-                    .validator_matrix
-                    .create_finality_signature(block.header())
-                {
-                    let event = MainEvent::ConsensusAnnouncement(
-                        ConsensusAnnouncement::CreatedFinalitySignature(Box::new(
-                            finality_signature,
-                        )),
-                    );
-                    effects.extend(self.dispatch_event(effect_builder, rng, event));
-                }
 
                 let reactor_event_es = MainEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block.clone()),
@@ -760,32 +714,25 @@ impl reactor::Reactor for MainReactor {
             ) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
+                // Finality signature received via broadcast.
                 let sender = incoming.sender;
-                let finality_signature = incoming.message.clone();
-                let mut effects = reactor::wrap_effects(
-                    MainEvent::LinearChain,
-                    self.linear_chain
-                        .handle_event(effect_builder, rng, incoming.into()),
-                );
-
+                let finality_signature = incoming.message;
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
                     finality_signature,
                     sender,
                 };
-                effects.extend(reactor::wrap_effects(
+
+                // todo!() - reconsider if we need that
+                // let block_synchronizer_event =
+                // block_synchronizer::Event::FinalitySignatureFetched(())
+                reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator.handle_event(
                         effect_builder,
                         rng,
                         block_accumulator_event,
                     ),
-                ));
-
-                // todo!() - reconsider if we need that
-                // let block_synchronizer_event =
-                // block_synchronizer::Event::FinalitySignatureFetched(())
-
-                effects
+                )
             }
             MainEvent::FinalitySignatureGossiper(event) => reactor::wrap_effects(
                 MainEvent::FinalitySignatureGossiper,
@@ -931,35 +878,61 @@ impl reactor::Reactor for MainReactor {
                     "executed block"
                 );
 
-                // send to linear chain
-                let reactor_event =
-                    MainEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
-                        block: block.clone(),
-                        approvals_hashes,
-                        execution_results: execution_results
-                            .iter()
-                            .map(|(hash, _header, results)| (*hash, results.clone()))
-                            .collect(),
-                    });
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                // todo! - we might want to store here before broadcasting the signature
+                //         so we can produce the signed-over data if required, even after restart.
+
+                // When this node is a validator in this era, sign and announce.
+                if let Some(finality_signature) = self
+                    .validator_matrix
+                    .create_finality_signature(block.header())
+                {
+                    // send to block accumulator
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedFinalitySignature {
+                                finality_signature: Box::new(finality_signature.clone()),
+                                sender: self.small_network.node_id(),
+                            },
+                        ),
+                    ));
+
+                    // broadcast to validator peers
+                    let era_id = finality_signature.era_id;
+                    let payload = Message::FinalitySignature(Box::new(finality_signature));
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Network,
+                        effect_builder
+                            .broadcast_message_to_validators(payload, era_id)
+                            .ignore(),
+                    ));
+                }
 
                 // send to block accumulator
-                let block_accumulator_event =
-                    MainEvent::BlockAccumulator(block_accumulator::Event::ExecutedBlock {
-                        block_header: block.header().clone(),
-                    });
-                effects.extend(self.dispatch_event(effect_builder, rng, block_accumulator_event));
+                let event = block_accumulator::Event::ExecutedBlock {
+                    block_header: block.header().clone(),
+                };
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator
+                        .handle_event(effect_builder, rng, event),
+                ));
 
                 // send to event stream
                 for (deploy_hash, deploy_header, execution_result) in execution_results {
-                    let reactor_event =
-                        MainEvent::EventStreamServer(event_stream_server::Event::DeployProcessed {
-                            deploy_hash,
-                            deploy_header: Box::new(deploy_header),
-                            block_hash,
-                            execution_result: Box::new(execution_result),
-                        });
-                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    let event = event_stream_server::Event::DeployProcessed {
+                        deploy_hash,
+                        deploy_header: Box::new(deploy_header),
+                        block_hash,
+                        execution_result: Box::new(execution_result),
+                    };
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
                 }
 
                 effects
@@ -1068,6 +1041,7 @@ impl MainReactor {
     }
 }
 
+use crate::effect::{requests::NetworkRequest, AutoClosingResponder};
 #[cfg(test)]
 use crate::{testing::network::NetworkedReactor, types::NodeId};
 

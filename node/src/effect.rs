@@ -1831,21 +1831,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announces that a finality signature has been created.
-    pub(crate) async fn announce_created_finality_signature(
-        self,
-        finality_signature: FinalitySignature,
-    ) where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
     /// An equivocation has been detected.
     pub(crate) async fn announce_fault_event(
         self,

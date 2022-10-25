@@ -869,7 +869,6 @@ where
     }
 
     /// Returns the node id of this network node.
-    #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.context.our_id()
     }

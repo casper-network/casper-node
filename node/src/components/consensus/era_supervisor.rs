@@ -182,18 +182,6 @@ impl EraSupervisor {
         self.open_eras.keys().last().copied()
     }
 
-    pub(crate) fn create_finality_signature(
-        &self,
-        block_header: &BlockHeader,
-    ) -> FinalitySignature {
-        FinalitySignature::create(
-            block_header.block_hash(),
-            block_header.era_id(),
-            &self.secret_signing_key,
-            self.public_signing_key.clone(),
-        )
-    }
-
     pub(crate) fn create_required_eras<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -303,12 +291,6 @@ impl EraSupervisor {
     /// Returns an iterator over era IDs of `num_eras` future eras, plus the provided one.
     fn iter_future(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
         (era_id.value()..=era_id.value().saturating_add(num_eras)).map(EraId::from)
-    }
-
-    /// Returns whether the validator with the given public key is bonded in that era.
-    fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
-        let has_validator = |era: &Era| era.validators().contains_key(pub_key);
-        self.open_eras.get(&era_id).map_or(false, has_validator)
     }
 
     /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
@@ -704,17 +686,11 @@ impl EraSupervisor {
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
     ) -> Effects<Event> {
-        let our_public_key = self.public_signing_key.clone();
         let era_id = block_header.era_id();
         self.executed_block(&block_header);
         self.last_progress = Timestamp::now();
-        let mut effects = if self.is_validator_in(&our_public_key, era_id) {
-            effect_builder
-                .announce_created_finality_signature(self.create_finality_signature(&block_header))
-                .ignore()
-        } else {
-            Effects::new()
-        };
+
+        let mut effects = Effects::new();
 
         if self
             .current_era()

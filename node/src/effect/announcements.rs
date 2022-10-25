@@ -238,8 +238,6 @@ pub(crate) enum ConsensusAnnouncement {
     Proposed(Box<ProposedBlock<ClContext>>),
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
-    /// A finality signature was created.
-    CreatedFinalitySignature(Box<FinalitySignature>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -259,9 +257,6 @@ impl Display for ConsensusAnnouncement {
             }
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized block payload {}", block)
-            }
-            ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
-                write!(formatter, "signed an executed block: {}", fs)
             }
             ConsensusAnnouncement::Fault {
                 era_id,
