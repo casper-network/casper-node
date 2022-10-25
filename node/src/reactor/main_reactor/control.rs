@@ -4,7 +4,7 @@ use tokio::time;
 use tracing::{debug, error, info};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -328,8 +328,13 @@ impl MainReactor {
                                 if let ActivationPoint::Genesis(timestamp) =
                                     self.chainspec.protocol_config.activation_point
                                 {
-                                    if Timestamp::now() <= timestamp {
-                                        // the network is in pre-genesis
+                                    let timediff = timestamp.saturating_diff(Timestamp::now());
+                                    if timediff > TimeDiff::default() {
+                                        return CatchUpInstruction::CheckLater(
+                                            "waiting for genesis activation point".to_string(),
+                                            Duration::from(timediff),
+                                        );
+                                    } else {
                                         return CatchUpInstruction::CommitGenesis;
                                     }
                                 }
