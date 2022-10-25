@@ -225,14 +225,17 @@ impl Display for ConsensusAnnouncement {
 #[derive(Debug, Serialize)]
 pub(crate) enum BlocklistAnnouncement {
     /// A given peer committed a blockable offense.
-    OffenseCommitted(Box<NodeId>),
+    OffenseCommitted {
+        /// The peer ID of the offending node.
+        offender: Box<NodeId>,
+    },
 }
 
 impl Display for BlocklistAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlocklistAnnouncement::OffenseCommitted(peer) => {
-                write!(f, "peer {} committed offense", peer)
+            BlocklistAnnouncement::OffenseCommitted { offender } => {
+                write!(f, "peer {} committed offense", offender)
             }
         }
     }

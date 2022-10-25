@@ -1664,7 +1664,9 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(
-                BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
+                BlocklistAnnouncement::OffenseCommitted {
+                    offender: Box::new(peer),
+                },
                 QueueKind::Regular,
             )
             .await

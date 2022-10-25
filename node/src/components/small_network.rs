@@ -1039,12 +1039,12 @@ where
                 );
                 self.process_dial_requests(requests)
             }
-            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)) => {
+            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted { offender }) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
-                warn!(%peer_id, "adding peer to blocklist after transgression");
+                warn!(%offender, "adding peer to blocklist after transgression");
 
-                if let Some(addr) = self.outgoing_manager.get_addr(*peer_id) {
+                if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
                     let requests = self.outgoing_manager.block_addr(addr, Instant::now());
                     self.process_dial_requests(requests)
                 } else {
