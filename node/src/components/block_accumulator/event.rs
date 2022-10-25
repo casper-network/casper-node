@@ -2,11 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 
-use casper_types::EraId;
-
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, BlockHash, BlockHeader, FinalitySignature, FinalitySignatureId, NodeId},
+    types::{Block, BlockHeader, FinalitySignature, FinalitySignatureId, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -21,14 +19,11 @@ pub(crate) enum Event {
         finality_signature: Box<FinalitySignature>,
         sender: NodeId,
     },
-    UpdatedValidatorMatrix {
-        era_id: EraId,
-    },
     ExecutedBlock {
         block_header: BlockHeader,
     },
     Stored {
-        block_hash: Option<BlockHash>,
+        block: Option<Box<Block>>,
         finality_signature_ids: Vec<FinalitySignatureId>,
     },
 }
@@ -52,20 +47,20 @@ impl Display for Event {
             } => {
                 write!(f, "received {} from {}", finality_signature, sender)
             }
-            Event::UpdatedValidatorMatrix { era_id } => {
-                write!(f, "validator matrix update for era {}", era_id)
-            }
+            // Event::UpdatedValidatorMatrix { era_id } => {
+            //     write!(f, "validator matrix update for era {}", era_id)
+            // }
             Event::ExecutedBlock { block_header } => {
                 write!(f, "executed block: hash={}", block_header.block_hash())
             }
             Event::Stored {
-                block_hash,
+                block,
                 finality_signature_ids,
             } => {
                 write!(
                     f,
                     "stored {:?} and {} finality signatures",
-                    block_hash,
+                    block.as_ref().map(|block| *block.hash()),
                     finality_signature_ids.len()
                 )
             }

@@ -260,8 +260,9 @@ struct ConsumerId {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
 
+    use casper_types::SecretKey;
     use num_rational::Ratio;
     use prometheus::Counter;
     use tokio::time::Instant;
@@ -300,10 +301,12 @@ mod tests {
     async fn active_validator_is_unlimited() {
         let mut rng = crate::new_rng();
 
-        let validator_id = PublicKey::random(&mut rng);
+        let secret_key = SecretKey::random(&mut rng);
+        let validator_id = PublicKey::from(&secret_key);
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
-        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let validator_matrix =
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
@@ -321,10 +324,12 @@ mod tests {
     async fn inactive_validator_limited() {
         let mut rng = crate::new_rng();
 
-        let validator_id = PublicKey::random(&mut rng);
+        let secret_key = SecretKey::random(&mut rng);
+        let validator_id = PublicKey::from(&secret_key);
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
-        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let validator_matrix =
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Try with non-validators or unknown nodes.
@@ -355,14 +360,16 @@ mod tests {
     async fn nonvalidators_parallel_limited() {
         let mut rng = crate::new_rng();
 
-        let validator_id = PublicKey::random(&mut rng);
+        let secret_key = SecretKey::random(&mut rng);
+        let validator_id = PublicKey::from(&secret_key);
         let wait_metric = new_wait_time_sec();
 
         let start = Instant::now();
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
-        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let validator_matrix =
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
@@ -408,12 +415,13 @@ mod tests {
 
         let mut rng = crate::new_rng();
 
-        let validator_id = PublicKey::random(&mut rng);
+        let secret_key = SecretKey::random(&mut rng);
+        let validator_id = PublicKey::from(&secret_key);
         let wait_metric = new_wait_time_sec();
         let limiter = Limiter::new(
             1_000,
             wait_metric.clone(),
-            ValidatorMatrix::new(Ratio::new(1, 3)),
+            ValidatorMatrix::new(Ratio::new(1, 3), Arc::new(secret_key), validator_id.clone()),
         );
 
         // Try with non-validators or unknown nodes.
@@ -453,8 +461,10 @@ mod tests {
 
         let mut rng = crate::new_rng();
 
-        let validator_id = PublicKey::random(&mut rng);
-        let validator_matrix = ValidatorMatrix::new_with_validator(validator_id.clone());
+        let secret_key = SecretKey::random(&mut rng);
+        let validator_id = PublicKey::from(&secret_key);
+        let validator_matrix =
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);

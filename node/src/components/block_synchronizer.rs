@@ -282,7 +282,6 @@ impl BlockSynchronizer {
             }
         }
 
-        let _ = sync_leap.apply_validator_weights(&mut self.validator_matrix);
         let (block_header, maybe_sigs) = sync_leap.highest_block_header();
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))

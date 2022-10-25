@@ -102,7 +102,6 @@ where
 {
     match should_store {
         ShouldStore::SufficientlySignedBlock { block, signatures } => {
-            let block_hash = Some(*block.hash());
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
             let mut signature_ids = vec![];
             signatures.into_iter().for_each(|signature| {
@@ -110,10 +109,10 @@ where
                 block_signatures.insert_proof(signature.public_key, signature.signature);
             });
             effect_builder
-                .put_block_to_storage(Box::new(block))
+                .put_block_to_storage(Box::new(block.clone()))
                 .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
                 .event(move |_| Event::Stored {
-                    block_hash,
+                    block: Some(Box::new(block)),
                     finality_signature_ids: signature_ids,
                 })
         }
@@ -122,7 +121,7 @@ where
             effect_builder
                 .put_finality_signature_to_storage(signature)
                 .event(move |_| Event::Stored {
-                    block_hash: None,
+                    block: None,
                     finality_signature_ids: signature_ids,
                 })
         }
@@ -355,7 +354,7 @@ impl BlockAccumulator {
             }
             Err(Error::RemovedValidatorWeights { era_id }) => {
                 if self.validator_matrix.validator_weights(era_id).is_some() {
-                    return self.register_updated_validator_matrix(effect_builder, era_id);
+                    return self.register_updated_validator_matrix(effect_builder);
                 }
                 Effects::new()
             }
@@ -415,23 +414,19 @@ impl BlockAccumulator {
     pub(crate) fn register_updated_validator_matrix<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        era_id: EraId,
     ) -> Effects<Event>
     where
         REv: From<StorageRequest> + Send,
     {
         let mut effects = Effects::new();
-        let validator_weights = match self.validator_matrix.validator_weights(era_id) {
-            Some(validator_weights) => validator_weights,
-            None => {
-                error!(%era_id, "validator weights for era should exist");
-                return Effects::new();
-            }
-        };
 
-        for block_acceptor in self.block_acceptors.values_mut() {
+        for block_acceptor in self
+            .block_acceptors
+            .values_mut()
+            .filter(|acceptor| !acceptor.has_validator_weights())
+        {
             if let Some(era_id) = block_acceptor.era_id() {
-                if validator_weights.era_id() == era_id {
+                if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
                     match block_acceptor.refresh(validator_weights.clone()) {
                         Ok(new_effects) => effects.extend(store_block_and_finality_signatures(
                             effect_builder,
@@ -522,14 +517,14 @@ impl BlockAccumulator {
     fn handle_stored<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        block_hash: Option<BlockHash>,
+        block: Option<Box<Block>>,
         finality_signature_ids: Vec<FinalitySignatureId>,
     ) -> Effects<Event>
     where
         REv: From<BlockAccumulatorAnnouncement> + Send,
     {
-        let mut effects = if let Some(block_hash) = block_hash {
-            effect_builder.announce_block_accepted(block_hash).ignore()
+        let mut effects = if let Some(block) = block {
+            effect_builder.announce_block_accepted(block).ignore()
         } else {
             Effects::new()
         };
@@ -572,17 +567,16 @@ where
                 finality_signature,
                 sender,
             } => self.register_finality_signature(effect_builder, *finality_signature, sender),
-            Event::UpdatedValidatorMatrix { era_id } => {
-                self.register_updated_validator_matrix(effect_builder, era_id)
-            }
+            // Event::UpdatedValidatorMatrix =>
+            // self.register_updated_validator_matrix(effect_builder),
             Event::ExecutedBlock { block_header } => {
                 self.register_local_tip(block_header.height());
                 Effects::new()
             }
             Event::Stored {
-                block_hash,
+                block,
                 finality_signature_ids,
-            } => self.handle_stored(effect_builder, block_hash, finality_signature_ids),
+            } => self.handle_stored(effect_builder, block, finality_signature_ids),
         }
     }
 }

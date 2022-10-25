@@ -454,18 +454,13 @@ impl MainReactor {
                     from_peers,
                     ..
                 } => {
-                    let era_id = best_available.highest_era();
-                    let validator_weights = match best_available.validators_of_highest_block() {
-                        Some(validator_weights) => validator_weights,
-                        None => {
-                            let msg = format!(
-                                "unable to read validators_of_highest_block from {:?}",
-                                best_available
-                            );
-                            error!("{}", msg);
-                            return CatchUpInstruction::Shutdown(msg);
-                        }
-                    };
+                    for validator_weights in best_available
+                        .era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
+                    {
+                        self.validator_matrix
+                            .register_era_validator_weights(validator_weights);
+                    }
+
                     // todo! maybe register sync_leap to accumulator instead
                     self.block_synchronizer.register_sync_leap(
                         &*best_available,
@@ -476,11 +471,8 @@ impl MainReactor {
                             .sync_leap_simultaneous_peer_requests,
                     );
 
-                    self.validator_matrix
-                        .register_validator_weights(era_id, validator_weights.clone());
-
                     self.block_accumulator
-                        .register_updated_validator_matrix(effect_builder, era_id);
+                        .register_updated_validator_matrix(effect_builder);
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                     });

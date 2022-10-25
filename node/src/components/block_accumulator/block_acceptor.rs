@@ -289,6 +289,10 @@ impl BlockAcceptor {
         self.has_sufficient_finality
     }
 
+    pub(super) fn has_validator_weights(&self) -> bool {
+        self.era_validator_weights.is_some()
+    }
+
     pub(super) fn era_id(&self) -> Option<EraId> {
         if let Some(block) = &self.block {
             return Some(block.header().era_id());

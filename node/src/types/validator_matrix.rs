@@ -53,19 +53,22 @@ impl ValidatorMatrix {
 
     /// Creates a new validator matrix with just a single validator.
     #[cfg(test)]
-    pub(crate) fn new_with_validator(public_key: PublicKey, secret_key: Arc<SecretKey>) -> Self {
+    pub(crate) fn new_with_validator(
+        secret_signing_key: Arc<SecretKey>,
+        public_signing_key: PublicKey,
+    ) -> Self {
         let finality_threshold_fraction = Ratio::new(1, 3);
         let era_id = EraId::new(0);
         let weights = EraValidatorWeights::new(
             era_id,
-            iter::once((public_key, 100.into())).collect(),
+            iter::once((public_signing_key.clone(), 100.into())).collect(),
             finality_threshold_fraction,
         );
         ValidatorMatrix {
             inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
             finality_threshold_fraction,
-            public_signing_key: public_key,
-            secret_signing_key: secret_key,
+            public_signing_key,
+            secret_signing_key,
         }
     }
 

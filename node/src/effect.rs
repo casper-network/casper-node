@@ -842,13 +842,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that the block accumulator has received and stored a new block.
-    pub(crate) async fn announce_block_accepted(self, block_hash: BlockHash)
+    pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
     where
         REv: From<BlockAccumulatorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlockAccumulatorAnnouncement::AcceptedNewBlock { block_hash },
+                BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
                 QueueKind::Regular,
             )
             .await;
@@ -1877,25 +1877,6 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 PeerBehaviorAnnouncement::OffenseCommitted(Box::new(peer)),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_and_approvals_hashes(
-        self,
-        block: Box<Block>,
-        approvals_hashes: Box<ApprovalsHashes>,
-    ) where
-        REv: From<LinearChainAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                LinearChainAnnouncement::BlockAdded {
-                    block,
-                    approvals_hashes,
-                },
                 QueueKind::Regular,
             )
             .await

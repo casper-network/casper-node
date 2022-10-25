@@ -107,11 +107,9 @@ where
                 effect_builder.announce_finality_signature(fs).ignore()
             }
             Outcome::AnnounceBlock {
-                block,
-                approvals_hashes,
-            } => effect_builder
-                .announce_block_and_approvals_hashes(block, approvals_hashes)
-                .ignore(),
+                block: _,
+                approvals_hashes: _,
+            } => Effects::new(),
             Outcome::LoadSignatures(fs) => effect_builder
                 .get_signatures_from_storage(fs.block_hash)
                 .event(move |maybe_signatures| {

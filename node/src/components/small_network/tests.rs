@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_types::{PublicKey, SecretKey};
 use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
@@ -41,7 +42,7 @@ use crate::{
         network::{Network, NetworkedReactor, Nodes},
         ConditionCheckReactor,
     },
-    types::{Chainspec, ChainspecRawBytes, NodeId},
+    types::{Chainspec, ChainspecRawBytes, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -188,15 +189,17 @@ impl Reactor for TestReactor {
         our_identity: Identity,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
+        let secret_key = SecretKey::random(rng);
+        let public_key = PublicKey::from(&secret_key);
         let net = SmallNetwork::new(
             cfg,
             our_identity,
             None,
             registry,
             ChainInfo::create_for_testing(),
-            Default::default(),
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), public_key),
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =

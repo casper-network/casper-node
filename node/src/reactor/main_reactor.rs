@@ -14,12 +14,12 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-use std::{sync::Arc, time::Instant};
+use std::{cmp::Ordering, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{TimeDiff, Timestamp};
 
@@ -524,107 +524,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block,
-                approvals_hashes,
-            }) => {
-                let mut effects = Effects::new();
-
-                // When this node is a validator in this era, sign and announce.
-                if let Some(finality_signature) = self
-                    .validator_matrix
-                    .create_finality_signature(block.header())
-                {
-                    let event = MainEvent::ConsensusAnnouncement(
-                        ConsensusAnnouncement::CreatedFinalitySignature(Box::new(
-                            finality_signature,
-                        )),
-                    );
-                    effects.extend(self.dispatch_event(effect_builder, rng, event));
-                }
-
-                // TODO - only gossip once we have enough finality signatures (and only if we're
-                //        a validator?)
-                // let reactor_approvals_hashes_gossiper_event =
-                //     MainEvent::ApprovalsHashesGossiper(gossiper::Event::ItemReceived {
-                //         item_id: *block.hash(),
-                //         source: Source::Ourself,
-                //     });
-                // TODO - only gossip once we have enough finality signatures (and only if we're
-                //        a validator?)
-                let reactor_block_gossiper_event =
-                    MainEvent::BlockGossiper(gossiper::Event::ItemReceived {
-                        item_id: *block.hash(),
-                        source: Source::Ourself,
-                    });
-                let reactor_event_es = MainEvent::EventStreamServer(
-                    event_stream_server::Event::BlockAdded(block.clone()),
-                );
-                let block_sync_event =
-                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
-                        block_hash: *block.hash(),
-                        height: block.height(),
-                    });
-                let deploy_buffer_event =
-                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_es));
-
-                // Consensus must be notified to keep track of executed blocks and create finality
-                // signatures.
-                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(block.header().clone()),
-                    header_hash: *block.hash(),
-                });
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
-                // effects.extend(self.dispatch_event(
-                //     effect_builder,
-                //     rng,
-                //     reactor_approvals_hashes_gossiper_event,
-                // ));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    reactor_block_gossiper_event,
-                ));
-                effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
-                effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
-                let block_accumulator_event =
-                    MainEvent::BlockAccumulator(block_accumulator::Event::ExecutedBlock {
-                        block_header: block.header().clone(),
-                    });
-                effects.extend(self.dispatch_event(effect_builder, rng, block_accumulator_event));
-
-                if let Some(era_end) = block.header().era_end() {
-                    let era_id = block.header().era_id();
-                    let validator_weights = era_end.next_era_validator_weights();
-                    self.validator_matrix
-                        .register_validator_weights(era_id, validator_weights.clone());
-
-                    let block_accumulator_event = MainEvent::BlockAccumulator(
-                        block_accumulator::Event::UpdatedValidatorMatrix { era_id },
-                    );
-                    effects.extend(self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator_event,
-                    ));
-
-                    if self
-                        .recent_switch_block_headers
-                        .last()
-                        .map_or(true, |header| {
-                            header.era_id().successor() == block.header().era_id()
-                        })
-                    {
-                        self.recent_switch_block_headers
-                            .push(block.header().clone())
-                    } else {
-                        error!("recent switch block era id mismatch");
-                    }
-                }
-
-                effects
-            }
             MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(
                 fs,
             )) => {
@@ -721,18 +620,89 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::BlockAccumulatorAnnouncement(
-                BlockAccumulatorAnnouncement::AcceptedNewBlock { block_hash },
-            ) => reactor::wrap_effects(
-                MainEvent::BlockGossiper,
-                self.block_gossiper.handle_event(
-                    effect_builder,
-                    rng,
-                    gossiper::Event::ItemReceived {
-                        item_id: block_hash,
-                        source: Source::Ourself,
-                    },
-                ),
-            ),
+                BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
+            ) => {
+                let mut effects = Effects::new();
+
+                // When this node is a validator in this era, sign and announce.
+                if let Some(finality_signature) = self
+                    .validator_matrix
+                    .create_finality_signature(block.header())
+                {
+                    let event = MainEvent::ConsensusAnnouncement(
+                        ConsensusAnnouncement::CreatedFinalitySignature(Box::new(
+                            finality_signature,
+                        )),
+                    );
+                    effects.extend(self.dispatch_event(effect_builder, rng, event));
+                }
+
+                let reactor_event_es = MainEvent::EventStreamServer(
+                    event_stream_server::Event::BlockAdded(block.clone()),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_es));
+                let block_sync_event =
+                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
+                        block_hash: *block.hash(),
+                        height: block.height(),
+                    });
+                effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
+                let deploy_buffer_event =
+                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
+                effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
+
+                // Consensus must be notified to keep track of executed blocks and create finality
+                // signatures.
+                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
+                    header: Box::new(block.header().clone()),
+                    header_hash: *block.hash(),
+                });
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+
+                if let Some(era_end) = block.header().era_end() {
+                    // let era_id = block.header().era_id();
+                    // let block_accumulator_event = MainEvent::BlockAccumulator(
+                    //     block_accumulator::Event::UpdatedValidatorMatrix { era_id },
+                    // );
+                    // effects.extend(self.dispatch_event(
+                    //     effect_builder,
+                    //     rng,
+                    //     block_accumulator_event,
+                    // ));
+
+                    match self.recent_switch_block_headers.last() {
+                        Some(header) => {
+                            match block.header().era_id().cmp(&header.era_id().successor()) {
+                                Ordering::Greater => {
+                                    self.recent_switch_block_headers = vec![block.header().clone()];
+                                }
+                                Ordering::Equal => self
+                                    .recent_switch_block_headers
+                                    .push(block.header().clone()),
+                                Ordering::Less => {
+                                    warn!("recent switch blocks has later entry than this block");
+                                }
+                            }
+                        }
+                        None => self
+                            .recent_switch_block_headers
+                            .push(block.header().clone()),
+                    }
+                }
+
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockGossiper,
+                    self.block_gossiper.handle_event(
+                        effect_builder,
+                        rng,
+                        gossiper::Event::ItemReceived {
+                            item_id: *block.hash(),
+                            source: Source::Ourself,
+                        },
+                    ),
+                ));
+                effects
+            }
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
                     finality_signature_id,
@@ -961,7 +931,7 @@ impl reactor::Reactor for MainReactor {
                 // send to linear chain
                 let reactor_event =
                     MainEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
-                        block,
+                        block: block.clone(),
                         approvals_hashes,
                         execution_results: execution_results
                             .iter()
@@ -969,6 +939,13 @@ impl reactor::Reactor for MainReactor {
                             .collect(),
                     });
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+
+                // send to block accumulator
+                let block_accumulator_event =
+                    MainEvent::BlockAccumulator(block_accumulator::Event::ExecutedBlock {
+                        block_header: block.header().clone(),
+                    });
+                effects.extend(self.dispatch_event(effect_builder, rng, block_accumulator_event));
 
                 // send to event stream
                 for (deploy_hash, deploy_header, execution_result) in execution_results {

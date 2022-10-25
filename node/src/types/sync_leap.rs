@@ -10,7 +10,9 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{crypto, system::auction::ValidatorWeights, EraId};
+#[cfg(test)]
+use casper_types::system::auction::ValidatorWeights;
+use casper_types::{crypto, EraId};
 use tracing::error;
 
 use crate::{
@@ -18,7 +20,6 @@ use crate::{
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights, FetcherItem, Item, Tag,
-        ValidatorMatrix,
     },
 };
 
@@ -39,41 +40,31 @@ pub(crate) struct SyncLeap {
 }
 
 impl SyncLeap {
-    pub(crate) fn highest_era(&self) -> EraId {
-        self.headers()
-            .map(BlockHeader::era_id)
-            .max()
-            .unwrap_or_else(|| self.trusted_block_header.era_id())
-    }
-
     pub(crate) fn switch_blocks(&self) -> impl Iterator<Item = &BlockHeader> {
         self.headers().filter(|header| header.is_switch_block())
     }
 
-    // Returns `true` if any new validator weight was registered.
-    pub(crate) fn apply_validator_weights(&self, validator_matrix: &mut ValidatorMatrix) -> bool {
-        let fault_tolerance_fraction = validator_matrix.fault_tolerance_threshold();
-        self.switch_blocks().fold(false, |mut acc, switch| {
-            if let Some(validator_weights) = switch.next_era_validator_weights() {
-                if switch.is_genesis() {
-                    acc = acc
-                        || validator_matrix.register_era_validator_weights(
-                            EraValidatorWeights::new(
-                                0.into(),
-                                validator_weights.clone(),
-                                fault_tolerance_fraction,
-                            ),
-                        );
-                }
-                acc = acc
-                    || validator_matrix.register_era_validator_weights(EraValidatorWeights::new(
-                        switch.next_block_era_id(),
-                        validator_weights.clone(),
-                        fault_tolerance_fraction,
-                    ));
-            }
-            acc
-        })
+    pub(crate) fn era_validator_weights(
+        &self,
+        fault_tolerance_fraction: Ratio<u64>,
+    ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
+        self.switch_blocks()
+            .find(|block_header| block_header.is_genesis())
+            .into_iter()
+            .flat_map(move |block_header| {
+                Some(EraValidatorWeights::new(
+                    EraId::default(),
+                    block_header.next_era_validator_weights().cloned()?,
+                    fault_tolerance_fraction,
+                ))
+            })
+            .chain(self.switch_blocks().flat_map(move |block_header| {
+                Some(EraValidatorWeights::new(
+                    block_header.era_id(),
+                    block_header.next_era_validator_weights().cloned()?,
+                    fault_tolerance_fraction,
+                ))
+            }))
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
@@ -98,6 +89,7 @@ impl SyncLeap {
         (header, signatures)
     }
 
+    #[cfg(test)]
     pub(crate) fn validators_of_highest_block(&self) -> Option<&ValidatorWeights> {
         let (highest_header, _) = self.highest_block_header();
         if highest_header.height() == 0 {

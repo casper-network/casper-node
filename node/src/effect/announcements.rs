@@ -317,11 +317,6 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
 /// A linear chain announcement.
 #[derive(Debug)]
 pub(crate) enum LinearChainAnnouncement {
-    /// A new block has been created and stored locally.
-    BlockAdded {
-        block: Box<Block>,
-        approvals_hashes: Box<ApprovalsHashes>,
-    },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -329,12 +324,6 @@ pub(crate) enum LinearChainAnnouncement {
 impl Display for LinearChainAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinearChainAnnouncement::BlockAdded {
-                block,
-                approvals_hashes: _,
-            } => {
-                write!(f, "block added {}", block.hash())
-            }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)
             }
@@ -413,7 +402,7 @@ impl Display for ContractRuntimeAnnouncement {
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockAccumulatorAnnouncement {
     /// A block which wasn't previously stored on this node has been accepted and stored.
-    AcceptedNewBlock { block_hash: BlockHash },
+    AcceptedNewBlock { block: Box<Block> },
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
@@ -424,8 +413,8 @@ pub(crate) enum BlockAccumulatorAnnouncement {
 impl Display for BlockAccumulatorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockAccumulatorAnnouncement::AcceptedNewBlock { block_hash } => {
-                write!(f, "block {} accepted", block_hash)
+            BlockAccumulatorAnnouncement::AcceptedNewBlock { block } => {
+                write!(f, "block {} accepted", block.hash())
             }
             BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
                 finality_signature_id,
