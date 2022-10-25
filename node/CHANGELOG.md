@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased (next)]
 
+### Changed
+
+* Log messages for blocked nodes have been unified and reasons for blocking peers are better tracked.
 
 ## [Unreleased]
 
