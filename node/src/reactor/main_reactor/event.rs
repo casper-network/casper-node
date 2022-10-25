@@ -17,8 +17,8 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            GossiperAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -107,8 +107,6 @@ pub(crate) enum MainEvent {
     SyncLeapFetcherRequest(#[serde(skip_serializing)] FetcherRequest<SyncLeap>),
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event),
-    #[from]
-    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
     #[from]
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
@@ -310,7 +308,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             MainEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             MainEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
-            MainEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             MainEvent::NetworkPeerBehaviorAnnouncement(_) => "BlocklistAnnouncement",
             MainEvent::DeployBufferAnnouncement(_) => "DeployBufferAnnouncement",
@@ -491,9 +488,6 @@ impl Display for MainEvent {
             }
             MainEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
-            }
-            MainEvent::LinearChainAnnouncement(ann) => {
-                write!(f, "linear chain announcement: {}", ann)
             }
             MainEvent::DeployBufferAnnouncement(ann) => {
                 write!(f, "deploy buffer announcement: {}", ann)

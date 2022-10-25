@@ -49,8 +49,7 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
-            UpgradeWatcherAnnouncement,
+            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::{BlockSynchronizerRequest, ChainspecRawBytesRequest},
@@ -524,13 +523,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(
-                fs,
-            )) => {
-                let reactor_event =
-                    MainEvent::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
             MainEvent::Consensus(event) => reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
@@ -704,20 +696,31 @@ impl reactor::Reactor for MainReactor {
                 effects
             }
             MainEvent::BlockAccumulatorAnnouncement(
-                BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
-                    finality_signature_id,
-                },
-            ) => reactor::wrap_effects(
-                MainEvent::FinalitySignatureGossiper,
-                self.finality_signature_gossiper.handle_event(
-                    effect_builder,
-                    rng,
-                    gossiper::Event::ItemReceived {
-                        item_id: *finality_signature_id,
-                        source: Source::Ourself,
-                    },
-                ),
-            ),
+                BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
+            ) => {
+                let mut effects = reactor::wrap_effects(
+                    MainEvent::FinalitySignatureGossiper,
+                    self.finality_signature_gossiper.handle_event(
+                        effect_builder,
+                        rng,
+                        gossiper::Event::ItemReceived {
+                            item_id: finality_signature.id(),
+                            source: Source::Ourself,
+                        },
+                    ),
+                );
+
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::FinalitySignature(finality_signature),
+                    ),
+                ));
+
+                effects
+            }
             MainEvent::BlockGossiper(event) => reactor::wrap_effects(
                 MainEvent::BlockGossiper,
                 self.block_gossiper.handle_event(effect_builder, rng, event),

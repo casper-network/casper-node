@@ -23,7 +23,6 @@ use self::{
 use crate::{
     components::{contract_runtime::EraValidatorsRequest, Component},
     effect::{
-        announcements::LinearChainAnnouncement,
         requests::{
             ChainspecRawBytesRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
@@ -71,7 +70,6 @@ fn outcomes_to_effects<REv>(
 where
     REv: From<StorageRequest>
         + From<NetworkRequest<Message>>
-        + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
         + Send,
@@ -103,9 +101,7 @@ where
                     .broadcast_message_to_validators(message, era_id)
                     .ignore()
             }
-            Outcome::AnnounceSignature(fs) => {
-                effect_builder.announce_finality_signature(fs).ignore()
-            }
+            Outcome::AnnounceSignature(_fs) => Effects::new(),
             Outcome::AnnounceBlock {
                 block: _,
                 approvals_hashes: _,
@@ -142,7 +138,6 @@ impl<REv> Component<REv> for LinearChainComponent
 where
     REv: From<StorageRequest>
         + From<NetworkRequest<Message>>
-        + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
         + Send,

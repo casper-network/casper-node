@@ -18,16 +18,13 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
-use crate::{
-    effect::{
-        announcements::BlockAccumulatorAnnouncement,
-        requests::{BlockAccumulatorRequest, StorageRequest},
-    },
-    types::FinalitySignatureId,
+use crate::effect::{
+    announcements::BlockAccumulatorAnnouncement,
+    requests::{BlockAccumulatorRequest, StorageRequest},
 };
 use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
@@ -103,28 +100,23 @@ where
     match should_store {
         ShouldStore::SufficientlySignedBlock { block, signatures } => {
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
-            let mut signature_ids = vec![];
-            signatures.into_iter().for_each(|signature| {
-                signature_ids.push(signature.id());
-                block_signatures.insert_proof(signature.public_key, signature.signature);
+            signatures.iter().for_each(|signature| {
+                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
             });
             effect_builder
                 .put_block_to_storage(Box::new(block.clone()))
                 .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
                 .event(move |_| Event::Stored {
                     block: Some(Box::new(block)),
-                    finality_signature_ids: signature_ids,
+                    finality_signatures: signatures,
                 })
         }
-        ShouldStore::SingleSignature(signature) => {
-            let signature_ids = vec![signature.id()];
-            effect_builder
-                .put_finality_signature_to_storage(signature)
-                .event(move |_| Event::Stored {
-                    block: None,
-                    finality_signature_ids: signature_ids,
-                })
-        }
+        ShouldStore::SingleSignature(signature) => effect_builder
+            .put_finality_signature_to_storage(signature.clone())
+            .event(move |_| Event::Stored {
+                block: None,
+                finality_signatures: vec![signature],
+            }),
         ShouldStore::Nothing => Effects::new(),
     }
 }
@@ -518,7 +510,7 @@ impl BlockAccumulator {
         &self,
         effect_builder: EffectBuilder<REv>,
         block: Option<Box<Block>>,
-        finality_signature_ids: Vec<FinalitySignatureId>,
+        finality_signatures: Vec<FinalitySignature>,
     ) -> Effects<Event>
     where
         REv: From<BlockAccumulatorAnnouncement> + Send,
@@ -528,10 +520,10 @@ impl BlockAccumulator {
         } else {
             Effects::new()
         };
-        for finality_signature_id in finality_signature_ids {
+        for finality_signature in finality_signatures {
             effects.extend(
                 effect_builder
-                    .announce_finality_signature_accepted(finality_signature_id)
+                    .announce_finality_signature_accepted(Box::new(finality_signature))
                     .ignore(),
             );
         }
@@ -575,8 +567,8 @@ where
             }
             Event::Stored {
                 block,
-                finality_signature_ids,
-            } => self.handle_stored(effect_builder, block, finality_signature_ids),
+                finality_signatures,
+            } => self.handle_stored(effect_builder, block, finality_signatures),
         }
     }
 }

@@ -159,8 +159,8 @@ use crate::{
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
-    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+    GossiperAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -857,15 +857,13 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
-        finality_signature_id: FinalitySignatureId,
+        finality_signature: Box<FinalitySignature>,
     ) where
         REv: From<BlockAccumulatorAnnouncement>,
     {
         self.event_queue
             .schedule(
-                BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
-                    finality_signature_id: Box::new(finality_signature_id),
-                },
+                BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
                 QueueKind::Regular,
             )
             .await;
@@ -1877,19 +1875,6 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 PeerBehaviorAnnouncement::OffenseCommitted(Box::new(peer)),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// The linear chain has stored a new finality signature.
-    pub(crate) async fn announce_finality_signature(self, fs: Box<FinalitySignature>)
-    where
-        REv: From<LinearChainAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                LinearChainAnnouncement::NewFinalitySignature(fs),
                 QueueKind::Regular,
             )
             .await

@@ -4,7 +4,7 @@ use derive_more::From;
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, BlockHeader, FinalitySignature, FinalitySignatureId, NodeId},
+    types::{Block, BlockHeader, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -24,7 +24,7 @@ pub(crate) enum Event {
     },
     Stored {
         block: Option<Box<Block>>,
-        finality_signature_ids: Vec<FinalitySignatureId>,
+        finality_signatures: Vec<FinalitySignature>,
     },
 }
 
@@ -55,13 +55,13 @@ impl Display for Event {
             }
             Event::Stored {
                 block,
-                finality_signature_ids,
+                finality_signatures,
             } => {
                 write!(
                     f,
                     "stored {:?} and {} finality signatures",
                     block.as_ref().map(|block| *block.hash()),
-                    finality_signature_ids.len()
+                    finality_signatures.len()
                 )
             }
         }

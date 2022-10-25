@@ -24,7 +24,7 @@ use crate::{
     effect::Responder,
     types::{
         ApprovalsHashes, Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalitySignatureId, FinalizedBlock, GossiperItem, NodeId,
+        FinalitySignatureId, FinalizedBlock, GossiperItem, Item, NodeId,
     },
     utils::Source,
 };
@@ -314,23 +314,6 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
     }
 }
 
-/// A linear chain announcement.
-#[derive(Debug)]
-pub(crate) enum LinearChainAnnouncement {
-    /// New finality signature received.
-    NewFinalitySignature(Box<FinalitySignature>),
-}
-
-impl Display for LinearChainAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            LinearChainAnnouncement::NewFinalitySignature(fs) => {
-                write!(f, "new finality signature {}", fs.block_hash)
-            }
-        }
-    }
-}
-
 /// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum UpgradeWatcherAnnouncement {
@@ -406,7 +389,7 @@ pub(crate) enum BlockAccumulatorAnnouncement {
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
-        finality_signature_id: Box<FinalitySignatureId>,
+        finality_signature: Box<FinalitySignature>,
     },
 }
 
@@ -416,10 +399,8 @@ impl Display for BlockAccumulatorAnnouncement {
             BlockAccumulatorAnnouncement::AcceptedNewBlock { block } => {
                 write!(f, "block {} accepted", block.hash())
             }
-            BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature {
-                finality_signature_id,
-            } => {
-                write!(f, "finality signature {} accepted", finality_signature_id)
+            BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
+                write!(f, "finality signature {} accepted", finality_signature.id())
             }
         }
     }
