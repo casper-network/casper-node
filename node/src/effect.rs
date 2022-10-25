@@ -140,7 +140,7 @@ use crate::{
         },
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::FromIncoming,
+        small_network::{blocklist::BlocklistJustification, FromIncoming},
     },
     contract_runtime::SpeculativeExecutionState,
     effect::announcements::ChainSynchronizerAnnouncement,
@@ -1657,7 +1657,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
+    /// Blocks a specific peer due to a transgression.
     pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
     where
         REv: From<BlocklistAnnouncement>,
@@ -1666,6 +1666,7 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 BlocklistAnnouncement::OffenseCommitted {
                     offender: Box::new(peer),
+                    justification: BlocklistJustification::Unspecified,
                 },
                 QueueKind::Regular,
             )
