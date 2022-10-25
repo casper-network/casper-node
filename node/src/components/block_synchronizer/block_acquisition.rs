@@ -27,6 +27,7 @@ use crate::{
     NodeRng,
 };
 
+#[allow(dead_code)] // todo!() do a pass on error variants
 #[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {
     InvalidStateTransition,

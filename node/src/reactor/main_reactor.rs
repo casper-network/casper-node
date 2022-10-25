@@ -103,7 +103,6 @@ pub(crate) struct MainReactor {
     address_gossiper: Gossiper<GossipedAddress, MainEvent>,
     deploy_gossiper: Gossiper<Deploy, MainEvent>,
     block_gossiper: Gossiper<Block, MainEvent>,
-    approvals_hashes_gossiper: Gossiper<ApprovalsHashes, MainEvent>,
     finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
 
     // record retrieval
@@ -245,12 +244,6 @@ impl reactor::Reactor for MainReactor {
             gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let approvals_hashes_gossiper = Gossiper::new_for_partial_items(
-            "approvals_hashes_gossiper",
-            config.gossip,
-            gossiper::get_approvals_hashes_from_storage::<ApprovalsHashes, MainEvent>,
-            registry,
-        )?;
         let finality_signature_gossiper = Gossiper::new_for_partial_items(
             "finality_signature_gossiper",
             config.gossip,
@@ -303,7 +296,6 @@ impl reactor::Reactor for MainReactor {
 
             block_gossiper,
             deploy_gossiper,
-            approvals_hashes_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,
@@ -693,25 +685,6 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_id,
             )) => Effects::new(),
-            MainEvent::ApprovalsHashesGossiper(event) => reactor::wrap_effects(
-                MainEvent::ApprovalsHashesGossiper,
-                self.approvals_hashes_gossiper
-                    .handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::ApprovalsHashesGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::ApprovalsHashesGossiper,
-                self.approvals_hashes_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            MainEvent::ApprovalsHashesGossiperAnnouncement(
-                GossiperAnnouncement::NewCompleteItem(gossiped_approvals_hashes_id),
-            ) => {
-                error!(%gossiped_approvals_hashes_id, "gossiper should not announce new approvals hashes");
-                Effects::new()
-            }
-            MainEvent::ApprovalsHashesGossiperAnnouncement(
-                GossiperAnnouncement::FinishedGossiping(_gossiped_approvals_hashes_id),
-            ) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
                 // Finality signature received via broadcast.

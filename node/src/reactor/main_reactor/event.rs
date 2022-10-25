@@ -130,21 +130,11 @@ pub(crate) enum MainEvent {
     #[from]
     BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSynchronizerRequest),
 
-    // todo!() - needed?
-    #[from]
-    ApprovalsHashesGossiper(#[serde(skip_serializing)] gossiper::Event<ApprovalsHashes>),
-    #[from]
-    ApprovalsHashesGossiperIncoming(GossiperIncoming<ApprovalsHashes>),
-    #[from]
-    ApprovalsHashesGossiperAnnouncement(
-        #[serde(skip_serializing)] GossiperAnnouncement<ApprovalsHashes>,
-    ),
     #[from]
     ApprovalsHashesFetcher(#[serde(skip_serializing)] fetcher::Event<ApprovalsHashes>),
     #[from]
     ApprovalsHashesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<ApprovalsHashes>),
 
-    // todo!() - needed?
     #[from]
     BlockGossiper(#[serde(skip_serializing)] gossiper::Event<Block>),
     #[from]
@@ -263,7 +253,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::DeployFetcher(_) => "DeployFetcher",
             MainEvent::DeployGossiper(_) => "DeployGossiper",
-            MainEvent::ApprovalsHashesGossiper(_) => "ApprovalsHashesGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
             MainEvent::BlockValidator(_) => "BlockValidator",
@@ -311,7 +300,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
-            MainEvent::ApprovalsHashesGossiperIncoming(_) => "ApprovalsHashesGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
@@ -321,9 +309,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             MainEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             MainEvent::ContractRuntime(_) => "ContractRuntime",
-            MainEvent::ApprovalsHashesGossiperAnnouncement(_) => {
-                "ApprovalsHashesGossiperAnnouncement"
-            }
             MainEvent::FinalitySignatureGossiperAnnouncement(_) => {
                 "FinalitySignatureGossiperAnnouncement"
             }
@@ -361,7 +346,6 @@ impl Display for MainEvent {
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             MainEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
-            MainEvent::ApprovalsHashesGossiper(event) => write!(f, "block gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -476,9 +460,6 @@ impl Display for MainEvent {
             MainEvent::DeployGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
             }
-            MainEvent::ApprovalsHashesGossiperAnnouncement(ann) => {
-                write!(f, "block gossiper announcement: {}", ann)
-            }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
                 write!(f, "block signature gossiper announcement: {}", ann)
             }
@@ -496,7 +477,6 @@ impl Display for MainEvent {
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::ApprovalsHashesGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
@@ -571,12 +551,6 @@ impl From<NetworkRequest<gossiper::Message<Deploy>>> for MainEvent {
 
 impl From<NetworkRequest<gossiper::Message<Block>>> for MainEvent {
     fn from(request: NetworkRequest<gossiper::Message<Block>>) -> Self {
-        MainEvent::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<NetworkRequest<gossiper::Message<ApprovalsHashes>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<ApprovalsHashes>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
