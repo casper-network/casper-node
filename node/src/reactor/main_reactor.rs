@@ -162,12 +162,15 @@ impl reactor::Reactor for MainReactor {
 
         let protocol_version = chainspec.protocol_config.version;
 
-        let validator_matrix =
-            ValidatorMatrix::new(chainspec.highway_config.finality_threshold_fraction);
-
         let trusted_hash = config.value().node.trusted_hash;
-
         let (root_dir, config) = config.into_parts();
+        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
+        let validator_matrix = ValidatorMatrix::new(
+            chainspec.highway_config.finality_threshold_fraction,
+            our_secret_key.clone(),
+            our_public_key.clone(),
+        );
+
         let storage_config = WithDir::new(&root_dir, config.storage.clone());
 
         let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
@@ -195,11 +198,10 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let node_key_pair = config.consensus.load_keys(&root_dir)?;
         let small_network = SmallNetwork::new(
             config.network.clone(),
             network_identity,
-            Some(node_key_pair),
+            Some((our_secret_key.clone(), our_public_key.clone())),
             registry,
             chainspec.as_ref(),
             validator_matrix.clone(),
@@ -260,7 +262,6 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         // consensus
-        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let consensus = EraSupervisor::new(
             storage.root_path(),
             our_secret_key,
@@ -279,7 +280,8 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             highest_block_height,
         );
-        let block_synchronizer = BlockSynchronizer::new(config.block_synchronizer);
+        let block_synchronizer =
+            BlockSynchronizer::new(config.block_synchronizer, validator_matrix.clone());
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
         let linear_chain = LinearChainComponent::new(
@@ -526,24 +528,13 @@ impl reactor::Reactor for MainReactor {
                 block,
                 approvals_hashes,
             }) => {
-                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(block.header().clone()),
-                    header_hash: *block.hash(),
-                });
-
                 let mut effects = Effects::new();
 
-                // todo! - make this proper
-                if block.height() == 0
-                    && block
-                        .header()
-                        .next_era_validator_weights()
-                        .map_or(false, |weights| {
-                            weights.contains_key(self.consensus.public_key())
-                        })
+                // When this node is a validator in this era, sign and announce.
+                if let Some(finality_signature) = self
+                    .validator_matrix
+                    .create_finality_signature(block.header())
                 {
-                    let finality_signature =
-                        self.consensus.create_finality_signature(block.header());
                     let event = MainEvent::ConsensusAnnouncement(
                         ConsensusAnnouncement::CreatedFinalitySignature(Box::new(
                             finality_signature,
@@ -577,6 +568,13 @@ impl reactor::Reactor for MainReactor {
                 let deploy_buffer_event =
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_es));
+
+                // Consensus must be notified to keep track of executed blocks and create finality
+                // signatures.
+                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
+                    header: Box::new(block.header().clone()),
+                    header_hash: *block.hash(),
+                });
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 // effects.extend(self.dispatch_event(
                 //     effect_builder,

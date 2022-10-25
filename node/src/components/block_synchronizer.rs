@@ -116,13 +116,13 @@ pub(crate) struct BlockSynchronizer {
 }
 
 impl BlockSynchronizer {
-    pub(crate) fn new(config: Config) -> Self {
+    pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
         BlockSynchronizer {
             status: ComponentStatus::Uninitialized,
             timeout: config.timeout(),
             forward: None,
             historical: None,
-            validator_matrix: Default::default(),
+            validator_matrix,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
             peer_refresh_interval: config.peer_refresh_interval(),
             disabled: false,

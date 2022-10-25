@@ -36,7 +36,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentStatus},
@@ -789,12 +789,26 @@ impl ContractRuntime {
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
-            upcoming_era_validators,
+            mut upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
             effect_builder
                 .announce_commit_step_success(current_era_id, step_execution_journal)
                 .await;
+
+            if current_era_id.is_genesis() {
+                match upcoming_era_validators
+                    .get(&current_era_id.successor())
+                    .cloned()
+                {
+                    Some(era_validators) => {
+                        upcoming_era_validators.insert(EraId::default(), era_validators);
+                    }
+                    None => {
+                        fatal!(effect_builder, "Missing era 1 validators").await;
+                    }
+                }
+            }
 
             effect_builder
                 .announce_upcoming_era_validators(current_era_id, upcoming_era_validators)

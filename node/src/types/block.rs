@@ -900,6 +900,13 @@ impl BlockHeader {
         self.era_id().is_genesis() && self.height() == 0
     }
 
+    /// Returns `true` if this key is in the validator set of the next era.
+    /// Returns `None` if this is not a switch block.
+    pub(crate) fn is_next_era_validator(&self, key: &PublicKey) -> Option<bool> {
+        self.next_era_validator_weights()
+            .map(|weights| weights.contains_key(key))
+    }
+
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()

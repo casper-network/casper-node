@@ -13,7 +13,9 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
 
-use casper_types::{EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey, SecretKey, U512};
+
+use super::{BlockHeader, FinalitySignature};
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) enum SignatureWeight {
@@ -25,25 +27,33 @@ pub(crate) enum SignatureWeight {
     Sufficient,
 }
 
-#[derive(Clone, DataSize, Serialize, Default)]
+#[derive(Clone, DataSize)]
 pub(crate) struct ValidatorMatrix {
     inner: Arc<RwLock<BTreeMap<EraId, EraValidatorWeights>>>,
     #[data_size(skip)]
     finality_threshold_fraction: Ratio<u64>,
+    secret_signing_key: Arc<SecretKey>,
+    public_signing_key: PublicKey,
 }
 
 impl ValidatorMatrix {
-    pub(crate) fn new(finality_threshold_fraction: Ratio<u64>) -> Self {
+    pub(crate) fn new(
+        finality_threshold_fraction: Ratio<u64>,
+        secret_signing_key: Arc<SecretKey>,
+        public_signing_key: PublicKey,
+    ) -> Self {
         let inner = Arc::new(RwLock::new(BTreeMap::new()));
         ValidatorMatrix {
             inner,
             finality_threshold_fraction,
+            secret_signing_key,
+            public_signing_key,
         }
     }
 
     /// Creates a new validator matrix with just a single validator.
     #[cfg(test)]
-    pub(crate) fn new_with_validator(public_key: PublicKey) -> Self {
+    pub(crate) fn new_with_validator(public_key: PublicKey, secret_key: Arc<SecretKey>) -> Self {
         let finality_threshold_fraction = Ratio::new(1, 3);
         let era_id = EraId::new(0);
         let weights = EraValidatorWeights::new(
@@ -54,6 +64,8 @@ impl ValidatorMatrix {
         ValidatorMatrix {
             inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
             finality_threshold_fraction,
+            public_signing_key: public_key,
+            secret_signing_key: secret_key,
         }
     }
 
@@ -201,6 +213,24 @@ impl ValidatorMatrix {
             .rev()
             .take(n)
             .any(|validator_weights| validator_weights.is_validator(public_key))
+    }
+
+    pub(crate) fn create_finality_signature(
+        &self,
+        block_header: &BlockHeader,
+    ) -> Option<FinalitySignature> {
+        if self
+            .is_validator_in_era(block_header.era_id(), &self.public_signing_key)
+            .unwrap_or(false)
+        {
+            return Some(FinalitySignature::create(
+                block_header.block_hash(),
+                block_header.era_id(),
+                &self.secret_signing_key,
+                self.public_signing_key.clone(),
+            ));
+        }
+        None
     }
 
     fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
