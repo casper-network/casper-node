@@ -4,7 +4,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::crypto;
+use casper_types::{crypto, EraId};
 use serde::Serialize;
 
 use crate::{
@@ -81,6 +81,19 @@ pub(crate) enum BlocklistJustification {
     },
     /// A network address was received that should only be received via direct gossip.
     SentGossipedAddress,
+    /// An invalid consensus value was received.
+    SentInvalidConsensusValue {
+        /// The era for which the invalid value was destined.
+        era: EraId,
+    },
+    /// An invalid consensus message was received.
+    SentInvalidConsensusMessage {
+        /// Actual validation error.
+        #[serde(skip_serializing)]
+        error: anyhow::Error,
+    },
+    /// Peer misbehaved during consensus and is blocked for it.
+    BadConsensusBehavior,
 }
 
 impl Display for BlocklistJustification {
@@ -142,6 +155,15 @@ impl Display for BlocklistJustification {
             }
             BlocklistJustification::SentGossipedAddress => {
                 f.write_str("sent a network address via response, which is only ever gossiped")
+            }
+            BlocklistJustification::SentInvalidConsensusValue { era } => {
+                write!(f, "sent an invalid consensus value in {}", era)
+            }
+            BlocklistJustification::SentInvalidConsensusMessage { error } => {
+                write!(f, "sent an invalid consensus message: {}", error)
+            }
+            BlocklistJustification::BadConsensusBehavior => {
+                f.write_str("sent invalid data in consensus")
             }
         }
     }
