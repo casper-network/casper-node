@@ -1658,15 +1658,21 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Blocks a specific peer due to a transgression.
-    pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
-    where
+    ///
+    /// This function will also emit a log message for the block.
+    pub(crate) async fn announce_block_peer_with_justification(
+        self,
+        offender: NodeId,
+        justification: BlocklistJustification,
+    ) where
         REv: From<BlocklistAnnouncement>,
     {
+        warn!(%offender, %justification, "peer will be blocked");
         self.event_queue
             .schedule(
                 BlocklistAnnouncement::OffenseCommitted {
-                    offender: Box::new(peer),
-                    justification: BlocklistJustification::Unspecified,
+                    offender: Box::new(offender),
+                    justification: Box::new(justification),
                 },
                 QueueKind::Regular,
             )

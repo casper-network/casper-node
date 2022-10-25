@@ -1084,7 +1084,7 @@ impl EraSupervisor {
         sender: NodeId,
     ) -> Effects<Event> {
         effect_builder
-            .announce_disconnect_from_peer(sender)
+            .announce_block_peer_with_justification(sender, todo!())
             .ignore()
     }
 

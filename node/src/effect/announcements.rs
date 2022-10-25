@@ -230,7 +230,7 @@ pub(crate) enum BlocklistAnnouncement {
         /// The peer ID of the offending node.
         offender: Box<NodeId>,
         /// Justification for blocking the peer.
-        justification: BlocklistJustification,
+        justification: Box<BlocklistJustification>,
     },
 }
 
