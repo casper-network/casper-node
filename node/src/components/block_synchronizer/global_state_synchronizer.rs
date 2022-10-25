@@ -221,7 +221,7 @@ impl GlobalStateSynchronizer {
 
         self.touch();
 
-        // TODO - what if we got this from storage - should we rewrite it?
+        // todo! - what if we got this from storage - should we rewrite it?
         effect_builder
             .put_trie_and_find_missing_descendant_trie_keys(*trie_raw)
             .event(move |put_trie_result| Event::PutTrieResult {

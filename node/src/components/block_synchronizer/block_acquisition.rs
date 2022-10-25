@@ -27,7 +27,7 @@ use crate::{
     NodeRng,
 };
 
-#[allow(dead_code)] // todo!() do a pass on error variants
+#[allow(dead_code)] // todo! do a pass on error variants
 #[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {
     InvalidStateTransition,
@@ -563,7 +563,7 @@ impl BlockAcquisitionState {
                                 | Ok(ExecutionResultsAcquisition::Complete { .. }) => {
                                     return Err(Error::InvalidStateTransition)
                                 }
-                                // todo!() - when `apply_deploy_hashes` returns an
+                                // todo! - when `apply_deploy_hashes` returns an
                                 // `ExecutionResultToDeployHashLengthDiscrepancy`, we must
                                 // disconnect from the peer that gave us the execution results
                                 // and start over using another peer.
@@ -598,7 +598,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
                 return Ok(None);
-                // todo: return Err(Error::InvalidAttemptToApplyExecutionResults)
+                // todo!(): return Err(Error::InvalidAttemptToApplyExecutionResults)
             }
         };
         *self = new_state;
@@ -867,10 +867,7 @@ impl BlockAcquisitionAction {
     ) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::ExecutionResultsRootHash {
-                block_hash,
-                global_state_root_hash,
-            },
+            need_next: NeedNext::ExecutionResultsRootHash(block_hash, global_state_root_hash),
         }
     }
 

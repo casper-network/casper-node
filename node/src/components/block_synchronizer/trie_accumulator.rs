@@ -231,7 +231,7 @@ where
                 peers,
             }) => {
                 let trie_id = TrieOrChunkId(0, hash);
-                // TODO - use more than one peer at a time?
+                // todo! - use more than one peer at a time?
                 let peer = match peers.last() {
                     Some(peer) => *peer,
                     None => {

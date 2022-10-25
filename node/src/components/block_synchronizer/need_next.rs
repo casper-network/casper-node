@@ -10,6 +10,8 @@ use super::execution_results_acquisition::ExecutionResultsChecksum;
 #[derive(DataSize, Debug, Clone)]
 pub(crate) enum NeedNext {
     Nothing,
+    Peers(BlockHash),
+    EraValidators(EraId),
     BlockHeader(BlockHash),
     BlockBody(BlockHash),
     ApprovalsHashes(BlockHash, Box<Block>),
@@ -19,17 +21,11 @@ pub(crate) enum NeedNext {
     DeployById(BlockHash, DeployId),
     /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
-    ExecutionResultsRootHash {
-        block_hash: BlockHash,
-        global_state_root_hash: Digest,
-    },
-    // todo!(): Isn't the block hash already in the ID?
+    ExecutionResultsRootHash(BlockHash, Digest),
     ExecutionResults(
         BlockHash,
         BlockExecutionResultsOrChunkId,
         ExecutionResultsChecksum,
     ),
-    EraValidators(EraId),
-    Peers(BlockHash),
     MarkComplete(BlockHash, u64),
 }
