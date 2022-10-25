@@ -2179,7 +2179,7 @@ where
                     .announce_block_peer_with_justification(
                         peer,
                         BlocklistJustification::SentBlockThatExecutedIncorrectly {
-                            block_hash: block.hash().clone(),
+                            block_hash: *block.hash(),
                         },
                     )
                     .await;
