@@ -6,6 +6,7 @@ use tracing::{debug, error, info};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
+use crate::components::ValidatorBoundComponent;
 use crate::{
     components::{
         block_accumulator::{StartingWith, SyncInstruction},
@@ -477,7 +478,6 @@ impl MainReactor {
                             .register_era_validator_weights(validator_weights);
                     }
 
-                    // todo! maybe register sync_leap to accumulator instead
                     self.block_synchronizer.register_sync_leap(
                         &*best_available,
                         from_peers,
@@ -486,9 +486,9 @@ impl MainReactor {
                             .core_config
                             .sync_leap_simultaneous_peer_requests,
                     );
-
-                    self.block_accumulator
-                        .register_updated_validator_matrix(effect_builder);
+                    self.block_accumulator.handle_validators(effect_builder);
+                    // todo!: should we update network validator tracking here?
+                    //self.small_network.handle_validators(effect_builder);
                     let effects = effect_builder.immediately().event(|_| {
                         MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                     });

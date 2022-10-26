@@ -2,6 +2,8 @@ mod block_acceptor;
 mod config;
 mod error;
 mod event;
+mod starting_with;
+mod sync_instruction;
 
 use std::{collections::BTreeMap, iter};
 
@@ -24,51 +26,13 @@ use crate::{
     NodeRng,
 };
 
+use crate::components::ValidatorBoundComponent;
 use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 use error::Error;
 pub(crate) use event::Event;
-
-#[derive(Debug)]
-pub(crate) enum SyncInstruction {
-    Leap,
-    CaughtUp,
-    BlockExec {
-        next_block_hash: Option<BlockHash>,
-    },
-    BlockSync {
-        block_hash: BlockHash,
-        should_fetch_execution_state: bool,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum StartingWith {
-    ExecutableBlock(BlockHash, u64),
-    BlockIdentifier(BlockHash, u64),
-    SyncedBlockIdentifier(BlockHash, u64),
-    Hash(BlockHash),
-}
-
-impl StartingWith {
-    pub(crate) fn block_hash(&self) -> BlockHash {
-        match self {
-            StartingWith::BlockIdentifier(hash, _) => *hash,
-            StartingWith::SyncedBlockIdentifier(hash, _) => *hash,
-            StartingWith::ExecutableBlock(hash, _) => *hash,
-            StartingWith::Hash(hash) => *hash,
-        }
-    }
-
-    pub(crate) fn should_fetch_execution_state(&self) -> bool {
-        match self {
-            StartingWith::ExecutableBlock(..) => false,
-            StartingWith::BlockIdentifier(..)
-            | StartingWith::SyncedBlockIdentifier(..)
-            | StartingWith::Hash(_) => true,
-        }
-    }
-}
+pub(crate) use starting_with::StartingWith;
+pub(crate) use sync_instruction::SyncInstruction;
 
 /// A cache of pending blocks and finality signatures that are gossiped to this node.
 ///
@@ -85,38 +49,6 @@ pub(crate) struct BlockAccumulator {
     last_progress: Timestamp,
     /// The height of the subjective local tip of the chain.
     local_tip: Option<u64>,
-}
-
-fn store_block_and_finality_signatures<REv>(
-    effect_builder: EffectBuilder<REv>,
-    should_store: ShouldStore,
-) -> Effects<Event>
-where
-    REv: From<StorageRequest> + Send,
-{
-    error!(?should_store, "XXXXX - store_block_and_finality_signatures");
-    match should_store {
-        ShouldStore::SufficientlySignedBlock { block, signatures } => {
-            let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
-            signatures.iter().for_each(|signature| {
-                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
-            });
-            effect_builder
-                .put_block_to_storage(Box::new(block.clone()))
-                .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
-                .event(move |_| Event::Stored {
-                    block: Some(Box::new(block)),
-                    finality_signatures: signatures,
-                })
-        }
-        ShouldStore::SingleSignature(signature) => effect_builder
-            .put_finality_signature_to_storage(signature.clone())
-            .event(move |_| Event::Stored {
-                block: None,
-                finality_signatures: vec![signature],
-            }),
-        ShouldStore::Nothing => Effects::new(),
-    }
 }
 
 impl BlockAccumulator {
@@ -395,32 +327,6 @@ impl BlockAccumulator {
         }
     }
 
-    pub(crate) fn register_updated_validator_matrix<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event>
-    where
-        REv: From<StorageRequest> + Send,
-    {
-        let mut effects = Effects::new();
-
-        for block_acceptor in self
-            .block_acceptors
-            .values_mut()
-            .filter(|acceptor| !acceptor.has_sufficient_finality())
-        {
-            if let Some(era_id) = block_acceptor.era_id() {
-                if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                    effects.extend(store_block_and_finality_signatures(
-                        effect_builder,
-                        block_acceptor.should_store_block(&evw),
-                    ));
-                }
-            }
-        }
-        effects
-    }
-
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
     pub(crate) fn register_local_tip(&mut self, height: u64) {
@@ -499,14 +405,27 @@ impl BlockAccumulator {
     }
 }
 
-impl<REv> Component<REv> for BlockAccumulator
-where
+pub(crate) trait ReactorEvent:
+    From<StorageRequest>
+    + From<PeerBehaviorAnnouncement>
+    + From<BlockAccumulatorAnnouncement>
+    + From<BlockCompleteConfirmationRequest>
+    + Send
+    + 'static
+{
+}
+
+impl<REv> ReactorEvent for REv where
     REv: From<StorageRequest>
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
         + From<BlockCompleteConfirmationRequest>
-        + Send,
+        + Send
+        + 'static
 {
+}
+
+impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
     type Event = Event;
 
     fn handle_event(
@@ -520,6 +439,7 @@ where
                 block_hash,
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
+            Event::ValidatorMatrixUpdated => self.handle_validators(effect_builder),
             Event::ReceivedBlock { block, sender } => {
                 self.register_block(effect_builder, *block, sender)
             }
@@ -538,5 +458,57 @@ where
                 finality_signatures,
             } => self.handle_stored(effect_builder, block, finality_signatures),
         }
+    }
+}
+
+impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
+    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
+        let mut effects = Effects::new();
+        for block_acceptor in self
+            .block_acceptors
+            .values_mut()
+            .filter(|acceptor| false == acceptor.has_sufficient_finality())
+        {
+            if let Some(era_id) = block_acceptor.era_id() {
+                if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
+                    effects.extend(store_block_and_finality_signatures(
+                        effect_builder,
+                        block_acceptor.should_store_block(&evw),
+                    ));
+                }
+            }
+        }
+        effects
+    }
+}
+
+fn store_block_and_finality_signatures<REv>(
+    effect_builder: EffectBuilder<REv>,
+    should_store: ShouldStore,
+) -> Effects<Event>
+where
+    REv: From<StorageRequest> + Send,
+{
+    match should_store {
+        ShouldStore::SufficientlySignedBlock { block, signatures } => {
+            let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
+            signatures.iter().for_each(|signature| {
+                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
+            });
+            effect_builder
+                .put_block_to_storage(Box::new(block.clone()))
+                .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
+                .event(move |_| Event::Stored {
+                    block: Some(Box::new(block)),
+                    finality_signatures: signatures,
+                })
+        }
+        ShouldStore::SingleSignature(signature) => effect_builder
+            .put_finality_signature_to_storage(signature.clone())
+            .event(move |_| Event::Stored {
+                block: None,
+                finality_signatures: vec![signature],
+            }),
+        ShouldStore::Nothing => Effects::new(),
     }
 }

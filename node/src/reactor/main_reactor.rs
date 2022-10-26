@@ -601,16 +601,34 @@ impl reactor::Reactor for MainReactor {
                 });
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
 
+                // if it is a switch block, get validators
                 if let Some(era_end) = block.header().era_end() {
-                    // let era_id = block.header().era_id();
-                    // let block_accumulator_event = MainEvent::BlockAccumulator(
-                    //     block_accumulator::Event::UpdatedValidatorMatrix { era_id },
-                    // );
-                    // effects.extend(self.dispatch_event(
-                    //     effect_builder,
-                    //     rng,
-                    //     block_accumulator_event,
-                    // ));
+                    let era_id = block.header().era_id();
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ValidatorMatrixUpdated,
+                        ),
+                    ));
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::BlockSynchronizer,
+                        self.block_synchronizer.handle_event(
+                            effect_builder,
+                            rng,
+                            block_synchronizer::Event::ValidatorMatrixUpdated,
+                        ),
+                    ));
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Network,
+                        self.small_network.handle_event(
+                            effect_builder,
+                            rng,
+                            small_network::Event::ValidatorMatrixUpdated,
+                        ),
+                    ));
 
                     match self.recent_switch_block_headers.last() {
                         Some(header) => {

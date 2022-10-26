@@ -20,6 +20,7 @@ use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::{TimeDiff, Timestamp};
 
+use crate::components::ValidatorBoundComponent;
 use crate::{
     components::{
         fetcher::{Error, FetchResult, FetchedData},
@@ -939,6 +940,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
 
                     // triggered indirectly via need next effects, and they perpetuate
                     // another need next to keep it going
+                    Event::ValidatorMatrixUpdated => {
+                        self.handle_validators(effect_builder);
+                        self.hook_need_next(effect_builder, Effects::new())
+                    }
                     Event::BlockHeaderFetched(result) => {
                         let effects = self.block_header_fetched(result);
                         self.hook_need_next(effect_builder, effects)
@@ -1006,5 +1011,17 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 }
             }
         }
+    }
+}
+
+impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockSynchronizer {
+    fn handle_validators(&mut self, _: EffectBuilder<REv>) -> Effects<Self::Event> {
+        if let Some(block_builder) = &mut self.forward {
+            block_builder.register_era_validator_weights(&self.validator_matrix);
+        }
+        if let Some(block_builder) = &mut self.historical {
+            block_builder.register_era_validator_weights(&self.validator_matrix);
+        }
+        Effects::new()
     }
 }

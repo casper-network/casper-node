@@ -13,6 +13,7 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
+use crate::types::ValidatorMatrix;
 use crate::{
     components::block_synchronizer::{
         block_acquisition::FinalitySignatureAcceptance,
@@ -221,6 +222,16 @@ impl BlockBuilder {
                 error!(%err);
                 self.abort();
                 BlockAcquisitionAction::noop()
+            }
+        }
+    }
+
+    pub(super) fn register_era_validator_weights(&mut self, validator_matrix: &ValidatorMatrix) {
+        if self.validator_weights.is_some() || self.era_id.is_none() {}
+
+        if let Some(era_id) = self.era_id {
+            if let Some(evw) = validator_matrix.validator_weights(era_id) {
+                self.validator_weights = Some(evw);
             }
         }
     }

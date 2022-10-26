@@ -165,3 +165,7 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
 }
+
+pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
+    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event>;
+}

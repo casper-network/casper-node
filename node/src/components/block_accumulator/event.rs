@@ -11,6 +11,7 @@ use crate::{
 pub(crate) enum Event {
     #[from]
     Request(BlockAccumulatorRequest),
+    ValidatorMatrixUpdated,
     ReceivedBlock {
         block: Box<Block>,
         sender: NodeId,
@@ -38,6 +39,9 @@ impl Display for Event {
                     "block accumulator peers request for block: {}",
                     block_hash
                 )
+            }
+            Event::ValidatorMatrixUpdated => {
+                write!(f, "validator matrix updated")
             }
             Event::ReceivedBlock { block, sender } => {
                 write!(f, "received {} from {}", block, sender)

@@ -91,6 +91,7 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
+use crate::components::ValidatorBoundComponent;
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent},
     effect::{
@@ -1121,14 +1122,10 @@ where
                 );
 
                 effects
-            } /* (
-               *     ComponentStatus::Initialized,
-               *     Event::ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement::SyncFinished),
-               * ) => {
-               *     self.context.is_syncing().store(false, Ordering::SeqCst);
-               *     self.close_incoming_connections();
-               *     Effects::new()
-               * } */
+            }
+            (ComponentStatus::Initialized, Event::ValidatorMatrixUpdated) => {
+                self.handle_validators(effect_builder)
+            }
         }
     }
 }
@@ -1146,6 +1143,23 @@ where
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
+    }
+}
+
+impl<REv, P> ValidatorBoundComponent<REv> for SmallNetwork<REv, P>
+where
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>
+        + From<PeerBehaviorAnnouncement>,
+    P: Payload,
+{
+    fn handle_validators(&mut self, _: EffectBuilder<REv>) -> Effects<Self::Event> {
+        // todo! make networking component refresh itself from self.validator matrix
+        Effects::new()
     }
 }
 
