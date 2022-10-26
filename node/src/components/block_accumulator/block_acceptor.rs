@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use casper_types::{EraId, PublicKey, Timestamp};
 
@@ -21,7 +21,6 @@ pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     block: Option<Block>,
     signatures: BTreeMap<PublicKey, FinalitySignature>,
-    era_validator_weights: Option<EraValidatorWeights>,
     peers: Vec<NodeId>,
     has_sufficient_finality: bool,
     last_progress: Timestamp,
@@ -42,23 +41,6 @@ impl BlockAcceptor {
     pub(super) fn new(block_hash: BlockHash, peers: Vec<NodeId>) -> Self {
         Self {
             block_hash,
-            era_validator_weights: None,
-            block: None,
-            signatures: BTreeMap::new(),
-            peers,
-            has_sufficient_finality: false,
-            last_progress: Timestamp::now(),
-        }
-    }
-
-    pub(super) fn new_with_validator_weights(
-        block_hash: BlockHash,
-        era_validator_weights: EraValidatorWeights,
-        peers: Vec<NodeId>,
-    ) -> Self {
-        Self {
-            block_hash,
-            era_validator_weights: Some(era_validator_weights),
             block: None,
             signatures: BTreeMap::new(),
             peers,
@@ -75,57 +57,11 @@ impl BlockAcceptor {
         self.peers.push(peer);
     }
 
-    pub(super) fn refresh(
-        &mut self,
-        era_validator_weights: EraValidatorWeights,
-    ) -> Result<ShouldStore, AcceptorError> {
-        if self.era_validator_weights.is_some() {
-            return Ok(ShouldStore::Nothing);
-        }
-
-        if let Some(expected) = self.block.as_ref().map(|block| block.header().era_id()) {
-            if expected != era_validator_weights.era_id() {
-                return Err(AcceptorError::EraMismatch(
-                    EraMismatchError::EraValidatorWeights {
-                        block_hash: self.block_hash,
-                        expected,
-                        actual: era_validator_weights.era_id(),
-                    },
-                ));
-            }
-        }
-
-        debug_assert!(!self.has_sufficient_finality);
-
-        let block_hash = self.block_hash;
-        let mut validators = era_validator_weights.validator_public_keys();
-        self.signatures.retain(|pub_key, sig| {
-            validators.contains(pub_key)
-                && sig.block_hash == block_hash
-                && sig.era_id == era_validator_weights.era_id()
-        });
-
-        if self.has_sufficient_finality() {
-            match &self.block {
-                Some(block) => {
-                    let signatures = self.signatures.values().cloned().collect();
-                    let block = block.clone();
-                    self.touch();
-                    return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
-                }
-                None => {
-                    error!("self.block should be Some due to check in `has_sufficient_finality`");
-                }
-            }
-        }
-        Ok(ShouldStore::Nothing)
-    }
-
     pub(super) fn register_block(
         &mut self,
         block: Block,
         peer: NodeId,
-    ) -> Result<ShouldStore, AcceptorError> {
+    ) -> Result<(), AcceptorError> {
         if self.block_hash() != *block.hash() {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash(),
@@ -148,43 +84,19 @@ impl BlockAcceptor {
 
         self.register_peer(peer);
 
-        let mut removed_validator_weights = false;
-        let era_id = block.header().era_id();
         if self.block.is_none() {
             self.touch();
-            if let Some(era_validator_weights) = self.era_validator_weights.as_ref() {
-                if era_validator_weights.era_id() != era_id {
-                    self.era_validator_weights = None;
-                    removed_validator_weights = true;
-                }
-            }
             self.block = Some(block);
-            // todo! - return the senders of the invalid signatures.
-            self.remove_bogus_validators();
         }
 
-        if removed_validator_weights {
-            return Err(AcceptorError::RemovedValidatorWeights { era_id });
-        }
-
-        if self.has_sufficient_finality() {
-            self.touch();
-            let block = self.block.clone().ok_or_else(|| {
-                error!("self.block should be Some due to check in `has_sufficient_finality`");
-                AcceptorError::InvalidState
-            })?;
-            let signatures = self.signatures.values().cloned().collect();
-            return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
-        }
-
-        Ok(ShouldStore::Nothing)
+        Ok(())
     }
 
     pub(super) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
         peer: NodeId,
-    ) -> Result<ShouldStore, AcceptorError> {
+    ) -> Result<Option<FinalitySignature>, AcceptorError> {
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
             return Err(AcceptorError::InvalidGossip(Box::new(
@@ -206,17 +118,6 @@ impl BlockAcceptor {
                 ));
             }
         }
-        if let Some(era_validator_weights) = &self.era_validator_weights {
-            if finality_signature.era_id != era_validator_weights.era_id() {
-                return Err(AcceptorError::EraMismatch(
-                    EraMismatchError::FinalitySignature {
-                        block_hash: finality_signature.block_hash,
-                        expected: era_validator_weights.era_id(),
-                        actual: finality_signature.era_id,
-                    },
-                ));
-            }
-        }
         self.register_peer(peer);
         let already_had_sufficient_finality = self.has_sufficient_finality;
         let is_new = self
@@ -226,50 +127,46 @@ impl BlockAcceptor {
                 finality_signature.clone(),
             )
             .is_none();
-        self.remove_bogus_validators();
 
         if already_had_sufficient_finality && is_new {
             self.touch();
-            return Ok(ShouldStore::SingleSignature(finality_signature));
+            return Ok(Some(finality_signature));
         };
 
-        if !already_had_sufficient_finality && self.has_sufficient_finality() {
-            self.touch();
-            let block = self.block.clone().ok_or_else(|| {
-                error!("self.block should be Some due to check in `has_sufficient_finality`");
-                AcceptorError::InvalidState
-            })?;
-            let signatures = self.signatures.values().cloned().collect();
-            return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
-        }
-
-        Ok(ShouldStore::Nothing)
+        Ok(None)
     }
 
-    pub(super) fn has_sufficient_finality(&mut self) -> bool {
+    pub(super) fn should_store_block(
+        &mut self,
+        era_validator_weights: &EraValidatorWeights,
+    ) -> ShouldStore {
         if self.has_sufficient_finality {
-            return true;
+            return ShouldStore::Nothing;
         }
 
-        let missing_elements = self.block.is_none()
-            || self.era_validator_weights.is_none()
-            || self.signatures.is_empty();
-
-        if missing_elements {
-            return self.has_sufficient_finality;
+        if self.block.is_none() || self.signatures.is_empty() {
+            return ShouldStore::Nothing;
         }
 
-        if let Some(evw) = &self.era_validator_weights {
-            if SignatureWeight::Sufficient == evw.has_sufficient_weight(self.signatures.keys()) {
+        self.remove_bogus_validators(era_validator_weights);
+        if SignatureWeight::Sufficient
+            == era_validator_weights.has_sufficient_weight(self.signatures.keys())
+        {
+            if let Some(block) = self.block.clone() {
+                self.touch();
                 self.has_sufficient_finality = true;
+                return ShouldStore::SufficientlySignedBlock {
+                    block,
+                    signatures: self.signatures.iter().map(|(_, v)| v.clone()).collect_vec(),
+                };
             }
         }
 
-        self.has_sufficient_finality
+        ShouldStore::Nothing
     }
 
-    pub(super) fn has_validator_weights(&self) -> bool {
-        self.era_validator_weights.is_some()
+    pub(super) fn has_sufficient_finality(&self) -> bool {
+        self.has_sufficient_finality
     }
 
     pub(super) fn era_id(&self) -> Option<EraId> {
@@ -278,9 +175,6 @@ impl BlockAcceptor {
         }
         if let Some(finality_signature) = self.signatures.values().next() {
             return Some(finality_signature.era_id);
-        }
-        if let Some(evw) = &self.era_validator_weights {
-            return Some(evw.era_id());
         }
         None
     }
@@ -297,15 +191,14 @@ impl BlockAcceptor {
         self.last_progress
     }
 
-    fn remove_bogus_validators(&mut self) {
-        if let Some(evw) = &self.era_validator_weights {
-            let bogus_validators = evw.bogus_validators(self.signatures.keys());
+    fn remove_bogus_validators(&mut self, era_validator_weights: &EraValidatorWeights) {
+        let bogus_validators = era_validator_weights.bogus_validators(self.signatures.keys());
 
-            bogus_validators.iter().for_each(|bogus_validator| {
-                debug!(%bogus_validator, "bogus validator");
-                self.signatures.remove(bogus_validator);
-            });
-        }
+        bogus_validators.iter().for_each(|bogus_validator| {
+            debug!(%bogus_validator, "bogus validator");
+            self.signatures.remove(bogus_validator);
+        });
+
         if let Some(block) = &self.block {
             let bogus_validators = self
                 .signatures

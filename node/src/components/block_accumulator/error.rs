@@ -12,12 +12,6 @@ pub(super) enum EraMismatchError {
         expected: EraId,
         actual: EraId,
     },
-    #[error("attempt to add era validator weights to validate block: {block_hash} with mismatched era; expected: {expected} actual: {actual}")]
-    EraValidatorWeights {
-        block_hash: BlockHash,
-        expected: EraId,
-        actual: EraId,
-    },
 }
 
 #[derive(Error, Debug)]
@@ -57,9 +51,4 @@ pub(super) enum Error {
         actual: BlockHash,
         peer: NodeId,
     },
-    /// Programmer error.
-    #[error("invalid state")]
-    InvalidState,
-    #[error("removed validator weights")]
-    RemovedValidatorWeights { era_id: EraId },
 }

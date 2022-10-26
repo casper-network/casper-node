@@ -3,16 +3,13 @@ mod config;
 mod error;
 mod event;
 
-use std::{
-    collections::{btree_map::Entry, BTreeMap},
-    iter,
-};
+use std::{collections::BTreeMap, iter};
 
 use datasize::DataSize;
 use futures::FutureExt;
 use tracing::{debug, error, warn};
 
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -95,6 +92,7 @@ fn store_block_and_finality_signatures<REv>(
 where
     REv: From<StorageRequest> + Send,
 {
+    error!(?should_store, "XXXXX - store_block_and_finality_signatures");
     match should_store {
         ShouldStore::SufficientlySignedBlock { block, signatures } => {
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
@@ -251,9 +249,11 @@ impl BlockAccumulator {
     fn next_syncable_block_hash(&mut self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
         let block_acceptor = self.block_acceptors.get_mut(child_hash)?;
-        block_acceptor
-            .has_sufficient_finality()
-            .then(|| *child_hash)
+        if block_acceptor.has_sufficient_finality() {
+            Some(block_acceptor.block_hash())
+        } else {
+            None
+        }
     }
 
     fn register_block<REv>(
@@ -282,12 +282,20 @@ impl BlockAccumulator {
             self.block_children.insert(*parent_hash, *block_hash);
         }
 
-        let acceptor = self.get_or_register_acceptor_mut(*block_hash, era_id, vec![sender]);
+        let acceptor = self
+            .block_acceptors
+            .entry(*block_hash)
+            .or_insert_with(|| BlockAcceptor::new(*block_hash, vec![sender]));
+
         error!(?acceptor, "XXXXX - acceptor");
-        let register_block = acceptor.register_block(block, sender);
-        error!(?register_block, "XXXXX - register_block");
-        match register_block {
-            Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
+        match acceptor.register_block(block, sender) {
+            Ok(_) => match self.validator_matrix.validator_weights(era_id) {
+                Some(evw) => store_block_and_finality_signatures(
+                    effect_builder,
+                    acceptor.should_store_block(&evw),
+                ),
+                None => Effects::new(),
+            },
             Err(Error::InvalidGossip(error)) => {
                 warn!(%error, "received invalid finality_signature");
                 effect_builder
@@ -308,31 +316,7 @@ impl BlockAccumulator {
                 warn!(%error, "finality signature has mismatched block_hash");
                 effect_builder.announce_disconnect_from_peer(peer).ignore()
             }
-            Err(Error::RemovedValidatorWeights { era_id }) => {
-                if self.validator_matrix.validator_weights(era_id).is_some() {
-                    return self.register_updated_validator_matrix(effect_builder);
-                }
-                Effects::new()
-            }
-            Err(Error::InvalidState) => Effects::new(),
         }
-    }
-
-    fn purge(&mut self) {
-        // todo!: discuss w/ team if this approach or sth similar is acceptable
-        let now = Timestamp::now();
-        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours
-        let mut purged = vec![];
-        self.block_acceptors.retain(|k, v| {
-            let expired =
-                now.saturating_diff(v.last_progress()) > TimeDiff::from_seconds(PURGE_INTERVAL);
-            if expired {
-                purged.push(*k)
-            }
-            !expired
-        });
-        self.block_children
-            .retain(|_parent, child| false == purged.contains(child));
     }
 
     fn register_finality_signature<REv>(
@@ -351,9 +335,26 @@ impl BlockAccumulator {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
 
-        let acceptor = self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]);
+        let acceptor = self
+            .block_acceptors
+            .entry(block_hash)
+            .or_insert_with(|| BlockAcceptor::new(block_hash, vec![sender]));
+
         match acceptor.register_finality_signature(finality_signature, sender) {
-            Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
+            Ok(Some(finality_signature)) => store_block_and_finality_signatures(
+                effect_builder,
+                ShouldStore::SingleSignature(finality_signature),
+            ),
+            Ok(None) => match &self.validator_matrix.validator_weights(era_id) {
+                Some(evw) => store_block_and_finality_signatures(
+                    effect_builder,
+                    acceptor.should_store_block(evw),
+                ),
+                None => {
+                    error!("XXXXX - received finality_signature, insufficent finality");
+                    Effects::new()
+                }
+            },
             Err(Error::InvalidGossip(error)) => {
                 warn!(%error, "received invalid finality_signature");
                 effect_builder
@@ -371,11 +372,6 @@ impl BlockAccumulator {
                 warn!(%error, "finality signature has mismatched block_hash");
                 effect_builder.announce_disconnect_from_peer(peer).ignore()
             }
-            Err(Error::RemovedValidatorWeights { era_id }) => {
-                error!(%era_id, "should not remove validator weights when registering finality signatures");
-                Effects::new()
-            }
-            Err(Error::InvalidState) => Effects::new(),
         }
     }
 
@@ -391,19 +387,14 @@ impl BlockAccumulator {
         for block_acceptor in self
             .block_acceptors
             .values_mut()
-            .filter(|acceptor| !acceptor.has_validator_weights())
+            .filter(|acceptor| !acceptor.has_sufficient_finality())
         {
             if let Some(era_id) = block_acceptor.era_id() {
-                if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
-                    match block_acceptor.refresh(validator_weights.clone()) {
-                        Ok(new_effects) => effects.extend(store_block_and_finality_signatures(
-                            effect_builder,
-                            new_effects,
-                        )),
-                        Err(err) => {
-                            error!(%err, "failed to register new validator weights");
-                        }
-                    }
+                if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
+                    effects.extend(store_block_and_finality_signatures(
+                        effect_builder,
+                        block_acceptor.should_store_block(&evw),
+                    ));
                 }
             }
         }
@@ -415,6 +406,23 @@ impl BlockAccumulator {
     pub(crate) fn register_local_tip(&mut self, height: u64) {
         self.purge();
         self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
+    }
+
+    fn purge(&mut self) {
+        // todo!: discuss w/ team if this approach or sth similar is acceptable
+        let now = Timestamp::now();
+        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours
+        let mut purged = vec![];
+        self.block_acceptors.retain(|k, v| {
+            let expired =
+                now.saturating_diff(v.last_progress()) > TimeDiff::from_seconds(PURGE_INTERVAL);
+            if expired {
+                purged.push(*k)
+            }
+            !expired
+        });
+        self.block_children
+            .retain(|_parent, child| false == purged.contains(child));
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {
@@ -438,42 +446,6 @@ impl BlockAccumulator {
             };
         }
         ret
-    }
-
-    fn get_or_register_acceptor_mut(
-        &mut self,
-        block_hash: BlockHash,
-        era_id: EraId,
-        peers: Vec<NodeId>,
-    ) -> &mut BlockAcceptor {
-        match self.block_acceptors.entry(block_hash) {
-            Entry::Vacant(entry) => {
-                if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                    let acceptor =
-                        BlockAcceptor::new_with_validator_weights(block_hash, evw, peers);
-                    entry.insert(acceptor)
-                } else {
-                    entry.insert(BlockAcceptor::new(block_hash, peers))
-                }
-            }
-            Entry::Occupied(entry) => {
-                let acceptor = entry.into_mut();
-                error!(
-                    "XXXXX - going to refresh: {}",
-                    acceptor.has_validator_weights()
-                );
-                if false == acceptor.has_validator_weights() {
-                    if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id)
-                    {
-                        match acceptor.refresh(validator_weights.clone()) {
-                            Ok(should_store) => error!(?should_store, "XXXXX - should_store"),
-                            Err(_) => (),
-                        };
-                    }
-                }
-                acceptor
-            }
-        }
     }
 
     fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
