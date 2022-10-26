@@ -107,12 +107,13 @@ impl BlockAcceptor {
                 },
             )));
         }
-        if let Some(era_id) = &self.era_id() {
-            if finality_signature.era_id != *era_id {
+
+        if let Some(block) = &self.block {
+            if block.header().era_id() != finality_signature.era_id {
                 return Err(AcceptorError::EraMismatch(
                     EraMismatchError::FinalitySignature {
                         block_hash: finality_signature.block_hash,
-                        expected: *era_id,
+                        expected: block.header().era_id(),
                         actual: finality_signature.era_id,
                     },
                 ));

@@ -13,7 +13,10 @@ use casper_types::{TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
-    effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::PeerBehaviorAnnouncement, requests::BlockCompleteConfirmationRequest,
+        EffectBuilder, EffectExt, Effects,
+    },
     types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
@@ -461,12 +464,12 @@ impl BlockAccumulator {
         finality_signatures: Vec<FinalitySignature>,
     ) -> Effects<Event>
     where
-        REv: From<BlockAccumulatorAnnouncement> + Send,
+        REv: From<BlockAccumulatorAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
     {
-        let mut effects = if let Some(block) = block {
-            effect_builder.announce_block_accepted(block).ignore()
-        } else {
-            Effects::new()
+        let mut effects = Effects::new();
+        if let Some(block) = block {
+            effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
+            effects.extend(effect_builder.announce_block_accepted(block).ignore());
         };
         for finality_signature in finality_signatures {
             effects.extend(
@@ -484,6 +487,7 @@ where
     REv: From<StorageRequest>
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
+        + From<BlockCompleteConfirmationRequest>
         + Send,
 {
     type Event = Event;
@@ -508,9 +512,9 @@ where
             } => self.register_finality_signature(effect_builder, *finality_signature, sender),
             Event::ExecutedBlock { block, sender } => {
                 let height = block.header().height();
-                self.register_block(effect_builder, *block, sender);
+                let effects = self.register_block(effect_builder, *block, sender);
                 self.register_local_tip(height);
-                Effects::new()
+                effects
             }
             Event::Stored {
                 block,

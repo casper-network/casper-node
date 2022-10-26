@@ -782,10 +782,6 @@ impl ContractRuntime {
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();
-        let block_height = block.height();
-
-        // Make sure storage is able to do its work before we declare success.
-        effect_builder.mark_block_completed(block_height).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
