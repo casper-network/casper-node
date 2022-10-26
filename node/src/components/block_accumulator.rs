@@ -61,12 +61,12 @@ impl StartingWith {
         }
     }
 
-    pub(crate) fn have_block(&self) -> bool {
+    pub(crate) fn should_fetch_execution_state(&self) -> bool {
         match self {
-            StartingWith::BlockIdentifier(..) => true,
-            StartingWith::ExecutableBlock(..) => true,
-            StartingWith::SyncedBlockIdentifier(..) => true,
-            StartingWith::Hash(_) => false,
+            StartingWith::ExecutableBlock(..) => false,
+            StartingWith::BlockIdentifier(..)
+            | StartingWith::SyncedBlockIdentifier(..)
+            | StartingWith::Hash(_) => true,
         }
     }
 }
@@ -146,7 +146,7 @@ impl BlockAccumulator {
         // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
         // AFTER the f-seq cant help you, SYNC-all-state
         // |------------- future chain ------------------------> ?
-        let should_fetch_execution_state = false == starting_with.have_block();
+        let should_fetch_execution_state = starting_with.should_fetch_execution_state();
 
         let maybe_highest_usable_block_height = self.highest_usable_block_height();
 
