@@ -4,13 +4,12 @@ mod error;
 mod event;
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{btree_map::Entry, BTreeMap},
     iter,
 };
 
 use datasize::DataSize;
 use futures::FutureExt;
-use itertools::Itertools;
 use tracing::{debug, error, warn};
 
 use casper_types::{EraId, TimeDiff, Timestamp};
@@ -83,7 +82,6 @@ pub(crate) struct BlockAccumulator {
 
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
-    already_handled: HashSet<BlockHash>,
 
     last_progress: Timestamp,
     /// The height of the subjective local tip of the chain.
@@ -131,29 +129,12 @@ impl BlockAccumulator {
             validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
             dead_air_interval: config.dead_air_interval(),
-            already_handled: Default::default(),
             block_acceptors: Default::default(),
             block_children: Default::default(),
             last_progress: Timestamp::now(),
             local_tip,
         }
     }
-
-    // #[allow(unused)] // todo!: Flush less aggressively. Obsolete with highest_complete_block?
-    // pub(crate) fn flush(self, validator_matrix: ValidatorMatrix) -> Self {
-    //     Self {
-    //         already_handled: Default::default(),
-    //         block_acceptors: Default::default(),
-    //         block_children: Default::default(),
-    //         validator_matrix,
-    //         ..self
-    //     }
-    // }
-    //
-    // #[allow(unused)] // todo!
-    // pub(crate) fn flush_already_handled(&mut self) {
-    //     self.already_handled.clear();
-    // }
 
     pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
         // BEFORE the f-seq cant help you, LEAP
@@ -275,21 +256,6 @@ impl BlockAccumulator {
             .then(|| *child_hash)
     }
 
-    // NOT USED
-    // fn register_block_by_identifier(&mut self, block_hash: BlockHash, era_id: EraId) {
-    //     if self.already_handled.contains(&block_hash) {
-    //         return;
-    //     }
-    //     let mut acceptor = BlockAcceptor::new(block_hash, vec![]);
-    //     if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-    //         if let Err(err) = acceptor.register_era_validator_weights(evw) {
-    //             warn!(%err, "unable to register era_validator_weights");
-    //             return;
-    //         }
-    //     }
-    //     self.block_acceptors.insert(block_hash, acceptor);
-    // }
-
     fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -301,16 +267,14 @@ impl BlockAccumulator {
     {
         let block_hash = block.hash();
         let era_id = block.header().era_id();
-
+        let block_height = block.header().height();
         if self
             .local_tip
-            .map_or(false, |height| block.header().height() < height)
+            .map_or(false, |curr_height| block_height < curr_height)
         {
             debug!(%block_hash, "ignoring outdated block");
-            self.block_acceptors.remove(block_hash);
             return Effects::new();
         }
-
         if let Some(parent_hash) = block.parent() {
             self.block_children.insert(*parent_hash, *block_hash);
         }
@@ -352,6 +316,23 @@ impl BlockAccumulator {
             }
             Err(Error::InvalidState) => Effects::new(),
         }
+    }
+
+    fn purge(&mut self) {
+        // todo!: discuss w/ team if this approach or sth similar is acceptable
+        let timestamp = Timestamp::now();
+        const PURGE_INTERVAL: u64 = 21600; // 6 hours
+        let mut purged = vec![];
+        self.block_acceptors.retain(|k, v| {
+            let expired =
+                timestamp.saturating_diff(v.last_progress()) > TimeDiff::from(PURGE_INTERVAL);
+            if expired {
+                purged.push(*k)
+            }
+            expired
+        });
+        self.block_children
+            .retain(|k, _| false == purged.contains(k));
     }
 
     fn register_finality_signature<REv>(
@@ -434,39 +415,24 @@ impl BlockAccumulator {
         effects
     }
 
-    /// Drops all block acceptors older than this block, and will ignore them in the future.
+    /// Drops all old block acceptors and tracks new local block height;
+    /// subsequent attempts to register a block lower than tip will be rejected.
     pub(crate) fn register_local_tip(&mut self, height: u64) {
-        for block_hash in self
-            .block_acceptors
-            .iter()
-            .filter(|(_, v)| v.block_height().unwrap_or_default() < height)
-            .map(|(k, _)| *k)
-            .collect_vec()
-        {
-            self.block_acceptors.remove(&block_hash);
-            self.already_handled.insert(block_hash);
-        }
+        self.purge();
         self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {
-        let mut ret: Option<u64> = None;
-        for (k, v) in &mut self.block_acceptors {
-            if self.already_handled.contains(k) {
-                error!(
-                    "should not have a block acceptor for an already handled block_hash: {}",
-                    k
-                );
+        let mut ret: Option<u64> = self.local_tip;
+        for block_acceptor in &mut self.block_acceptors.values_mut() {
+            if false == block_acceptor.has_sufficient_finality() {
                 continue;
             }
-            if false == v.has_sufficient_finality() {
-                continue;
-            }
-            match v.block_era_and_height() {
+            match block_acceptor.block_height() {
                 None => {
                     continue;
                 }
-                Some((_, acceptor_height)) => {
+                Some(acceptor_height) => {
                     if let Some(curr_height) = ret {
                         if acceptor_height <= curr_height {
                             continue;
@@ -486,9 +452,6 @@ impl BlockAccumulator {
         peers: Vec<NodeId>,
     ) -> Option<&mut BlockAcceptor> {
         if let Entry::Occupied(mut entry) = self.block_acceptors.entry(block_hash) {
-            if self.already_handled.contains(&block_hash) {
-                return None;
-            }
             if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
                 let acceptor = BlockAcceptor::new_with_validator_weights(block_hash, evw, peers);
                 entry.insert(acceptor);
@@ -531,7 +494,6 @@ impl BlockAccumulator {
     }
 }
 
-// TODO: is this even really a component?
 impl<REv> Component<REv> for BlockAccumulator
 where
     REv: From<StorageRequest>
@@ -559,8 +521,6 @@ where
                 finality_signature,
                 sender,
             } => self.register_finality_signature(effect_builder, *finality_signature, sender),
-            // Event::UpdatedValidatorMatrix =>
-            // self.register_updated_validator_matrix(effect_builder),
             Event::ExecutedBlock { block_header } => {
                 self.register_local_tip(block_header.height());
                 Effects::new()

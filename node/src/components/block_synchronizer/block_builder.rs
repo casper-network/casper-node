@@ -13,11 +13,11 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
-use crate::components::block_synchronizer::peer_list::PeersStatus;
 use crate::{
     components::block_synchronizer::{
         block_acquisition::FinalitySignatureAcceptance,
-        execution_results_acquisition::ExecutionResultsChecksum, peer_list::PeerList,
+        execution_results_acquisition::ExecutionResultsChecksum,
+        peer_list::{PeerList, PeersStatus},
         signature_acquisition::SignatureAcquisition,
     },
     types::{
