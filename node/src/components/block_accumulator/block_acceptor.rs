@@ -7,9 +7,7 @@ use tracing::{debug, warn};
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
-    components::block_accumulator::error::{
-        EraMismatchError, Error as AcceptorError, InvalidGossipError,
-    },
+    components::block_accumulator::error::{Error as AcceptorError, InvalidGossipError},
     types::{
         Block, BlockHash, EmptyValidationMetadata, EraValidatorWeights, FetcherItem,
         FinalitySignature, NodeId, SignatureWeight,
@@ -108,19 +106,36 @@ impl BlockAcceptor {
             )));
         }
 
-        if let Some(block) = &self.block {
-            if block.header().era_id() != finality_signature.era_id {
-                return Err(AcceptorError::EraMismatch(
-                    EraMismatchError::FinalitySignature {
-                        block_hash: finality_signature.block_hash,
-                        expected: block.header().era_id(),
-                        actual: finality_signature.era_id,
-                    },
-                ));
-            }
+        let had_sufficient_finality = self.has_sufficient_finality;
+        // if we dont have finality yet, collect the signature and return
+        // while we could store the finality signature, we currently prefer
+        // to store block and signatures when sufficient weight is attained
+        if false == had_sufficient_finality {
+            self.register_peer(peer);
+            self.signatures
+                .insert(finality_signature.public_key.clone(), finality_signature);
+            return Ok(None);
         }
+
+        if let Some(block) = &self.block {
+            // if the signature's era does not match the block's era
+            // its malicious / bogus / invalid.
+            if block.header().era_id() != finality_signature.era_id {
+                return Err(AcceptorError::EraMismatch {
+                    block_hash: finality_signature.block_hash,
+                    expected: block.header().era_id(),
+                    actual: finality_signature.era_id,
+                    peer,
+                });
+            }
+        } else {
+            // should have block if self.has_sufficient_finality
+            return Err(AcceptorError::SufficientFinalityWithoutBlock {
+                block_hash: finality_signature.block_hash,
+            });
+        }
+
         self.register_peer(peer);
-        let already_had_sufficient_finality = self.has_sufficient_finality;
         let is_new = self
             .signatures
             .insert(
@@ -129,11 +144,14 @@ impl BlockAcceptor {
             )
             .is_none();
 
-        if already_had_sufficient_finality && is_new {
+        if had_sufficient_finality && is_new {
+            // we received this finality signature after putting the block & earlier signatures
+            // to storage
             self.touch();
             return Ok(Some(finality_signature));
         };
 
+        // either we've seen this signature already or we're still waiting for sufficient finality
         Ok(None)
     }
 

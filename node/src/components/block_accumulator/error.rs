@@ -5,16 +5,6 @@ use casper_types::{crypto, EraId};
 use crate::types::{BlockHash, BlockValidationError, NodeId};
 
 #[derive(Error, Debug)]
-pub(super) enum EraMismatchError {
-    #[error("attempt to add finality signature for block: {block_hash} with mismatched era; expected: {expected} actual: {actual}")]
-    FinalitySignature {
-        block_hash: BlockHash,
-        expected: EraId,
-        actual: EraId,
-    },
-}
-
-#[derive(Error, Debug)]
 pub(super) enum InvalidGossipError {
     #[error("received cryptographically invalid block for: {block_hash} from: {peer} with error: {validation_error}")]
     Block {
@@ -44,11 +34,18 @@ pub(super) enum Error {
     #[error(transparent)]
     InvalidGossip(Box<InvalidGossipError>),
     #[error("mismatched eras detected")]
-    EraMismatch(EraMismatchError),
+    EraMismatch {
+        block_hash: BlockHash,
+        expected: EraId,
+        actual: EraId,
+        peer: NodeId,
+    },
     #[error("mismatched block hash from peer {peer}: expected={expected}, actual={actual}")]
     BlockHashMismatch {
         expected: BlockHash,
         actual: BlockHash,
         peer: NodeId,
     },
+    #[error("should not be possible to have sufficient finality wihtout block: {block_hash}")]
+    SufficientFinalityWithoutBlock { block_hash: BlockHash },
 }

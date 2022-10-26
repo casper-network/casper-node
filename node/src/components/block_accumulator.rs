@@ -14,17 +14,16 @@ use casper_types::{TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{
-        announcements::PeerBehaviorAnnouncement, requests::BlockCompleteConfirmationRequest,
+        announcements::BlockAccumulatorAnnouncement,
+        announcements::PeerBehaviorAnnouncement,
+        requests::BlockCompleteConfirmationRequest,
+        requests::{BlockAccumulatorRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
-use crate::effect::{
-    announcements::BlockAccumulatorAnnouncement,
-    requests::{BlockAccumulatorRequest, StorageRequest},
-};
 use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 use error::Error;
@@ -305,19 +304,25 @@ impl BlockAccumulator {
                     .announce_disconnect_from_peer(error.peer())
                     .ignore()
             }
-            Err(Error::EraMismatch(error)) => {
-                // the acceptor logic purges finality signatures that don't match
-                // the era validators, so in this case we can continue to
-                // use the acceptor
-                warn!(%error, "finality signature has mismatched era_id");
-
-                // TODO: Log?
-                // this block acceptor is borked; get rid of it?
-                Effects::new()
+            Err(Error::EraMismatch {
+                peer,
+                block_hash,
+                expected,
+                actual,
+            }) => {
+                warn!(
+                    "era mismatch from {} for {}; expected: {} and actual: {}",
+                    peer, block_hash, expected, actual
+                );
+                effect_builder.announce_disconnect_from_peer(peer).ignore()
             }
             Err(ref error @ Error::BlockHashMismatch { peer, .. }) => {
                 warn!(%error, "finality signature has mismatched block_hash");
                 effect_builder.announce_disconnect_from_peer(peer).ignore()
+            }
+            Err(ref error @ Error::SufficientFinalityWithoutBlock { .. }) => {
+                error!(%error, "should not have sufficient finality without block");
+                Effects::new()
             }
         }
     }
@@ -364,16 +369,28 @@ impl BlockAccumulator {
                     .announce_disconnect_from_peer(error.peer())
                     .ignore()
             }
-            Err(Error::EraMismatch(error)) => {
+            Err(Error::EraMismatch {
+                peer,
+                block_hash,
+                expected,
+                actual,
+            }) => {
                 // the acceptor logic purges finality signatures that don't match
                 // the era validators, so in this case we can continue to
                 // use the acceptor
-                warn!(%error, "finality signature has mismatched era_id");
-                Effects::new()
+                warn!(
+                    "era mismatch from {} for {}; expected: {} and actual: {}",
+                    peer, block_hash, expected, actual
+                );
+                effect_builder.announce_disconnect_from_peer(peer).ignore()
             }
             Err(ref error @ Error::BlockHashMismatch { peer, .. }) => {
                 warn!(%error, "finality signature has mismatched block_hash");
                 effect_builder.announce_disconnect_from_peer(peer).ignore()
+            }
+            Err(ref error @ Error::SufficientFinalityWithoutBlock { .. }) => {
+                error!(%error, "should not have sufficient finality without block");
+                Effects::new()
             }
         }
     }
