@@ -109,7 +109,7 @@ pub(crate) struct BlockSynchronizer {
     validator_matrix: ValidatorMatrix,
     timeout: TimeDiff,
     peer_refresh_interval: TimeDiff,
-    next_next_interval: TimeDiff,
+    need_next_interval: TimeDiff,
     // we pause block_syncing if a node is actively validating
     paused: bool,
 
@@ -128,7 +128,7 @@ impl BlockSynchronizer {
             validator_matrix,
             timeout: config.timeout(),
             peer_refresh_interval: config.peer_refresh_interval(),
-            next_next_interval: config.need_next_interval(),
+            need_next_interval: config.need_next_interval(),
             paused: false,
             forward: None,
             historical: None,
@@ -356,7 +356,7 @@ impl BlockSynchronizer {
     ) -> Effects<Event> {
         effects.extend(
             effect_builder
-                .set_timeout(self.next_next_interval.into())
+                .set_timeout(self.need_next_interval.into())
                 .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
         );
         effects
@@ -370,7 +370,7 @@ impl BlockSynchronizer {
     where
         REv: ReactorEvent + From<FetcherRequest<Block>> + From<BlockCompleteConfirmationRequest>,
     {
-        let need_next_interval = self.next_next_interval.into();
+        let need_next_interval = self.need_next_interval.into();
         let mut results = Effects::new();
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             let action = builder.block_acquisition_action(rng);

@@ -320,19 +320,18 @@ impl BlockAccumulator {
 
     fn purge(&mut self) {
         // todo!: discuss w/ team if this approach or sth similar is acceptable
-        let timestamp = Timestamp::now();
+        let now = Timestamp::now();
         const PURGE_INTERVAL: u64 = 21600; // 6 hours
         let mut purged = vec![];
         self.block_acceptors.retain(|k, v| {
-            let expired =
-                timestamp.saturating_diff(v.last_progress()) > TimeDiff::from(PURGE_INTERVAL);
+            let expired = now.saturating_diff(v.last_progress()) > TimeDiff::from(PURGE_INTERVAL);
             if expired {
                 purged.push(*k)
             }
-            expired
+            !expired
         });
         self.block_children
-            .retain(|k, _| false == purged.contains(k));
+            .retain(|_parent, child| false == purged.contains(child));
     }
 
     fn register_finality_signature<REv>(

@@ -106,10 +106,10 @@ impl BlockAcceptor {
         });
 
         if self.has_sufficient_finality() {
-            let block = self.block.clone();
-            match block {
+            match &self.block {
                 Some(block) => {
                     let signatures = self.signatures.values().cloned().collect();
+                    let block = block.clone();
                     self.touch();
                     return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
                 }

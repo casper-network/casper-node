@@ -96,10 +96,6 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    BlockAddedGossiperAnnouncement(
-        #[serde(skip_serializing)] GossiperAnnouncement<ApprovalsHashes>,
-    ),
-    #[from]
     FinalitySignatureGossiperAnnouncement(
         #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
     ),
@@ -111,8 +107,6 @@ enum Event {
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
-    #[from]
-    ApprovalsHashesGossiperIncoming(GossiperIncoming<ApprovalsHashes>),
     #[from]
     BlockGossiperIncoming(GossiperIncoming<Block>),
     #[from]
@@ -157,12 +151,6 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
     }
 }
 
-impl From<NetworkRequest<Message<ApprovalsHashes>>> for Event {
-    fn from(request: NetworkRequest<Message<ApprovalsHashes>>) -> Self {
-        Event::NetworkRequest(request.map_payload(NodeMessage::from))
-    }
-}
-
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
         unimplemented!("not implemented for gossiper tests")
@@ -198,9 +186,6 @@ impl Display for Event {
             Event::DeployGossiperAnnouncement(ann) => {
                 write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
-            Event::BlockAddedGossiperAnnouncement(ann) => {
-                write!(formatter, "block-gossiper announcement: {}", ann)
-            }
             Event::FinalitySignatureGossiperAnnouncement(ann) => {
                 write!(
                     formatter,
@@ -213,9 +198,6 @@ impl Display for Event {
             }
             Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
             Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::ApprovalsHashesGossiperIncoming(inner) => {
-                write!(formatter, "incoming: {}", inner)
-            }
             Event::FinalitySignatureGossiperIncoming(inner) => {
                 write!(formatter, "incoming: {}", inner)
             }
@@ -383,7 +365,6 @@ impl reactor::Reactor for Reactor {
                 source: _,
             }) => Effects::new(),
             Event::DeployGossiperAnnouncement(_ann) => Effects::new(),
-            Event::BlockAddedGossiperAnnouncement(_ann) => Effects::new(),
             Event::FinalitySignatureGossiperAnnouncement(_ann) => Effects::new(),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
@@ -474,7 +455,6 @@ impl reactor::Reactor for Reactor {
             | Event::TrieRequestIncoming(_)
             | Event::TrieDemand(_)
             | Event::TrieResponseIncoming(_)
-            | Event::ApprovalsHashesGossiperIncoming(_)
             | Event::BlockGossiperIncoming(_)) => {
                 fatal!(effect_builder, "should not receive {:?}", other).ignore()
             }
