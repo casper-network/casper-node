@@ -718,10 +718,13 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::ValidatorBroadcast {
-                payload: Box::new(payload),
-                era_id,
-                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+            |responder| {
+                error!("XXXXX - broadcast_message_to_validators");
+                NetworkRequest::ValidatorBroadcast {
+                    payload: Box::new(payload),
+                    era_id,
+                    auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                }
             },
             QueueKind::Network,
         )

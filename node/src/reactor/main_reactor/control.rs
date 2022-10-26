@@ -31,7 +31,7 @@ use crate::{
 };
 
 // todo!: put in the config
-pub(crate) const WAIT_DURATION: Duration = Duration::from_secs(5);
+pub(crate) const WAIT_DURATION: Duration = Duration::from_secs(2);
 
 #[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum ReactorState {
@@ -321,9 +321,12 @@ impl MainReactor {
                             // no trusted hash provided use local tip if available
                             Ok(Some(block)) => {
                                 // -+ : leap w/ local tip
+                                error!(
+                                    "XXXXX - catch_up_instructions - got immediate switch block"
+                                );
                                 StartingWith::BlockIdentifier(*block.hash(), block.height())
                             }
-                            Ok(None) => {
+                            Ok(None) if !self.genesis_committed => {
                                 if let ActivationPoint::Genesis(timestamp) =
                                     self.chainspec.protocol_config.activation_point
                                 {
@@ -334,6 +337,8 @@ impl MainReactor {
                                             Duration::from(timediff),
                                         );
                                     } else {
+                                        error!("XXXXX - catch_up_instructions - self.genesis_committed = true;");
+                                        self.genesis_committed = true;
                                         return CatchUpInstruction::CommitGenesis;
                                     }
                                 }
@@ -344,10 +349,18 @@ impl MainReactor {
                                         .to_string(),
                                 );
                             }
+                            Ok(None) => {
+                                error!("XXXXX - catch_up_instructions - wait for immediate switch block");
+                                return CatchUpInstruction::CheckLater(
+                                    "waiting for genesis immediate switch block to be stored"
+                                        .to_string(),
+                                    WAIT_DURATION,
+                                );
+                            }
                             Err(err) => {
                                 return CatchUpInstruction::Shutdown(format!(
                                     "fatal block store error when attempting to read highest \
-                            complete block: {}",
+                                    complete block: {}",
                                     err
                                 ));
                             }

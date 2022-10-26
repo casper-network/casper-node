@@ -4,7 +4,7 @@ use derive_more::From;
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, BlockHeader, FinalitySignature, NodeId},
+    types::{Block, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -20,7 +20,8 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ExecutedBlock {
-        block_header: BlockHeader,
+        block: Box<Block>,
+        sender: NodeId,
     },
     Stored {
         block: Option<Box<Block>>,
@@ -50,8 +51,8 @@ impl Display for Event {
             // Event::UpdatedValidatorMatrix { era_id } => {
             //     write!(f, "validator matrix update for era {}", era_id)
             // }
-            Event::ExecutedBlock { block_header } => {
-                write!(f, "executed block: hash={}", block_header.block_hash())
+            Event::ExecutedBlock { block, sender } => {
+                write!(f, "executed block: hash={} sender={}", block.hash(), sender)
             }
             Event::Stored {
                 block,
