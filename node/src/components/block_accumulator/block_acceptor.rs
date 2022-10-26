@@ -4,7 +4,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, error, warn};
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::block_accumulator::error::{
@@ -24,6 +24,7 @@ pub(super) struct BlockAcceptor {
     era_validator_weights: Option<EraValidatorWeights>,
     peers: Vec<NodeId>,
     has_sufficient_finality: bool,
+    last_progress: Timestamp,
 }
 
 #[derive(Debug)]
@@ -46,6 +47,7 @@ impl BlockAcceptor {
             signatures: BTreeMap::new(),
             peers,
             has_sufficient_finality: false,
+            last_progress: Timestamp::now(),
         }
     }
 
@@ -61,6 +63,7 @@ impl BlockAcceptor {
             signatures: BTreeMap::new(),
             peers,
             has_sufficient_finality: false,
+            last_progress: Timestamp::now(),
         }
     }
 
@@ -103,13 +106,12 @@ impl BlockAcceptor {
         });
 
         if self.has_sufficient_finality() {
-            match &self.block {
+            let block = self.block.clone();
+            match block {
                 Some(block) => {
                     let signatures = self.signatures.values().cloned().collect();
-                    return Ok(ShouldStore::SufficientlySignedBlock {
-                        block: block.clone(),
-                        signatures,
-                    });
+                    self.touch();
+                    return Ok(ShouldStore::SufficientlySignedBlock { block, signatures });
                 }
                 None => {
                     error!("self.block should be Some due to check in `has_sufficient_finality`");
@@ -118,33 +120,6 @@ impl BlockAcceptor {
         }
         Ok(ShouldStore::Nothing)
     }
-
-    // pub(super) fn register_era_validator_weights(
-    //     &mut self,
-    //     era_validator_weights: EraValidatorWeights,
-    // ) -> Result<(), AcceptorError> {
-    //     if self.era_validator_weights.is_some() {
-    //         return Err(AcceptorError::DuplicatedEraValidatorWeights {
-    //             era_id: era_validator_weights.era_id(),
-    //         });
-    //     }
-    //
-    //     if let Some(era_id) = self.era_id() {
-    //         let evw_era_id = era_validator_weights.era_id();
-    //         if evw_era_id != era_id {
-    //             return Err(AcceptorError::EraMismatch(
-    //                 EraMismatchError::EraValidatorWeights {
-    //                     block_hash: self.block_hash,
-    //                     expected: era_id,
-    //                     actual: evw_era_id,
-    //                 },
-    //             ));
-    //         }
-    //     }
-    //     self.era_validator_weights = Some(era_validator_weights);
-    //     self.remove_bogus_validators();
-    //     Ok(())
-    // }
 
     pub(super) fn register_block(
         &mut self,
@@ -176,6 +151,7 @@ impl BlockAcceptor {
         let mut removed_validator_weights = false;
         let era_id = block.header().era_id();
         if self.block.is_none() {
+            self.touch();
             if let Some(era_validator_weights) = self.era_validator_weights.as_ref() {
                 if era_validator_weights.era_id() != era_id {
                     self.era_validator_weights = None;
@@ -183,7 +159,7 @@ impl BlockAcceptor {
                 }
             }
             self.block = Some(block);
-            // todo!() - return the senders of the invalid signatures.
+            // todo! - return the senders of the invalid signatures.
             self.remove_bogus_validators();
         }
 
@@ -192,6 +168,7 @@ impl BlockAcceptor {
         }
 
         if self.has_sufficient_finality() {
+            self.touch();
             let block = self.block.clone().ok_or_else(|| {
                 error!("self.block should be Some due to check in `has_sufficient_finality`");
                 AcceptorError::InvalidState
@@ -252,10 +229,12 @@ impl BlockAcceptor {
         self.remove_bogus_validators();
 
         if already_had_sufficient_finality && is_new {
+            self.touch();
             return Ok(ShouldStore::SingleSignature(finality_signature));
         };
 
         if !already_had_sufficient_finality && self.has_sufficient_finality() {
+            self.touch();
             let block = self.block.clone().ok_or_else(|| {
                 error!("self.block should be Some due to check in `has_sufficient_finality`");
                 AcceptorError::InvalidState
@@ -310,17 +289,12 @@ impl BlockAcceptor {
         self.block.as_ref().map(|block| block.header().height())
     }
 
-    pub(super) fn block_era_and_height(&self) -> Option<(EraId, u64)> {
-        if let Some(era_id) = self.era_id() {
-            if let Some(height) = self.block_height() {
-                return Some((era_id, height));
-            }
-        }
-        None
-    }
-
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
+    }
+
+    pub(super) fn last_progress(&self) -> Timestamp {
+        self.last_progress
     }
 
     fn remove_bogus_validators(&mut self) {
@@ -347,5 +321,9 @@ impl BlockAcceptor {
                 self.signatures.remove(bogus_validator);
             });
         }
+    }
+
+    fn touch(&mut self) {
+        self.last_progress = Timestamp::now();
     }
 }

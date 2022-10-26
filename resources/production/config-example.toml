@@ -405,6 +405,9 @@ dead_air_interval = '180sec'
 # ================================================
 [block_synchronizer]
 
+# Idleness timeout tolerance (if the block synchronizer is enabled but has not
+# made progress in this specified time the node will register a failed attempt to catch up
+# and then either try again if any reattempts remain or shut down).
 timeout = '10min'
 
 # Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
@@ -413,6 +416,8 @@ max_parallel_trie_fetches = 5000
 # Time interval for the node to ask for refreshed peers.
 peer_refresh_interval = '90sec'
 
+# Time interval for the node to check what the block synchronizer needs to acquire next.
+need_next_interval = '30ms'
 
 # =================================
 # Configuration options for fetcher

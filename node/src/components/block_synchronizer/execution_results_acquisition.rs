@@ -210,7 +210,7 @@ impl ExecutionResultsAcquisition {
     ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
         if let Some(chunk_id) = self.first_missing() {
             if let Some((ret, checksum)) = self.execution_results_or_chunk_id() {
-                // todo!() Isn't chunk_id already the same as in ret?
+                // todo! Isn't chunk_id already the same as in ret?
                 return Some((ret.next_chunk(chunk_id), checksum));
             }
         }

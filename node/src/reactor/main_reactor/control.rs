@@ -194,7 +194,6 @@ impl MainReactor {
             ReactorState::KeepUp => {
                 // todo! if sync to genesis == true, determine if cycles
                 // are available to get next earliest historical block via synchronizer
-                self.block_synchronizer.flush_dishonest_peers();
 
                 let starting_with =
                     match self.block_synchronizer.maybe_executable_block_identifier() {
@@ -243,7 +242,7 @@ impl MainReactor {
                             // to run, switch to validate mode
                             Ok(Some(mut effects)) => {
                                 self.state = ReactorState::Validate;
-                                self.block_synchronizer.turn_off();
+                                self.block_synchronizer.pause();
                                 return (Duration::ZERO, effects);
                             }
                             Ok(None) => {
@@ -293,7 +292,7 @@ impl MainReactor {
                         // to catch up if necessary, or back to validate
                         // if they become able to validate again
                         self.state = ReactorState::KeepUp;
-                        self.block_synchronizer.turn_on();
+                        self.block_synchronizer.resume();
                     }
                     Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                 }

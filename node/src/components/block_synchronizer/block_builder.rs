@@ -16,7 +16,8 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use crate::{
     components::block_synchronizer::{
         block_acquisition::FinalitySignatureAcceptance,
-        execution_results_acquisition::ExecutionResultsChecksum, peer_list::PeerList,
+        execution_results_acquisition::ExecutionResultsChecksum,
+        peer_list::{PeerList, PeersStatus},
         signature_acquisition::SignatureAcquisition,
     },
     types::{
@@ -61,7 +62,6 @@ pub(super) struct BlockBuilder {
 }
 
 impl BlockBuilder {
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
@@ -84,7 +84,6 @@ impl BlockBuilder {
         }
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn new_from_sync_leap(
         sync_leap: &SyncLeap,
         validator_weights: EraValidatorWeights,
@@ -126,45 +125,28 @@ impl BlockBuilder {
         }
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
-    pub(super) fn needs_validators(&self, era_id: EraId) -> bool {
-        match self.validator_weights {
-            None => match self.era_id {
-                None => false, // can't get validators w/o era, so must be false
-                Some(e) => e == era_id,
-            },
-            Some(_) => false,
-        }
-    }
-
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn abort(&mut self) {
         self.acquisition_state = BlockAcquisitionState::Fatal;
         self.flush_peers();
         self.touch();
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn is_fatal(&self) -> bool {
         self.acquisition_state == BlockAcquisitionState::Fatal
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn is_finished(&self) -> bool {
         matches!(
             self.acquisition_state,
@@ -179,35 +161,42 @@ impl BlockBuilder {
         }
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn dishonest_peers(&self) -> Vec<NodeId> {
         self.peer_list.dishonest_peers()
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.disqualify_peer(peer);
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.promote_peer(peer);
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
         self.peer_list.demote_peer(peer);
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn flush_dishonest_peers(&mut self) {
         self.peer_list.flush_dishonest_peers();
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
-        if self.peer_list.need_peers() {
-            return BlockAcquisitionAction::peers(self.block_hash);
+        match self.peer_list.need_peers() {
+            PeersStatus::Sufficient => {
+                error!("XXXXX - sufficent peers for block_hash {}", self.block_hash);
+            }
+            PeersStatus::Insufficient => {
+                error!(
+                    "XXXXX - insufficent peers for block_hash {}",
+                    self.block_hash
+                );
+                return BlockAcquisitionAction::peers(self.block_hash);
+            }
+            PeersStatus::Stale => {
+                error!("XXXXX - refreshing peers for {}", self.block_hash);
+                return BlockAcquisitionAction::peers(self.block_hash);
+            }
         }
         let era_id = match self.era_id {
             None => {
@@ -236,7 +225,6 @@ impl BlockBuilder {
         }
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_block_header(
         &mut self,
         block_header: BlockHeader,
@@ -251,7 +239,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // NOT WIRED
     pub(super) fn register_block(
         &mut self,
         block: &Block,
@@ -269,7 +256,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_approvals_hashes(
         &mut self,
         approvals_hashes: &ApprovalsHashes,
@@ -287,7 +273,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
@@ -316,7 +301,6 @@ impl BlockBuilder {
         }
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
         if let Err(error) = self
             .acquisition_state
@@ -328,7 +312,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_execution_results_root_hash(
         &mut self,
         execution_results_root_hash: ExecutionResultsChecksum,
@@ -343,7 +326,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_fetched_execution_results(
         &mut self,
         maybe_peer: Option<NodeId>,
@@ -359,7 +341,7 @@ impl BlockBuilder {
                 Ok(maybe)
             }
             Err(error) => {
-                // todo!() - how to proceed when we receive incorrect chunks (for example,
+                // todo! - how to proceed when we receive incorrect chunks (for example,
                 // `ChunksWithDifferentChecksum` for legacy blocks)? we probably
                 // shouldn't disconnect from the peer, but logic to be discussed
                 self.disqualify_peer(maybe_peer);
@@ -368,7 +350,6 @@ impl BlockBuilder {
         }
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_execution_results_stored_notification(&mut self) -> Result<(), Error> {
         if let Err(err) = self
             .acquisition_state
@@ -381,7 +362,6 @@ impl BlockBuilder {
         Ok(())
     }
 
-    // WIRED IN BLOCK SYNCHRONIZER
     pub(super) fn register_deploy(
         &mut self,
         deploy_id: DeployId,
@@ -397,14 +377,6 @@ impl BlockBuilder {
         self.touch();
         self.promote_peer(maybe_peer);
         Ok(())
-    }
-
-    pub(super) fn register_era_validator_weights(
-        &mut self,
-        validator_weights: EraValidatorWeights,
-    ) {
-        self.validator_weights = Some(validator_weights);
-        self.touch();
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {

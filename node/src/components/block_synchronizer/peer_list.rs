@@ -17,10 +17,16 @@ enum PeerQuality {
     Dishonest,
 }
 
+pub(super) enum PeersStatus {
+    Sufficient,
+    Insufficient,
+    Stale,
+}
+
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(super) struct PeerList {
     peer_list: BTreeMap<NodeId, PeerQuality>,
-    latch: Timestamp,
+    keep_fresh: Timestamp,
     max_simultaneous_peers: u32,
     peer_refresh_interval: TimeDiff,
 }
@@ -29,7 +35,7 @@ impl PeerList {
     pub(super) fn new(max_simultaneous_peers: u32, peer_refresh_interval: TimeDiff) -> Self {
         PeerList {
             peer_list: BTreeMap::new(),
-            latch: Timestamp::now(),
+            keep_fresh: Timestamp::now(),
             max_simultaneous_peers,
             peer_refresh_interval,
         }
@@ -39,7 +45,7 @@ impl PeerList {
             return;
         }
         self.peer_list.insert(peer, PeerQuality::Unknown);
-        self.latch = Timestamp::now();
+        self.keep_fresh = Timestamp::now();
     }
 
     pub(super) fn dishonest_peers(&self) -> Vec<NodeId> {
@@ -61,13 +67,11 @@ impl PeerList {
 
     pub(super) fn flush_dishonest_peers(&mut self) {
         self.peer_list.retain(|_, v| *v != PeerQuality::Dishonest);
-        self.latch = Timestamp::now();
     }
 
     pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
         if let Some(peer_id) = peer {
             self.peer_list.insert(peer_id, PeerQuality::Dishonest);
-            self.latch = Timestamp::now();
         }
     }
 
@@ -124,32 +128,31 @@ impl PeerList {
         }
     }
 
-    pub(super) fn need_peers(&self) -> bool {
-        self.peer_list.is_empty()
+    pub(super) fn need_peers(&mut self) -> PeersStatus {
+        if self.peer_list.is_empty() {
+            return PeersStatus::Insufficient;
+        }
 
-        // if self.peer_list.is_empty() {
-        //     return true;
-        // }
-        // // periodically ask for refreshed peers
-        // // NOTE: if we decide to do this imperatively from the reactor, this can likely be
-        // removed if Timestamp::now().saturating_diff(self.latch) >
-        // self.peer_refresh_interval {     error!("XXXXX - need_next: Peers: list is NOT
-        // empty, but latch diff {} is telling us we need to refresh",
-        // Timestamp::now().saturating_diff(self.latch));     return true;
-        // }
-        // // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers
-        // let reliability_goal = self.max_simultaneous_peers as usize;
-        // error!("XXXXX - reliability goal is {}", reliability_goal);
-        // let good_peer_count = self.peer_list
-        // .iter()
-        // .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
-        // .count();
-        // error!("XXXXX - good peer count is {}", good_peer_count);
-        // self.peer_list
-        //     .iter()
-        //     .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
-        //     .count()
-        //     < reliability_goal
+        // periodically ask for refreshed peers
+        if Timestamp::now().saturating_diff(self.keep_fresh) > self.peer_refresh_interval {
+            self.keep_fresh = Timestamp::now();
+            return PeersStatus::Stale;
+        }
+
+        // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers
+        let reliability_goal = self.max_simultaneous_peers as usize;
+
+        if self
+            .peer_list
+            .iter()
+            .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
+            .count()
+            < reliability_goal
+        {
+            return PeersStatus::Insufficient;
+        }
+
+        PeersStatus::Sufficient
     }
 
     pub(super) fn qualified_peers(&self, rng: &mut NodeRng) -> Vec<NodeId> {

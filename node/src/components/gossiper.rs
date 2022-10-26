@@ -27,8 +27,8 @@ use crate::{
     },
     protocol::Message as NodeMessage,
     types::{
-        ApprovalsHashes, Block, BlockHash, Deploy, DeployId, FinalitySignature,
-        FinalitySignatureId, GossiperItem, Item, NodeId,
+        Block, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId, GossiperItem,
+        Item, NodeId,
     },
     utils::Source,
     NodeRng,
@@ -102,31 +102,6 @@ pub(crate) fn get_finality_signature_from_storage<
             Event::GetFromHolderResult {
                 item_id,
                 requester,
-                result: Box::new(result),
-            }
-        })
-}
-
-/// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
-/// constructing a `Gossiper<ApprovalsHashes>`.
-pub(crate) fn get_approvals_hashes_from_storage<
-    T: GossiperItem + 'static,
-    REv: ReactorEventT<T>,
->(
-    effect_builder: EffectBuilder<REv>,
-    block_hash: BlockHash,
-    sender: NodeId,
-) -> Effects<Event<ApprovalsHashes>> {
-    effect_builder
-        .get_approvals_hashes_from_storage(block_hash)
-        .event(move |results| {
-            let result = match results {
-                Some(approvals_hashes) => Ok(approvals_hashes),
-                None => Err(String::from("approvals hashes not found")),
-            };
-            Event::GetFromHolderResult {
-                item_id: block_hash,
-                requester: sender,
                 result: Box::new(result),
             }
         })

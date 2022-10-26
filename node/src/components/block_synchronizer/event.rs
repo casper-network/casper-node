@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use casper_hashing::Digest;
 use derive_more::From;
@@ -9,7 +6,6 @@ use either::Either;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state;
-use casper_types::{EraId, PublicKey, U512};
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
@@ -24,11 +20,9 @@ use crate::{
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
     Initialize,
-
     #[from]
     Request(BlockSynchronizerRequest),
-    /// Received announcement about era validators.
-    MaybeEraValidators(EraId, Option<BTreeMap<PublicKey, U512>>),
+
     DisconnectFromPeer(NodeId),
     MarkedComplete(BlockHash),
     #[from]
@@ -74,9 +68,6 @@ impl Display for Event {
             }
             Event::Initialize => {
                 write!(f, "initialize this component")
-            }
-            Event::MaybeEraValidators(era_id, _) => {
-                write!(f, "maybe new new era validators for era_id: {}", era_id)
             }
             Event::DisconnectFromPeer(peer) => {
                 write!(f, "disconnected from peer {}", peer)
