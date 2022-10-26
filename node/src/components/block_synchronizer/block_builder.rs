@@ -227,7 +227,9 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_era_validator_weights(&mut self, validator_matrix: &ValidatorMatrix) {
-        if self.validator_weights.is_some() || self.era_id.is_none() {}
+        if self.validator_weights.is_some() || self.era_id.is_none() {
+            return;
+        }
 
         if let Some(era_id) = self.era_id {
             if let Some(evw) = validator_matrix.validator_weights(era_id) {
