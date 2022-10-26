@@ -1,5 +1,3 @@
-#![allow(unused)] // TODO: To be removed
-
 #[cfg(test)]
 use std::iter;
 use std::{
@@ -107,83 +105,8 @@ impl ValidatorMatrix {
         }
     }
 
-    pub(crate) fn upsert(&mut self, validators: BTreeMap<EraId, EraValidatorWeights>) {
-        let mut writer = self.inner.write().unwrap();
-        for (era_id, ev) in validators {
-            writer.insert(era_id, ev);
-        }
-    }
-
-    pub(crate) fn remove_era(&mut self, era_id: EraId) {
-        self.inner.write().unwrap().remove(&era_id);
-    }
-
-    pub(crate) fn remove_eras(&mut self, earliest_era_to_keep: EraId) {
-        let mut writer = self.inner.write().unwrap();
-        *writer = writer.split_off(&earliest_era_to_keep);
-    }
-
     pub(crate) fn validator_weights(&self, era_id: EraId) -> Option<EraValidatorWeights> {
         self.read_inner().get(&era_id).cloned()
-    }
-
-    pub(crate) fn validator_public_keys(&self, era_id: EraId) -> Option<Vec<PublicKey>> {
-        Some(
-            self.read_inner()
-                .get(&era_id)?
-                .validator_public_keys()
-                .cloned()
-                .collect(),
-        )
-    }
-
-    pub(crate) fn missing_validators<'a>(
-        &self,
-        era_id: EraId,
-        validator_keys: impl Iterator<Item = &'a PublicKey>,
-    ) -> Option<Vec<PublicKey>> {
-        Some(
-            self.read_inner()
-                .get(&era_id)?
-                .missing_validators(validator_keys)
-                .cloned()
-                .collect(),
-        )
-    }
-
-    pub(crate) fn get_weight(&self, era_id: EraId, public_key: &PublicKey) -> U512 {
-        match self.read_inner().get(&era_id) {
-            None => U512::zero(),
-            Some(ev) => ev.get_weight(public_key),
-        }
-    }
-
-    pub(crate) fn get_total_weight(&self, era_id: EraId) -> Option<U512> {
-        Some(self.read_inner().get(&era_id)?.get_total_weight())
-    }
-
-    pub(crate) fn has_sufficient_weight<'a>(
-        &self,
-        era_id: EraId,
-        validator_keys: impl Iterator<Item = &'a PublicKey>,
-    ) -> Option<SignatureWeight> {
-        Some(
-            self.read_inner()
-                .get(&era_id)?
-                .has_sufficient_weight(validator_keys),
-        )
-    }
-
-    pub(crate) fn bogus_validators<'a>(
-        &self,
-        era_id: EraId,
-        validator_keys: impl Iterator<Item = &'a PublicKey>,
-    ) -> Option<Vec<PublicKey>> {
-        Some(
-            self.read_inner()
-                .get(&era_id)?
-                .bogus_validators(validator_keys),
-        )
     }
 
     pub(crate) fn fault_tolerance_threshold(&self) -> Ratio<u64> {
@@ -280,10 +203,6 @@ impl EraValidatorWeights {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.validator_weights.is_empty()
-    }
-
-    pub(crate) fn weights(&self) -> &BTreeMap<PublicKey, U512> {
-        &self.validator_weights
     }
 
     pub(crate) fn get_total_weight(&self) -> U512 {
