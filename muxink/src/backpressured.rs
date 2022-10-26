@@ -69,9 +69,10 @@ pub struct BackpressuredSink<S, A, Item> {
 
 /// A backpressure error.
 #[derive(Debug, Error)]
-pub enum BackpressureError<E>
+pub enum BackpressureError<SinkErr, AckErr>
 where
-    E: std::error::Error,
+    SinkErr: std::error::Error,
+    AckErr: std::error::Error,
 {
     /// An ACK was received for an item that had not been sent yet.
     #[error("received ACK {actual}, but only sent {items_sent} items")]
@@ -80,14 +81,15 @@ where
     /// as it is outside the window.
     #[error("duplicate ACK {ack_received} received, already received {highest}")]
     DuplicateAck { ack_received: u64, highest: u64 },
-    /// The ACK stream associated with a backpressured channel was close.d
+    /// The ACK stream associated with a backpressured channel was closed.
     #[error("ACK stream closed")]
     AckStreamClosed,
+    /// There was an error retrieving ACKs from the ACK stream.
     #[error("ACK stream error")]
-    AckStreamError, // TODO: Capture actual ack stream error here.
-    /// The wrapped sink returned an error.
+    AckStreamError(#[source] AckErr),
+    /// The underlying sink had an error.
     #[error(transparent)]
-    Sink(#[from] E),
+    Sink(#[from] SinkErr),
 }
 
 impl<S, A, Item> BackpressuredSink<S, A, Item> {
@@ -114,9 +116,13 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
     /// Validates a received ack.
     ///
     /// Returns an error if the `ACK` was a duplicate or from the future.
-    fn validate_ack<E>(&mut self, ack_received: u64) -> Result<(), BackpressureError<E>>
+    fn validate_ack<SinkErr, AckErr>(
+        &mut self,
+        ack_received: u64,
+    ) -> Result<(), BackpressureError<SinkErr, AckErr>>
     where
-        E: std::error::Error,
+        SinkErr: std::error::Error,
+        AckErr: std::error::Error,
     {
         if ack_received > self.last_request {
             return Err(BackpressureError::UnexpectedAck {
@@ -136,17 +142,18 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
     }
 }
 
-impl<Item, A, S> Sink<Item> for BackpressuredSink<S, A, Item>
+impl<Item, A, S, AckErr> Sink<Item> for BackpressuredSink<S, A, Item>
 where
     // TODO: `Unpin` trait bounds can be
     // removed by using `map_unchecked` if
     // necessary.
     S: Sink<Item> + Unpin,
     Self: Unpin,
-    A: Stream<Item = u64> + Unpin,
+    A: Stream<Item = Result<u64, AckErr>> + Unpin,
+    AckErr: std::error::Error,
     <S as Sink<Item>>::Error: std::error::Error,
 {
-    type Error = BackpressureError<<S as Sink<Item>>::Error>;
+    type Error = BackpressureError<<S as Sink<Item>>::Error, AckErr>;
 
     #[inline]
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -155,7 +162,10 @@ where
         // Attempt to read as many ACKs as possible.
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(ack_received)) => {
+                Poll::Ready(Some(Err(ack_err))) => {
+                    return Poll::Ready(Err(BackpressureError::AckStreamError(ack_err)))
+                }
+                Poll::Ready(Some(Ok(ack_received))) => {
                     try_ready!(self_mut.validate_ack(ack_received));
                     self_mut.received_ack = max(self_mut.received_ack, ack_received);
                 }
