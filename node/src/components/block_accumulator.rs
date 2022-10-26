@@ -279,12 +279,7 @@ impl BlockAccumulator {
             self.block_children.insert(*parent_hash, *block_hash);
         }
 
-        let acceptor = match self.get_or_register_acceptor_mut(*block_hash, era_id, vec![sender]) {
-            Some(block_gossip_acceptor) => block_gossip_acceptor,
-            None => {
-                return Effects::new();
-            }
-        };
+        let acceptor = self.get_or_register_acceptor_mut(*block_hash, era_id, vec![sender]);
 
         match acceptor.register_block(block, sender) {
             Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
@@ -349,12 +344,7 @@ impl BlockAccumulator {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
 
-        let acceptor = match self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]) {
-            Some(block_gossip_acceptor) => block_gossip_acceptor,
-            None => {
-                return Effects::new();
-            }
-        };
+        let acceptor = self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]);
 
         match acceptor.register_finality_signature(finality_signature, sender) {
             Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
@@ -449,17 +439,19 @@ impl BlockAccumulator {
         block_hash: BlockHash,
         era_id: EraId,
         peers: Vec<NodeId>,
-    ) -> Option<&mut BlockAcceptor> {
-        if let Entry::Occupied(mut entry) = self.block_acceptors.entry(block_hash) {
-            if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                let acceptor = BlockAcceptor::new_with_validator_weights(block_hash, evw, peers);
-                entry.insert(acceptor);
-            } else {
-                entry.insert(BlockAcceptor::new(block_hash, peers));
+    ) -> &mut BlockAcceptor {
+        match self.block_acceptors.entry(block_hash) {
+            Entry::Vacant(entry) => {
+                if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
+                    let acceptor =
+                        BlockAcceptor::new_with_validator_weights(block_hash, evw, peers);
+                    entry.insert(acceptor)
+                } else {
+                    entry.insert(BlockAcceptor::new(block_hash, peers))
+                }
             }
+            Entry::Occupied(entry) => entry.into_mut(),
         }
-
-        self.block_acceptors.get_mut(&block_hash)
     }
 
     fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
