@@ -127,6 +127,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
+    genesis_committed: bool,
     // todo! add this to the status endpoint maybe?
     last_progress: Timestamp,
     attempts: usize,
@@ -279,6 +280,8 @@ impl reactor::Reactor for MainReactor {
         let era_count = chainspec.number_of_past_switch_blocks_needed();
         let recent_switch_block_headers = storage.read_highest_switch_block_headers(era_count)?;
 
+        let genesis_committed = false;
+
         let reactor = MainReactor {
             chainspec,
             chainspec_raw_bytes,
@@ -317,6 +320,7 @@ impl reactor::Reactor for MainReactor {
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,
+            genesis_committed,
         };
 
         let effects = effect_builder
@@ -687,6 +691,7 @@ impl reactor::Reactor for MainReactor {
             )) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
+                error!("XXXXX - MainEvent::FinalitySignatureIncoming");
                 // Finality signature received via broadcast.
                 let sender = incoming.sender;
                 let finality_signature = incoming.message;
@@ -884,8 +889,20 @@ impl reactor::Reactor for MainReactor {
                 }
 
                 // send to block accumulator
+                // if am_validator() {
+                //     let event = block_accumulator::Event::ReceivedBlock {
+                //         block: Box::new(block),
+                //         sender,
+                //     };
+                //     effects.extend(reactor::wrap_effects(
+                //         MainEvent::BlockAccumulator,
+                //         self.block_accumulator
+                //             .handle_event(effect_builder, rng, event),
+                //     ));
+                // }
                 let event = block_accumulator::Event::ExecutedBlock {
-                    block_header: block.header().clone(),
+                    block,
+                    sender: self.small_network.node_id(),
                 };
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
@@ -931,6 +948,7 @@ impl reactor::Reactor for MainReactor {
             ) => {
                 // the components that need to follow the era validators should have
                 // a handle on the validator matrix
+                error!("XXXXX - self.validator_matrix.register_eras");
                 self.validator_matrix.register_eras(upcoming_era_validators);
                 Effects::new()
             }

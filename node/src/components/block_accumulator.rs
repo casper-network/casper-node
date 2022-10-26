@@ -17,7 +17,7 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{announcements::PeerBehaviorAnnouncement, EffectBuilder, EffectExt, Effects},
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId, ValidatorMatrix},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -266,6 +266,9 @@ impl BlockAccumulator {
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
     {
         let block_hash = block.hash();
+
+        error!(%block_hash, "XXXXX - register_block");
+
         let era_id = block.header().era_id();
         let block_height = block.header().height();
         if self
@@ -280,8 +283,10 @@ impl BlockAccumulator {
         }
 
         let acceptor = self.get_or_register_acceptor_mut(*block_hash, era_id, vec![sender]);
-
-        match acceptor.register_block(block, sender) {
+        error!(?acceptor, "XXXXX - acceptor");
+        let register_block = acceptor.register_block(block, sender);
+        error!(?register_block, "XXXXX - register_block");
+        match register_block {
             Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
             Err(Error::InvalidGossip(error)) => {
                 warn!(%error, "received invalid finality_signature");
@@ -316,10 +321,11 @@ impl BlockAccumulator {
     fn purge(&mut self) {
         // todo!: discuss w/ team if this approach or sth similar is acceptable
         let now = Timestamp::now();
-        const PURGE_INTERVAL: u64 = 21600; // 6 hours
+        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours
         let mut purged = vec![];
         self.block_acceptors.retain(|k, v| {
-            let expired = now.saturating_diff(v.last_progress()) > TimeDiff::from(PURGE_INTERVAL);
+            let expired =
+                now.saturating_diff(v.last_progress()) > TimeDiff::from_seconds(PURGE_INTERVAL);
             if expired {
                 purged.push(*k)
             }
@@ -340,12 +346,12 @@ impl BlockAccumulator {
     {
         // TODO: Also ignore signatures for blocks older than the highest complete one?
         // TODO: Ignore signatures for `already_handled` blocks?
+        error!(id=%finality_signature.id(), "XXXXX - register_finality_signature");
 
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
 
         let acceptor = self.get_or_register_acceptor_mut(block_hash, era_id, vec![sender]);
-
         match acceptor.register_finality_signature(finality_signature, sender) {
             Ok(should_store) => store_block_and_finality_signatures(effect_builder, should_store),
             Err(Error::InvalidGossip(error)) => {
@@ -450,7 +456,23 @@ impl BlockAccumulator {
                     entry.insert(BlockAcceptor::new(block_hash, peers))
                 }
             }
-            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Occupied(entry) => {
+                let acceptor = entry.into_mut();
+                error!(
+                    "XXXXX - going to refresh: {}",
+                    acceptor.has_validator_weights()
+                );
+                if false == acceptor.has_validator_weights() {
+                    if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id)
+                    {
+                        match acceptor.refresh(validator_weights.clone()) {
+                            Ok(should_store) => error!(?should_store, "XXXXX - should_store"),
+                            Err(_) => (),
+                        };
+                    }
+                }
+                acceptor
+            }
         }
     }
 
@@ -512,8 +534,10 @@ where
                 finality_signature,
                 sender,
             } => self.register_finality_signature(effect_builder, *finality_signature, sender),
-            Event::ExecutedBlock { block_header } => {
-                self.register_local_tip(block_header.height());
+            Event::ExecutedBlock { block, sender } => {
+                let height = block.header().height();
+                self.register_block(effect_builder, *block, sender);
+                self.register_local_tip(height);
                 Effects::new()
             }
             Event::Stored {
