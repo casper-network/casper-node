@@ -35,6 +35,7 @@ use crate::{
         contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchedData, FetcherError},
         linear_chain::{self, BlockSignatureError},
+        small_network::blocklist::BlocklistJustification,
     },
     effect::{
         announcements::{
@@ -899,13 +900,15 @@ where
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 if *item.header().parent_hash() != parent_header.hash() {
-                    warn!(
-                        ?peer,
-                        fetched_header = ?item.header(),
-                        ?parent_header,
-                        "received block with wrong parent from peer",
-                    );
-                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                    ctx.effect_builder
+                        .announce_block_peer_with_justification(
+                            peer,
+                            BlocklistJustification::SentBlockWithWrongParent {
+                                received_header: item.header().clone(),
+                                expected_parent_header: parent_header.clone(),
+                            },
+                        )
+                        .await;
                     continue;
                 }
 
@@ -918,8 +921,14 @@ where
                 }
 
                 if item.block_signatures().proofs.is_empty() {
-                    warn!(?peer, ?item, "no block signatures from peer");
-                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                    ctx.effect_builder
+                        .announce_block_peer_with_justification(
+                            peer,
+                            BlocklistJustification::MissingBlockSignatures {
+                                received_header: item.header().clone(),
+                            },
+                        )
+                        .await;
                     continue;
                 }
 
@@ -933,8 +942,12 @@ where
                         continue;
                     }
                     Err(error @ BlockSignatureError::BogusValidator { .. }) => {
-                        warn!(?error, ?peer, "bogus validator block signature from peer");
-                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        ctx.effect_builder
+                            .announce_block_peer_with_justification(
+                                peer,
+                                BlocklistJustification::SentSignatureWithBogusValidator { error },
+                            )
+                            .await;
                         continue;
                     }
                     // TODO - make this an error condition once we start using
@@ -946,12 +959,12 @@ where
                 }
 
                 if let Err(error) = item.block_signatures().verify() {
-                    warn!(
-                        ?error,
-                        ?peer,
-                        "error validating finality signatures from peer"
-                    );
-                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                    ctx.effect_builder
+                        .announce_block_peer_with_justification(
+                            peer,
+                            BlocklistJustification::SentBadFinalitySignature { error },
+                        )
+                        .await;
                     continue;
                 }
 
@@ -1512,13 +1525,15 @@ where
                         return Ok(new_lowest);
                     }
                     Err(err) => {
-                        error!(
-                            ?err,
-                            ?peer,
-                            ?batch_id,
-                            "block headers batch failed validation. Trying next peer..."
-                        );
-                        ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                        ctx.effect_builder
+                            .announce_block_peer_with_justification(
+                                peer,
+                                BlocklistJustification::SentInvalidHeaderBatch {
+                                    batch_id,
+                                    error: err,
+                                },
+                            )
+                            .await;
                     }
                 }
             }
@@ -1718,13 +1733,15 @@ impl BlockSignaturesCollector {
                 .await?;
 
         if let Err(err) = linear_chain::validate_block_signatures(&signatures, &validator_weights) {
-            warn!(
-                ?peer,
-                ?err,
-                height = block_header.height(),
-                "peer sent invalid finality signatures, banning peer"
-            );
-            ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+            ctx.effect_builder
+                .announce_block_peer_with_justification(
+                    peer,
+                    BlocklistJustification::SentBlockWithInvalidFinalitySignatures {
+                        block_header: block_header.clone(),
+                        error: err,
+                    },
+                )
+                .await;
 
             // Try with next peer.
             return Ok(HandleSignaturesResult::ContinueFetching);
@@ -2158,12 +2175,14 @@ where
                 if blocks_match {
                     break;
                 }
-                warn!(
-                    %peer,
-                    "block executed with approvals from this peer doesn't match the received \
-                    block; blocking peer"
-                );
-                ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                ctx.effect_builder
+                    .announce_block_peer_with_justification(
+                        peer,
+                        BlocklistJustification::SentBlockThatExecutedIncorrectly {
+                            block_hash: *block.hash(),
+                        },
+                    )
+                    .await;
             }
         }
 

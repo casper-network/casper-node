@@ -61,7 +61,10 @@ use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 use crate::{
-    components::{deploy_acceptor, fetcher, fetcher::FetchedOrNotFound},
+    components::{
+        deploy_acceptor, fetcher, fetcher::FetchedOrNotFound,
+        small_network::blocklist::BlocklistJustification,
+    },
     effect::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
         incoming::NetResponse,
@@ -938,16 +941,12 @@ where
         Some(fetcher_event) => {
             Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
         }
-        None => {
-            info!(
-                "{} sent us a {:?} item we couldn't parse, banning peer",
+        None => effect_builder
+            .announce_block_peer_with_justification(
                 sender,
-                I::TAG
-            );
-            effect_builder
-                .announce_disconnect_from_peer(sender)
-                .ignore()
-        }
+                BlocklistJustification::SentBadItem { tag: I::TAG },
+            )
+            .ignore(),
     }
 }
 
@@ -994,13 +993,11 @@ where
                     })
                 }
                 Err(error) => {
-                    warn!(
-                        %sender,
-                        %error,
-                        "received a deploy item we couldn't parse, banning peer",
-                    );
                     return effect_builder
-                        .announce_disconnect_from_peer(sender)
+                        .announce_block_peer_with_justification(
+                            sender,
+                            BlocklistJustification::SentBadDeploy { error },
+                        )
                         .ignore();
                 }
             };
@@ -1018,17 +1015,12 @@ where
         NetResponse::Block(ref serialized_item) => {
             handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
         }
-        NetResponse::GossipedAddress(_) => {
-            // The item trait is used for both fetchers and gossiped things, but this kind of
-            // item is never fetched, only gossiped.
-            warn!(
-                ?sender,
-                "gossiped addresses are never fetched, banning peer",
-            );
-            effect_builder
-                .announce_disconnect_from_peer(sender)
-                .ignore()
-        }
+        NetResponse::GossipedAddress(_) => effect_builder
+            .announce_block_peer_with_justification(
+                sender,
+                BlocklistJustification::SentGossipedAddress,
+            )
+            .ignore(),
         NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
             handle_fetch_response::<R, BlockWithMetadata>(
                 reactor,

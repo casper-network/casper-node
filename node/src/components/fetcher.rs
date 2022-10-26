@@ -17,6 +17,7 @@ use crate::{
     components::{
         fetcher::event::FetchResponder,
         linear_chain::{self, BlockSignatureError},
+        small_network::blocklist::BlocklistJustification,
         Component,
     },
     effect::{
@@ -751,8 +752,16 @@ where
                     Source::Peer(peer) => {
                         self.metrics().found_on_peer.inc();
                         if let Err(err) = item.validate() {
-                            warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
-                            effect_builder.announce_disconnect_from_peer(peer).ignore()
+                            effect_builder
+                                .announce_block_peer_with_justification(
+                                    peer,
+                                    BlocklistJustification::SentInvalidItem {
+                                        tag: T::TAG,
+                                        item_id: item.id().to_string(),
+                                        error: err.to_string(),
+                                    },
+                                )
+                                .ignore()
                         } else {
                             self.signal(item.id(), Ok(*item), peer)
                         }

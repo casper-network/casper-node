@@ -24,6 +24,7 @@
 //! maintain an outgoing connection to any new address learned.
 
 mod bincode_format;
+pub(crate) mod blocklist;
 mod chain_info;
 mod config;
 mod counting_format;
@@ -1039,12 +1040,15 @@ where
                 );
                 self.process_dial_requests(requests)
             }
-            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)) => {
+            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted {
+                offender,
+                justification,
+            }) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
-                warn!(%peer_id, "adding peer to blocklist after transgression");
+                info!(%offender, %justification, "adding peer to blocklist after transgression");
 
-                if let Some(addr) = self.outgoing_manager.get_addr(*peer_id) {
+                if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
                     let requests = self.outgoing_manager.block_addr(addr, Instant::now());
                     self.process_dial_requests(requests)
                 } else {
