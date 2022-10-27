@@ -1,7 +1,9 @@
 //! Bytes-streaming testing sink.
 
 use std::{
+    collections::VecDeque,
     convert::Infallible,
+    fmt::Debug,
     io::Read,
     ops::Deref,
     pin::Pin,
@@ -279,4 +281,95 @@ async fn waiting_tasks_can_progress_upon_unplugging_the_sink() {
     // This will block forever if the other task is not woken up. To verify, comment out the
     // `Waker::wake_by_ref` call in the sink implementation.
     join_handle.await.unwrap();
+}
+
+/// A clogging adapter.
+///
+/// While the `TestingSink` combines a buffer with a sink and plugging/clogging capabilities, it is
+/// sometimes necessary to just limit flow through an underlying sink. The `ClogAdapter` allows to
+/// do just that, controlling whether or not items are held or sent through to an underlying stream.
+pub struct BufferingClogAdapter<S, Item>
+where
+    S: Sink<Item>,
+{
+    /// Whether or not the clog is currently engaged.
+    clogged: bool,
+    /// Buffer for items when the sink is clogged.
+    buffer: VecDeque<Item>,
+    /// The sink items are sent into.
+    sink: S,
+    /// The waker of the last task to access the plug. Will be called when removing.
+    waker: Option<Waker>,
+}
+
+impl<S, Item> BufferingClogAdapter<S, Item>
+where
+    S: Sink<Item>,
+{
+    /// Creates a new clogging adapter wrapping a sink.
+    ///
+    /// Initially the clog will not be engaged.
+    pub fn new(sink: S) -> Self {
+        Self {
+            clogged: false,
+            buffer: VecDeque::new(),
+            sink,
+            waker: None,
+        }
+    }
+
+    /// Set the clogging state.
+    pub fn set_clogged(&mut self, clogged: bool) {
+        self.clogged = clogged;
+
+        // If we were unclogged and have a waker, call it.
+        if !clogged {
+            if let Some(waker) = self.waker.take() {
+                waker.wake();
+            }
+        }
+    }
+}
+
+impl<S, Item> Sink<Item> for BufferingClogAdapter<S, Item>
+where
+    S: Sink<Item> + Unpin,
+    Item: Unpin,
+    <S as Sink<Item>>::Error: Debug,
+{
+    type Error = <S as Sink<Item>>::Error;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.get_mut().sink.poll_ready_unpin(cx)
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
+        let self_mut = self.get_mut();
+        if self_mut.clogged {
+            self_mut.buffer.push_back(item);
+            Ok(())
+        } else {
+            self_mut.sink.start_send_unpin(item)
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let self_mut = self.get_mut();
+        if self_mut.clogged {
+            self_mut.waker = Some(cx.waker().clone());
+            Poll::Pending
+        } else {
+            if let Poll::Pending = self_mut.poll_ready_unpin(cx) {
+                return Poll::Pending;
+            }
+            while let Some(item) = self_mut.buffer.pop_front() {
+                self_mut.sink.start_send_unpin(item).unwrap();
+            }
+            self_mut.sink.poll_flush_unpin(cx)
+        }
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.get_mut().sink.poll_close_unpin(cx)
+    }
 }

@@ -448,20 +448,18 @@ mod tests {
     use std::{
         collections::VecDeque,
         convert::{Infallible, TryInto},
-        pin::Pin,
         sync::Arc,
-        task::{Context, Poll},
     };
 
     use bytes::Bytes;
-    use futures::{FutureExt, Sink, SinkExt, StreamExt};
+    use futures::{FutureExt, SinkExt, StreamExt};
     use tokio::sync::mpsc::UnboundedSender;
     use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
     use tokio_util::sync::PollSender;
 
     use crate::testing::{
         encoding::EncodeAndSend,
-        testing_sink::{TestingSink, TestingSinkRef},
+        testing_sink::{BufferingClogAdapter, TestingSink, TestingSinkRef},
     };
 
     use super::{
@@ -470,65 +468,6 @@ mod tests {
 
     /// Window size used in tests.
     const WINDOW_SIZE: u64 = 3;
-
-    struct CloggedAckSink {
-        clogged: bool,
-        /// Buffer for items when the sink is clogged.
-        buffer: VecDeque<u64>,
-        /// The sink ACKs are sent into.
-        ack_sender: PollSender<u64>,
-    }
-
-    impl CloggedAckSink {
-        fn new(ack_sender: PollSender<u64>) -> Self {
-            Self {
-                clogged: false,
-                buffer: VecDeque::new(),
-                ack_sender,
-            }
-        }
-
-        fn set_clogged(&mut self, clogged: bool) {
-            self.clogged = clogged;
-        }
-    }
-
-    impl Sink<u64> for CloggedAckSink {
-        type Error = tokio_util::sync::PollSendError<u64>;
-
-        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.get_mut().ack_sender.poll_ready_unpin(cx)
-        }
-
-        fn start_send(self: Pin<&mut Self>, item: u64) -> Result<(), Self::Error> {
-            let self_mut = self.get_mut();
-            if self_mut.clogged {
-                self_mut.buffer.push_back(item);
-                Ok(())
-            } else {
-                self_mut.ack_sender.start_send_unpin(item)
-            }
-        }
-
-        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            let self_mut = self.get_mut();
-            if self_mut.clogged {
-                Poll::Pending
-            } else {
-                if let Poll::Pending = self_mut.poll_ready_unpin(cx) {
-                    return Poll::Pending;
-                }
-                while let Some(item) = self_mut.buffer.pop_front() {
-                    self_mut.ack_sender.start_send_unpin(item).unwrap();
-                }
-                self_mut.ack_sender.poll_flush_unpin(cx)
-            }
-        }
-
-        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.get_mut().ack_sender.poll_close_unpin(cx)
-        }
-    }
 
     /// A common set of fixtures used in the backpressure tests.
     ///
@@ -1172,9 +1111,9 @@ mod tests {
             let res: Result<u8, Infallible> = Ok(item);
             res
         });
-        let mut clogged_stream = CloggedAckSink::new(PollSender::new(ack_sender));
-        clogged_stream.set_clogged(true);
-        let mut stream = BackpressuredStream::new(stream, clogged_stream, WINDOW_SIZE);
+        let mut clogged_ack_sink = BufferingClogAdapter::new(PollSender::new(ack_sender));
+        clogged_ack_sink.set_clogged(true);
+        let mut stream = BackpressuredStream::new(stream, clogged_ack_sink, WINDOW_SIZE);
 
         // The first four attempts at `window_size = 3` should succeed.
         sink.send(0).now_or_never().unwrap().unwrap();
