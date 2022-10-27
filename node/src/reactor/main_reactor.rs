@@ -14,7 +14,7 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-use std::{cmp::Ordering, sync::Arc, time::Instant};
+use std::{cmp::Ordering, collections::HashMap, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
@@ -874,6 +874,20 @@ impl reactor::Reactor for MainReactor {
                     "executed block"
                 );
 
+                let execution_results_map: HashMap<_, _> = execution_results
+                    .iter()
+                    .cloned()
+                    .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
+                    .collect();
+                effects.extend(
+                    effect_builder
+                        .put_executed_block_to_storage(
+                            block.clone(),
+                            approvals_hashes,
+                            execution_results_map,
+                        )
+                        .ignore(),
+                );
                 // todo! - we might want to store here before broadcasting the signature
                 //         so we can produce the signed-over data if required, even after restart.
 
@@ -905,18 +919,6 @@ impl reactor::Reactor for MainReactor {
                     ));
                 }
 
-                // send to block accumulator
-                // if am_validator() {
-                //     let event = block_accumulator::Event::ReceivedBlock {
-                //         block: Box::new(block),
-                //         sender,
-                //     };
-                //     effects.extend(reactor::wrap_effects(
-                //         MainEvent::BlockAccumulator,
-                //         self.block_accumulator
-                //             .handle_event(effect_builder, rng, event),
-                //     ));
-                // }
                 let event = block_accumulator::Event::ExecutedBlock { block };
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,

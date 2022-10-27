@@ -97,6 +97,8 @@ impl<REv> ReactorEvent for REv where
 {
 }
 
+// todo!() - remove Debug derive.
+#[derive(Debug)]
 pub(crate) enum BlockSynchronizerProgress {
     Idle,
     Syncing(BlockHash, Option<u64>, Timestamp),
@@ -491,11 +493,11 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = &mut self.forward {
-            error!("XXXXX - forward builder");
+            // error!("XXXXX - forward builder");
             builder_needs_next(builder);
         }
         if let Some(builder) = &mut self.historical {
-            error!("XXXXX - historical builder");
+            // error!("XXXXX - historical builder");
             builder_needs_next(builder);
         }
         results
@@ -543,6 +545,8 @@ impl BlockSynchronizer {
                             builder.register_block_header(*block_header, maybe_peer_id)
                         {
                             error!(%error, "failed to apply block header");
+                        } else {
+                            builder.register_era_validator_weights(&self.validator_matrix);
                         }
                     }
                 }

@@ -169,6 +169,8 @@ impl BlockBuilder {
         if let Err(error) = self.acquisition_state.register_marked_complete() {
             error!(%error, "register marked complete failed");
             self.abort()
+        } else {
+            self.touch();
         }
     }
 

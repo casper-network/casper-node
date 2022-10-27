@@ -289,7 +289,8 @@ impl BlockAcquisitionState {
         validator_weights: EraValidatorWeights,
     ) -> Result<FinalitySignatureAcceptance, Error> {
         let new_state = match self {
-            BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures) => {
+            BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures)
+            | BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
                 if false == acquired_signatures.apply_signature(signature) {
                     return Ok(FinalitySignatureAcceptance::Noop);
                 };
@@ -308,7 +309,7 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
+            BlockAcquisitionState::HaveAllExecutionResults(block, acquired_signatures, _, _) => {
                 if false == acquired_signatures.apply_signature(signature) {
                     return Ok(FinalitySignatureAcceptance::Noop);
                 };
@@ -321,7 +322,7 @@ impl BlockAcquisitionState {
                     }
                     SignatureWeight::Sufficient => {
                         BlockAcquisitionState::HaveStrictFinalitySignatures(
-                            header.clone(),
+                            Box::new(block.header().clone()),
                             acquired_signatures.clone(),
                         )
                     }
@@ -334,7 +335,6 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
-            | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
@@ -755,42 +755,40 @@ impl BlockAcquisitionState {
                     return Err(Error::InvalidStateTransition);
                 }
 
-                if let ExecutionResultsChecksum::Checkable(_) = checksum {
-                    return Ok(BlockAcquisitionAction::approvals_hashes(
-                        block, peer_list, rng,
-                    ));
-                }
-
                 match deploys.needs_deploy() {
-                    Some(Either::Left(deploy_hash)) => Ok(BlockAcquisitionAction::deploy_by_hash(
-                        *block.hash(),
-                        deploy_hash,
-                        peer_list,
-                        rng,
-                    )),
-                    Some(Either::Right(deploy_id)) => Ok(BlockAcquisitionAction::deploy_by_id(
-                        *block.hash(),
-                        deploy_id,
-                        peer_list,
-                        rng,
-                    )),
-                    None => Ok(BlockAcquisitionAction::strict_finality_signatures(
-                        peer_list,
-                        rng,
-                        block.header(),
-                        validator_weights,
-                        signatures,
-                    )),
+                    Some(missing_deploys) => {
+                        if let ExecutionResultsChecksum::Checkable(_) = checksum {
+                            return Ok(BlockAcquisitionAction::approvals_hashes(
+                                block, peer_list, rng,
+                            ));
+                        }
+                        match missing_deploys {
+                            Either::Left(deploy_hash) => {
+                                Ok(BlockAcquisitionAction::deploy_by_hash(
+                                    *block.hash(),
+                                    deploy_hash,
+                                    peer_list,
+                                    rng,
+                                ))
+                            }
+                            Either::Right(deploy_id) => Ok(BlockAcquisitionAction::deploy_by_id(
+                                *block.hash(),
+                                deploy_id,
+                                peer_list,
+                                rng,
+                            )),
+                        }
+                    }
+                    None => {
+                        return Ok(BlockAcquisitionAction::strict_finality_signatures(
+                            peer_list,
+                            rng,
+                            block.header(),
+                            validator_weights,
+                            signatures,
+                        ))
+                    }
                 }
-            }
-            BlockAcquisitionState::HaveAllDeploys(header, signatures) => {
-                Ok(BlockAcquisitionAction::strict_finality_signatures(
-                    peer_list,
-                    rng,
-                    header.as_ref(),
-                    validator_weights,
-                    signatures,
-                ))
             }
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
                 error!("XXXXX - State is HaveApprovalsHashes");
@@ -824,6 +822,15 @@ impl BlockAcquisitionState {
                         ))
                     }
                 }
+            }
+            BlockAcquisitionState::HaveAllDeploys(header, signatures) => {
+                Ok(BlockAcquisitionAction::strict_finality_signatures(
+                    peer_list,
+                    rng,
+                    header.as_ref(),
+                    validator_weights,
+                    signatures,
+                ))
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(..) => {
                 error!("XXXXX - HaveStrictFinalitySignatures");
@@ -959,20 +966,20 @@ impl BlockAcquisitionAction {
         let era_id = block_header.era_id();
         let block_hash = block_header.block_hash();
         let block_height = block_header.height();
-        if validator_weights
-            .missing_validators(signature_acquisition.have_signatures())
-            .count()
-            == 0
+
+        if let SignatureWeight::Sufficient =
+            validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
         {
-            if let SignatureWeight::Sufficient =
-                validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
-            {
-                return BlockAcquisitionAction {
-                    peers_to_ask: vec![],
-                    need_next: NeedNext::MarkComplete(block_hash, block_height),
-                };
-            }
+            error!("XXXXX - we have sufficient weight, need next : mark complete");
+            return BlockAcquisitionAction {
+                peers_to_ask: vec![],
+                need_next: NeedNext::MarkComplete(block_hash, block_height),
+            };
         }
+        error!(
+            "XXXXX - we have {} signatures and they are not enough",
+            signature_acquisition.have_signatures().count()
+        );
         BlockAcquisitionAction {
             peers_to_ask,
             need_next: NeedNext::FinalitySignatures(

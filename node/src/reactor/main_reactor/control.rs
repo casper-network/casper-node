@@ -194,6 +194,7 @@ impl MainReactor {
             ReactorState::KeepUp => {
                 // todo! if sync to genesis == true, determine if cycles
                 // are available to get next earliest historical block via synchronizer
+                error!("XXXXX - we are now in keep up");
 
                 let starting_with =
                     match self.block_synchronizer.maybe_executable_block_identifier() {
@@ -207,11 +208,11 @@ impl MainReactor {
                                 return (Duration::ZERO, Effects::new());
                             }
                             Some((block_hash, block_height)) => {
-                                StartingWith::BlockIdentifier(block_hash, block_height)
+                                StartingWith::SyncedBlockIdentifier(block_hash, block_height)
                             }
                         },
                     };
-
+                error!("XXXXX - starting with {:?}", starting_with);
                 let instruction = self.block_accumulator.sync_instruction(starting_with);
 
                 match instruction {
@@ -313,7 +314,9 @@ impl MainReactor {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> CatchUpInstruction {
-        let starting_with = match self.block_synchronizer.catch_up_progress() {
+        let block_sync_progress = self.block_synchronizer.catch_up_progress();
+        error!("XXXXX - block sync progress {:?}", block_sync_progress);
+        let starting_with = match block_sync_progress {
             BlockSynchronizerProgress::Idle => {
                 match self.trusted_hash {
                     None => {
@@ -440,6 +443,7 @@ impl MainReactor {
             }
         };
 
+        error!("XXXXX - starting with {:?}", starting_with);
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip
         let trusted_hash = starting_with.block_hash();
@@ -534,7 +538,7 @@ impl MainReactor {
                 }
             }
         }
-
+        error!("XXXXX - got to the end of catch up instructions, returning CaughtUp");
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstruction::CaughtUp
     }
