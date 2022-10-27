@@ -1,5 +1,6 @@
 //! Testing support utilities.
 
+pub mod encoding;
 pub mod pipe;
 pub mod testing_sink;
 
