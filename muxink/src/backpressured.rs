@@ -449,13 +449,20 @@ mod tests {
         collections::VecDeque,
         convert::{Infallible, TryInto},
         pin::Pin,
+        sync::Arc,
         task::{Context, Poll},
     };
 
+    use bytes::Bytes;
     use futures::{FutureExt, Sink, SinkExt, StreamExt};
     use tokio::sync::mpsc::UnboundedSender;
     use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
     use tokio_util::sync::PollSender;
+
+    use crate::testing::{
+        encoding::EncodeAndSend,
+        testing_sink::{TestingSink, TestingSinkRef},
+    };
 
     use super::{
         BackpressureError, BackpressuredSink, BackpressuredStream, BackpressuredStreamError, Ticket,
@@ -464,27 +471,6 @@ mod tests {
     /// Window size used in tests.
     const WINDOW_SIZE: u64 = 3;
 
-    /// A set of fixtures commonly used in the backpressure tests below.
-    struct Fixtures {
-        /// The stream ACKs are sent into.
-        ack_sender: UnboundedSender<u64>,
-        /// The backpressured sink.
-        bp: BackpressuredSink<Vec<char>, UnboundedReceiverStream<u64>, char>,
-    }
-
-    impl Fixtures {
-        /// Creates a new set of fixtures.
-        fn new() -> Self {
-            let sink = Vec::new();
-            let (ack_sender, ack_receiver) = tokio::sync::mpsc::unbounded_channel::<u64>();
-            let ack_stream = UnboundedReceiverStream::new(ack_receiver);
-            let bp = BackpressuredSink::new(sink, ack_stream, WINDOW_SIZE);
-
-            Fixtures { ack_sender, bp }
-        }
-    }
-
-    /// A set of fixtures commonly used in the backpressure tests below.
     struct CloggedAckSink {
         clogged: bool,
         /// Buffer for items when the sink is clogged.
@@ -544,34 +530,68 @@ mod tests {
         }
     }
 
+    /// A common set of fixtures used in the backpressure tests.
+    ///
+    /// The fixtures represent what a server holds when dealing with a backpressured client.
+
+    struct Fixtures {
+        /// A sender for ACKs back to the client.
+        ack_sender: UnboundedSender<u64>,
+        /// The clients sink for requests, with no backpressure wrapper. Used for retrieving the
+        /// test data in the end or setting plugged/clogged status.
+        sink: Arc<TestingSink>,
+        /// The properly set up backpressured sink.
+        bp: BackpressuredSink<TestingSinkRef, UnboundedReceiverStream<u64>, Bytes>,
+    }
+
+    impl Fixtures {
+        /// Creates a new set of fixtures.
+        fn new() -> Self {
+            let sink = Arc::new(TestingSink::new());
+            let (ack_sender, ack_receiver) = tokio::sync::mpsc::unbounded_channel::<u64>();
+            let ack_stream = UnboundedReceiverStream::new(ack_receiver);
+
+            let bp = BackpressuredSink::new(sink.clone().into_ref(), ack_stream, WINDOW_SIZE);
+            Self {
+                ack_sender,
+                sink,
+                bp,
+            }
+        }
+    }
+
     #[test]
     fn backpressured_sink_lifecycle() {
-        let Fixtures { ack_sender, mut bp } = Fixtures::new();
+        let Fixtures {
+            ack_sender,
+            sink,
+            mut bp,
+        } = Fixtures::new();
 
         // The first four attempts at `window_size = 3` should succeed.
-        bp.send('A').now_or_never().unwrap().unwrap();
-        bp.send('B').now_or_never().unwrap().unwrap();
-        bp.send('C').now_or_never().unwrap().unwrap();
-        bp.send('D').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('A').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('B').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('C').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('D').now_or_never().unwrap().unwrap();
 
         // The fifth attempt will fail, due to no ACKs having been received.
-        assert!(bp.send('E').now_or_never().is_none());
+        assert!(bp.encode_and_send('E').now_or_never().is_none());
 
         // We can now send some ACKs.
         ack_sender.send(1).unwrap();
 
         // Retry sending the fifth message, sixth should still block.
-        bp.send('E').now_or_never().unwrap().unwrap();
-        assert!(bp.send('F').now_or_never().is_none());
+        bp.encode_and_send('E').now_or_never().unwrap().unwrap();
+        assert!(bp.encode_and_send('F').now_or_never().is_none());
 
         // Send a combined ack for three messages.
         ack_sender.send(4).unwrap();
 
         // This allows 3 more messages to go in.
-        bp.send('F').now_or_never().unwrap().unwrap();
-        bp.send('G').now_or_never().unwrap().unwrap();
-        bp.send('H').now_or_never().unwrap().unwrap();
-        assert!(bp.send('I').now_or_never().is_none());
+        bp.encode_and_send('F').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('G').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('H').now_or_never().unwrap().unwrap();
+        assert!(bp.encode_and_send('I').now_or_never().is_none());
 
         // Send more ACKs to ensure we also get errors if there is capacity.
         ack_sender.send(6).unwrap();
@@ -580,14 +600,12 @@ mod tests {
         drop(ack_sender);
 
         assert!(matches!(
-            bp.send('I').now_or_never(),
+            bp.encode_and_send('I').now_or_never(),
             Some(Err(BackpressureError::AckStreamClosed))
         ));
 
         // Check all data was received correctly.
-        let output: String = bp.into_inner().0.into_iter().collect();
-
-        assert_eq!(output, "ABCDEFGH");
+        assert_eq!(sink.get_contents_string(), "ABCDEFGH");
     }
 
     #[test]
@@ -771,14 +789,16 @@ mod tests {
 
     #[test]
     fn backpressured_sink_premature_ack_kills_stream() {
-        let Fixtures { ack_sender, mut bp } = Fixtures::new();
+        let Fixtures {
+            ack_sender, mut bp, ..
+        } = Fixtures::new();
 
-        bp.send('A').now_or_never().unwrap().unwrap();
-        bp.send('B').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('A').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('B').now_or_never().unwrap().unwrap();
         ack_sender.send(3).unwrap();
 
         assert!(matches!(
-            bp.send('C').now_or_never(),
+            bp.encode_and_send('C').now_or_never(),
             Some(Err(BackpressureError::UnexpectedAck {
                 items_sent: 2,
                 actual: 3
@@ -795,22 +815,24 @@ mod tests {
         // we must have had ACKs up until at least
         // `last_request` - `window_size`, so an ACK out of range is a
         // duplicate.
-        let Fixtures { ack_sender, mut bp } = Fixtures::new();
+        let Fixtures {
+            ack_sender, mut bp, ..
+        } = Fixtures::new();
 
-        bp.send('A').now_or_never().unwrap().unwrap();
-        bp.send('B').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('A').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('B').now_or_never().unwrap().unwrap();
         // Out of order ACKs work.
         ack_sender.send(2).unwrap();
         ack_sender.send(1).unwrap();
         // Send 3 more items to make it 5 in total.
-        bp.send('C').now_or_never().unwrap().unwrap();
-        bp.send('D').now_or_never().unwrap().unwrap();
-        bp.send('E').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('C').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('D').now_or_never().unwrap().unwrap();
+        bp.encode_and_send('E').now_or_never().unwrap().unwrap();
         // Send a duplicate ACK of 1, which is outside the allowed range.
         ack_sender.send(1).unwrap();
 
         assert!(matches!(
-            bp.send('F').now_or_never(),
+            bp.encode_and_send('F').now_or_never(),
             Some(Err(BackpressureError::DuplicateAck {
                 ack_received: 1,
                 highest: 2
